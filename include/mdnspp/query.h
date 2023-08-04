@@ -15,20 +15,20 @@ struct query_t
     mdns_record_type_t type;
 };
 
-class Query
+class query
 {
-    class Impl;
+    class impl;
 public:
-    Query();
-    Query(Query &&) = delete;
-    Query(const Query &) = delete;
-    ~Query();
+    query();
+    query(query &&) = delete;
+    query(const query &) = delete;
+    ~query();
 
     void send(const query_t &request);
     void send(const std::vector<query_t> &request);
 
 private:
-    std::unique_ptr<Query::Impl> m_impl;
+    std::unique_ptr<query::impl> m_impl;
 };
 
 }

@@ -13,10 +13,10 @@
 
 namespace mdnspp {
 
-class Exception : public std::exception
+class exception : public std::exception
 {
 public:
-    Exception(const std::string &message) SAFE_DYN NOTRHOW
+    exception(const std::string &message) SAFE_DYN NOTRHOW
         : m_message(message)
     {
     }

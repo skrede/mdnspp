@@ -3,7 +3,7 @@
 
 #include "mdnspp/impl/query_impl.h"
 
-mdnspp::Query::Query()
+mdnspp::query::query()
 {
     // Each query is either a service name, or a pair of record type and a service name
     // For example:
@@ -32,16 +32,16 @@ mdnspp::Query::Query()
 //        query[query_count].length = strlen(query[query_count].name);
 //        ++query_count;
 //    }
-    m_impl = std::make_unique<Query::Impl>();
+    m_impl = std::make_unique<query::impl>();
 }
 
-mdnspp::Query::~Query()
+mdnspp::query::~query()
 {
     m_impl.reset();
 
 }
 
-void mdnspp::Query::send(const query_t &request)
+void mdnspp::query::send(const query_t &request)
 {
     mdns_query_t query;
     query.name = request.name.c_str();
@@ -50,7 +50,7 @@ void mdnspp::Query::send(const query_t &request)
     m_impl->send_mdns_query(&query, 1);
 }
 
-void mdnspp::Query::send(const std::vector<query_t> &request)
+void mdnspp::query::send(const std::vector<query_t> &request)
 {
     std::vector<mdns_query_t> queries;
     for(const auto &req : request)

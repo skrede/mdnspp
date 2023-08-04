@@ -36,7 +36,7 @@ private:
 
 inline void throw_except(const std::string &msg)
 {
-    throw Exception(msg);
+    throw exception(msg);
 }
 
 inline void cout(const std::string &msg)
@@ -50,6 +50,11 @@ inline ErrorStream<mdnspp::throw_except> exception()
 }
 
 inline ErrorStream<mdnspp::cout> info()
+{
+    return {};
+}
+
+inline ErrorStream<mdnspp::cout> debug()
 {
     return {};
 }

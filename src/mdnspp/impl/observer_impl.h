@@ -5,16 +5,16 @@
 
 #include "mdnspp/observer.h"
 
-#include "mdnspp/impl/mdnsbase.h"
+#include "mdnspp/impl/mdns_base.h"
 
 #include <atomic>
 
 namespace mdnspp {
 
-class Observer::Impl : public MDNSBase
+class observer::impl : public mdns_base
 {
 public:
-    int dump_mdns();
+    int observe();
 
     void stop();
 

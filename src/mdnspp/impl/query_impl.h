@@ -3,11 +3,11 @@
 
 #include "mdnspp/query.h"
 
-#include "mdnspp/impl/mdnsbase.h"
+#include "mdnspp/impl/mdns_base.h"
 
 namespace mdnspp {
 
-class Query::Impl : public MDNSBase
+class query::impl : public mdns_base
 {
 public:
     int send_mdns_query(mdns_query_t *query, size_t count);

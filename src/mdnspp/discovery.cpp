@@ -2,27 +2,27 @@
 
 #include "mdnspp/impl/discovery_impl.h"
 
-mdnspp::Discovery::Discovery()
+mdnspp::discovery::discovery()
 {
 }
 
-mdnspp::Discovery::~Discovery()
+mdnspp::discovery::~discovery()
 {
 }
 
-void mdnspp::Discovery::discover()
+void mdnspp::discovery::discover()
 {
     if(m_impl)
         stop();
-    m_impl = std::make_unique<Discovery::Impl>();
-    m_impl->send_dns_sd() == 0;
+    m_impl = std::make_unique<discovery::impl>();
+    m_impl->discover() == 0;
 }
 
-void mdnspp::Discovery::discover_async()
+void mdnspp::discovery::discover_async()
 {
 }
 
-void mdnspp::Discovery::stop()
+void mdnspp::discovery::stop()
 {
     m_impl->stop();
     m_impl.reset();

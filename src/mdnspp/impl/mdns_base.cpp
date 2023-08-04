@@ -1,4 +1,4 @@
-#include "mdnspp/impl/mdnsbase.h"
+#include "mdnspp/impl/mdns_base.h"
 
 using namespace mdnspp;
 
@@ -23,10 +23,10 @@ int mdnspp::mdnsbase_callback(int sock, const struct sockaddr *from, size_t addr
                               size_t size, size_t name_offset, size_t name_length, size_t record_offset,
                               size_t record_length, void *user_data)
 {
-    return static_cast<MDNSBase *>(user_data)->callback(sock, from, addrlen, entry, query_id, rtype, rclass, ttl, data, size, name_offset, name_length, record_offset, record_length);
+    return static_cast<mdns_base *>(user_data)->callback(sock, from, addrlen, entry, query_id, rtype, rclass, ttl, data, size, name_offset, name_length, record_offset, record_length);
 }
 
-MDNSBase::MDNSBase()
+mdns_base::mdns_base()
 {
     const char *hostname = "dummy-host";
 
@@ -53,7 +53,7 @@ MDNSBase::MDNSBase()
 #endif
 }
 
-MDNSBase::~MDNSBase()
+mdns_base::~mdns_base()
 {
 #ifdef _WIN32
     WSACleanup();

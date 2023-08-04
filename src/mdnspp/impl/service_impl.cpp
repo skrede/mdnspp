@@ -6,7 +6,7 @@
 
 using namespace mdnspp;
 
-Service::Impl::Impl(const std::string &hostname, const std::string &service_name, uint16_t port)
+service::impl::impl(const std::string &hostname, const std::string &service_name, uint16_t port)
     : m_port(port)
     , m_hostname(hostname)
     , m_service_name(service_name)
@@ -15,19 +15,19 @@ Service::Impl::Impl(const std::string &hostname, const std::string &service_name
 
 }
 
-bool Service::Impl::isServing() const
+bool service::impl::isServing() const
 {
     return m_running;
 }
 
-void Service::Impl::serve()
+void service::impl::serve()
 {
     start(m_hostname, m_service_name);
     announceService();
     listen();
 }
 
-void Service::Impl::start(std::string &hostname, std::string service_name)
+void service::impl::start(std::string &hostname, std::string service_name)
 {
     std::lock_guard<std::mutex> l(m_mutex);
     num_sockets = open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), service_address_ipv4, service_address_ipv6);
@@ -63,7 +63,7 @@ void Service::Impl::start(std::string &hostname, std::string service_name)
     m_running = true;
 }
 
-void Service::Impl::listen()
+void service::impl::listen()
 {
     struct timeval timeout;
     timeout.tv_sec = 0;
@@ -95,7 +95,7 @@ void Service::Impl::listen()
     }
 }
 
-void Service::Impl::stop()
+void service::impl::stop()
 {
     std::lock_guard<std::mutex> l(m_mutex);
     if(!m_running)
@@ -108,7 +108,7 @@ void Service::Impl::stop()
     info() << "Closed " << num_sockets << " socket" << (num_sockets == 1 ? "" : "s");
 }
 
-void Service::Impl::announceService()
+void service::impl::announceService()
 {
     mdns_record_t additional[5] = {0};
     size_t idx = 0;
@@ -124,7 +124,7 @@ void Service::Impl::announceService()
         mdns_announce_multicast(sockets[isock], buffer, capacity, m_records.record_ptr, 0, 0, additional, idx);
 }
 
-void Service::Impl::announceGoodbye()
+void service::impl::announceGoodbye()
 {
     mdns_record_t additional[5] = {0};
     size_t additional_count = 0;
@@ -140,7 +140,7 @@ void Service::Impl::announceGoodbye()
         mdns_goodbye_multicast(sockets[isock], buffer, capacity, m_records.record_ptr, 0, 0, additional, additional_count);
 }
 
-int Service::Impl::callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype_n, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
+int service::impl::callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype_n, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
 {
     char addrbuffer[64];
     char entrybuffer[256];

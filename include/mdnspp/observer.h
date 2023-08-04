@@ -6,14 +6,14 @@
 
 namespace mdnspp {
 
-class Observer
+class observer
 {
-    class Impl;
+    class impl;
 public:
-    Observer();
-    Observer(Observer &&) = delete;
-    Observer(const Observer &) = delete;
-    ~Observer();
+    observer();
+    observer(observer &&) = delete;
+    observer(const observer &) = delete;
+    ~observer();
 
     void observe();
     void observe_async();
@@ -21,7 +21,7 @@ public:
     void close();
 
 private:
-    std::unique_ptr<Observer::Impl> m_impl;
+    std::unique_ptr<observer::impl> m_impl;
 };
 
 }

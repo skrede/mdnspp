@@ -5,7 +5,7 @@
 
 #include "mdnspp/service.h"
 
-#include "mdnspp/impl/mdnsbase.h"
+#include "mdnspp/impl/mdns_base.h"
 #include "mdnspp/impl/services.h"
 
 #include <mutex>
@@ -13,10 +13,10 @@
 
 namespace mdnspp {
 
-class Service::Impl : public MDNSBase
+class service::impl : public mdns_base
 {
 public:
-    Impl(const std::string &hostname, const std::string &service_name, uint16_t port);
+    impl(const std::string &hostname, const std::string &service_name, uint16_t port);
 
     bool isServing() const;
 

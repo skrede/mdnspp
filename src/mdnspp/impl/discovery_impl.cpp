@@ -2,7 +2,7 @@
 
 using namespace mdnspp;
 
-int Discovery::Impl::send_dns_sd()
+int discovery::impl::discover()
 {
     int sockets[32];
     int num_sockets = mdnspp::open_client_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), 0, service_address_ipv4, service_address_ipv6);
@@ -66,12 +66,12 @@ int Discovery::Impl::send_dns_sd()
     return 0;
 }
 
-void Discovery::Impl::stop()
+void discovery::impl::stop()
 {
 
 }
 
-int Discovery::Impl::callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
+int discovery::impl::callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
 {
     static char addrbuffer[64];
     static char entrybuffer[256];

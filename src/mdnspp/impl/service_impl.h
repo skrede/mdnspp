@@ -1,7 +1,9 @@
-#ifndef MDNSPP_SERVICEPRIVATE_H
-#define MDNSPP_SERVICEPRIVATE_H
+#ifndef MDNSPP_SERVICE_IMPL_H
+#define MDNSPP_SERVICE_IMPL_H
 
-#include "mdnsbase.h"
+#include "mdnspp/service.h"
+
+#include "mdnspp/impl/mdnsbase.h"
 
 namespace mdnspp {
 
@@ -26,7 +28,7 @@ typedef struct
     mdns_record_t txt_record[2];
 } service_t;
 
-class ServicePrivate : public MDNSBase
+class Service::Impl : public MDNSBase
 {
 public:
     int serve(const char *hostname, const char *service_name, int service_port);

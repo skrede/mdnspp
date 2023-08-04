@@ -1,9 +1,9 @@
-#include "observerprivate.h"
+#include "observer_impl.h"
 
 using namespace mdnspp;
 
 // Dump all incoming mDNS queries and answers
-int ObserverPrivate::dump_mdns()
+int Observer::Impl::dump_mdns()
 {
     int sockets[32];
     int num_sockets = mdnspp::open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), service_address_ipv4, service_address_ipv6);
@@ -60,7 +60,7 @@ int ObserverPrivate::dump_mdns()
     return 0;
 }
 
-void ObserverPrivate::stop()
+void Observer::Impl::stop()
 {
     running = false;
 }

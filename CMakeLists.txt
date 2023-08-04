@@ -25,6 +25,7 @@ set(PUBLIC_HEADERS
 )
 
 set(CORE_SOURCES
+    ${SOURCE_DIRECTORY}/mdnspp/except.h
     ${SOURCE_DIRECTORY}/mdnspp/query.cpp
     ${SOURCE_DIRECTORY}/mdnspp/service.cpp
     ${SOURCE_DIRECTORY}/mdnspp/observer.cpp
@@ -34,14 +35,14 @@ set(CORE_SOURCES
 
     ${SOURCE_DIRECTORY}/mdnspp/impl/mdnsbase.h
     ${SOURCE_DIRECTORY}/mdnspp/impl/mdnsbase.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/impl/queryprivate.h
-    ${SOURCE_DIRECTORY}/mdnspp/impl/queryprivate.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/impl/serviceprivate.h
-    ${SOURCE_DIRECTORY}/mdnspp/impl/serviceprivate.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/impl/observerprivate.h
-    ${SOURCE_DIRECTORY}/mdnspp/impl/observerprivate.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/impl/discoveryprivate.h
-    ${SOURCE_DIRECTORY}/mdnspp/impl/discoveryprivate.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/impl/query_impl.h
+    ${SOURCE_DIRECTORY}/mdnspp/impl/query_impl.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/impl/service_impl.h
+    ${SOURCE_DIRECTORY}/mdnspp/impl/service_impl.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/impl/observer_impl.h
+    ${SOURCE_DIRECTORY}/mdnspp/impl/observer_impl.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/impl/discovery_impl.h
+    ${SOURCE_DIRECTORY}/mdnspp/impl/discovery_impl.cpp
 )
 
 add_library(mdnspp SHARED

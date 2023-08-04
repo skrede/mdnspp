@@ -10,6 +10,7 @@ class DiscoveryPrivate;
 
 class Discovery
 {
+    class Impl;
 public:
     Discovery();
     Discovery(Discovery &&) = delete;
@@ -21,7 +22,7 @@ public:
     void stop();
 
 private:
-    std::unique_ptr<DiscoveryPrivate> m_discovery;
+    std::unique_ptr<Discovery::Impl> m_impl;
 };
 
 }

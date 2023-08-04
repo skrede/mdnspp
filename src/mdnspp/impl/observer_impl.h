@@ -1,5 +1,7 @@
-#ifndef MDNSPP_OBSERVERPRIVATE_H
-#define MDNSPP_OBSERVERPRIVATE_H
+#ifndef MDNSPP_OBSERVER_IMPL_H
+#define MDNSPP_OBSERVER_IMPL_H
+
+#include "mdnspp/observer.h"
 
 #include "mdnspp/impl/mdnsbase.h"
 
@@ -10,7 +12,7 @@ int dump_callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_en
                   size_t size, size_t name_offset, size_t name_length, size_t record_offset,
                   size_t record_length, void *user_data);
 
-class ObserverPrivate : public MDNSBase
+class Observer::Impl : public MDNSBase
 {
 public:
     int dump_mdns();

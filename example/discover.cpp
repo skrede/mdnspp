@@ -3,5 +3,5 @@
 int main(int argc, char** argv)
 {
     mdnspp::Discovery d;
-    d.discover_async();
+    d.discover();
 }

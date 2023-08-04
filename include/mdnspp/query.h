@@ -15,10 +15,9 @@ struct query_t
     mdns_record_type_t type;
 };
 
-class QueryPrivate;
-
 class Query
 {
+    class Impl;
 public:
     Query();
     Query(Query &&) = delete;
@@ -29,7 +28,7 @@ public:
     void send(const std::vector<query_t> &request);
 
 private:
-    std::unique_ptr<QueryPrivate> m_query;
+    std::unique_ptr<Query::Impl> m_impl;
 };
 
 }

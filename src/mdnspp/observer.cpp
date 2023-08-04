@@ -1,6 +1,6 @@
 #include "mdnspp/observer.h"
 
-#include "mdnspp/impl/observerprivate.h"
+#include "mdnspp/impl/observer_impl.h"
 
 using namespace mdnspp;
 
@@ -14,10 +14,10 @@ Observer::~Observer()
 
 void Observer::observe()
 {
-    if(m_observer)
+    if(m_impl)
         close();
-    m_observer = std::make_unique<ObserverPrivate>();
-    m_observer->dump_mdns();
+    m_impl = std::make_unique<Observer::Impl>();
+    m_impl->dump_mdns();
 }
 
 void Observer::observe_async()

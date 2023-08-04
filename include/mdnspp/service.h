@@ -6,10 +6,9 @@
 
 namespace mdnspp {
 
-class ServicePrivate;
-
 class Service
 {
+    class Impl;
 public:
     Service();
     Service(Service &&) = delete;
@@ -22,7 +21,7 @@ public:
     bool isServing();
 
 private:
-    std::unique_ptr<ServicePrivate> m_service;
+    std::unique_ptr<Service::Impl> m_impl;
 };
 
 }

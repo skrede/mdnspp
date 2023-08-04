@@ -1,5 +1,7 @@
-#ifndef MDNSPP_DISCOVERYPRIVATE_H
-#define MDNSPP_DISCOVERYPRIVATE_H
+#ifndef MDNSPP_DISCOVERY_IMPL_H
+#define MDNSPP_DISCOVERY_IMPL_H
+
+#include "mdnspp/discovery.h"
 
 #include "mdnspp/impl/mdnsbase.h"
 
@@ -10,7 +12,7 @@ int discovery_callback(int sock, const struct sockaddr *from, size_t addrlen, md
                        size_t size, size_t name_offset, size_t name_length, size_t record_offset,
                        size_t record_length, void *user_data);
 
-class DiscoveryPrivate : public MDNSBase
+class Discovery::Impl : public MDNSBase
 {
 public:
     int send_dns_sd();

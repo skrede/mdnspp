@@ -1,7 +1,7 @@
 #include "mdnspp/query.h"
 #include "mdnspp/mdns_util.h"
 
-#include "mdnspp/impl/queryprivate.h"
+#include "mdnspp/impl/query_impl.h"
 
 mdnspp::Query::Query()
 {
@@ -32,12 +32,12 @@ mdnspp::Query::Query()
 //        query[query_count].length = strlen(query[query_count].name);
 //        ++query_count;
 //    }
-    m_query = std::make_unique<QueryPrivate>();
+    m_impl = std::make_unique<Query::Impl>();
 }
 
 mdnspp::Query::~Query()
 {
-    m_query.reset();
+    m_impl.reset();
 
 }
 
@@ -47,7 +47,7 @@ void mdnspp::Query::send(const query_t &request)
     query.name = request.name.c_str();
     query.type = static_cast<mdns_record_type_t>(request.type);
     query.length = request.name.length();
-    m_query->send_mdns_query(&query, 1);
+    m_impl->send_mdns_query(&query, 1);
 }
 
 void mdnspp::Query::send(const std::vector<query_t> &request)
@@ -61,5 +61,5 @@ void mdnspp::Query::send(const std::vector<query_t> &request)
         query.length = req.name.length();
         queries.push_back(query);
     }
-    m_query->send_mdns_query(&queries[0], queries.size());
+    m_impl->send_mdns_query(&queries[0], queries.size());
 }

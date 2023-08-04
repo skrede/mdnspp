@@ -1,9 +1,9 @@
-#include "serviceprivate.h"
+#include "service_impl.h"
 
 using namespace mdnspp;
 
 // Provide a mDNS service, answering incoming DNS-SD and mDNS queries
-int ServicePrivate::serve(const char *hostname, const char *service_name, int service_port)
+int Service::Impl::serve(const char *hostname, const char *service_name, int service_port)
 {
     auto ret = start(hostname, service_name, service_port);
     if(ret != 0)
@@ -11,7 +11,7 @@ int ServicePrivate::serve(const char *hostname, const char *service_name, int se
     return listen();
 }
 
-int ServicePrivate::start(const char *hostname, const char *service_name, int service_port)
+int Service::Impl::start(const char *hostname, const char *service_name, int service_port)
 {
     num_sockets = open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), service_address_ipv4, service_address_ipv6);
     if(num_sockets <= 0)
@@ -127,7 +127,7 @@ int ServicePrivate::start(const char *hostname, const char *service_name, int se
     return 0;
 }
 
-int ServicePrivate::listen()
+int Service::Impl::listen()
 {
     // Send an announcement on startup of service
     {
@@ -182,7 +182,7 @@ int ServicePrivate::listen()
     return 0;
 }
 
-void ServicePrivate::stop()
+void Service::Impl::stop()
 {
     if(!running)
         return;
@@ -212,7 +212,7 @@ void ServicePrivate::stop()
     printf("Closed socket%s\n", num_sockets ? "s" : "");
 }
 
-bool ServicePrivate::isServing() const
+bool Service::Impl::isServing() const
 {
     return running;
 }

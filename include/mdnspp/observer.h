@@ -6,10 +6,9 @@
 
 namespace mdnspp {
 
-class ObserverPrivate;
-
 class Observer
 {
+    class Impl;
 public:
     Observer();
     Observer(Observer &&) = delete;
@@ -22,7 +21,7 @@ public:
     void close();
 
 private:
-    std::unique_ptr<ObserverPrivate> m_observer;
+    std::unique_ptr<Observer::Impl> m_impl;
 };
 
 }

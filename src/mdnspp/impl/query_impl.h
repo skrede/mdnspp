@@ -1,7 +1,9 @@
-#ifndef MDNSPP_QUERYPRIVATE_H
-#define MDNSPP_QUERYPRIVATE_H
+#ifndef MDNSPP_QUERY_IMPL_H
+#define MDNSPP_QUERY_IMPL_H
 
-#include "mdnsbase.h"
+#include "mdnspp/query.h"
+
+#include "mdnspp/impl/mdnsbase.h"
 
 namespace mdnspp {
 
@@ -10,7 +12,7 @@ int query_callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_e
                    size_t size, size_t name_offset, size_t name_length, size_t record_offset,
                    size_t record_length, void *user_data);
 
-class QueryPrivate : public MDNSBase
+class Query::Impl : public MDNSBase
 {
 public:
     int send_mdns_query(mdns_query_t *query, size_t count);

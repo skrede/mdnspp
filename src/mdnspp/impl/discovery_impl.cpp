@@ -1,4 +1,6 @@
-#include "discovery_impl.h"
+#include "mdnspp/impl/discovery_impl.h"
+
+
 
 // Callback handling parsing answers to queries sent
 int mdnspp::discovery_callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry,

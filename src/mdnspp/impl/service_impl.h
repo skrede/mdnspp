@@ -1,6 +1,8 @@
 #ifndef MDNSPP_SERVICE_IMPL_H
 #define MDNSPP_SERVICE_IMPL_H
 
+// Provide a mDNS service, answering incoming DNS-SD and mDNS queries
+
 #include "mdnspp/service.h"
 
 #include "mdnspp/impl/mdnsbase.h"
@@ -31,16 +33,24 @@ typedef struct
 class Service::Impl : public MDNSBase
 {
 public:
-    int serve(const char *hostname, const char *service_name, int service_port);
+    Impl(const std::string &hostname, const std::string &service_name, uint16_t port);
+
+    void serve();
     void stop();
 
     bool isServing() const;
 
 private:
+    uint16_t m_port;
+    std::string m_hostname;
+    std::string m_service_name;
+    std::string m_service_instance;
     service_t service;
 
-    int start(const char *hostname, const char *service_name, int service_port);
-    int listen();
+    void start();
+    void listen();
+
+    void assignServiceName();
 };
 
 }

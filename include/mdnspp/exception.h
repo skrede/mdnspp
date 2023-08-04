@@ -21,11 +21,6 @@ public:
     {
     }
 
-    Exception(const std::string &message)
-        : m_message(message)
-    {
-    }
-
     const char *what() const SAFE_DYN NOTRHOW override
     {
         return m_message.c_str();

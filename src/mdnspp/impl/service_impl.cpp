@@ -1,50 +1,46 @@
-#include "service_impl.h"
+#include "mdnspp/impl/service_impl.h"
+
+#include "mdnspp/log.h"
 
 using namespace mdnspp;
 
-// Provide a mDNS service, answering incoming DNS-SD and mDNS queries
-int Service::Impl::serve(const char *hostname, const char *service_name, int service_port)
+Service::Impl::Impl(const std::string &hostname, const std::string &service_name, uint16_t port)
+    : m_port(port)
+    , m_hostname(hostname)
+    , m_service_name(service_name)
 {
-    auto ret = start(hostname, service_name, service_port);
-    if(ret != 0)
-        return ret;
-    return listen();
+
 }
 
-int Service::Impl::start(const char *hostname, const char *service_name, int service_port)
+void Service::Impl::serve()
+{
+    start();
+    listen();
+}
+
+void Service::Impl::start()
 {
     num_sockets = open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), service_address_ipv4, service_address_ipv6);
     if(num_sockets <= 0)
-    {
-        printf("Failed to open any client sockets\n");
-        return -1;
-    }
-    printf("Opened %d socket%s for mDNS service\n", num_sockets, num_sockets ? "s" : "");
+        error() << "Failed to open any client sockets";
 
-    size_t service_name_length = strlen(service_name);
-    if(!service_name_length)
-    {
-        printf("Invalid service name\n");
-        return -1;
-    }
-
-    service_name_buffer = static_cast<char *>(malloc(service_name_length + 2));
-    memcpy(service_name_buffer, service_name, service_name_length);
-    if(service_name_buffer[service_name_length - 1] != '.')
-        service_name_buffer[service_name_length++] = '.';
-    service_name_buffer[service_name_length] = 0;
-    service_name = service_name_buffer;
-
-    printf("Service mDNS: %s:%d\n", service_name, service_port);
-    printf("Hostname: %s\n", hostname);
+    if(m_service_name.empty())
+        error() << "Service name can not be empty";
+    else if(m_service_name.back() != '.')
+        m_service_name += '.';
 
     capacity = 2048;
     buffer = malloc(capacity);
 
-    mdns_string_t service_string = (mdns_string_t) {service_name, strlen(service_name)};
-    mdns_string_t hostname_string = (mdns_string_t) {hostname, strlen(hostname)};
+    mdns_string_t service_string = (mdns_string_t) {m_service_name.c_str(), m_service_name.length()};
+    mdns_string_t hostname_string = (mdns_string_t) {m_hostname.c_str(), m_hostname.length()};
+
+    info() << "mDNS service " << m_hostname << " running on " << m_service_name << ":" << m_port << " with " << num_sockets << " socket" << (num_sockets ? "s" : "");
+
 
     // Build the service instance "<hostname>.<_service-name>._tcp.local." string
+    m_service_instance = m_hostname + "._" + m_service_name + "._tcp.local";
+    std::string service_instance_str = m_hostname + "." + m_service_name;
     char service_instance_buffer[256] = {0};
     snprintf(service_instance_buffer, sizeof(service_instance_buffer) - 1, "%.*s.%.*s",
              MDNS_STRING_FORMAT(hostname_string), MDNS_STRING_FORMAT(service_string));
@@ -65,7 +61,7 @@ int Service::Impl::start(const char *hostname, const char *service_name, int ser
     service.hostname_qualified = hostname_qualified_string;
     service.address_ipv4 = service_address_ipv4;
     service.address_ipv6 = service_address_ipv6;
-    service.port = service_port;
+    service.port = m_port;
 
     // Setup our mDNS records
 
@@ -124,14 +120,13 @@ int Service::Impl::start(const char *hostname, const char *service_name, int ser
     };
     service.txt_record[1].rclass = 0;
     service.txt_record[1].ttl = 0;
-    return 0;
 }
 
-int Service::Impl::listen()
+void Service::Impl::listen()
 {
     // Send an announcement on startup of service
     {
-        printf("Sending announce\n");
+        info() << "Sending announce";
         mdns_record_t additional[5] = {0};
         size_t additional_count = 0;
         additional[additional_count++] = service.record_srv;
@@ -179,7 +174,6 @@ int Service::Impl::listen()
             break;
         }
     }
-    return 0;
 }
 
 void Service::Impl::stop()
@@ -205,7 +199,6 @@ void Service::Impl::stop()
     }
 
     free(buffer);
-    free(service_name_buffer);
 
     for(int isock = 0; isock < num_sockets; ++isock)
         mdns_socket_close(sockets[isock]);

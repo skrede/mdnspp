@@ -1,4 +1,4 @@
-#include "query_impl.h"
+#include "mdnspp/impl/query_impl.h"
 
 using namespace mdnspp;
 

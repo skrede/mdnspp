@@ -4,6 +4,7 @@
 #include "mdnspp/exception.h"
 
 #include <sstream>
+#include <iostream>
 
 namespace mdnspp {
 
@@ -11,6 +12,12 @@ template<void (*Callable_t)(const std::string &)>
 class ErrorStream
 {
 public:
+    ErrorStream() = default;
+    ErrorStream(const std::string &label)
+    {
+        m_stream << "[" << label << "] ";
+    }
+
     ~ErrorStream()
     {
         Callable_t(m_stream.str());
@@ -24,7 +31,7 @@ public:
     }
 
 private:
-    std::stringstream m_stream;
+    std::ostringstream m_stream;
 };
 
 inline void except(const std::string &msg)
@@ -32,7 +39,17 @@ inline void except(const std::string &msg)
     throw Exception(msg);
 }
 
+inline void cout(const std::string &msg)
+{
+    std::cout << msg << std::endl;
+}
+
 inline ErrorStream<mdnspp::except> error()
+{
+    return {};
+}
+
+inline ErrorStream<mdnspp::cout> info()
 {
     return {};
 }

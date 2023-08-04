@@ -49,12 +49,17 @@ inline ErrorStream<mdnspp::throw_except> exception()
     return {};
 }
 
+inline ErrorStream<mdnspp::cout> debug()
+{
+    return {};
+}
+
 inline ErrorStream<mdnspp::cout> info()
 {
     return {};
 }
 
-inline ErrorStream<mdnspp::cout> debug()
+inline ErrorStream<mdnspp::cout> error()
 {
     return {};
 }

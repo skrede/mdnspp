@@ -47,7 +47,7 @@ void mdnspp::query::send(const query_t &request)
     query.name = request.name.c_str();
     query.type = static_cast<mdns_record_type_t>(request.type);
     query.length = request.name.length();
-    m_impl->send_mdns_query(&query, 1);
+    m_impl->send_query(&query, 1);
 }
 
 void mdnspp::query::send(const std::vector<query_t> &request)
@@ -61,5 +61,5 @@ void mdnspp::query::send(const std::vector<query_t> &request)
         query.length = req.name.length();
         queries.push_back(query);
     }
-    m_impl->send_mdns_query(&queries[0], queries.size());
+    m_impl->send_query(&queries[0], queries.size());
 }

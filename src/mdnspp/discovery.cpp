@@ -3,6 +3,7 @@
 #include "mdnspp/impl/discovery_impl.h"
 
 mdnspp::discovery::discovery()
+    : m_impl(std::make_unique<discovery::impl>())
 {
 }
 
@@ -12,10 +13,7 @@ mdnspp::discovery::~discovery()
 
 void mdnspp::discovery::discover()
 {
-    if(m_impl)
-        stop();
-    m_impl = std::make_unique<discovery::impl>();
-    m_impl->discover() == 0;
+    m_impl->discover();
 }
 
 void mdnspp::discovery::discover_async()
@@ -25,5 +23,4 @@ void mdnspp::discovery::discover_async()
 void mdnspp::discovery::stop()
 {
     m_impl->stop();
-    m_impl.reset();
 }

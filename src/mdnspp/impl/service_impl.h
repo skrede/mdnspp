@@ -33,7 +33,7 @@ private:
     std::atomic<bool> m_running;
     void *buffer;
 
-    void start(std::string &hostname, std::string service_name);
+    void start(std::string hostname, std::string service_name);
     void announceService();
     void announceGoodbye();
     void listen();

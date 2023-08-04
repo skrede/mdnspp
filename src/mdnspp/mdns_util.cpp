@@ -1,5 +1,7 @@
 #include "mdnspp/mdns_util.h"
 
+#include "mdnspp/log.h"
+
 #include <mdns.h>
 
 static int has_ipv4;
@@ -57,11 +59,11 @@ mdns_string_t mdnspp::ip_address_to_string(char *buffer, size_t capacity, const 
 }
 
 // Open sockets for sending one-shot multicast queries from an ephemeral port
-int mdnspp::open_client_sockets(int *sockets, int max_sockets, int port, sockaddr_in &service_address_ipv4, sockaddr_in6 &service_address_ipv6)
+uint32_t mdnspp::open_client_sockets(int *sockets, int max_sockets, int port, sockaddr_in &service_address_ipv4, sockaddr_in6 &service_address_ipv6)
 {
     // When sending, each socket can only send to one network interface
     // Thus we need to open one socket for each interface and address family
-    int num_sockets = 0;
+    uint32_t num_sockets = 0;
 
 #ifdef _WIN32
 
@@ -84,7 +86,7 @@ int mdnspp::open_client_sockets(int *sockets, int max_sockets, int port, sockadd
 
     if (!adapter_address || (ret != NO_ERROR)) {
         free(adapter_address);
-        printf("Failed to get network adapter addresses\n");
+        exception() << "Failed to get network adapter addresses";
         return num_sockets;
     }
 
@@ -125,7 +127,7 @@ int mdnspp::open_client_sockets(int *sockets, int max_sockets, int port, sockadd
                         char buffer[128];
                         mdns_string_t addr = ipv4_address_to_string(buffer, sizeof(buffer), saddr,
                                                                     sizeof(struct sockaddr_in));
-                        printf("Local IPv4 address: %.*s\n", MDNS_STRING_FORMAT(addr));
+                        info() << "Local IPv4 address: " << MDNS_STRING_FORMAT(addr);
                     }
                 }
             } else if (unicast->Address.lpSockaddr->sa_family == AF_INET6) {
@@ -161,13 +163,12 @@ int mdnspp::open_client_sockets(int *sockets, int max_sockets, int port, sockadd
                         char buffer[128];
                         mdns_string_t addr = ipv6_address_to_string(buffer, sizeof(buffer), saddr,
                                                                     sizeof(struct sockaddr_in6));
-                        printf("Local IPv6 address: %.*s\n", MDNS_STRING_FORMAT(addr));
+                        info() << "Local IPv6 address: " << MDNS_STRING_FORMAT(addr);
                     }
                 }
             }
         }
     }
-
     free(adapter_address);
 
 #else
@@ -176,7 +177,7 @@ int mdnspp::open_client_sockets(int *sockets, int max_sockets, int port, sockadd
     struct ifaddrs *ifa = 0;
 
     if(getifaddrs(&ifaddr) < 0)
-        printf("Unable to get interface addresses\n");
+        exception() << "Unable to get interface addresses";
 
     int first_ipv4 = 1;
     int first_ipv6 = 1;
@@ -219,9 +220,8 @@ int mdnspp::open_client_sockets(int *sockets, int max_sockets, int port, sockadd
                 if(log_addr)
                 {
                     char buffer[128];
-                    mdns_string_t addr = ipv4_address_to_string(buffer, sizeof(buffer), saddr,
-                                                                sizeof(struct sockaddr_in));
-                    printf("Local IPv4 address: %.*s\n", MDNS_STRING_FORMAT(addr));
+                    mdns_string_t addr = ipv4_address_to_string(buffer, sizeof(buffer), saddr, sizeof(struct sockaddr_in));
+                    info() << "Local IPv4 address: " << MDNS_STRING_FORMAT(addr);
                 }
             }
         }
@@ -239,8 +239,7 @@ int mdnspp::open_client_sockets(int *sockets, int max_sockets, int port, sockadd
                 0, 0, 0, 0, 0, 0, 0, 0,
                 0, 0, 0xff, 0xff, 0x7f, 0, 0, 1
             };
-            if(memcmp(saddr->sin6_addr.s6_addr, localhost, 16) &&
-               memcmp(saddr->sin6_addr.s6_addr, localhost_mapped, 16))
+            if(memcmp(saddr->sin6_addr.s6_addr, localhost, 16) && memcmp(saddr->sin6_addr.s6_addr, localhost_mapped, 16))
             {
                 int log_addr = 0;
                 if(first_ipv6)
@@ -267,60 +266,47 @@ int mdnspp::open_client_sockets(int *sockets, int max_sockets, int port, sockadd
                 if(log_addr)
                 {
                     char buffer[128];
-                    mdns_string_t addr = ipv6_address_to_string(buffer, sizeof(buffer), saddr,
-                                                                sizeof(struct sockaddr_in6));
-                    printf("Local IPv6 address: %.*s\n", MDNS_STRING_FORMAT(addr));
+                    mdns_string_t addr = ipv6_address_to_string(buffer, sizeof(buffer), saddr, sizeof(struct sockaddr_in6));
+                    info() << "Local IPv6 address: " << MDNS_STRING_FORMAT(addr);
                 }
             }
         }
     }
-
     freeifaddrs(ifaddr);
-
 #endif
-
     return num_sockets;
 }
 
-int mdnspp::open_service_sockets(int *sockets, int max_sockets, sockaddr_in &service_address_ipv4, sockaddr_in6 &service_address_ipv6)
+uint32_t mdnspp::open_service_sockets(int *sockets, int max_sockets, sockaddr_in &service_address_ipv4, sockaddr_in6 &service_address_ipv6)
 {
 // When recieving, each socket can recieve data from all network interfaces
 // Thus we only need to open one socket for each address family
-    int num_sockets = 0;
-
-// Call the client socket function to enumerate and get local addresses,
-// but not open the actual sockets
-    open_client_sockets(0, 0, 0, service_address_ipv4, service_address_ipv6);
+// Call the client socket function to enumerate and get local addresses, but not open the actual sockets
+    uint32_t num_sockets = open_client_sockets(0, 0, 0, service_address_ipv4, service_address_ipv6);
 
     if(num_sockets < max_sockets)
     {
         struct sockaddr_in sock_addr;
-        memset(&sock_addr,
-               0, sizeof(struct sockaddr_in));
-        sock_addr.
-            sin_family = AF_INET;
+        memset(&sock_addr, 0, sizeof(struct sockaddr_in));
+        sock_addr.sin_family = AF_INET;
 #ifdef _WIN32
         sock_addr.sin_addr = in4addr_any;
 #else
-        sock_addr.sin_addr.
-            s_addr = INADDR_ANY;
+        sock_addr.sin_addr.s_addr = INADDR_ANY;
 #endif
-        sock_addr.
-            sin_port = htons(MDNS_PORT);
+        sock_addr.sin_port = htons(MDNS_PORT);
 #ifdef __APPLE__
         sock_addr.sin_len = sizeof(struct sockaddr_in);
 #endif
         int sock = mdns_socket_open_ipv4(&sock_addr);
         if(sock >= 0)
-            sockets[num_sockets++] =
-                sock;
+            sockets[num_sockets++] = sock;
     }
 
     if(num_sockets < max_sockets)
     {
         struct sockaddr_in6 sock_addr;
-        memset(&sock_addr,
-               0, sizeof(struct sockaddr_in6));
+        memset(&sock_addr, 0, sizeof(struct sockaddr_in6));
         sock_addr.
             sin6_family = AF_INET6;
         sock_addr.
@@ -332,11 +318,8 @@ int mdnspp::open_service_sockets(int *sockets, int max_sockets, sockaddr_in &ser
 #endif
         int sock = mdns_socket_open_ipv6(&sock_addr);
         if(sock >= 0)
-            sockets[num_sockets++] =
-                sock;
+            sockets[num_sockets++] = sock;
     }
-
-    return
-        num_sockets;
+    return num_sockets;
 }
 

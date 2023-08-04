@@ -6,23 +6,21 @@
 
 namespace mdnspp {
 
-class DiscoveryPrivate;
-
-class Discovery
+class discovery
 {
-    class Impl;
+    class impl;
 public:
-    Discovery();
-    Discovery(Discovery &&) = delete;
-    Discovery(const Discovery &) = delete;
-    ~Discovery();
+    discovery();
+    discovery(discovery &&) = delete;
+    discovery(const discovery &) = delete;
+    ~discovery();
 
     void discover();
     void discover_async();
     void stop();
 
 private:
-    std::unique_ptr<Discovery::Impl> m_impl;
+    std::unique_ptr<discovery::impl> m_impl;
 };
 
 }

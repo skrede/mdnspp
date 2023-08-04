@@ -2,6 +2,6 @@
 
 int main(int argc, char** argv)
 {
-    mdnspp::Discovery d;
+    mdnspp::discovery d;
     d.discover();
 }

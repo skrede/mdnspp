@@ -2,6 +2,6 @@
 
 int main(int argc, char** argv)
 {
-    mdnspp::Service s;
-    s.serve("mdnspp", "example", 27015);
+    mdnspp::service s("mdnspp", "example", 27015);
+    s.serve();
 }

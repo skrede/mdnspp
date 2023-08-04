@@ -8,19 +8,19 @@
 
 namespace mdnspp {
 
-template<void (*Callable_t)(const std::string &)>
-class ErrorStream
+template<void (*callable_t)(const std::string &)>
+class error_stream
 {
 public:
-    ErrorStream() = default;
-    ErrorStream(const std::string &label)
+    error_stream() = default;
+    error_stream(const std::string &label)
     {
         m_stream << "[" << label << "] ";
     }
 
-    ~ErrorStream()
+    ~error_stream()
     {
-        Callable_t(m_stream.str());
+        callable_t(m_stream.str());
     }
 
     template<typename T>
@@ -44,12 +44,27 @@ inline void cout(const std::string &msg)
     std::cout << msg << std::endl;
 }
 
-inline ErrorStream<mdnspp::throw_except> exception()
+inline void cerr(const std::string &msg)
+{
+    std::cerr << msg << std::endl;
+}
+
+inline error_stream<mdnspp::throw_except> exception()
 {
     return {};
 }
 
-inline ErrorStream<mdnspp::cout> info()
+inline error_stream<mdnspp::cout> debug()
+{
+    return {};
+}
+
+inline error_stream<mdnspp::cout> info()
+{
+    return {};
+}
+
+inline error_stream<mdnspp::cerr> error()
 {
     return {};
 }

@@ -2,6 +2,6 @@
 
 int main(int argc, char** argv)
 {
-    mdnspp::Observer s;
+    mdnspp::observer s;
     s.observe();
 }

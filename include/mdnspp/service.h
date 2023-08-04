@@ -6,22 +6,22 @@
 
 namespace mdnspp {
 
-class Service
+class service
 {
-    class Impl;
+    class impl;
 public:
-    Service();
-    Service(Service &&) = delete;
-    Service(const Service &) = delete;
-    ~Service();
+    service(const std::string &name, const std::string &hostname, uint16_t port);
+    service(service &&) = delete;
+    service(const service &) = delete;
+    ~service();
 
-    void serve(const std::string &name, const std::string &hostname, uint16_t port);
+    void serve();
     void stop();
 
     bool isServing();
 
 private:
-    std::unique_ptr<Service::Impl> m_impl;
+    std::unique_ptr<service::impl> m_impl;
 };
 
 }

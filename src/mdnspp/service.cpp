@@ -4,29 +4,26 @@
 
 using namespace mdnspp;
 
-Service::Service()
+service::service(const std::string &name, const std::string &hostname, uint16_t port)
+    : m_impl(std::make_unique<service::impl>(hostname.c_str(), name.c_str(), port))
 {
 }
 
-Service::~Service()
+service::~service()
 {
 }
 
-void Service::serve(const std::string &name, const std::string &hostname, uint16_t port)
+void service::serve()
 {
-    m_impl = std::make_unique<Service::Impl>(hostname.c_str(), name.c_str(), port);
     m_impl->serve();
 }
 
-void Service::stop()
+void service::stop()
 {
-    if(m_impl)
-    {
-        m_impl->stop();
-    }
+    m_impl->stop();
 }
 
-bool Service::isServing()
+bool service::isServing()
 {
-    return m_impl->isServing();
+    return m_impl->is_serving();
 }

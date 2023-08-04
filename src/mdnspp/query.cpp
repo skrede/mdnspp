@@ -3,7 +3,7 @@
 
 #include "mdnspp/impl/query_impl.h"
 
-mdnspp::Query::Query()
+mdnspp::query::query()
 {
     // Each query is either a service name, or a pair of record type and a service name
     // For example:
@@ -32,25 +32,25 @@ mdnspp::Query::Query()
 //        query[query_count].length = strlen(query[query_count].name);
 //        ++query_count;
 //    }
-    m_impl = std::make_unique<Query::Impl>();
+    m_impl = std::make_unique<query::impl>();
 }
 
-mdnspp::Query::~Query()
+mdnspp::query::~query()
 {
     m_impl.reset();
 
 }
 
-void mdnspp::Query::send(const query_t &request)
+void mdnspp::query::send(const query_t &request)
 {
     mdns_query_t query;
     query.name = request.name.c_str();
     query.type = static_cast<mdns_record_type_t>(request.type);
     query.length = request.name.length();
-    m_impl->send_mdns_query(&query, 1);
+    m_impl->send_query(&query, 1);
 }
 
-void mdnspp::Query::send(const std::vector<query_t> &request)
+void mdnspp::query::send(const std::vector<query_t> &request)
 {
     std::vector<mdns_query_t> queries;
     for(const auto &req : request)
@@ -61,5 +61,5 @@ void mdnspp::Query::send(const std::vector<query_t> &request)
         query.length = req.name.length();
         queries.push_back(query);
     }
-    m_impl->send_mdns_query(&queries[0], queries.size());
+    m_impl->send_query(&queries[0], queries.size());
 }

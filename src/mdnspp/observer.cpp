@@ -4,26 +4,26 @@
 
 using namespace mdnspp;
 
-Observer::Observer()
+observer::observer()
 {
 }
 
-Observer::~Observer()
+observer::~observer()
 {
 }
 
-void Observer::observe()
+void observer::observe()
 {
     if(m_impl)
         close();
-    m_impl = std::make_unique<Observer::Impl>();
-    m_impl->dump_mdns();
+    m_impl = std::make_unique<observer::impl>();
+    m_impl->observe();
 }
 
-void Observer::observe_async()
+void observer::observe_async()
 {
 }
 
-void Observer::close()
+void observer::close()
 {
 }

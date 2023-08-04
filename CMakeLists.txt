@@ -8,7 +8,7 @@ set(Boost_NO_WARN_NEW_VERSIONS ON)
 set(SOURCE_DIRECTORY src)
 set(INCLUDE_DIRECTORY include)
 
-option(BUILD_EXAMPLES off)
+option(MDNSPP_BUILD_EXAMPLES off)
 
 if(${CMAKE_TOOLCHAIN_FILE})
     find_path(MDNS_INCLUDE_DIRS "mdns.h")
@@ -59,6 +59,6 @@ target_include_directories(mdnspp
     PRIVATE ${SOURCE_DIRECTORY}
 )
 
-if(${BUILD_EXAMPLES})
+if(${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(example)
 endif()

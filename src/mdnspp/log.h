@@ -34,7 +34,7 @@ private:
     std::ostringstream m_stream;
 };
 
-inline void except(const std::string &msg)
+inline void throw_except(const std::string &msg)
 {
     throw Exception(msg);
 }
@@ -44,7 +44,7 @@ inline void cout(const std::string &msg)
     std::cout << msg << std::endl;
 }
 
-inline ErrorStream<mdnspp::except> error()
+inline ErrorStream<mdnspp::throw_except> exception()
 {
     return {};
 }

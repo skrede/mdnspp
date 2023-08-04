@@ -2,7 +2,6 @@
 
 using namespace mdnspp;
 
-// Dump all incoming mDNS queries and answers
 int Observer::Impl::dump_mdns()
 {
     int sockets[32];
@@ -40,7 +39,7 @@ int Observer::Impl::dump_mdns()
             {
                 if(FD_ISSET(sockets[isock], &readfs))
                 {
-                    mdns_socket_listen(sockets[isock], buffer, capacity, mdnspp::dump_callback, 0);
+                    mdns_socket_listen(sockets[isock], buffer, capacity, mdnspp::mdnsbase_callback, this);
                 }
                 FD_SET(sockets[isock], &readfs);
             }
@@ -65,13 +64,8 @@ void Observer::Impl::stop()
     running = false;
 }
 
-// Callback handling questions and answers dump
-int mdnspp::dump_callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry,
-                          uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data,
-                          size_t size, size_t name_offset, size_t name_length, size_t record_offset,
-                          size_t record_length, void *user_data)
+int Observer::Impl::callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
 {
-
     static char addrbuffer[64];
     static char namebuffer[256];
     mdns_string_t fromaddrstr = ip_address_to_string(addrbuffer, sizeof(addrbuffer), from, addrlen);

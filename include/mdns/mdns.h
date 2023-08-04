@@ -221,7 +221,7 @@ mdns_socket_listen(int sock, void* buffer, size_t capacity, mdns_record_callback
                    void* user_data);
 
 //! Send a multicast DNS-SD reqeuest on the given socket to discover available services. Returns 0
-//! on success, or <0 if error.
+//! on success, or <0 if exception.
 static inline int
 mdns_discovery_send(int sock);
 
@@ -237,7 +237,7 @@ mdns_discovery_recv(int sock, void* buffer, size_t capacity, mdns_record_callbac
 //! non-zero to filter responses, however the RFC states that the query ID SHOULD be set to 0 for
 //! multicast queries. The query will request a unicast response if the socket is bound to an
 //! ephemeral port, or a multicast response if the socket is bound to mDNS port 5353. Returns the
-//! used query ID, or <0 if error.
+//! used query ID, or <0 if exception.
 static inline int
 mdns_query_send(int sock, mdns_record_type_t type, const char* name, size_t length, void* buffer,
                 size_t capacity, uint16_t query_id);
@@ -249,7 +249,7 @@ mdns_query_send(int sock, mdns_record_type_t type, const char* name, size_t leng
 //! (mdns_record_type_t), a name string pointer (const char*) and a name length (size_t). The list
 //! of variable arguments should be terminated with a record type of 0. The query will request a
 //! unicast response if the socket is bound to an ephemeral port, or a multicast response if the
-//! socket is bound to mDNS port 5353. Returns the used query ID, or <0 if error.
+//! socket is bound to mDNS port 5353. Returns the used query ID, or <0 if exception.
 static inline int
 mdns_multiquery_send(int sock, const mdns_query_t* query, size_t count, void* buffer,
                      size_t capacity, uint16_t query_id);
@@ -267,7 +267,7 @@ mdns_query_recv(int sock, void* buffer, size_t capacity, mdns_record_callback_fn
 //! given address. Use the top bit of the query class field (MDNS_UNICAST_RESPONSE) in the query
 //! recieved to determine if the answer should be sent unicast (bit set) or multicast (bit not set).
 //! Buffer must be 32 bit aligned. The record type and name should match the data from the query
-//! recieved. Returns 0 if success, or <0 if error.
+//! recieved. Returns 0 if success, or <0 if exception.
 static inline int
 mdns_query_answer_unicast(int sock, const void* address, size_t address_size, void* buffer,
                           size_t capacity, uint16_t query_id, mdns_record_type_t record_type,
@@ -278,14 +278,14 @@ mdns_query_answer_unicast(int sock, const void* address, size_t address_size, vo
 //! Send a variable multicast mDNS query answer to any question with variable number of records. Use
 //! the top bit of the query class field (MDNS_UNICAST_RESPONSE) in the query recieved to determine
 //! if the answer should be sent unicast (bit set) or multicast (bit not set). Buffer must be 32 bit
-//! aligned. Returns 0 if success, or <0 if error.
+//! aligned. Returns 0 if success, or <0 if exception.
 static inline int
 mdns_query_answer_multicast(int sock, void* buffer, size_t capacity, mdns_record_t answer,
                             const mdns_record_t* authority, size_t authority_count,
                             const mdns_record_t* additional, size_t additional_count);
 
 //! Send a variable multicast mDNS announcement (as an unsolicited answer) with variable number of
-//! records.Buffer must be 32 bit aligned. Returns 0 if success, or <0 if error. Use this on service
+//! records.Buffer must be 32 bit aligned. Returns 0 if success, or <0 if exception. Use this on service
 //! startup to announce your instance to the local network.
 static inline int
 mdns_announce_multicast(int sock, void* buffer, size_t capacity, mdns_record_t answer,

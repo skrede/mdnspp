@@ -25,7 +25,7 @@ set(PUBLIC_HEADERS
 )
 
 set(CORE_SOURCES
-    ${SOURCE_DIRECTORY}/mdnspp/except.h
+    ${SOURCE_DIRECTORY}/mdnspp/log.h
     ${SOURCE_DIRECTORY}/mdnspp/query.cpp
     ${SOURCE_DIRECTORY}/mdnspp/service.cpp
     ${SOURCE_DIRECTORY}/mdnspp/observer.cpp
@@ -35,6 +35,8 @@ set(CORE_SOURCES
 
     ${SOURCE_DIRECTORY}/mdnspp/impl/mdnsbase.h
     ${SOURCE_DIRECTORY}/mdnspp/impl/mdnsbase.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/impl/services.h
+    ${SOURCE_DIRECTORY}/mdnspp/impl/services.cpp
     ${SOURCE_DIRECTORY}/mdnspp/impl/query_impl.h
     ${SOURCE_DIRECTORY}/mdnspp/impl/query_impl.cpp
     ${SOURCE_DIRECTORY}/mdnspp/impl/service_impl.h

@@ -57,6 +57,5 @@ void observer::impl::callback(socket_t socket, const struct sockaddr *from, size
     else if(entry == MDNS_ENTRYTYPE_ADDITIONAL)
         entry_type = "Additional";
 
-    printf("%.*s: %s %s %.*s rclass 0x%x ttl %u\n", MDNS_STRING_FORMAT(from_addr_str), entry_type,
-           record_name, MDNS_STRING_FORMAT(name), (unsigned int) rclass, ttl);
+    printf("%.*s: %s %s %.*s rclass 0x%x ttl %u\n", MDNS_STRING_FORMAT(from_addr_str), entry_type, record_name, MDNS_STRING_FORMAT(name), (unsigned int) rclass, ttl);
 }

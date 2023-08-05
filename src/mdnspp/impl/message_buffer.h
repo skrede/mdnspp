@@ -21,6 +21,11 @@ public:
     mdns_record_type record_type() const;
     std::string record_type_name() const;
 
+    mdns_entry_type entry_type() const;
+    std::string entry_type_name() const;
+
+    mdns_class_t record_class() const;
+
 private:
     sockaddr m_sender;
     size_t m_addrlen;

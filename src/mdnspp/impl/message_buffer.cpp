@@ -65,17 +65,46 @@ mdns_record_type message_buffer::record_type() const
 
 std::string message_buffer::record_type_name() const
 {
-    if(m_rtype == MDNS_RECORDTYPE_PTR)
-        return "PTR";
-    else if(m_rtype == MDNS_RECORDTYPE_SRV)
-        return "SRV";
-    else if(m_rtype == MDNS_RECORDTYPE_A)
-        return "A";
-    else if(m_rtype == MDNS_RECORDTYPE_AAAA)
-        return "AAAA";
-    else if(m_rtype == MDNS_RECORDTYPE_TXT)
-        return "TXT";
-    else if(m_rtype == MDNS_RECORDTYPE_ANY)
-        return "ANY";
-    return std::string();
+    switch(m_rtype)
+    {
+        case MDNS_RECORDTYPE_A:
+            return "A";
+        case MDNS_RECORDTYPE_PTR:
+            return "PTR";
+        case MDNS_RECORDTYPE_TXT:
+            return "TXT";
+        case MDNS_RECORDTYPE_AAAA:
+            return "AAAA";
+        case MDNS_RECORDTYPE_SRV:
+            return "SRV";
+        case MDNS_RECORDTYPE_ANY:
+            return "ANY";
+        default:
+            return "IGNORE";
+    }
+}
+
+mdns_class_t message_buffer::record_class() const
+{
+    return MDNS_CLASS_IN;
+}
+
+mdns_entry_type message_buffer::entry_type() const
+{
+    return m_entry;
+}
+
+std::string message_buffer::entry_type_name() const
+{
+    switch(m_entry)
+    {
+        case MDNS_ENTRYTYPE_QUESTION:
+            return "question";
+        case MDNS_ENTRYTYPE_ANSWER:
+            return "answer";
+        case MDNS_ENTRYTYPE_AUTHORITY:
+            return "authority";
+        default:
+            return "additional";
+    }
 }

@@ -19,7 +19,7 @@ public:
     const std::string &sender_address() const;
 
     mdns_record_type record_type() const;
-    std::string record_type_name() const
+    std::string record_type_name() const;
 
 private:
     sockaddr m_sender;

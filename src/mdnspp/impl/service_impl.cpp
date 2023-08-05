@@ -114,7 +114,7 @@ void service::impl::announceGoodbye()
     );
 }
 
-int service::impl::callback(socket_t socket, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype_n, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
+void service::impl::callback(socket_t socket, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, mdns_record_type rtype_n, mdns_class_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
 {
     char addr_buffer[64];
     char entry_buffer[256];
@@ -124,7 +124,7 @@ int service::impl::callback(socket_t socket, const struct sockaddr *from, size_t
     auto rtype = static_cast<mdns_record_type_t>(rtype_n);
     (void) sizeof(ttl);
     if(entry != MDNS_ENTRYTYPE_QUESTION)
-        return 0;
+        return;
 
     const char dns_sd[] = "_services._dns-sd._udp.local.";
 
@@ -147,7 +147,7 @@ int service::impl::callback(socket_t socket, const struct sockaddr *from, size_t
     else if(rtype == MDNS_RECORDTYPE_ANY)
         record_name = "ANY";
     else
-        return 0;
+        return;
     printf("Query %s %.*s\n", record_name, MDNS_STRING_FORMAT(name));
 
     if((name.length == (sizeof(dns_sd) - 1)) &&
@@ -371,5 +371,4 @@ int service::impl::callback(socket_t socket, const struct sockaddr *from, size_t
             }
         }
     }
-    return 0;
 }

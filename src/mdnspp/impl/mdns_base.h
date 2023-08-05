@@ -14,11 +14,6 @@ namespace mdnspp {
 typedef int index_t;
 typedef int socket_t;
 
-int mdnsbase_callback(socket_t socket, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry,
-                      uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data,
-                      size_t size, size_t name_offset, size_t name_length, size_t record_offset,
-                      size_t record_length, void *user_data);
-
 class mdns_base
 {
 public:
@@ -32,8 +27,6 @@ public:
 
     const sockaddr_in &address_ipv4();
     const sockaddr_in6 &address_ipv6();
-
-    virtual int callback(socket_t socket, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length) = 0;
 
 protected:
     void open_client_sockets(uint16_t port = 0u);
@@ -89,7 +82,7 @@ protected:
             if(ready_descriptors > 0)
                 for(index_t soc_idx = 0; soc_idx < m_socket_count; ++soc_idx)
                     if(FD_ISSET(m_sockets[soc_idx], &readfs))
-                        records += listen_func(soc_idx, m_sockets[soc_idx], buffer, capacity, mdnspp::mdnsbase_callback, this);
+                        records += listen_func(soc_idx, m_sockets[soc_idx], buffer, capacity, mdns_base::mdns_callback, this);
         } while(ready_descriptors > 0);
     }
 
@@ -119,7 +112,7 @@ protected:
                 for(index_t soc_idx = 0; soc_idx < m_socket_count; ++soc_idx)
                 {
                     if(FD_ISSET(m_sockets[soc_idx], &readfs))
-                        mdns_recv_func(m_sockets[soc_idx], buffer, capacity, mdnspp::mdnsbase_callback, this);
+                        mdns_recv_func(m_sockets[soc_idx], buffer, capacity, mdns_base::mdns_callback, this);
                     FD_SET(m_sockets[soc_idx], &readfs);
                 }
             else
@@ -132,6 +125,17 @@ private:
     int m_socket_count;
     sockaddr_in m_address_ipv4;
     sockaddr_in6 m_address_ipv6;
+
+    static int mdns_callback(socket_t socket, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry,
+                             uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data,
+                             size_t size, size_t name_offset, size_t name_length, size_t record_offset,
+                             size_t record_length, void *user_data)
+    {
+        static_cast<mdns_base *>(user_data)->callback(socket, from, addrlen, entry, query_id, static_cast<mdns_record_type>(rtype), static_cast<mdns_class_t>(rclass), ttl, data, size, name_offset, name_length, record_offset, record_length);
+        return 0;
+    }
+
+    virtual void callback(socket_t socket, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, mdns_record_type rtype, mdns_class_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length) = 0;
 };
 
 }

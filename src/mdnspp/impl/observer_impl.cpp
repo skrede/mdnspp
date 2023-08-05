@@ -24,7 +24,7 @@ void observer::impl::stop()
     m_running = false;
 }
 
-int observer::impl::callback(socket_t socket, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
+void observer::impl::callback(socket_t socket, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, mdns_record_type rtype, mdns_class_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
 {
     char addr_buffer[64];
     char name_buffer[256];
@@ -60,6 +60,4 @@ int observer::impl::callback(socket_t socket, const struct sockaddr *from, size_
 
     printf("%.*s: %s %s %.*s rclass 0x%x ttl %u\n", MDNS_STRING_FORMAT(from_addr_str), entry_type,
            record_name, MDNS_STRING_FORMAT(name), (unsigned int) rclass, ttl);
-
-    return 0;
 }

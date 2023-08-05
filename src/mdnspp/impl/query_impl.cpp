@@ -5,12 +5,8 @@ using namespace mdnspp;
 // Send a mDNS query
 void query::impl::send_query(mdns_query_t *query, size_t count)
 {
-    int sockets[32];
     int query_id[32];
-    int num_sockets = mdnspp::open_client_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), 0, service_address_ipv4, service_address_ipv6);
-    if(num_sockets <= 0)
-        mdnspp::exception() << "Failed to open any client sockets";
-    mdnspp::debug() << "Opened " << num_sockets << " client socket" << (num_sockets == 1 ? "" : "s") << " for mDNS query";
+    open_client_sockets();
 
     size_t capacity = 2048;
     void *buffer = malloc(capacity);
@@ -77,9 +73,7 @@ void query::impl::send_query(mdns_query_t *query, size_t count)
 
     free(buffer);
 
-    for(int isock = 0; isock < num_sockets; ++isock)
-        mdns_socket_close(sockets[isock]);
-    mdnspp::debug() << "Closed " << num_sockets << " client socket" << (num_sockets == 1 ? "" : "s") << " for mDNS query";
+    close_sockets();
 }
 
 int query::impl::callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)

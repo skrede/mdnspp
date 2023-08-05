@@ -34,13 +34,12 @@ mdns_base::mdns_base()
     WORD versionWanted = MAKEWORD(1, 1);
     WSADATA wsaData;
     if (WSAStartup(versionWanted, &wsaData)) {
-        printf("Failed to initialize WinSock\n");
-        return -1;
+        exception() << "Failed to initialize WinSock";
     }
 
     char hostname_buffer[256];
     DWORD hostname_size = (DWORD)sizeof(hostname_buffer);
-    if (GetComputerNameA(hostname_buffer, &hostname_size))
+    if(GetComputerNameA(hostname_buffer, &hostname_size))
         hostname = hostname_buffer;
 
     SetConsoleCtrlHandler(console_handler, TRUE);
@@ -58,4 +57,26 @@ mdns_base::~mdns_base()
 #ifdef _WIN32
     WSACleanup();
 #endif
+}
+void mdns_base::open_client_sockets(uint16_t port)
+{
+    num_sockets = mdnspp::open_client_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), port, service_address_ipv4, service_address_ipv6);
+    if(num_sockets <= 0)
+        mdnspp::exception() << "Failed to open any client sockets";
+    mdnspp::debug() << "Opened " << num_sockets << " client socket" << (num_sockets == 1 ? "" : "s") << " for DNS-SD";
+}
+
+void mdns_base::open_service_sockets()
+{
+    num_sockets = mdnspp::open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), service_address_ipv4, service_address_ipv6);
+    if(num_sockets <= 0)
+        mdnspp::exception() << "Failed to open any service sockets";
+    mdnspp::debug() << "Opened " << num_sockets << " service socket" << (num_sockets == 1 ? "" : "s") << " for mDNS traffic observation";
+}
+
+void mdns_base::close_sockets()
+{
+    for(int socket = 0; socket < num_sockets; ++socket)
+        mdns_socket_close(sockets[socket]);
+    mdnspp::debug() << "Closed " << num_sockets << " socket" << (num_sockets == 1 ? "" : "s");
 }

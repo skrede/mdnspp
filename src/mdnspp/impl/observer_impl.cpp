@@ -11,11 +11,7 @@ observer::impl::impl()
 void observer::impl::observe()
 {
     m_running = true;
-    int sockets[32];
-    int num_sockets = mdnspp::open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), service_address_ipv4, service_address_ipv6);
-    if(num_sockets <= 0)
-        mdnspp::exception() << "Failed to open any service sockets";
-    mdnspp::debug() << "Opened " << num_sockets << " service socket" << (num_sockets == 1 ? "" : "s") << " for mDNS traffic observation";
+    open_service_sockets();
 
     size_t capacity = 2048;
     void *buffer = malloc(capacity);
@@ -55,10 +51,7 @@ void observer::impl::observe()
     }
 
     free(buffer);
-
-    for(int isock = 0; isock < num_sockets; ++isock)
-        mdns_socket_close(sockets[isock]);
-    mdnspp::debug() << "Closed " << num_sockets << " service socket" << (num_sockets == 1 ? "" : "s") << " for mDNS traffic observation";
+    close_sockets();
 }
 
 void observer::impl::stop()

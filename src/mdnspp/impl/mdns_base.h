@@ -28,6 +28,12 @@ protected:
 
     sockaddr_in service_address_ipv4;
     sockaddr_in6 service_address_ipv6;
+
+    void open_client_sockets(uint16_t port = 0u);
+    void open_service_sockets();
+
+    void close_sockets();
+
 };
 
 }

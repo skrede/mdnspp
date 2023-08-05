@@ -29,9 +29,7 @@ void service::impl::serve()
 void service::impl::start(std::string hostname, std::string service_name)
 {
     std::lock_guard<std::mutex> l(m_mutex);
-    num_sockets = open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), service_address_ipv4, service_address_ipv6);
-    if(num_sockets <= 0)
-        mdnspp::exception() << "Failed to open any service sockets";
+    open_service_sockets();
 
     if(service_name.empty())
         mdnspp::exception() << "Service name can not be empty";
@@ -103,9 +101,7 @@ void service::impl::stop()
 
     announceGoodbye();
 
-    for(int socket = 0; socket < num_sockets; ++socket)
-        mdns_socket_close(sockets[socket]);
-    mdnspp::info() << "Closed " << num_sockets << " socket" << (num_sockets == 1 ? "" : "s");
+    close_sockets();
 }
 
 void service::impl::announceService()

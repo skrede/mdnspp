@@ -4,11 +4,7 @@ using namespace mdnspp;
 
 void discovery::impl::discover()
 {
-    int sockets[32];
-    int num_sockets = mdnspp::open_client_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), 0, service_address_ipv4, service_address_ipv6);
-    if(num_sockets <= 0)
-        mdnspp::exception() << "Failed to open any client sockets";
-    mdnspp::debug() << "Opened " << num_sockets << " client socket" << (num_sockets == 1 ? "" : "s") << " for DNS-SD";
+    open_client_sockets();
 
     mdnspp::debug() << "Sending DNS-SD discovery";
     for(int isock = 0; isock < num_sockets; ++isock)
@@ -56,9 +52,7 @@ void discovery::impl::discover()
 
     free(buffer);
 
-    for(int isock = 0; isock < num_sockets; ++isock)
-        mdns_socket_close(sockets[isock]);
-    mdnspp::debug() << "Closed " << num_sockets << " service socket" << (num_sockets == 1 ? "" : "s") << " for DNS-SD";
+    close_sockets();
 }
 
 void discovery::impl::stop()

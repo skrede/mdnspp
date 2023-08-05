@@ -46,6 +46,8 @@ set(CORE_SOURCES
     ${SOURCE_DIRECTORY}/mdnspp/impl/observer_impl.cpp
     ${SOURCE_DIRECTORY}/mdnspp/impl/discovery_impl.h
     ${SOURCE_DIRECTORY}/mdnspp/impl/discovery_impl.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/impl/message_buffer.h
+    ${SOURCE_DIRECTORY}/mdnspp/impl/message_buffer.cpp
 )
 
 add_library(mdnspp SHARED

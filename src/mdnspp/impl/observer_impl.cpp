@@ -31,8 +31,7 @@ void observer::impl::callback(socket_t socket, const struct sockaddr *from, size
 
     mdns_string_t from_addr_str = ip_address_to_string(addr_buffer, sizeof(addr_buffer), from, addrlen);
 
-    size_t offset = name_offset;
-    mdns_string_t name = mdns_string_extract(data, size, &offset, name_buffer, sizeof(name_buffer));
+    mdns_string_t name = mdns_string_extract(data, size, &name_offset, name_buffer, sizeof(name_buffer));
 
     const char *record_name = 0;
     if(rtype == MDNS_RECORDTYPE_PTR)

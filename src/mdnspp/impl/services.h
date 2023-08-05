@@ -9,7 +9,7 @@ namespace mdnspp {
 
 struct service_t
 {
-    mdns_string_t service;
+    mdns_string_t name;
     mdns_string_t hostname;
     mdns_string_t service_instance;
     mdns_string_t hostname_qualified;

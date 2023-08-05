@@ -9,7 +9,7 @@
 #define NOTRHOW
 #elif defined(__APPLE__)
 #define SAFE_DYN
-#define NOTRHOW
+#define NOTRHOW _NOEXCEPT
 #else
 #define SAFE_DYN _GLIBCXX_TXN_SAFE_DYN
 #define NOTRHOW _GLIBCXX_NOTHROW

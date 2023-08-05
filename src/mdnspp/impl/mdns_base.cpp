@@ -5,14 +5,14 @@ using namespace mdnspp;
 #ifdef _WIN32
 BOOL console_handler(DWORD signal) {
     if (signal == CTRL_C_EVENT) {
-        running = 0;
+        error() << "Sig " << signal << " received";
     }
     return TRUE;
 }
 #else
 void signal_handler(int signal)
 {
-    printf("Signal received, %s", signal);
+    error() << "Sig " << signal << " received";
 //    running = 0;
 }
 #endif

@@ -7,7 +7,7 @@ void mdnspp::default_records(const service_t &service, mdnspp::records_t &record
     // Setup our mDNS records
     // PTR record reverse mapping "<_service-name>._tcp.local." to
     // "<hostname>.<_service-name>._tcp.local."
-    records.record_ptr.name = service.service;
+    records.record_ptr.name = service.name;
     records.record_ptr.type = MDNS_RECORDTYPE_PTR;
     records.record_ptr.data.ptr.name = service.service_instance;
     records.record_ptr.rclass = 0;

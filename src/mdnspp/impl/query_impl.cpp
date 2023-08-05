@@ -54,14 +54,13 @@ void query::impl::callback(socket_t socket, const struct sockaddr *from, size_t 
 
     mdns_string_t from_addr_str = ip_address_to_string(addr_buffer, sizeof(addr_buffer), from, addrlen);
     const char *entry_type = (entry == MDNS_ENTRYTYPE_ANSWER) ? "answer" : ((entry == MDNS_ENTRYTYPE_AUTHORITY) ? "authority" : "additional");
-    mdns_string_t entrystr = mdns_string_extract(data, size, &name_offset, entry_buffer, sizeof(entry_buffer));
+    mdns_string_t entry_str = mdns_string_extract(data, size, &name_offset, entry_buffer, sizeof(entry_buffer));
 
     if(rtype == MDNS_RECORDTYPE_PTR)
     {
-        mdns_string_t namestr = mdns_record_parse_ptr(data, size, record_offset, record_length,
-                                                      name_buffer, sizeof(name_buffer));
+        mdns_string_t namestr = mdns_record_parse_ptr(data, size, record_offset, record_length, name_buffer, sizeof(name_buffer));
         printf("%.*s : %s %.*s PTR %.*s rclass 0x%x ttl %u length %d\n",
-               MDNS_STRING_FORMAT(from_addr_str), entry_type, MDNS_STRING_FORMAT(entrystr),
+               MDNS_STRING_FORMAT(from_addr_str), entry_type, MDNS_STRING_FORMAT(entry_str),
                MDNS_STRING_FORMAT(namestr), rclass, ttl, (int) record_length);
     }
     else if(rtype == MDNS_RECORDTYPE_SRV)
@@ -69,7 +68,7 @@ void query::impl::callback(socket_t socket, const struct sockaddr *from, size_t 
         mdns_record_srv_t srv = mdns_record_parse_srv(data, size, record_offset, record_length,
                                                       name_buffer, sizeof(name_buffer));
         printf("%.*s : %s %.*s SRV %.*s priority %d weight %d port %d\n",
-               MDNS_STRING_FORMAT(from_addr_str), entry_type, MDNS_STRING_FORMAT(entrystr),
+               MDNS_STRING_FORMAT(from_addr_str), entry_type, MDNS_STRING_FORMAT(entry_str),
                MDNS_STRING_FORMAT(srv.name), srv.priority, srv.weight, srv.port);
     }
     else if(rtype == MDNS_RECORDTYPE_A)
@@ -79,7 +78,7 @@ void query::impl::callback(socket_t socket, const struct sockaddr *from, size_t 
         mdns_string_t addrstr =
             ipv4_address_to_string(name_buffer, sizeof(name_buffer), &addr, sizeof(addr));
         printf("%.*s : %s %.*s A %.*s\n", MDNS_STRING_FORMAT(from_addr_str), entry_type,
-               MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(addrstr));
+               MDNS_STRING_FORMAT(entry_str), MDNS_STRING_FORMAT(addrstr));
     }
     else if(rtype == MDNS_RECORDTYPE_AAAA)
     {
@@ -88,7 +87,7 @@ void query::impl::callback(socket_t socket, const struct sockaddr *from, size_t 
         mdns_string_t addrstr =
             ipv6_address_to_string(name_buffer, sizeof(name_buffer), &addr, sizeof(addr));
         printf("%.*s : %s %.*s AAAA %.*s\n", MDNS_STRING_FORMAT(from_addr_str), entry_type,
-               MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(addrstr));
+               MDNS_STRING_FORMAT(entry_str), MDNS_STRING_FORMAT(addrstr));
     }
     else if(rtype == MDNS_RECORDTYPE_TXT)
     {
@@ -99,21 +98,21 @@ void query::impl::callback(socket_t socket, const struct sockaddr *from, size_t 
             if(txt_buffer[itxt].value.length)
             {
                 printf("%.*s : %s %.*s TXT %.*s = %.*s\n", MDNS_STRING_FORMAT(from_addr_str),
-                       entry_type, MDNS_STRING_FORMAT(entrystr),
+                       entry_type, MDNS_STRING_FORMAT(entry_str),
                        MDNS_STRING_FORMAT(txt_buffer[itxt].key),
                        MDNS_STRING_FORMAT(txt_buffer[itxt].value));
             }
             else
             {
                 printf("%.*s : %s %.*s TXT %.*s\n", MDNS_STRING_FORMAT(from_addr_str), entry_type,
-                       MDNS_STRING_FORMAT(entrystr), MDNS_STRING_FORMAT(txt_buffer[itxt].key));
+                       MDNS_STRING_FORMAT(entry_str), MDNS_STRING_FORMAT(txt_buffer[itxt].key));
             }
         }
     }
     else
     {
         printf("%.*s : %s %.*s type %u rclass 0x%x ttl %u length %d\n",
-               MDNS_STRING_FORMAT(from_addr_str), entry_type, MDNS_STRING_FORMAT(entrystr), rtype,
+               MDNS_STRING_FORMAT(from_addr_str), entry_type, MDNS_STRING_FORMAT(entry_str), rtype,
                rclass, ttl, (int) record_length);
     }
 }

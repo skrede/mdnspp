@@ -8,9 +8,6 @@ void query::impl::send_query(mdns_query_t *query, size_t count)
     int query_id[32];
     open_client_sockets();
 
-    size_t capacity = 2048;
-    void *buffer = malloc(capacity);
-
     mdnspp::debug() << "Sending mDNS query";
     for(size_t iq = 0; iq < count; ++iq)
     {
@@ -26,30 +23,28 @@ void query::impl::send_query(mdns_query_t *query, size_t count)
         mdnspp::debug() << " : " << query[iq].name << " " << record_name;
     }
     send(
-        [&](int isock, int sock, void *buffer, size_t capacity)
+        [&](index_t soc_idx, socket_t socket, void *buffer, size_t capacity)
         {
-            query_id[isock] =
-                mdns_multiquery_send(sock, query, count, buffer, capacity, 0);
-            if(query_id[isock] < 0)
+            query_id[soc_idx] =
+                mdns_multiquery_send(socket, query, count, buffer, capacity, 0);
+            if(query_id[soc_idx] < 0)
                 mdnspp::error() << "Failed to send mDNS query: " << strerror(errno);
         }
     );
 
     mdnspp::debug() << "Reading mDNS query replies";
     listen_until_silence(
-        [query_id](int isock, int sock, void *buffer, size_t capacity, mdns_record_callback_fn callback, void *user_data)
+        [query_id](index_t soc_idx, socket_t socket, void *buffer, size_t capacity, mdns_record_callback_fn callback, void *user_data)
             -> size_t
         {
-            return mdns_query_recv(sock, buffer, capacity, callback, user_data, query_id[isock]);
+            return mdns_query_recv(socket, buffer, capacity, callback, user_data, query_id[soc_idx]);
         }
     );
-
-    free(buffer);
 
     close_sockets();
 }
 
-int query::impl::callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
+int query::impl::callback(socket_t socket, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
 {
     char addr_buffer[64];
     char entry_buffer[256];

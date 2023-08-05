@@ -5,7 +5,11 @@
 #include <exception>
 
 #ifdef _WIN32
-#elifdef __APPLE__
+#define SAFE_DYN
+#define NOTRHOW
+#elif defined(__APPLE__)
+#define SAFE_DYN
+#define NOTRHOW
 #else
 #define SAFE_DYN _GLIBCXX_TXN_SAFE_DYN
 #define NOTRHOW _GLIBCXX_NOTHROW

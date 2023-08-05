@@ -8,9 +8,9 @@ void discovery::impl::discover()
 
     mdnspp::debug() << "Sending DNS-SD discovery";
     send(
-        [](int isock, int sock, void *buffer, size_t capacity)
+        [](index_t soc_idx, socket_t socket, void *buffer, size_t capacity)
         {
-            if(mdns_discovery_send(sock))
+            if(mdns_discovery_send(socket))
                 mdnspp::error() << "Failed to send DNS-DS discovery: " << strerror(errno);
         }
     );
@@ -24,14 +24,14 @@ void discovery::impl::stop()
 {
 }
 
-int discovery::impl::callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
+int discovery::impl::callback(socket_t socket, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
 {
     char addr_buffer[64];
     char entry_buffer[256];
     char name_buffer[256];
     mdns_record_txt_t txt_buffer[128];
 
-    (void) sizeof(sock);
+    (void) sizeof(socket);
     (void) sizeof(query_id);
     (void) sizeof(name_length);
 

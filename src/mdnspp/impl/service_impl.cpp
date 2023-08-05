@@ -88,9 +88,9 @@ void service::impl::announceService()
     additional[idx++] = m_records.txt_record[0];
     additional[idx++] = m_records.txt_record[1];
 
-    send([&](int isock, int sock, void *buffer, size_t capacity)
+    send([&](index_t soc_idx, socket_t socket, void *buffer, size_t capacity)
          {
-             mdns_announce_multicast(sock, buffer, capacity, m_records.record_ptr, 0, 0, additional, idx);
+             mdns_announce_multicast(socket, buffer, capacity, m_records.record_ptr, 0, 0, additional, idx);
          }
     );
 }
@@ -107,14 +107,14 @@ void service::impl::announceGoodbye()
     additional[additional_count++] = m_records.txt_record[0];
     additional[additional_count++] = m_records.txt_record[1];
 
-    send([&](int isock, int sock, void *buffer, size_t capacity)
+    send([&](index_t soc_idx, socket_t socket, void *buffer, size_t capacity)
          {
-             mdns_goodbye_multicast(sock, buffer, capacity, m_records.record_ptr, 0, 0, additional, additional_count);
+             mdns_goodbye_multicast(socket, buffer, capacity, m_records.record_ptr, 0, 0, additional, additional_count);
          }
     );
 }
 
-int service::impl::callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype_n, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
+int service::impl::callback(socket_t socket, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype_n, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)
 {
     char addr_buffer[64];
     char entry_buffer[256];
@@ -172,11 +172,11 @@ int service::impl::callback(int sock, const struct sockaddr *from, size_t addrle
 
             if(unicast)
             {
-                mdns_query_answer_unicast(sock, from, addrlen, send_buffer, sizeof(send_buffer), query_id, rtype, name.str, name.length, answer, nullptr, 0, nullptr, 0);
+                mdns_query_answer_unicast(socket, from, addrlen, send_buffer, sizeof(send_buffer), query_id, rtype, name.str, name.length, answer, nullptr, 0, nullptr, 0);
             }
             else
             {
-                mdns_query_answer_multicast(sock, send_buffer, sizeof(send_buffer), answer, 0, 0, 0, 0);
+                mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answer, 0, 0, 0, 0);
             }
         }
     }
@@ -222,13 +222,13 @@ int service::impl::callback(int sock, const struct sockaddr *from, size_t addrle
 
             if(unicast)
             {
-                mdns_query_answer_unicast(sock, from, addrlen, send_buffer, sizeof(send_buffer),
+                mdns_query_answer_unicast(socket, from, addrlen, send_buffer, sizeof(send_buffer),
                                           query_id, rtype, name.str, name.length, answer, 0, 0,
                                           additional, additional_count);
             }
             else
             {
-                mdns_query_answer_multicast(sock, send_buffer, sizeof(send_buffer), answer, 0, 0,
+                mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answer, 0, 0,
                                             additional, additional_count);
             }
         }
@@ -270,13 +270,13 @@ int service::impl::callback(int sock, const struct sockaddr *from, size_t addrle
 
             if(unicast)
             {
-                mdns_query_answer_unicast(sock, from, addrlen, send_buffer, sizeof(send_buffer),
+                mdns_query_answer_unicast(socket, from, addrlen, send_buffer, sizeof(send_buffer),
                                           query_id, rtype, name.str, name.length, answer, 0, 0,
                                           additional, additional_count);
             }
             else
             {
-                mdns_query_answer_multicast(sock, send_buffer, sizeof(send_buffer), answer, 0, 0,
+                mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answer, 0, 0,
                                             additional, additional_count);
             }
         }
@@ -316,13 +316,13 @@ int service::impl::callback(int sock, const struct sockaddr *from, size_t addrle
 
             if(unicast)
             {
-                mdns_query_answer_unicast(sock, from, addrlen, send_buffer, sizeof(send_buffer),
+                mdns_query_answer_unicast(socket, from, addrlen, send_buffer, sizeof(send_buffer),
                                           query_id, rtype, name.str, name.length, answer, 0, 0,
                                           additional, additional_count);
             }
             else
             {
-                mdns_query_answer_multicast(sock, send_buffer, sizeof(send_buffer), answer, 0, 0,
+                mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answer, 0, 0,
                                             additional, additional_count);
             }
         }
@@ -360,13 +360,13 @@ int service::impl::callback(int sock, const struct sockaddr *from, size_t addrle
 
             if(unicast)
             {
-                mdns_query_answer_unicast(sock, from, addrlen, send_buffer, sizeof(send_buffer),
+                mdns_query_answer_unicast(socket, from, addrlen, send_buffer, sizeof(send_buffer),
                                           query_id, rtype, name.str, name.length, answer, 0, 0,
                                           additional, additional_count);
             }
             else
             {
-                mdns_query_answer_multicast(sock, send_buffer, sizeof(send_buffer), answer, 0, 0,
+                mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answer, 0, 0,
                                             additional, additional_count);
             }
         }

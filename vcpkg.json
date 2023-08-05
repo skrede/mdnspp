@@ -2,8 +2,13 @@
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg/master/scripts/vcpkg.schema.json",
   "name": "cortex",
   "dependencies": [
-    "mdns"
   ],
   "features": {
+    "mdns": {
+      "description": "Download mdns.h",
+      "dependencies": [
+        "mdns"
+      ]
+    }
   }
 }

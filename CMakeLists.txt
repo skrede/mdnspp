@@ -8,6 +8,7 @@ set(Boost_NO_WARN_NEW_VERSIONS ON)
 set(SOURCE_DIRECTORY src)
 set(INCLUDE_DIRECTORY include)
 
+option(MDNSPP_BUILD_TESTS off)
 option(MDNSPP_BUILD_EXAMPLES off)
 
 if(${CMAKE_TOOLCHAIN_FILE})
@@ -62,3 +63,18 @@ target_include_directories(mdnspp
 if(${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(example)
 endif()
+
+include(FetchContent)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+if(${MDNSPP_BUILD_TESTS})
+    FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG v3.3.2
+    )
+    FetchContent_MakeAvailable(Catch2)
+    enable_testing()
+    add_subdirectory(tests)
+endif ()

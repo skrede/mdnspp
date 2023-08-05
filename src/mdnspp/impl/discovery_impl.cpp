@@ -13,51 +13,13 @@ void discovery::impl::discover()
             mdnspp::error() << "Failed to send DNS-DS discovery: " << strerror(errno);
     }
 
-    size_t capacity = 2048;
-    void *buffer = malloc(capacity);
-    size_t records;
-
-    // This is a simple implementation that loops for 5 seconds or as long as we get replies
-    int res;
-    mdnspp::debug() << "Reading DNS-SD replies";
-    do
-    {
-        struct timeval timeout;
-        timeout.tv_sec = 5;
-        timeout.tv_usec = 0;
-
-        int nfds = 0;
-        fd_set readfs;
-        FD_ZERO(&readfs);
-        for(int isock = 0; isock < num_sockets; ++isock)
-        {
-            if(sockets[isock] >= nfds)
-                nfds = sockets[isock] + 1;
-            FD_SET(sockets[isock], &readfs);
-        }
-
-        records = 0;
-        res = select(nfds, &readfs, 0, 0, &timeout);
-        if(res > 0)
-        {
-            for(int isock = 0; isock < num_sockets; ++isock)
-            {
-                if(FD_ISSET(sockets[isock], &readfs))
-                {
-                    records += mdns_discovery_recv(sockets[isock], buffer, capacity, mdnspp::mdnsbase_callback, this);
-                }
-            }
-        }
-    } while(res > 0);
-
-    free(buffer);
+    listen_until_silence<mdns_discovery_recv>();
 
     close_sockets();
 }
 
 void discovery::impl::stop()
 {
-
 }
 
 int discovery::impl::callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)

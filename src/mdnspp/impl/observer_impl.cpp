@@ -5,52 +5,17 @@ using namespace mdnspp;
 observer::impl::impl()
     : m_running{false}
 {
-
 }
 
 void observer::impl::observe()
 {
     m_running = true;
     open_service_sockets();
-
-    size_t capacity = 2048;
-    void *buffer = malloc(capacity);
-
-    // This is a crude implementation that checks for incoming queries and answers
-    while(m_running)
-    {
-        int nfds = 0;
-        fd_set readfs;
-        FD_ZERO(&readfs);
-        for(int isock = 0; isock < num_sockets; ++isock)
+    listen_while<mdns_socket_listen>(
+        [this]() -> bool
         {
-            if(sockets[isock] >= nfds)
-                nfds = sockets[isock] + 1;
-            FD_SET(sockets[isock], &readfs);
-        }
-
-        struct timeval timeout;
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 100000;
-
-        if(select(nfds, &readfs, 0, 0, &timeout) >= 0)
-        {
-            for(int isock = 0; isock < num_sockets; ++isock)
-            {
-                if(FD_ISSET(sockets[isock], &readfs))
-                {
-                    mdns_socket_listen(sockets[isock], buffer, capacity, mdnspp::mdnsbase_callback, this);
-                }
-                FD_SET(sockets[isock], &readfs);
-            }
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    free(buffer);
+            return m_running;
+        });
     close_sockets();
 }
 

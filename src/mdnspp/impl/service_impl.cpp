@@ -62,45 +62,20 @@ void service::impl::start(std::string hostname, std::string service_name)
 
 void service::impl::listen()
 {
-    while(m_running)
-    {
-        int nfds = 0;
-        fd_set readfs;
-        FD_ZERO(&readfs);
-        for(int isock = 0; isock < num_sockets; ++isock)
+    listen_while<mdns_socket_listen>(
+        [this]() -> bool
         {
-            if(sockets[isock] >= nfds)
-                nfds = sockets[isock] + 1;
-            FD_SET(sockets[isock], &readfs);
+            return m_running;
         }
-
-        struct timeval timeout;
-        timeout.tv_sec = 0;
-        timeout.tv_usec = 100000;
-
-        if(select(nfds, &readfs, 0, 0, &timeout) >= 0)
-        {
-            for(int isock = 0; isock < num_sockets; ++isock)
-            {
-                if(FD_ISSET(sockets[isock], &readfs))
-                    mdns_socket_listen(sockets[isock], buffer, capacity, mdnspp::mdnsbase_callback, this);
-                FD_SET(sockets[isock], &readfs);
-            }
-        }
-        else
-            break;
-    }
+    );
 }
 
 void service::impl::stop()
 {
     std::lock_guard<std::mutex> l(m_mutex);
-
     if(!m_running)
         return;
-
     announceGoodbye();
-
     close_sockets();
 }
 

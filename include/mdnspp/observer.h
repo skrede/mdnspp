@@ -16,7 +16,6 @@ public:
     ~observer();
 
     void observe();
-    void observe_async();
 
     void close();
 

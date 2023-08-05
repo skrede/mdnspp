@@ -16,10 +16,6 @@ void mdnspp::discovery::discover()
     m_impl->discover();
 }
 
-void mdnspp::discovery::discover_async()
-{
-}
-
 void mdnspp::discovery::stop()
 {
     m_impl->stop();

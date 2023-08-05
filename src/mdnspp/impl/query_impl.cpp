@@ -25,51 +25,24 @@ void query::impl::send_query(mdns_query_t *query, size_t count)
             query[iq].type = MDNS_RECORDTYPE_PTR;
         mdnspp::debug() << " : " << query[iq].name << " " << record_name;
     }
-    for(int isock = 0; isock < num_sockets; ++isock)
-    {
-        query_id[isock] =
-            mdns_multiquery_send(sockets[isock], query, count, buffer, capacity, 0);
-        if(query_id[isock] < 0)
-            mdnspp::error() << "Failed to send mDNS query: " << strerror(errno);
-    }
+    send(
+        [&](int isock, int sock, void *buffer, size_t capacity)
+        {
+            query_id[isock] =
+                mdns_multiquery_send(sock, query, count, buffer, capacity, 0);
+            if(query_id[isock] < 0)
+                mdnspp::error() << "Failed to send mDNS query: " << strerror(errno);
+        }
+    );
 
-    // This is a simple implementation that loops for 5 seconds or as long as we get replies
-    int res;
     mdnspp::debug() << "Reading mDNS query replies";
-    int records = 0;
-    do
-    {
-        struct timeval timeout;
-        timeout.tv_sec = 10;
-        timeout.tv_usec = 0;
-
-        int nfds = 0;
-        fd_set readfs;
-        FD_ZERO(&readfs);
-        for(int isock = 0; isock < num_sockets; ++isock)
+    listen_until_silence(
+        [query_id](int isock, int sock, void *buffer, size_t capacity, mdns_record_callback_fn callback, void *user_data)
+            -> size_t
         {
-            if(sockets[isock] >= nfds)
-                nfds = sockets[isock] + 1;
-            FD_SET(sockets[isock], &readfs);
+            return mdns_query_recv(sock, buffer, capacity, callback, user_data, query_id[isock]);
         }
-
-        res = select(nfds, &readfs, 0, 0, &timeout);
-        if(res > 0)
-        {
-            for(int isock = 0; isock < num_sockets; ++isock)
-            {
-                if(FD_ISSET(sockets[isock], &readfs))
-                {
-                    size_t rec = mdns_query_recv(sockets[isock], buffer, capacity, mdnspp::mdnsbase_callback, this, query_id[isock]);
-                    if(rec > 0)
-                        records += rec;
-                }
-                FD_SET(sockets[isock], &readfs);
-            }
-        }
-    } while(res > 0);
-
-    mdnspp::debug() << "Read " << records << "record" << (records == 1 ? "" : "s");
+    );
 
     free(buffer);
 

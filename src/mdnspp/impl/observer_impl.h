@@ -17,7 +17,7 @@ public:
     impl();
 
     void observe();
-    void observe_async();
+
     void stop();
 
 private:

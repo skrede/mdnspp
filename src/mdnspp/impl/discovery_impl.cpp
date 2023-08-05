@@ -7,11 +7,13 @@ void discovery::impl::discover()
     open_client_sockets();
 
     mdnspp::debug() << "Sending DNS-SD discovery";
-    for(int isock = 0; isock < num_sockets; ++isock)
-    {
-        if(mdns_discovery_send(sockets[isock]))
-            mdnspp::error() << "Failed to send DNS-DS discovery: " << strerror(errno);
-    }
+    send(
+        [](int isock, int sock, void *buffer, size_t capacity)
+        {
+            if(mdns_discovery_send(sock))
+                mdnspp::error() << "Failed to send DNS-DS discovery: " << strerror(errno);
+        }
+    );
 
     listen_until_silence<mdns_discovery_recv>();
 

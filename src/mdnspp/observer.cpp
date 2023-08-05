@@ -5,6 +5,7 @@
 using namespace mdnspp;
 
 observer::observer()
+    : m_impl(std::make_unique<observer::impl>())
 {
 }
 
@@ -14,16 +15,10 @@ observer::~observer()
 
 void observer::observe()
 {
-    if(m_impl)
-        close();
-    m_impl = std::make_unique<observer::impl>();
     m_impl->observe();
-}
-
-void observer::observe_async()
-{
 }
 
 void observer::close()
 {
+    m_impl->stop();
 }

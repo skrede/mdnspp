@@ -27,6 +27,7 @@ int mdnspp::mdnsbase_callback(int sock, const struct sockaddr *from, size_t addr
 }
 
 mdns_base::mdns_base()
+    : m_socket_count(0)
 {
     const char *hostname = "dummy-host";
 
@@ -58,25 +59,51 @@ mdns_base::~mdns_base()
     WSACleanup();
 #endif
 }
+
+size_t mdns_base::socket_count()
+{
+    return m_socket_count;
+}
+
+bool mdns_base::has_address_ipv4()
+{
+    return m_address_ipv4.sin_family == AF_INET;
+}
+
+bool mdns_base::has_address_ipv6()
+{
+    return m_address_ipv6.sin6_family == AF_INET6;
+}
+
+const sockaddr_in &mdns_base::address_ipv4()
+{
+    return m_address_ipv4;
+}
+
+const sockaddr_in6 &mdns_base::address_ipv6()
+{
+    return m_address_ipv6;
+}
+
 void mdns_base::open_client_sockets(uint16_t port)
 {
-    num_sockets = mdnspp::open_client_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), port, service_address_ipv4, service_address_ipv6);
-    if(num_sockets <= 0)
+    m_socket_count = mdnspp::open_client_sockets(m_sockets, sizeof(m_sockets) / sizeof(m_sockets[0]), port, m_address_ipv4, m_address_ipv6);
+    if(m_socket_count <= 0)
         mdnspp::exception() << "Failed to open any client sockets";
-    mdnspp::debug() << "Opened " << num_sockets << " client socket" << (num_sockets == 1 ? "" : "s") << " for DNS-SD";
+    mdnspp::debug() << "Opened " << m_socket_count << " client socket" << (m_socket_count == 1 ? "" : "s") << " for DNS-SD";
 }
 
 void mdns_base::open_service_sockets()
 {
-    num_sockets = mdnspp::open_service_sockets(sockets, sizeof(sockets) / sizeof(sockets[0]), service_address_ipv4, service_address_ipv6);
-    if(num_sockets <= 0)
+    m_socket_count = mdnspp::open_service_sockets(m_sockets, sizeof(m_sockets) / sizeof(m_sockets[0]), m_address_ipv4, m_address_ipv6);
+    if(m_socket_count <= 0)
         mdnspp::exception() << "Failed to open any service sockets";
-    mdnspp::debug() << "Opened " << num_sockets << " service socket" << (num_sockets == 1 ? "" : "s") << " for mDNS traffic observation";
+    mdnspp::debug() << "Opened " << m_socket_count << " service socket" << (m_socket_count == 1 ? "" : "s") << " for mDNS traffic observation";
 }
 
 void mdns_base::close_sockets()
 {
-    for(int socket = 0; socket < num_sockets; ++socket)
-        mdns_socket_close(sockets[socket]);
-    mdnspp::debug() << "Closed " << num_sockets << " socket" << (num_sockets == 1 ? "" : "s");
+    for(int socket = 0; socket < m_socket_count; ++socket)
+        mdns_socket_close(m_sockets[socket]);
+    mdnspp::debug() << "Closed " << m_socket_count << " socket" << (m_socket_count == 1 ? "" : "s");
 }

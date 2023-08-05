@@ -39,7 +39,7 @@ void service::impl::start(std::string hostname, std::string service_name)
     mdns_string_t service_string = (mdns_string_t) {service_name.c_str(), service_name.length()};
     mdns_string_t hostname_string = (mdns_string_t) {hostname.c_str(), hostname.length()};
 
-    mdnspp::info() << "mDNS service " << hostname << " running on " << service_name << ":" << m_port << " with " << num_sockets << " socket" << (num_sockets == 1 ? "" : "s");;
+    mdnspp::info() << "mDNS service " << hostname << " running on " << service_name << ":" << m_port << " with " << socket_count() << " socket" << (socket_count() == 1 ? "" : "s");;
 
     // Build the service instance "<hostname>.<_service-name>._tcp.local." string
     std::string service_instance = hostname + "." + service_name;
@@ -49,8 +49,8 @@ void service::impl::start(std::string hostname, std::string service_name)
     service.hostname = hostname_string;
     service.service_instance = service_string;
     service.hostname_qualified = hostname_string;
-    service.address_ipv4 = service_address_ipv4;
-    service.address_ipv6 = service_address_ipv6;
+    service.address_ipv4 = address_ipv4();
+    service.address_ipv6 = address_ipv6();
     service.port = m_port;
     mdnspp::default_records(service, m_records);
 
@@ -81,17 +81,18 @@ void service::impl::announceService()
     mdns_record_t additional[5] = {0};
     size_t idx = 0;
     additional[idx++] = m_records.record_srv;
-    if(service.address_ipv4.sin_family == AF_INET)
+    if(has_address_ipv4())
         additional[idx++] = m_records.record_a;
-    if(service.address_ipv6.sin6_family == AF_INET6)
+    if(has_address_ipv6())
         additional[idx++] = m_records.record_aaaa;
     additional[idx++] = m_records.txt_record[0];
     additional[idx++] = m_records.txt_record[1];
 
-    char buffer[2048];
-    size_t capacity = 2048;
-    for(int isock = 0; isock < num_sockets; ++isock)
-        mdns_announce_multicast(sockets[isock], buffer, capacity, m_records.record_ptr, 0, 0, additional, idx);
+    send([&](int isock, int sock, void *buffer, size_t capacity)
+         {
+             mdns_announce_multicast(sock, buffer, capacity, m_records.record_ptr, 0, 0, additional, idx);
+         }
+    );
 }
 
 void service::impl::announceGoodbye()
@@ -99,17 +100,18 @@ void service::impl::announceGoodbye()
     mdns_record_t additional[5] = {0};
     size_t additional_count = 0;
     additional[additional_count++] = m_records.record_srv;
-    if(service.address_ipv4.sin_family == AF_INET)
+    if(has_address_ipv4())
         additional[additional_count++] = m_records.record_a;
-    if(service.address_ipv6.sin6_family == AF_INET6)
+    if(has_address_ipv6())
         additional[additional_count++] = m_records.record_aaaa;
     additional[additional_count++] = m_records.txt_record[0];
     additional[additional_count++] = m_records.txt_record[1];
 
-    char buffer[2048];
-    size_t capacity = 2048;
-    for(int isock = 0; isock < num_sockets; ++isock)
-        mdns_goodbye_multicast(sockets[isock], buffer, capacity, m_records.record_ptr, 0, 0, additional, additional_count);
+    send([&](int isock, int sock, void *buffer, size_t capacity)
+         {
+             mdns_goodbye_multicast(sock, buffer, capacity, m_records.record_ptr, 0, 0, additional, additional_count);
+         }
+    );
 }
 
 int service::impl::callback(int sock, const struct sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype_n, uint16_t rclass, uint32_t ttl, const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length)

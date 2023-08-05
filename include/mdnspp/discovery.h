@@ -16,7 +16,6 @@ public:
     ~discovery();
 
     void discover();
-    void discover_async();
     void stop();
 
 private:

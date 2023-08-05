@@ -11,7 +11,6 @@ class discovery::impl : public mdns_base
 {
 public:
     void discover();
-    void discover_async();
     void stop();
 
 private:

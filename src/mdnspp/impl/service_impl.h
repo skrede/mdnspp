@@ -31,7 +31,6 @@ private:
     records_t m_records;
     std::mutex m_mutex;
     std::atomic<bool> m_running;
-    void *buffer;
 
     void start(std::string hostname, std::string service_name);
     void announceService();

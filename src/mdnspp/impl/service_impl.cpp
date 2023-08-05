@@ -36,9 +36,6 @@ void service::impl::start(std::string hostname, std::string service_name)
     else if(service_name.back() != '.')
         service_name += '.';
 
-    capacity = 2048;
-    buffer = malloc(capacity);
-
     mdns_string_t service_string = (mdns_string_t) {service_name.c_str(), service_name.length()};
     mdns_string_t hostname_string = (mdns_string_t) {hostname.c_str(), hostname.length()};
 
@@ -91,6 +88,8 @@ void service::impl::announceService()
     additional[idx++] = m_records.txt_record[0];
     additional[idx++] = m_records.txt_record[1];
 
+    char buffer[2048];
+    size_t capacity = 2048;
     for(int isock = 0; isock < num_sockets; ++isock)
         mdns_announce_multicast(sockets[isock], buffer, capacity, m_records.record_ptr, 0, 0, additional, idx);
 }
@@ -107,6 +106,8 @@ void service::impl::announceGoodbye()
     additional[additional_count++] = m_records.txt_record[0];
     additional[additional_count++] = m_records.txt_record[1];
 
+    char buffer[2048];
+    size_t capacity = 2048;
     for(int isock = 0; isock < num_sockets; ++isock)
         mdns_goodbye_multicast(sockets[isock], buffer, capacity, m_records.record_ptr, 0, 0, additional, additional_count);
 }

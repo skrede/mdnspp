@@ -37,7 +37,7 @@ private:
     void announceGoodbye();
     void listen();
 
-    void callback(socket_t socket, const message_buffer &buffer) override;
+    void callback(socket_t socket, std::shared_ptr<message_buffer> buffer) override;
 };
 
 }

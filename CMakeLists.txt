@@ -50,6 +50,8 @@ set(CORE_SOURCES
     ${SOURCE_DIRECTORY}/mdnspp/impl/discovery_impl.cpp
     ${SOURCE_DIRECTORY}/mdnspp/impl/message_buffer.h
     ${SOURCE_DIRECTORY}/mdnspp/impl/message_buffer.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/impl/message_parser.h
+    ${SOURCE_DIRECTORY}/mdnspp/impl/message_parser.cpp
 )
 
 add_library(mdnspp SHARED

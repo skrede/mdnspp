@@ -24,7 +24,7 @@ void observer::impl::stop()
     m_running = false;
 }
 
-void observer::impl::callback(socket_t socket, const message_buffer &buffer)
+void observer::impl::callback(socket_t socket, std::shared_ptr<message_buffer> buffer)
 {
     char addr_buffer[64];
     char name_buffer[256];

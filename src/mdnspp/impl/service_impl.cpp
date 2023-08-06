@@ -115,7 +115,7 @@ void service::impl::announceGoodbye()
     );
 }
 
-void service::impl::callback(socket_t socket, const message_buffer &buffer)
+void service::impl::callback(socket_t socket, std::shared_ptr<message_buffer> buffer)
 {
     char addr_buffer[64];
     char entry_buffer[256];

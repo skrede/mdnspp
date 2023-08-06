@@ -26,17 +26,19 @@ struct record_srv_t : public record_t
     uint16_t priority;
     uint16_t weight;
     uint16_t port;
-    std::string name;
+    std::string srv_name;
 };
 
 struct record_a_t : public record_t
 {
     sockaddr_in addr;
+    std::string address_string;
 };
 
 struct record_aaaa_t : public record_t
 {
     sockaddr_in6 addr;
+    std::string address_string;
 };
 
 struct record_txt_t : public record_t

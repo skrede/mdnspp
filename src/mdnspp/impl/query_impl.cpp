@@ -44,7 +44,7 @@ void query::impl::send_query(mdns_query_t *query, size_t count)
     close_sockets();
 }
 
-void query::impl::callback(socket_t socket, const message_buffer &buffer)
+void query::impl::callback(socket_t socket, std::shared_ptr<message_buffer> buffer)
 {
     
     char addr_buffer[64];

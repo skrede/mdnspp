@@ -1,4 +1,4 @@
-#include "mdnspp/impl/services.h"
+#include "mdnspp/services.h"
 
 void mdnspp::default_records(const service_t &service, mdnspp::records_t &records)
 {

@@ -28,16 +28,18 @@ set(PUBLIC_HEADERS
 set(CORE_SOURCES
     ${SOURCE_DIRECTORY}/mdnspp/log.h
     ${SOURCE_DIRECTORY}/mdnspp/query.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/records.h
+    ${SOURCE_DIRECTORY}/mdnspp/records.cpp
     ${SOURCE_DIRECTORY}/mdnspp/service.cpp
     ${SOURCE_DIRECTORY}/mdnspp/observer.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/services.h
+    ${SOURCE_DIRECTORY}/mdnspp/services.cpp
     ${SOURCE_DIRECTORY}/mdnspp/discovery.cpp
     ${SOURCE_DIRECTORY}/mdnspp/mdns_util.h
     ${SOURCE_DIRECTORY}/mdnspp/mdns_util.cpp
 
     ${SOURCE_DIRECTORY}/mdnspp/impl/mdns_base.h
     ${SOURCE_DIRECTORY}/mdnspp/impl/mdns_base.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/impl/services.h
-    ${SOURCE_DIRECTORY}/mdnspp/impl/services.cpp
     ${SOURCE_DIRECTORY}/mdnspp/impl/query_impl.h
     ${SOURCE_DIRECTORY}/mdnspp/impl/query_impl.cpp
     ${SOURCE_DIRECTORY}/mdnspp/impl/service_impl.h

@@ -108,3 +108,28 @@ std::string message_buffer::entry_type_name() const
             return "additional";
     }
 }
+
+record_ptr_t message_buffer::record_parse_ptr()
+{
+    return record_ptr_t();
+}
+
+record_srv_t message_buffer::record_parse_srv()
+{
+    return record_srv_t();
+}
+
+record_a_t message_buffer::record_parse_a()
+{
+    return record_a_t();
+}
+
+record_aaaa_t message_buffer::record_parse_aaaa()
+{
+    return record_aaaa_t();
+}
+
+record_txt_t message_buffer::record_parse_txt()
+{
+    return record_txt_t();
+}

@@ -1,10 +1,13 @@
 #ifndef MDNSPP_MESSAGEPARSER_H
 #define MDNSPP_MESSAGEPARSER_H
 
+#include "mdnspp/records.h"
+
 #include <mdns.h>
 
 #include <memory>
 #include <string>
+#include <functional>
 
 namespace mdnspp {
 
@@ -25,6 +28,12 @@ public:
     std::string entry_type_name() const;
 
     mdns_class_t record_class() const;
+
+    record_ptr_t record_parse_ptr();
+    record_srv_t record_parse_srv();
+    record_a_t record_parse_a();
+    record_aaaa_t record_parse_aaaa();
+    record_txt_t record_parse_txt();
 
 private:
     sockaddr m_sender;

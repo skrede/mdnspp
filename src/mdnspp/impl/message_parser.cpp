@@ -62,7 +62,7 @@ std::string message_parser::record_type_name() const
         case MDNS_RECORDTYPE_ANY:
             return "ANY";
         default:
-            return "IGNORE";
+            return "UNKNOWN";
     }
 }
 

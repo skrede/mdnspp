@@ -46,12 +46,24 @@ void query::impl::send_query(mdns_query_t *query, size_t count)
 
 void query::impl::callback(socket_t socket, std::shared_ptr<message_buffer> buffer)
 {
-    
+
     char addr_buffer[64];
     char entry_buffer[256];
     char name_buffer[256];
 
     mdns_record_txt_t txt_buffer[128];
+
+    auto name_offset = buffer->name_offset();
+    auto ttl = buffer->ttl();
+    auto size = buffer->size();
+    auto data = buffer->data().get();
+    auto rtype = buffer->rtype();
+    auto entry = buffer->entry();
+    auto record_length = buffer->record_length();
+    auto record_offset = buffer->record_offset();
+    auto rclass = buffer->rclass();
+    auto addrlen = buffer->address_length();
+    auto from = &buffer->sender();
 
     mdns_string_t from_addr_str = ip_address_to_string(addr_buffer, sizeof(addr_buffer), from, addrlen);
     const char *entry_type = (entry == MDNS_ENTRYTYPE_ANSWER) ? "answer" : ((entry == MDNS_ENTRYTYPE_AUTHORITY) ? "authority" : "additional");

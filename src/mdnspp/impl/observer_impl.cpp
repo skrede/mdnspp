@@ -1,5 +1,7 @@
 #include "mdnspp/impl/observer_impl.h"
 
+#include "mdnspp/impl/message_parser.h"
+
 using namespace mdnspp;
 
 observer::impl::impl()
@@ -29,9 +31,15 @@ void observer::impl::callback(socket_t socket, std::shared_ptr<message_buffer> b
     char addr_buffer[64];
     char name_buffer[256];
 
-    mdns_string_t from_addr_str = ip_address_to_string(addr_buffer, sizeof(addr_buffer), from, addrlen);
+    message_parser parser(buffer);
 
-    mdns_string_t name = mdns_string_extract(data, size, &name_offset, name_buffer, sizeof(name_buffer));
+    auto name_offset = buffer->name_offset();
+    auto ttl = buffer->ttl();
+    auto rtype = buffer->rtype();
+    auto entry = buffer->entry();
+    auto rclass = buffer->rclass();
+    mdns_string_t from_addr_str = ip_address_to_string(addr_buffer, sizeof(addr_buffer), &buffer->sender(), buffer->address_length());
+    mdns_string_t name = mdns_string_extract(buffer->data().get(), buffer->size(), &name_offset, name_buffer, sizeof(name_buffer));
 
     const char *record_name = 0;
     if(rtype == MDNS_RECORDTYPE_PTR)

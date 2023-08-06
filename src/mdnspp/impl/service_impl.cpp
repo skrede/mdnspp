@@ -122,6 +122,19 @@ void service::impl::callback(socket_t socket, std::shared_ptr<message_buffer> bu
     char name_buffer[256];
     char send_buffer[1024];
 
+    auto name_offset = buffer->name_offset();
+    auto ttl = buffer->ttl();
+    auto size = buffer->size();
+    auto data = buffer->data().get();
+    auto rtype = buffer->rtype();
+    auto entry = buffer->entry();
+    auto record_length = buffer->record_length();
+    auto record_offset = buffer->record_offset();
+    auto rclass = buffer->rclass();
+    auto query_id = buffer->query_id();
+    auto addrlen = buffer->address_length();
+    auto from = &buffer->sender();
+
     if(entry != MDNS_ENTRYTYPE_QUESTION)
         return;
 

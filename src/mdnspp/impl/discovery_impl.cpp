@@ -27,7 +27,7 @@ void discovery::impl::stop()
 {
 }
 
-void discovery::impl::callback(socket_t socket, std::shared_ptr<message_buffer> buffer)
+void discovery::impl::callback(socket_t socket, message_buffer &buffer)
 {
     message_parser parser(buffer);
 
@@ -40,17 +40,17 @@ void discovery::impl::callback(socket_t socket, std::shared_ptr<message_buffer> 
 //    auto from_addr_str = parser.sender_address();
 //    auto entry_str = parser.name();
 
-    auto name_offset = buffer->name_offset();
-    auto ttl = buffer->ttl();
-    auto size = buffer->size();
-    auto data = buffer->data().get();
-    auto rtype = buffer->rtype();
-    auto entry = buffer->entry();
-    auto record_length = buffer->record_length();
-    auto record_offset = buffer->record_offset();
-    auto rclass = buffer->rclass();
-    auto addrlen = buffer->address_length();
-    auto from = &buffer->sender();
+    auto &name_offset = buffer.m_name_offset;
+    auto &ttl = buffer.m_ttl;
+    auto &size = buffer.m_size;
+    auto &data = buffer.m_data;
+    auto &rtype = buffer.m_rtype;
+    auto &entry = buffer.m_entry;
+    auto &record_length = buffer.m_record_length;
+    auto &record_offset = buffer.m_record_offset;
+    auto &rclass = buffer.m_rclass;
+    auto &addrlen = buffer.m_addrlen;
+    auto from = &buffer.m_sender;
 
     mdns_string_t from_addr_str = ip_address_to_string(addr_buffer, sizeof(addr_buffer), from, addrlen);
     const char *entry_type = (entry == MDNS_ENTRYTYPE_ANSWER) ? "answer" : ((entry == MDNS_ENTRYTYPE_AUTHORITY) ? "authority" : "additional");

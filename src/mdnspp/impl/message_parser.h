@@ -13,12 +13,10 @@ namespace mdnspp {
 class message_parser
 {
 public:
-    message_parser(std::shared_ptr<message_buffer> buffer);
+    message_parser(message_buffer &buffer);
 
-    const std::string &name() const;
 
     const sockaddr &sender() const;
-    const std::string &sender_address() const;
 
     mdns_record_type record_type() const;
     std::string record_type_name() const;
@@ -29,16 +27,15 @@ public:
     mdns_class_t record_class() const;
 
 protected:
-    std::shared_ptr<message_buffer> m_buffer;
-
-    void set_record_data(record_t &record);
-
-private:
     std::string m_name;
     std::string m_sender_address;
+    message_buffer &m_buffer;
 
-    void set_name();
-    void set_sender_address();
+    std::string name();
+    std::string sender_address() const;
+
+
+    void set_record_data(record_t &record);
 };
 
 class service_parser : public message_parser

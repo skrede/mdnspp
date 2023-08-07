@@ -26,20 +26,27 @@ void observer::impl::stop()
     m_running = false;
 }
 
-void observer::impl::callback(socket_t socket, std::shared_ptr<message_buffer> buffer)
+void observer::impl::callback(socket_t socket, message_buffer &buffer)
 {
     char addr_buffer[64];
     char name_buffer[256];
 
     message_parser parser(buffer);
 
-    auto name_offset = buffer->name_offset();
-    auto ttl = buffer->ttl();
-    auto rtype = buffer->rtype();
-    auto entry = buffer->entry();
-    auto rclass = buffer->rclass();
-    mdns_string_t from_addr_str = ip_address_to_string(addr_buffer, sizeof(addr_buffer), &buffer->sender(), buffer->address_length());
-    mdns_string_t name = mdns_string_extract(buffer->data().get(), buffer->size(), &name_offset, name_buffer, sizeof(name_buffer));
+    auto &name_offset = buffer.m_name_offset;
+    auto &ttl = buffer.m_ttl;
+    auto &size = buffer.m_size;
+    auto &data = buffer.m_data;
+    auto &rtype = buffer.m_rtype;
+    auto &entry = buffer.m_entry;
+    auto &record_length = buffer.m_record_length;
+    auto &record_offset = buffer.m_record_offset;
+    auto &rclass = buffer.m_rclass;
+    auto &addrlen = buffer.m_addrlen;
+    auto from = &buffer.m_sender;
+
+    mdns_string_t from_addr_str = ip_address_to_string(addr_buffer, sizeof(addr_buffer), from, addrlen);
+    mdns_string_t name = mdns_string_extract(buffer.m_data, size, &name_offset, name_buffer, sizeof(name_buffer));
 
     const char *record_name = 0;
     if(rtype == MDNS_RECORDTYPE_PTR)

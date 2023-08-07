@@ -115,25 +115,25 @@ void service::impl::announceGoodbye()
     );
 }
 
-void service::impl::callback(socket_t socket, std::shared_ptr<message_buffer> buffer)
+void service::impl::callback(socket_t socket, message_buffer &buffer)
 {
     char addr_buffer[64];
     char entry_buffer[256];
     char name_buffer[256];
     char send_buffer[1024];
 
-    auto name_offset = buffer->name_offset();
-    auto ttl = buffer->ttl();
-    auto size = buffer->size();
-    auto data = buffer->data().get();
-    auto rtype = buffer->rtype();
-    auto entry = buffer->entry();
-    auto record_length = buffer->record_length();
-    auto record_offset = buffer->record_offset();
-    auto rclass = buffer->rclass();
-    auto query_id = buffer->query_id();
-    auto addrlen = buffer->address_length();
-    auto from = &buffer->sender();
+    auto &name_offset = buffer.m_name_offset;
+    auto &ttl = buffer.m_ttl;
+    auto &size = buffer.m_size;
+    auto &data = buffer.m_data;
+    auto &rtype = buffer.m_rtype;
+    auto &entry = buffer.m_entry;
+    auto &record_length = buffer.m_record_length;
+    auto &record_offset = buffer.m_record_offset;
+    auto &rclass = buffer.m_rclass;
+    auto &addrlen = buffer.m_addrlen;
+    auto &query_id = buffer.m_query_id;
+    auto from = &buffer.m_sender;
 
     if(entry != MDNS_ENTRYTYPE_QUESTION)
         return;
@@ -160,7 +160,8 @@ void service::impl::callback(socket_t socket, std::shared_ptr<message_buffer> bu
     else
         return;
 
-    printf("%.*s: query %s %s %.*s rclass 0x%x ttl %u\n", MDNS_STRING_FORMAT(from_addr_str), buffer->entry_type_name().c_str(), record_name, MDNS_STRING_FORMAT(name), (unsigned int) rclass, ttl);
+    const char *entry_type = (entry == MDNS_ENTRYTYPE_ANSWER) ? "answer" : ((entry == MDNS_ENTRYTYPE_AUTHORITY) ? "authority" : "additional");
+    printf("%.*s: query %s %s %.*s rclass 0x%x ttl %u\n", MDNS_STRING_FORMAT(from_addr_str), entry_type, record_name, MDNS_STRING_FORMAT(name), (unsigned int) rclass, ttl);
 
     if((name.length == (sizeof(dns_sd) - 1)) && (strncmp(name.str, dns_sd, sizeof(dns_sd) - 1) == 0))
     {

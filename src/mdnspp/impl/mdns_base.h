@@ -133,12 +133,12 @@ private:
                              size_t size, size_t name_offset, size_t name_length, size_t record_offset,
                              size_t record_length, void *user_data)
     {
-        auto buffer = std::make_shared<message_buffer>(from, addrlen, entry, query_id, static_cast<mdns_record_type>(rtype), static_cast<mdns_class_t>(rclass), ttl, data, size, name_offset, name_length, record_offset, record_length);
+        message_buffer buffer (from, addrlen, entry, query_id, static_cast<mdns_record_type>(rtype), static_cast<mdns_class_t>(rclass), ttl, data, size, name_offset, name_length, record_offset, record_length);
         static_cast<mdns_base *>(user_data)->callback(socket, buffer);
         return 0;
     }
 
-    virtual void callback(socket_t socket, std::shared_ptr<message_buffer> buffer) = 0;
+    virtual void callback(socket_t socket, message_buffer &buffer) = 0;
 };
 
 }

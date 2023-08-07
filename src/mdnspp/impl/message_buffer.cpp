@@ -88,3 +88,18 @@ std::shared_ptr<char[]> message_buffer::data() const
 {
     return m_data;
 }
+
+std::string message_buffer::entry_type_name() const
+{
+    switch(m_entry)
+    {
+        case MDNS_ENTRYTYPE_ANSWER:
+            return "answer";
+        case MDNS_ENTRYTYPE_AUTHORITY:
+            return "authority";
+        case MDNS_ENTRYTYPE_ADDITIONAL:
+            return "additional";
+        default:
+            return "question";
+    }
+}

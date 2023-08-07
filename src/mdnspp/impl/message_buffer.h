@@ -25,6 +25,7 @@ public:
     mdns_class_t rclass() const;
     mdns_record_type rtype() const;
     mdns_entry_type_t entry() const;
+    std::string entry_type_name() const;
 
     const sockaddr &sender() const;
 

@@ -159,7 +159,8 @@ void service::impl::callback(socket_t socket, std::shared_ptr<message_buffer> bu
         record_name = "ANY";
     else
         return;
-    printf("Query %s %.*s\n", record_name, MDNS_STRING_FORMAT(name));
+
+    printf("%.*s: query %s %s %.*s rclass 0x%x ttl %u\n", MDNS_STRING_FORMAT(from_addr_str), buffer->entry_type_name().c_str(), record_name, MDNS_STRING_FORMAT(name), (unsigned int) rclass, ttl);
 
     if((name.length == (sizeof(dns_sd) - 1)) && (strncmp(name.str, dns_sd, sizeof(dns_sd) - 1) == 0))
     {

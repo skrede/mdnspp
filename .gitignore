@@ -1,0 +1,57 @@
+# Prerequisites
+*.d
+*object_script*
+Makefile
+Makefile.*
+
+.DS_Store
+
+*.orig
+*_LOCAL_*
+*.LOCAL*
+*.BACKUP*
+*_BACKUP_*
+*_REMOTE_*
+*.BACKUP*
+*_REMOTE_*
+*.BASE*
+*_BASE_*
+*.autosave
+
+.idea/
+cmake-build-*
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so*
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Misc
+*.ilk
+*.pdb
+*.exp

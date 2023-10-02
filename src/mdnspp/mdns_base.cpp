@@ -123,17 +123,18 @@ void mdns_base::listen_until_silence(const std::function<size_t(index_t, socket_
     auto usec = std::chrono::duration_cast<std::chrono::microseconds>(timeout) - std::chrono::duration_cast<std::chrono::microseconds>(sec);
     do
     {
-#ifdef WIN32
         timeval time_out{
+#ifdef WIN32
             static_cast<long>(sec.count()),
             static_cast<long>(usec.count())
-        };
+#elif defined __APPLE__
+            sec.count(),
+            static_cast<int>(usec.count())
 #else
-        timeval time_out{
             sec.count(),
             usec.count()
-        };
 #endif
+        };
 
         int nfds = 0;
         fd_set readfs;
@@ -369,7 +370,7 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
                 {
                     char buffer[128];
                     mdns_string_t addr = ipv4_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in));
-                    debug() << std::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
+                    debug() << fmt::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
                 }
             }
         }
@@ -414,7 +415,7 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
                 {
                     char buffer[128];
                     mdns_string_t addr = ipv6_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in6));
-                    debug() << std::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
+                    debug() << fmt::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
                 }
             }
         }

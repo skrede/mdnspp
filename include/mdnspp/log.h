@@ -16,7 +16,7 @@ public:
     logger(const std::string &label, std::shared_ptr<log_sink> sink) noexcept
         : m_sink(std::move(sink))
     {
-        m_stream << std::format("[{}]", label);
+        m_stream << fmt::format("[{}]", label);
     }
 
     logger(std::shared_ptr<log_sink> sink) noexcept

@@ -73,17 +73,18 @@ protected:
                 FD_SET(m_sockets[soc_idx], &readfs);
             }
 
+            timeval time_out{
 #ifdef WIN32
-            timeval time_out{
                 static_cast<long>(sec.count()),
-                static_cast<long>(usec.count())
-            };
-#else
-            timeval time_out{
+            static_cast<long>(usec.count())
+#elif defined __APPLE__
                 sec.count(),
-                usec.count()
-            };
+                static_cast<int>(usec.count())
+#else
+                sec.count(),
+            usec.count()
 #endif
+            };
 
             if(select(nfds, &readfs, nullptr, nullptr, &time_out) >= 0)
                 for(index_t soc_idx = 0; soc_idx < m_socket_count; ++soc_idx)

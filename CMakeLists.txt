@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 project(mdnspp)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(Boost_NO_WARN_NEW_VERSIONS ON)
 
@@ -20,6 +20,11 @@ if(NOT MDNS_INCLUDE_DIRS_FOUND)
     FetchContent_MakeAvailable(mdns)
 endif()
 
+FetchContent_Declare(fmt
+    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
+    GIT_TAG master
+)
+FetchContent_MakeAvailable(fmt)
 
 set(SOURCE_DIRECTORY src)
 set(INCLUDE_DIRECTORY include)
@@ -39,7 +44,6 @@ set(PUBLIC_HEADERS
 )
 
 set(CORE_SOURCES
-
     ${SOURCE_DIRECTORY}/mdnspp/querier.cpp
     ${SOURCE_DIRECTORY}/mdnspp/observer.cpp
     ${SOURCE_DIRECTORY}/mdnspp/mdns_util.cpp
@@ -64,7 +68,7 @@ target_include_directories(mdnspp
     PRIVATE ${SOURCE_DIRECTORY}
 )
 
-target_link_libraries(mdnspp PUBLIC mdns)
+target_link_libraries(mdnspp PUBLIC mdns fmt::fmt)
 
 if(${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(example)
@@ -79,4 +83,4 @@ if(${MDNSPP_BUILD_TESTS})
     FetchContent_MakeAvailable(Catch2)
     enable_testing()
     add_subdirectory(tests)
-endif ()
+endif()

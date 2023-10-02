@@ -4,8 +4,7 @@ name: Build
 on: [push, workflow_dispatch]
 
 jobs:
-  vcpkg-on-linux:
-
+  linux:
     runs-on: ${{ matrix.os }}
     env:
       CC: gcc-${{ matrix.compiler_version }}
@@ -44,8 +43,7 @@ jobs:
           ctest --output-on-failure
 
 
-  vcpkg-on-windows:
-
+  windows:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -75,8 +73,7 @@ jobs:
           ctest -C Release --output-on-failure
 
 
-  vcpkg-on-darwin:
-
+  macos:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false

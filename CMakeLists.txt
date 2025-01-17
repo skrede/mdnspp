@@ -20,12 +20,6 @@ if(NOT MDNS_INCLUDE_DIRS_FOUND)
     FetchContent_MakeAvailable(mdns)
 endif()
 
-FetchContent_Declare(fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-    GIT_TAG 937b7c5c10dadee2913b548041551828e7934eb7
-)
-FetchContent_MakeAvailable(fmt)
-
 set(SOURCE_DIRECTORY src)
 set(INCLUDE_DIRECTORY include)
 
@@ -68,7 +62,7 @@ target_include_directories(mdnspp
     PRIVATE ${SOURCE_DIRECTORY}
 )
 
-target_link_libraries(mdnspp PUBLIC mdns fmt::fmt)
+target_link_libraries(mdnspp PUBLIC mdns)
 
 if(${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(example)

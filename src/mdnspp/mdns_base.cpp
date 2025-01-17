@@ -370,7 +370,7 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
                 {
                     char buffer[128];
                     mdns_string_t addr = ipv4_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in));
-                    debug() << fmt::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
+                    debug() << std::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
                 }
             }
         }
@@ -415,7 +415,7 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
                 {
                     char buffer[128];
                     mdns_string_t addr = ipv6_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in6));
-                    debug() << fmt::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
+                    debug() << std::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
                 }
             }
         }

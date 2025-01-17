@@ -1,7 +1,7 @@
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.15)
 project(mdnspp)
 
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(Boost_NO_WARN_NEW_VERSIONS ON)
 
@@ -16,13 +16,13 @@ find_path(MDNS_INCLUDE_DIRS "mdns.h")
 if(NOT MDNS_INCLUDE_DIRS_FOUND)
     FetchContent_Declare(mdns
         GIT_REPOSITORY https://github.com/mjansson/mdns.git
-        GIT_TAG        51b635e05f1c64941c58de958751afc7440a00c1)
+        GIT_TAG        23c6f01bb8c68e0e9f6c1ee17b7ae721344925ab)
     FetchContent_MakeAvailable(mdns)
 endif()
 
 FetchContent_Declare(fmt
     GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-    GIT_TAG master
+    GIT_TAG 937b7c5c10dadee2913b548041551828e7934eb7
 )
 FetchContent_MakeAvailable(fmt)
 

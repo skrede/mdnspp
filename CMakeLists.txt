@@ -20,12 +20,6 @@ if(NOT MDNS_INCLUDE_DIRS_FOUND)
     FetchContent_MakeAvailable(mdns)
 endif()
 
-FetchContent_Declare(fmt
-    GIT_REPOSITORY https://github.com/fmtlib/fmt.git
-    GIT_TAG 937b7c5c10dadee2913b548041551828e7934eb7
-)
-FetchContent_MakeAvailable(fmt)
-
 set(SOURCE_DIRECTORY src)
 set(INCLUDE_DIRECTORY include)
 
@@ -37,9 +31,9 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/observer.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_util.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_base.h
+    ${INCLUDE_DIRECTORY}/mdnspp/record_buffer.h
+    ${INCLUDE_DIRECTORY}/mdnspp/record_parser.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_server.h
-    ${INCLUDE_DIRECTORY}/mdnspp/message_buffer.h
-    ${INCLUDE_DIRECTORY}/mdnspp/message_parser.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_discovery.h
 )
 
@@ -48,11 +42,11 @@ set(CORE_SOURCES
     ${SOURCE_DIRECTORY}/mdnspp/observer.cpp
     ${SOURCE_DIRECTORY}/mdnspp/mdns_util.cpp
     ${SOURCE_DIRECTORY}/mdnspp/mdns_base.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/service_server.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/message_buffer.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/message_parser.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/record_buffer.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/record_parser.cpp
     ${SOURCE_DIRECTORY}/mdnspp/record_builder.h
     ${SOURCE_DIRECTORY}/mdnspp/record_builder.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/service_server.cpp
     ${SOURCE_DIRECTORY}/mdnspp/service_discovery.cpp
 )
 
@@ -68,7 +62,7 @@ target_include_directories(mdnspp
     PRIVATE ${SOURCE_DIRECTORY}
 )
 
-target_link_libraries(mdnspp PUBLIC mdns fmt::fmt)
+target_link_libraries(mdnspp PUBLIC mdns)
 
 if(${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(example)

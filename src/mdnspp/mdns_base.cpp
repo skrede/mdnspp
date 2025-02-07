@@ -1,12 +1,16 @@
 #include "mdnspp/mdns_base.h"
-#include "mdnspp/message_parser.h"
+#include "mdnspp/record_parser.h"
 
 using namespace mdnspp;
 
-mdns_base::mdns_base(size_t buffer_capacity)
+mdns_base::mdns_base(size_t recv_buf_size)
     : m_socket_count(0)
-    , m_buffer_capacity(buffer_capacity)
-    , m_sink(std::make_shared<log_sink_s<std::cout>>())
+    , m_socket_limit(32)
+    , m_recv_buf_size(recv_buf_size)
+    , m_stop{false}
+    , m_loglvl(log_level::info)
+    , m_sockets(std::make_unique<int[]>(m_socket_limit))
+    , m_log_sink(std::make_shared<log_sink_s<std::cout>>())
 {
 #ifdef _WIN32
     WORD versionWanted = MAKEWORD(1, 1);
@@ -19,8 +23,12 @@ mdns_base::mdns_base(size_t buffer_capacity)
 
 mdns_base::mdns_base(std::shared_ptr<log_sink> sink, size_t buffer_capacity)
     : m_socket_count(0)
-    , m_buffer_capacity(buffer_capacity)
-    , m_sink(std::move(sink))
+    , m_socket_limit(32)
+    , m_recv_buf_size(buffer_capacity)
+    , m_stop{false}
+    , m_loglvl(log_level::info)
+    , m_sockets(std::make_unique<int[]>(m_socket_limit))
+    , m_log_sink(std::move(sink))
 {
 #ifdef _WIN32
     WORD versionWanted = MAKEWORD(1, 1);
@@ -68,11 +76,16 @@ const std::optional<sockaddr_in6> &mdns_base::address_ipv6() const
     return m_address_ipv6;
 }
 
+void mdns_base::set_log_level(log_level log_level)
+{
+    m_loglvl = log_level;
+}
+
 void mdns_base::open_client_sockets(uint16_t port)
 {
-    sockaddr_in address_ipv4;
-    sockaddr_in6 address_ipv6;
-    m_socket_count = open_client_sockets(m_sockets, sizeof(m_sockets) / sizeof(m_sockets[0]), port, address_ipv4, address_ipv6);
+    sockaddr_in address_ipv4{};
+    sockaddr_in6 address_ipv6{};
+    m_socket_count = open_client_sockets(m_sockets.get(), m_socket_limit, port, address_ipv4, address_ipv6);
     if(m_socket_count <= 0)
         throw std::runtime_error("Failed to open any client sockets");
     if(address_ipv4.sin_family == AF_INET)
@@ -84,36 +97,34 @@ void mdns_base::open_client_sockets(uint16_t port)
 
 void mdns_base::open_service_sockets()
 {
-    sockaddr_in address_ipv4;
-    sockaddr_in6 address_ipv6;
-    m_socket_count = open_service_sockets(m_sockets, sizeof(m_sockets) / sizeof(m_sockets[0]), address_ipv4, address_ipv6);
+    sockaddr_in address_ipv4{};
+    sockaddr_in6 address_ipv6{};
+    m_socket_count = open_service_sockets(m_sockets.get(), m_socket_limit, address_ipv4, address_ipv6);
     if(m_socket_count <= 0)
-        throw std::runtime_error("Failed to open any service sockets");
+        throw std::runtime_error("Failed to open mDNS service sockets");
     if(address_ipv4.sin_family == AF_INET)
         m_address_ipv4.emplace(address_ipv4);
     if(address_ipv6.sin6_family == AF_INET6)
         m_address_ipv6.emplace(address_ipv6);
-    debug() << "Opened " << m_socket_count << " service socket" << (m_socket_count == 1 ? "" : "s") << " for mDNS traffic observation";
+    debug() << "Opened " << m_socket_count << " mDNS service socket" << (m_socket_count == 1 ? "" : "s");
 }
 
 void mdns_base::close_sockets()
 {
     for(int socket = 0; socket < m_socket_count; ++socket)
         mdns_socket_close(m_sockets[socket]);
-    debug() << "Closed " << m_socket_count << " socket" << (m_socket_count == 1 ? "" : "s");
+    debug() << "Closed " << m_socket_count << " mDNS service socket" << (m_socket_count == 1 ? "" : "s");
 }
 
-void mdns_base::send(const std::function<void(index_t, socket_t, void *, size_t)> &send_cb)
+void mdns_base::send(const std::function<void(index_t, socket_t)> &send_cb) const
 {
-    char buffer[2048];
-    size_t capacity = 2048;
     for(index_t soc_idx = 0; soc_idx < m_socket_count; ++soc_idx)
-        send_cb(soc_idx, m_sockets[soc_idx], buffer, capacity);
+        send_cb(soc_idx, m_sockets[soc_idx]);
 }
 
 void mdns_base::listen_until_silence(const std::function<size_t(index_t, socket_t, void *, size_t, mdns_record_callback_fn, void *)> &listen_func, std::chrono::milliseconds timeout)
 {
-    auto buffer = std::make_unique<char[]>(m_buffer_capacity);
+    auto buffer = std::make_unique<char[]>(m_recv_buf_size);
 
     size_t records = 0u;
     int ready_descriptors;
@@ -151,69 +162,89 @@ void mdns_base::listen_until_silence(const std::function<size_t(index_t, socket_
         if(ready_descriptors > 0)
             for(index_t soc_idx = 0; soc_idx < m_socket_count; ++soc_idx)
                 if(FD_ISSET(m_sockets[soc_idx], &readfs))
-                    records += listen_func(soc_idx, m_sockets[soc_idx], buffer.get(), m_buffer_capacity, mdns_base::mdns_callback, this);
+                    records += listen_func(soc_idx, m_sockets[soc_idx], buffer.get(), m_recv_buf_size, mdns_base::mdns_callback, this);
     } while(ready_descriptors > 0 && !m_stop);
 }
 
 int mdns_base::mdns_callback(socket_t socket, const sockaddr *from, size_t addrlen, mdns_entry_type_t entry, uint16_t query_id, uint16_t rtype, uint16_t rclass, uint32_t ttl,
                              const void *data, size_t size, size_t name_offset, size_t name_length, size_t record_offset, size_t record_length, void *user_data)
 {
-    message_buffer buffer(from, addrlen, entry, query_id, static_cast<mdns_record_type>(rtype), rclass, ttl, data, size, name_offset, name_length, record_offset, record_length);
-    static_cast<mdns_base *>(user_data)->callback(socket, buffer);
+    record_buffer buffer(from, addrlen, entry, query_id, static_cast<mdns_record_type>(rtype), rclass, ttl, data, size, name_offset, name_length, record_offset, record_length);
+    static_cast<mdns_base*>(user_data)->callback(socket, buffer);
     return 0;
 }
 
 logger<log_level::trace> mdns_base::trace()
 {
-    return {m_sink};
+    if(m_loglvl == log_level::trace)
+        return {m_log_sink};
+    return {nullptr};
 }
 
 logger<log_level::debug> mdns_base::debug()
 {
-    return {m_sink};
+    if(m_loglvl <= log_level::debug)
+        return {m_log_sink};
+    return {nullptr};
 }
 
 logger<log_level::info> mdns_base::info()
 {
-    return {m_sink};
+    if(m_loglvl <= log_level::info)
+        return {m_log_sink};
+    return {nullptr};
 }
 
 logger<log_level::warn> mdns_base::warn()
 {
-    return {m_sink};
+    if(m_loglvl <= log_level::warn)
+        return {m_log_sink};
+    return {nullptr};
 }
 
 logger<log_level::err> mdns_base::error()
 {
-    return {m_sink};
+    if(m_loglvl <= log_level::err)
+        return {m_log_sink};
+    return {nullptr};
 }
 
 logger<log_level::trace> mdns_base::trace(const std::string &label)
 {
-    return {label, m_sink};
+    if(m_loglvl == log_level::trace)
+        return {label, m_log_sink};
+    return {nullptr};
 }
 
 logger<log_level::debug> mdns_base::debug(const std::string &label)
 {
-    return {label, m_sink};
+    if(m_loglvl <= log_level::debug)
+        return {label, m_log_sink};
+    return {nullptr};
 }
 
 logger<log_level::info> mdns_base::info(const std::string &label)
 {
-    return {label, m_sink};
+    if(m_loglvl <= log_level::info)
+        return {label, m_log_sink};
+    return {nullptr};
 }
 
 logger<log_level::warn> mdns_base::warn(const std::string &label)
 {
-    return {label, m_sink};
+    if(m_loglvl <= log_level::warn)
+        return {label, m_log_sink};
+    return {nullptr};
 }
 
 logger<log_level::err> mdns_base::error(const std::string &label)
 {
-    return {label, m_sink};
+    if(m_loglvl <= log_level::err)
+        return {label, m_log_sink};
+    return {nullptr};
 }
 
-int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sockaddr_in &service_address_ipv4, sockaddr_in6 &service_address_ipv6)
+int mdns_base::open_client_sockets(int *sockets, std::size_t max_sockets, int port, sockaddr_in &service_address_ipv4, sockaddr_in6 &service_address_ipv6)
 {
     // When sending, each socket can only send to one network interface
     // Thus we need to open one socket for each interface and address family
@@ -239,7 +270,7 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
 
     if (!adapter_address || (ret != NO_ERROR)) {
         free(adapter_address);
-        printf("Failed to get network adapter addresses\n");
+        error() << "Failed to get network adapter addresses to open mDNS sockets.";
         return num_sockets;
     }
 
@@ -278,7 +309,7 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
                     if (log_addr) {
                         char buffer[128];
                         mdns_string_t addr = ipv4_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in));
-                       debug() << std::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
+                        info() << std::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
                     }
                 }
             } else if (unicast->Address.lpSockaddr->sa_family == AF_INET6) {
@@ -312,7 +343,7 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
                     if (log_addr) {
                         char buffer[128];
                         mdns_string_t addr = ipv6_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in6));
-                        debug() << std::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
+                        info() << std::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
                     }
                 }
             }
@@ -323,8 +354,8 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
 
 #else
 
-    ifaddrs *ifaddr = 0;
-    ifaddrs *ifa = 0;
+    ifaddrs *ifaddr = nullptr;
+    const ifaddrs *ifa = nullptr;
 
     if(getifaddrs(&ifaddr) < 0)
         error() << "Unable to get interface addresses";
@@ -342,7 +373,7 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
 
         if(ifa->ifa_addr->sa_family == AF_INET)
         {
-            auto saddr = reinterpret_cast<sockaddr_in *>(ifa->ifa_addr);
+            auto saddr = reinterpret_cast<sockaddr_in*>(ifa->ifa_addr);
             if(saddr->sin_addr.s_addr != htonl(INADDR_LOOPBACK))
             {
                 int log_addr = 0;
@@ -370,13 +401,13 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
                 {
                     char buffer[128];
                     mdns_string_t addr = ipv4_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in));
-                    debug() << fmt::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
+                    info() << std::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
                 }
             }
         }
         else if(ifa->ifa_addr->sa_family == AF_INET6)
         {
-            auto saddr = reinterpret_cast<sockaddr_in6 *>(ifa->ifa_addr);
+            auto saddr = reinterpret_cast<sockaddr_in6*>(ifa->ifa_addr);
             // Ignore link-local addresses
             if(saddr->sin6_scope_id)
                 continue;
@@ -415,7 +446,7 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
                 {
                     char buffer[128];
                     mdns_string_t addr = ipv6_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in6));
-                    debug() << fmt::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
+                    info() << std::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
                 }
             }
         }
@@ -428,19 +459,19 @@ int mdns_base::open_client_sockets(int *sockets, int max_sockets, int port, sock
     return num_sockets;
 }
 
-int mdns_base::open_service_sockets(int *sockets, int max_sockets, sockaddr_in &service_address_ipv4, sockaddr_in6 &service_address_ipv6)
+int mdns_base::open_service_sockets(int *sockets, std::size_t max_sockets, sockaddr_in &service_address_ipv4, sockaddr_in6 &service_address_ipv6)
 {
-// When recieving, each socket can recieve data from all network interfaces
-// Thus we only need to open one socket for each address family
+    // When recieving, each socket can recieve data from all network interfaces
+    // Thus we only need to open one socket for each address family
     int num_sockets = 0;
 
-// Call the client socket function to enumerate and get local addresses,
-// but not open the actual sockets
+    // Call the client socket function to enumerate and get local addresses,
+    // but not open the actual sockets
     open_client_sockets(nullptr, 0, 0, service_address_ipv4, service_address_ipv6);
 
     if(num_sockets < max_sockets)
     {
-        sockaddr_in sock_addr;
+        sockaddr_in sock_addr{};
         memset(&sock_addr, 0, sizeof(sockaddr_in));
         sock_addr.sin_family = AF_INET;
 #ifdef _WIN32
@@ -463,7 +494,7 @@ int mdns_base::open_service_sockets(int *sockets, int max_sockets, sockaddr_in &
 
     if(num_sockets < max_sockets)
     {
-        sockaddr_in6 sock_addr;
+        sockaddr_in6 sock_addr{};
         memset(&sock_addr, 0, sizeof(sockaddr_in6));
         sock_addr.sin6_family = AF_INET6;
         sock_addr.sin6_addr = in6addr_any;

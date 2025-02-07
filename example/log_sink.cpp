@@ -9,19 +9,18 @@ public:
 
     void log(log_level level, const std::string &string) noexcept override
     {
-        // print to stdout and omit the log level.
         std::cout << string << std::endl;
     }
 };
 
 }
 
-int main(int argc, char **argv)
+int main(int, char **)
 {
     mdnspp::querier d(std::make_shared<mdnspp::example_sink>());
     d.inquire(
         {
-            "audhumbla._mdnspp-service._udp.local.",
+            "preferably_unique_name._mdnspp-service._udp.local.",
             MDNS_RECORDTYPE_TXT
         });
 }

@@ -1,11 +1,11 @@
 #include <mdnspp/service_server.h>
 
-int main(int argc, char **argv)
+int main(int, char **)
 {
-    mdnspp::service_server s("audhumbla", "_mdnspp-service._udp.local.");
+    mdnspp::service_server s("preferably_unique_name", "_mdnspp-service._udp.local.");
     s.serve({
-                {"Odin", std::nullopt},
-                {"Thor",  "Balder"}
-            }
+            {"flag", std::nullopt},
+            {"key", "value"}
+        }
     );
 }

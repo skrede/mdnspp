@@ -15,10 +15,16 @@ namespace mdnspp {
 class record_builder
 {
 public:
-    record_builder(std::string hostname, std::string service_name, const std::vector<service_txt> &txt_records, std::optional<sockaddr_in> ip_v4, std::optional<sockaddr_in6> ip_v6);
+    record_builder(std::string hostname, std::string service_name, std::vector<service_txt> txt_records, std::optional<sockaddr_in> ip_v4, std::optional<sockaddr_in6> ip_v6);
+
+    void initialize_record(record_t &record, mdns_record_type type) const;
+
+    void update_txt_records(std::vector<service_txt> txt_records);
 
     bool hostname_match(const std::string &name) const;
     bool service_name_match(const std::string &name) const;
+
+    const std::string &service_instance() const;
 
     bool has_address_ipv4() const;
     uint16_t ipv4_port() const;
@@ -43,8 +49,6 @@ public:
     mdns_record_t mdns_record_dns_sd(const std::string &name) const;
 
     std::vector<mdns_record_t> additionals_for(mdns_record_type_t type) const;
-    std::vector<mdns_record_t> additionals_for_ipv4(mdns_record_type_t type) const;
-    std::vector<mdns_record_t> additionals_for_ipv6(mdns_record_type_t type) const;
 
 private:
     std::string m_name;
@@ -57,9 +61,9 @@ private:
     record_ptr_t m_record_ptr;
     record_srv_t m_record_srv;
     std::optional<record_a_t> m_record_a;
-    std::optional<record_aaaa_t> m_record_aaaa;
     std::vector<record_txt_t> m_txt_records;
-
+    std::optional<record_aaaa_t> m_record_aaaa;
+    std::vector<mdns_record_t> m_mdns_txt_records;
 };
 
 }

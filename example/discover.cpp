@@ -1,6 +1,6 @@
 #include <mdnspp/service_discovery.h>
 
-int main(int argc, char **argv)
+int main(int, char **)
 {
     mdnspp::service_discovery d;
     d.discover();

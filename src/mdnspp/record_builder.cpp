@@ -5,14 +5,7 @@
 
 using namespace mdnspp;
 
-void initialize_record(record_t &record, mdns_record_type type)
-{
-    record.ttl = 0u;
-    record.rclass = 0u;
-    record.rtype = type;
-}
-
-record_builder::record_builder(std::string hostname, std::string service_name, const std::vector<service_txt> &txt_records, std::optional<sockaddr_in> ip_v4, std::optional<sockaddr_in6> ip_v6)
+record_builder::record_builder(std::string hostname, std::string service_name, std::vector<service_txt> txt_records, std::optional<sockaddr_in> ip_v4, std::optional<sockaddr_in6> ip_v6)
     : m_name(service_name)
     , m_hostname(hostname)
     , m_address_ipv4(ip_v4)
@@ -73,13 +66,46 @@ record_builder::record_builder(std::string hostname, std::string service_name, c
         m_record_aaaa.emplace(record_aaaa);
     }
 
+    update_txt_records(txt_records);
+}
+
+void record_builder::initialize_record(record_t &record, mdns_record_type type) const
+{
+    record.ttl = 0u;
+    record.rclass = 0u;
+    record.rtype = type;
+}
+
+void record_builder::update_txt_records(std::vector<service_txt> txt_records)
+{
+    m_txt_records.clear();
+    m_mdns_txt_records.clear();
     for(const auto &txt : txt_records)
     {
         record_txt_t record_txt(mdns_entry_type::MDNS_ENTRYTYPE_ANSWER);
         initialize_record(record_txt, MDNS_RECORDTYPE_TXT);
         record_txt.key = txt.key;
         record_txt.value = txt.value;
-        m_txt_records.push_back(record_txt);
+        m_txt_records.push_back(std::move(record_txt));
+    }
+    for(const auto &record_txt : m_txt_records)
+    {
+        mdns_record_t txt_record;
+        txt_record.ttl = record_txt.ttl;
+        txt_record.rclass = record_txt.rclass;
+        txt_record.type = static_cast<mdns_record_type_t>(record_txt.rtype);
+        txt_record.name.str = m_name.c_str();
+        txt_record.name.length = m_name.length();
+        txt_record.data.txt.key.str = record_txt.key.c_str();
+        txt_record.data.txt.key.length = record_txt.key.length();
+        if(record_txt.value.has_value())
+        {
+            txt_record.data.txt.value.str = record_txt.value->c_str();
+            txt_record.data.txt.value.length = record_txt.value->length();
+        }
+        else
+            txt_record.data.txt.value.length = 0;
+        m_mdns_txt_records.push_back(std::move(txt_record));
     }
 }
 
@@ -91,6 +117,11 @@ bool record_builder::hostname_match(const std::string &name) const
 bool record_builder::service_name_match(const std::string &name) const
 {
     return name == m_service_instance;
+}
+
+const std::string& record_builder::service_instance() const
+{
+    return m_service_instance;
 }
 
 bool record_builder::has_address_ipv4() const
@@ -177,7 +208,7 @@ mdns_record_t record_builder::mdns_record_srv() const
     ret.type = static_cast<mdns_record_type_t>(m_record_srv.rtype);
     ret.name.str = m_record_srv.name.c_str();
     ret.name.length = m_record_srv.name.length();
-    ret.data.srv.port = 0u;
+    ret.data.srv.port = m_record_srv.port;
     ret.data.srv.weight = m_record_srv.weight;
     ret.data.srv.priority = m_record_srv.priority;
     ret.data.srv.name.str = m_record_srv.srv_name.c_str();
@@ -217,28 +248,7 @@ mdns_record_t record_builder::mdns_record_aaaa() const
 
 std::vector<mdns_record_t> record_builder::mdns_record_txts() const
 {
-    std::vector<mdns_record_t> ret(m_txt_records.size());
-    size_t idx = 0;
-    for(const auto &txt : m_txt_records)
-    {
-        mdns_record_t txt_record;
-        txt_record.ttl = txt.ttl;
-        txt_record.rclass = txt.rclass;
-        txt_record.type = static_cast<mdns_record_type_t>(txt.rtype);
-        txt_record.name.str = txt.name.c_str();
-        txt_record.name.length = txt.name.length();
-        txt_record.data.txt.key.str = txt.key.c_str();
-        txt_record.data.txt.key.length = txt.key.length();
-        if(txt.value.has_value())
-        {
-            txt_record.data.txt.value.str = txt.value->c_str();
-            txt_record.data.txt.value.length = txt.value->length();
-        }
-        else
-            txt_record.data.txt.value.length = 0;
-        ret[idx++] = txt_record;
-    }
-    return ret;
+    return m_mdns_txt_records;
 }
 
 mdns_record_t record_builder::mdns_record_dns_sd(const std::string &name) const
@@ -256,10 +266,10 @@ std::vector<mdns_record_t> record_builder::additionals_for(mdns_record_type_t ty
 {
     std::vector<mdns_record_t> additional = mdns_record_txts();
     if(type == MDNS_RECORDTYPE_PTR)
-        additional.push_back(mdns_record_srv());
+        additional.push_back(std::move(mdns_record_srv()));
     if(type != MDNS_RECORDTYPE_A && has_address_ipv4())
-        additional.push_back(mdns_record_a());
+        additional.push_back(std::move(mdns_record_a()));
     if(type != MDNS_RECORDTYPE_AAAA && has_address_ipv6())
-        additional.push_back(mdns_record_aaaa());
+        additional.push_back(std::move(mdns_record_aaaa()));
     return additional;
 }

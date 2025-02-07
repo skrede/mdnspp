@@ -1,29 +1,35 @@
 #include "mdnspp/service_server.h"
 
+#include <utility>
+
 #include "mdnspp/log.h"
 #include "mdnspp/record_builder.h"
 #include "mdnspp/records.h"
 
-#include "mdnspp/message_buffer.h"
+#include "mdnspp/record_buffer.h"
 
 using namespace mdnspp;
 
-service_server::service_server(const std::string &hostname, const std::string &service_name, uint16_t port)
-    : m_port(port)
-    , m_hostname(hostname)
+service_server::service_server(const std::string &instance, const std::string &service_name, params p)
+    : mdns_base(p.recv_buf_size)
+    , m_send_buf_size(p.send_buf_size)
+    , m_hostname(instance)
     , m_service_name(service_name)
+    , m_running{false}
+    , m_buffer(std::make_unique<char[]>(m_send_buf_size))
+    , m_timeout(p.timeout)
 {
+
 }
 
-service_server::service_server(const std::string &hostname, const std::string &service_name, std::shared_ptr<log_sink> sink, uint16_t port)
-    : mdns_base(sink)
-    , m_port(port)
-    , m_hostname(hostname)
+service_server::service_server(const std::string &instance, const std::string &service_name, std::shared_ptr<log_sink> sink, params p)
+    : mdns_base(std::move(sink), p.recv_buf_size)
+    , m_send_buf_size(p.send_buf_size)
+    , m_hostname(instance)
     , m_service_name(service_name)
-{
-}
-
-service_server::~service_server()
+    , m_running{false}
+    , m_buffer(std::make_unique<char[]>(m_send_buf_size))
+    , m_timeout(p.timeout)
 {
 }
 
@@ -32,11 +38,73 @@ bool service_server::is_serving() const
     return m_running;
 }
 
-void service_server::serve(const std::vector<service_txt> &txt_records, std::chrono::milliseconds timeout)
+void service_server::serve(const std::vector<service_txt> &txt_records)
 {
     start(txt_records);
-    announce_service(*m_builder);
-    listen(timeout);
+    listen();
+}
+
+void service_server::serve(const std::vector<service_txt> &txt_records, const std::function<void()> &socket_open_callback)
+{
+    start(txt_records);
+    if(m_running)
+        socket_open_callback();
+    listen();
+}
+
+void service_server::serve_and_announce(const std::vector<service_txt> &txt_records)
+{
+    start(txt_records);
+    if(m_running)
+    {
+        announce();
+        listen();
+    }
+}
+
+void service_server::serve_and_announce(const std::vector<service_txt> &txt_records, const std::function<void()> &socket_open_callback)
+{
+    start(txt_records);
+    if(m_running)
+    {
+        socket_open_callback();
+        announce();
+        listen();
+    }
+}
+
+void service_server::announce()
+{
+    if(!m_running)
+        return;
+    std::lock_guard<std::mutex> l(m_mutex);
+    auto record_ptr = m_builder->mdns_record_ptr();
+    auto additional = m_builder->additionals_for(MDNS_RECORDTYPE_PTR);
+    send([&](index_t soc_idx, socket_t socket)
+        {
+            mdns_announce_multicast(socket, m_buffer.get(), m_send_buf_size, record_ptr, nullptr, 0, &additional[0], additional.size());
+        }
+    );
+}
+
+void service_server::stop()
+{
+    std::lock_guard<std::mutex> l(m_mutex);
+    if(!m_running)
+        return;
+    announce_goodbye();
+    close_sockets();
+}
+
+void service_server::update_txt_records(const std::vector<service_txt> &txt_records)
+{
+    std::lock_guard<std::mutex> l(m_mutex);
+    m_builder->update_txt_records(txt_records);
+}
+
+const std::string &service_server::service_instance_name() const
+{
+    return m_builder->service_instance();
 }
 
 void service_server::start(const std::vector<service_txt> &txt_records)
@@ -46,58 +114,41 @@ void service_server::start(const std::vector<service_txt> &txt_records)
 
     auto ipv4 = has_address_ipv4() ? address_ipv4() : std::nullopt;
     auto ipv6 = has_address_ipv4() ? address_ipv6() : std::nullopt;
-    m_builder = std::make_unique<record_builder>(m_hostname, m_service_name, txt_records, ipv4, ipv6);
 
-    debug() << "mDNS service " << m_hostname << " running on " << m_service_name << ":" << m_port << " with " << socket_count() << " socket" << (socket_count() == 1 ? "" : "s");;
+    m_builder = std::make_shared<record_builder>(m_hostname, m_service_name, txt_records, ipv4, ipv6);
+
+    info() << "mDNS service " << m_hostname << " running on " << m_service_name << ":" << ipv4->sin_port << " with " << socket_count() << " socket" << (socket_count() == 1 ? "" : "s");;
 
     m_running = true;
 }
 
-void service_server::listen(std::chrono::milliseconds timeout)
+void service_server::announce_goodbye()
+{
+    std::lock_guard<std::mutex> l(m_mutex);
+    auto record_ptr = m_builder->mdns_record_ptr();
+    auto additional = m_builder->additionals_for(MDNS_RECORDTYPE_PTR);
+
+    send([&](index_t soc_idx, socket_t socket)
+        {
+            mdns_goodbye_multicast(socket, m_buffer.get(), m_send_buf_size, record_ptr, nullptr, 0, &additional[0], additional.size());
+        }
+    );
+}
+
+void service_server::listen()
 {
     listen_while<mdns_socket_listen>(
         [this]() -> bool
         {
             return m_running;
-        }, timeout
+        }, m_timeout
     );
 }
 
-void service_server::stop()
+void service_server::callback(socket_t socket, record_buffer &buffer)
 {
     std::lock_guard<std::mutex> l(m_mutex);
-    if(!m_running)
-        return;
-    announce_goodbye(*m_builder);
-    close_sockets();
-}
-
-void service_server::announce_service(record_builder service) //enforce copy
-{
-    auto record_ptr = service.mdns_record_ptr();
-    auto additional = service.additionals_for(MDNS_RECORDTYPE_PTR);
-    send([&](index_t soc_idx, socket_t socket, void *buffer, size_t capacity)
-         {
-             mdns_announce_multicast(socket, buffer, capacity, record_ptr, nullptr, 0, &additional[0], additional.size());
-         }
-    );
-}
-
-void service_server::announce_goodbye(record_builder records) //enforce copy
-{
-    auto record_ptr = records.mdns_record_ptr();
-    auto additional = records.additionals_for(MDNS_RECORDTYPE_PTR);
-
-    send([&](index_t soc_idx, socket_t socket, void *buffer, size_t capacity)
-         {
-             mdns_goodbye_multicast(socket, buffer, capacity, record_ptr, 0, 0, &additional[0], additional.size());
-         }
-    );
-}
-
-void service_server::callback(socket_t socket, message_buffer &buffer)
-{
-    message_parser parser(buffer);
+    record_parser parser(buffer);
 
     if(parser.entry_type() != MDNS_ENTRYTYPE_QUESTION || parser.record_type() == MDNS_RECORDTYPE_IGNORE)
         return;
@@ -106,8 +157,6 @@ void service_server::callback(socket_t socket, message_buffer &buffer)
     auto addr_str = parser.sender_address();
     auto record_name = parser.record_type_name();
     std::string dns_sd = "_services._dns-sd._udp.local.";
-
-    debug() << "Query " << record_name << " " << name;
 
     if(name == dns_sd)
     {
@@ -132,9 +181,8 @@ void service_server::callback(socket_t socket, message_buffer &buffer)
     }
 }
 
-void service_server::serve_dns_sd(socket_t socket, message_parser &parser)
+void service_server::serve_dns_sd(socket_t socket, record_parser &parser)
 {
-    char send_buffer[1024];
     auto name = parser.name();
     auto &buffer = parser.buffer();
 
@@ -147,14 +195,13 @@ void service_server::serve_dns_sd(socket_t socket, message_parser &parser)
     debug() << "  --> answer " << name << " (" << (unicast ? "unicast" : "multicast") << ")";
 
     if(unicast)
-        mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, send_buffer, sizeof(send_buffer), buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answer, nullptr, 0, nullptr, 0);
+        mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, m_buffer.get(), m_send_buf_size, buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answer, nullptr, 0, nullptr, 0);
     else
-        mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answer, 0, 0, 0, 0);
+        mdns_query_answer_multicast(socket, m_buffer.get(), m_send_buf_size, answer, nullptr, 0, nullptr, 0);
 }
 
-void service_server::serve_ptr(socket_t socket, message_parser &parser)
+void service_server::serve_ptr(socket_t socket, record_parser &parser)
 {
-    char send_buffer[1024];
     auto name = parser.name();
     auto &buffer = parser.buffer();
 
@@ -168,14 +215,13 @@ void service_server::serve_ptr(socket_t socket, message_parser &parser)
     debug() << "  --> answer " << name << " (" << (unicast ? "unicast" : "multicast") << ")";
 
     if(unicast)
-        mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, send_buffer, sizeof(send_buffer), buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answer, nullptr, 0, &additional[0], additional.size());
+        mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, m_buffer.get(), m_send_buf_size, buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answer, nullptr, 0, &additional[0], additional.size());
     else
-        mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answer, nullptr, 0, &additional[0], additional.size());
+        mdns_query_answer_multicast(socket, m_buffer.get(), m_send_buf_size, answer, nullptr, 0, &additional[0], additional.size());
 }
 
-void service_server::serve_srv(socket_t socket, message_parser &parser)
+void service_server::serve_srv(socket_t socket, record_parser &parser)
 {
-    char send_buffer[1024];
     auto name = parser.name();
     auto &buffer = parser.buffer();
 
@@ -188,14 +234,13 @@ void service_server::serve_srv(socket_t socket, message_parser &parser)
     debug() << "  --> answer " << name << " port " << answer.data.srv.port << " (" << (unicast ? "unicast" : "multicast") << ")";
 
     if(unicast)
-        mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, send_buffer, sizeof(send_buffer), buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answer, nullptr, 0, &additional[0], additional.size());
+        mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, m_buffer.get(), m_send_buf_size, buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answer, nullptr, 0, &additional[0], additional.size());
     else
-        mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answer, nullptr, 0, &additional[0], additional.size());
+        mdns_query_answer_multicast(socket, m_buffer.get(), m_send_buf_size, answer, nullptr, 0, &additional[0], additional.size());
 }
 
-void service_server::serve_a(socket_t socket, message_parser &parser)
+void service_server::serve_a(socket_t socket, record_parser &parser)
 {
-    char send_buffer[1024];
     auto name = parser.name();
     auto &buffer = parser.buffer();
 
@@ -207,14 +252,13 @@ void service_server::serve_a(socket_t socket, message_parser &parser)
     debug() << "  --> answer " << name << " IPv4 " << m_builder->address_ipv4() << " (" << (unicast ? "unicast" : "multicast") << ")";
 
     if(unicast)
-        mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, send_buffer, sizeof(send_buffer), buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answer, nullptr, 0, &additional[0], additional.size());
+        mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, m_buffer.get(), m_send_buf_size, buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answer, nullptr, 0, &additional[0], additional.size());
     else
-        mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answer, nullptr, 0, &additional[0], additional.size());
+        mdns_query_answer_multicast(socket, m_buffer.get(), m_send_buf_size, answer, nullptr, 0, &additional[0], additional.size());
 }
 
-void service_server::serve_aaaa(socket_t socket, message_parser &parser)
+void service_server::serve_aaaa(socket_t socket, record_parser &parser)
 {
-    char send_buffer[1024];
     auto name = parser.name();
     auto &buffer = parser.buffer();
 
@@ -226,14 +270,13 @@ void service_server::serve_aaaa(socket_t socket, message_parser &parser)
     debug() << "  --> answer " << name << " IPv6 " << m_builder->address_ipv6() << " (" << (unicast ? "unicast" : "multicast") << ")";
 
     if(unicast)
-        mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, send_buffer, sizeof(send_buffer), buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answer, nullptr, 0, &additional[0], additional.size());
+        mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, m_buffer.get(), m_send_buf_size, buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answer, nullptr, 0, &additional[0], additional.size());
     else
-        mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answer, nullptr, 0, &additional[0], additional.size());
+        mdns_query_answer_multicast(socket, m_buffer.get(), m_send_buf_size, answer, nullptr, 0, &additional[0], additional.size());
 }
 
-void service_server::serve_txt(socket_t socket, message_parser &parser)
+void service_server::serve_txt(socket_t socket, record_parser &parser)
 {
-    char send_buffer[1024];
     auto name = parser.name();
     auto &buffer = parser.buffer();
     std::vector<mdns_record_t> answers = m_builder->mdns_record_txts();
@@ -244,15 +287,15 @@ void service_server::serve_txt(socket_t socket, message_parser &parser)
     if(unicast)
     {
         if(answers.size() > 1u)
-            mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, send_buffer, sizeof(send_buffer), buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answers[0], nullptr, 0, &answers[0], answers.size());
+            mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, m_buffer.get(), m_send_buf_size, buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answers[0], nullptr, 0, &answers[0], answers.size());
         else if(answers.size() == 1u)
-            mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, send_buffer, sizeof(send_buffer), buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answers[0], nullptr, 0, nullptr, 0u);
+            mdns_query_answer_unicast(socket, buffer.from, buffer.addrlen, m_buffer.get(), m_send_buf_size, buffer.query_id, static_cast<mdns_record_type>(buffer.rtype), name.c_str(), name.length(), answers[0], nullptr, 0, nullptr, 0u);
     }
     else
     {
         if(answers.size() > 1u)
-            mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answers[0], nullptr, 0, &answers[1], answers.size() - 1u);
+            mdns_query_answer_multicast(socket, m_buffer.get(), m_send_buf_size, answers[0], nullptr, 0, &answers[1], answers.size() - 1u);
         else if(answers.size() == 1u)
-            mdns_query_answer_multicast(socket, send_buffer, sizeof(send_buffer), answers[0], nullptr, 0, nullptr, 0u);
+            mdns_query_answer_multicast(socket, m_buffer.get(), m_send_buf_size, answers[0], nullptr, 0, nullptr, 0u);
     }
 }

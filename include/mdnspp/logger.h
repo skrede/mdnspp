@@ -3,7 +3,7 @@
 
 #include <string>
 #include <iostream>
-
+#include <cstdint>
 #include <format>
 
 namespace mdnspp {

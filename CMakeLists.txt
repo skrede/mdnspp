@@ -32,6 +32,7 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_util.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_base.h
     ${INCLUDE_DIRECTORY}/mdnspp/record_buffer.h
+    ${INCLUDE_DIRECTORY}/mdnspp/record_builder.h
     ${INCLUDE_DIRECTORY}/mdnspp/record_parser.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_server.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_discovery.h
@@ -44,7 +45,6 @@ set(CORE_SOURCES
     ${SOURCE_DIRECTORY}/mdnspp/mdns_base.cpp
     ${SOURCE_DIRECTORY}/mdnspp/record_buffer.cpp
     ${SOURCE_DIRECTORY}/mdnspp/record_parser.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/record_builder.h
     ${SOURCE_DIRECTORY}/mdnspp/record_builder.cpp
     ${SOURCE_DIRECTORY}/mdnspp/service_server.cpp
     ${SOURCE_DIRECTORY}/mdnspp/service_discovery.cpp

@@ -4,6 +4,9 @@
 Makefile
 Makefile.*
 
+.xmake/
+build/
+
 .DS_Store
 
 *.orig

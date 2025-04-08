@@ -20,7 +20,7 @@ public:
     logger(const std::string &label, std::shared_ptr<log_sink> sink)
         : m_sink(std::move(sink))
     {
-        m_stream << std::format("[{}] ", label);
+        m_stream << fmt::format("[{}] ", label);
     }
 
     ~logger()

@@ -4,7 +4,7 @@
 #include <string>
 #include <iostream>
 #include <cstdint>
-#include <format>
+#include "fmt/format.h"
 
 namespace mdnspp {
 
@@ -51,7 +51,7 @@ class log_sink_f : public log_sink
 public:
     void log(log_level level, const std::string &string) override
     {
-        callable_f(std::format("[{}] {}", log_level_string(level), string));
+        callable_f(fmt::format("[{}] {}", log_level_string(level), string));
     }
 
 };

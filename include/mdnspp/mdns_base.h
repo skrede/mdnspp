@@ -6,6 +6,7 @@
 #include "mdnspp/mdns_util.h"
 #include "mdnspp/record_buffer.h"
 
+#include <optional>
 #include <atomic>
 #include <chrono>
 #include <functional>

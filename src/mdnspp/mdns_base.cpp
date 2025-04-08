@@ -309,7 +309,7 @@ int mdns_base::open_client_sockets(int *sockets, std::size_t max_sockets, int po
                     if (log_addr) {
                         char buffer[128];
                         mdns_string_t addr = ipv4_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in));
-                        info() << std::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
+                        info() << fmt::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
                     }
                 }
             } else if (unicast->Address.lpSockaddr->sa_family == AF_INET6) {
@@ -343,7 +343,7 @@ int mdns_base::open_client_sockets(int *sockets, std::size_t max_sockets, int po
                     if (log_addr) {
                         char buffer[128];
                         mdns_string_t addr = ipv6_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in6));
-                        info() << std::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
+                        info() << fmt::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
                     }
                 }
             }
@@ -401,7 +401,7 @@ int mdns_base::open_client_sockets(int *sockets, std::size_t max_sockets, int po
                 {
                     char buffer[128];
                     mdns_string_t addr = ipv4_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in));
-                    info() << std::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
+                    info() << fmt::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
                 }
             }
         }
@@ -446,7 +446,7 @@ int mdns_base::open_client_sockets(int *sockets, std::size_t max_sockets, int po
                 {
                     char buffer[128];
                     mdns_string_t addr = ipv6_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in6));
-                    info() << std::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
+                    info() << fmt::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
                 }
             }
         }

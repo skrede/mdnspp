@@ -9,7 +9,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2022, macos-13]
+        os: [ubuntu-24.04, windows-2022, macos-14]
 
     runs-on: ${{ matrix.os }}
 
@@ -28,6 +28,7 @@ jobs:
           brew install pkg-config
 
       - name: Configure CMake
+        shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             CMAKE_GENERATOR_OPTIONS="-A x64"

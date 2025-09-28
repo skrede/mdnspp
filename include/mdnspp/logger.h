@@ -2,6 +2,7 @@
 #define MDNSPP_LOGGER_H
 
 #include <string>
+#include <cstdint>
 #include <iostream>
 
 #include <format>

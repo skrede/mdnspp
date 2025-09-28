@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.50)
 project(mdnspp)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -15,8 +15,8 @@ include(CMakePackageConfigHelpers)
 find_path(MDNS_INCLUDE_DIRS "mdns.h")
 if(NOT MDNS_INCLUDE_DIRS_FOUND)
     FetchContent_Declare(mdns
-        GIT_REPOSITORY https://github.com/mjansson/mdns.git
-        GIT_TAG        23c6f01bb8c68e0e9f6c1ee17b7ae721344925ab)
+        GIT_REPOSITORY https://github.com/skrede/mdns.git
+        GIT_TAG        2e0deec08c5e1cb97f5baf4e6f47f4fc1be4be49)
     FetchContent_MakeAvailable(mdns)
 endif()
 

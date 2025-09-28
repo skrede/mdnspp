@@ -1,4 +1,4 @@
-#include <mdnspp/querier.h>
+#include <mdnspp/querent.h>
 
 namespace mdnspp {
 
@@ -17,8 +17,8 @@ public:
 
 int main(int, char **)
 {
-    mdnspp::querier d(std::make_shared<mdnspp::example_sink>());
-    d.inquire(
+    mdnspp::querent d(std::make_shared<mdnspp::example_sink>());
+    d.query(
         {
             "preferably_unique_name._mdnspp-service._udp.local.",
             MDNS_RECORDTYPE_TXT

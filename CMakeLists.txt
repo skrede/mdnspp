@@ -26,7 +26,7 @@ set(INCLUDE_DIRECTORY include)
 set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/log.h
     ${INCLUDE_DIRECTORY}/mdnspp/logger.h
-    ${INCLUDE_DIRECTORY}/mdnspp/querier.h
+    ${INCLUDE_DIRECTORY}/mdnspp/querent.h
     ${INCLUDE_DIRECTORY}/mdnspp/records.h
     ${INCLUDE_DIRECTORY}/mdnspp/observer.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_util.h
@@ -38,7 +38,7 @@ set(PUBLIC_HEADERS
 )
 
 set(CORE_SOURCES
-    ${SOURCE_DIRECTORY}/mdnspp/querier.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/querent.cpp
     ${SOURCE_DIRECTORY}/mdnspp/observer.cpp
     ${SOURCE_DIRECTORY}/mdnspp/mdns_util.cpp
     ${SOURCE_DIRECTORY}/mdnspp/mdns_base.cpp

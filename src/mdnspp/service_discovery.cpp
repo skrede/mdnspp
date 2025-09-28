@@ -58,8 +58,8 @@ bool service_discovery::filter_ignore_record(const std::shared_ptr<record_t> &re
         return true;
     for(const auto &filter : m_filters)
         if(filter(record))
-            return true;
-    return false;
+            return false;
+    return true;
 }
 
 void service_discovery::callback(socket_t socket, record_buffer &buffer)

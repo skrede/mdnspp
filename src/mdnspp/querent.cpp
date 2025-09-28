@@ -1,10 +1,10 @@
-#include "mdnspp/querier.h"
+#include "mdnspp/querent.h"
 
 #include "mdnspp/record_parser.h"
 
 using namespace mdnspp;
 
-querier::querier(params p)
+querent::querent(params p)
     : mdns_base(p.recv_buf_size)
     , m_send_buf_size(p.send_buf_size)
     , m_send_buf(std::make_unique<char[]>(m_send_buf_size))
@@ -12,7 +12,7 @@ querier::querier(params p)
 {
 }
 
-querier::querier(std::shared_ptr<log_sink> sink, params p)
+querent::querent(std::shared_ptr<log_sink> sink, params p)
     : mdns_base(std::move(sink), p.recv_buf_size)
     , m_send_buf_size(p.send_buf_size)
     , m_send_buf(std::make_unique<char[]>(m_send_buf_size))
@@ -21,7 +21,7 @@ querier::querier(std::shared_ptr<log_sink> sink, params p)
 
 }
 
-querier::querier(std::function<void(std::shared_ptr<record_t>)> on_response, params p)
+querent::querent(std::function<void(std::shared_ptr<record_t>)> on_response, params p)
     : mdns_base(std::make_shared<log_sink>(), p.recv_buf_size)
     , m_send_buf_size(p.send_buf_size)
     , m_send_buf(std::make_unique<char[]>(m_send_buf_size))
@@ -30,7 +30,7 @@ querier::querier(std::function<void(std::shared_ptr<record_t>)> on_response, par
 {
 }
 
-querier::querier(std::function<void(std::shared_ptr<record_t>)> on_response, std::shared_ptr<log_sink> sink, params p)
+querent::querent(std::function<void(std::shared_ptr<record_t>)> on_response, std::shared_ptr<log_sink> sink, params p)
     : mdns_base(std::move(sink), p.recv_buf_size)
     , m_send_buf_size(p.send_buf_size)
     , m_send_buf(std::make_unique<char[]>(m_send_buf_size))
@@ -39,7 +39,7 @@ querier::querier(std::function<void(std::shared_ptr<record_t>)> on_response, std
 {
 }
 
-void querier::inquire(const query_t &request)
+void querent::query(const query_t &request)
 {
     mdns_query_t query;
     query.type = request.type;
@@ -48,13 +48,13 @@ void querier::inquire(const query_t &request)
     send_query(&query, 1u);
 }
 
-void querier::inquire(const query_t &query, std::vector<record_filter> filters)
+void querent::query(const query_t &inquiry, std::vector<record_filter> filters)
 {
     m_filters = std::move(filters);
-    inquire(query);
+    query(inquiry);
 }
 
-void querier::inquire(const std::vector<query_t> &request)
+void querent::query(const std::vector<query_t> &request)
 {
     std::vector<mdns_query_t> queries;
     for(const auto &req : request)
@@ -68,13 +68,13 @@ void querier::inquire(const std::vector<query_t> &request)
     send_query(&queries[0], queries.size());
 }
 
-void querier::inquire(const std::vector<query_t> &query, std::vector<record_filter> filters)
+void querent::query(const std::vector<query_t> &inquiry, std::vector<record_filter> filters)
 {
     m_filters = std::move(filters);
-    inquire(query);
+    query(inquiry);
 }
 
-void querier::send_query(mdns_query_t *query, uint16_t count)
+void querent::send_query(mdns_query_t *inquiry, uint16_t count)
 {
     int query_id[32];
     open_client_sockets();
@@ -83,7 +83,7 @@ void querier::send_query(mdns_query_t *query, uint16_t count)
         [&](index_t soc_idx, socket_t socket)
         {
             query_id[soc_idx] =
-                mdns_multiquery_send(socket, query, count, m_send_buf.get(), m_send_buf_size, 0);
+                mdns_multiquery_send(socket, inquiry, count, m_send_buf.get(), m_send_buf_size, 0);
             if(query_id[soc_idx] < 0)
                 error() << "Failed to send mDNS query: " << strerror(errno);
         }
@@ -101,13 +101,13 @@ void querier::send_query(mdns_query_t *query, uint16_t count)
     close_sockets();
 }
 
-void querier::send_query(mdns_query_t *query, uint16_t count, std::vector<record_filter> filters)
+void querent::send_query(mdns_query_t *inquiry, uint16_t count, std::vector<record_filter> filters)
 {
     m_filters = std::move(filters);
-    send_query(query, count);
+    send_query(inquiry, count);
 }
 
-bool querier::filter_ignore_record(const std::shared_ptr<record_t> &record)
+bool querent::filter_ignore_record(const std::shared_ptr<record_t> &record)
 {
     if(record == nullptr)
         return true;
@@ -117,7 +117,7 @@ bool querier::filter_ignore_record(const std::shared_ptr<record_t> &record)
     return false;
 }
 
-void querier::callback(socket_t socket, record_buffer &buffer)
+void querent::callback(socket_t socket, record_buffer &buffer)
 {
     record_parser parser(buffer);
     if(parser.record_type() == MDNS_RECORDTYPE_TXT)

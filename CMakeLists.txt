@@ -30,25 +30,24 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/querent.h
     ${INCLUDE_DIRECTORY}/mdnspp/records.h
     ${INCLUDE_DIRECTORY}/mdnspp/observer.h
-    ${INCLUDE_DIRECTORY}/mdnspp/mdns_util.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_base.h
     ${INCLUDE_DIRECTORY}/mdnspp/record_buffer.h
     ${INCLUDE_DIRECTORY}/mdnspp/record_parser.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_server.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_discovery.h
+    ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
+    ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
+    ${INCLUDE_DIRECTORY}/mdnspp/socket_policy.h
+    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_socket_policy.h
 )
 
 set(CORE_SOURCES
-    ${SOURCE_DIRECTORY}/mdnspp/querent.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/observer.cpp
     ${SOURCE_DIRECTORY}/mdnspp/mdns_util.cpp
     ${SOURCE_DIRECTORY}/mdnspp/mdns_base.cpp
     ${SOURCE_DIRECTORY}/mdnspp/record_buffer.cpp
     ${SOURCE_DIRECTORY}/mdnspp/record_parser.cpp
     ${SOURCE_DIRECTORY}/mdnspp/record_builder.h
     ${SOURCE_DIRECTORY}/mdnspp/record_builder.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/service_server.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/service_discovery.cpp
 )
 
 add_library(mdnspp STATIC
@@ -64,6 +63,18 @@ target_include_directories(mdnspp
 )
 
 target_link_libraries(mdnspp PUBLIC mdns)
+
+install(TARGETS mdnspp
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+
+install(FILES ${PUBLIC_HEADERS}
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp
+)
+
+install(FILES ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_socket_policy.h
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/testing
+)
 
 if(${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(example)

@@ -56,7 +56,8 @@ cmake-build-*
 *.pdb
 *.exp
 
-build/
+build*/
+build_*/
 .claude/
 .gemini/
 .planning/

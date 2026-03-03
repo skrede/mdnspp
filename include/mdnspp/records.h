@@ -1,173 +1,125 @@
 #ifndef MDNSPP_RECORDS_H
 #define MDNSPP_RECORDS_H
 
+#include <variant>
 #include <string>
-#include <memory>
+#include <cstdint>
 #include <optional>
-#include <iostream>
-#include <functional>
-
-#include <mdns.h>
+#include <ostream>
 
 namespace mdnspp {
 
 struct service_txt
 {
-    std::string key;
+    std::string              key;
     std::optional<std::string> value;
 };
 
-struct record_t
+struct record_ptr
 {
-    record_t(mdns_record_type rtype, mdns_entry_type etype)
-        : etype(etype)
-        , rtype(rtype)
-    {
-    }
-
-    virtual ~record_t() = default;
-    uint32_t ttl = 0u;
-    uint32_t length = 0u;
-    uint16_t rclass = 0u;
-    mdns_entry_type etype;
-    mdns_record_type rtype;
     std::string name;
+    uint32_t    ttl{0};
+    uint16_t    rclass{0};
+    uint32_t    length{0};
     std::string sender_address;
-};
-
-typedef std::function<bool(const std::shared_ptr<mdnspp::record_t> &)> record_filter;
-
-struct record_ptr_t : public record_t
-{
-    explicit record_ptr_t(mdns_entry_type etype)
-        : record_t(MDNS_RECORDTYPE_PTR, etype)
-    {
-    }
-
     std::string ptr_name;
 };
 
-struct record_srv_t : public record_t
+struct record_srv
 {
-    explicit record_srv_t(mdns_entry_type etype)
-        : record_t(MDNS_RECORDTYPE_SRV, etype)
-    {
-    }
-
-    uint16_t port;
-    uint16_t weight;
-    uint16_t priority;
+    std::string name;
+    uint32_t    ttl{0};
+    uint16_t    rclass{0};
+    uint32_t    length{0};
+    std::string sender_address;
+    uint16_t    port{0};
+    uint16_t    weight{0};
+    uint16_t    priority{0};
     std::string srv_name;
 };
 
-struct record_a_t : public record_t
+struct record_a
 {
-    explicit record_a_t(mdns_entry_type etype)
-        : record_t(MDNS_RECORDTYPE_A, etype)
-    {
-    }
-
-    sockaddr_in addr;
-    std::string address_string;
+    std::string name;
+    uint32_t    ttl{0};
+    uint16_t    rclass{0};
+    uint32_t    length{0};
+    std::string sender_address;
+    std::string address_string;  // "192.168.1.1" — no sockaddr_in
 };
 
-struct record_aaaa_t : public record_t
+struct record_aaaa
 {
-    explicit record_aaaa_t(mdns_entry_type etype)
-        : record_t(MDNS_RECORDTYPE_AAAA, etype)
-    {
-    }
-
-    sockaddr_in6 addr;
-    std::string address_string;
+    std::string name;
+    uint32_t    ttl{0};
+    uint16_t    rclass{0};
+    uint32_t    length{0};
+    std::string sender_address;
+    std::string address_string;  // "fe80::1" — no sockaddr_in6
 };
 
-struct record_txt_t : public record_t
+struct record_txt
 {
-    explicit record_txt_t(mdns_entry_type etype)
-        : record_t(MDNS_RECORDTYPE_TXT, etype)
-    {
-    }
-
-    std::string key;
+    std::string              name;
+    uint32_t                 ttl{0};
+    uint16_t                 rclass{0};
+    uint32_t                 length{0};
+    std::string              sender_address;
+    std::string              key;
     std::optional<std::string> value;
 };
 
-inline std::string entry_type_name(mdns_entry_type type)
-{
-    switch(type)
-    {
-        case MDNS_ENTRYTYPE_QUESTION:
-            return "QUESTION";
-        case MDNS_ENTRYTYPE_ANSWER:
-            return "ANSWER";
-        case MDNS_ENTRYTYPE_AUTHORITY:
-            return "AUTHORITY";
-        default:
-            return "ADDITIONAL";
-    }
-}
+using mdns_record_variant = std::variant<
+    record_ptr,
+    record_srv,
+    record_a,
+    record_aaaa,
+    record_txt
+>;
 
-inline std::string record_type_name(mdns_record_type type)
+inline std::ostream& operator<<(std::ostream& str, const record_ptr& r)
 {
-    switch(type)
-    {
-        case MDNS_RECORDTYPE_PTR:
-            return "PTR";
-        case MDNS_RECORDTYPE_A:
-            return "A";
-        case MDNS_RECORDTYPE_AAAA:
-            return "AAAA";
-        case MDNS_RECORDTYPE_TXT:
-            return "TXT";
-        case MDNS_RECORDTYPE_SRV:
-            return "SRV";
-        case MDNS_RECORDTYPE_ANY:
-            return "ANY";
-        default:
-            return "IGNORE";
-    }
-}
-
-inline std::ostream &operator<<(std::ostream &str, const record_ptr_t &record)
-{
-    str << record.sender_address << ": " << entry_type_name(record.etype) << " PTR " << record.name << record.ptr_name << " rclass 0x" << std::hex << record.rclass << std::dec << " ttl " << record.ttl << " length " << record.length;
+    str << r.sender_address << ": PTR " << r.name << " -> " << r.ptr_name
+        << " rclass 0x" << std::hex << r.rclass << std::dec
+        << " ttl " << r.ttl << " length " << r.length;
     return str;
 }
 
-inline std::ostream &operator<<(std::ostream &str, const record_srv_t &record)
+inline std::ostream& operator<<(std::ostream& str, const record_srv& r)
 {
-    str << record.sender_address << ": " << entry_type_name(record.etype) << " SRV " << record.name << record.srv_name << " rclass 0x" << std::hex << record.rclass << std::dec << " ttl " << record.ttl << " length " << record.length;
+    str << r.sender_address << ": SRV " << r.name << " -> " << r.srv_name
+        << " port " << r.port << " weight " << r.weight << " priority " << r.priority
+        << " rclass 0x" << std::hex << r.rclass << std::dec
+        << " ttl " << r.ttl << " length " << r.length;
     return str;
 }
 
-inline std::ostream &operator<<(std::ostream &str, const record_a_t &record)
+inline std::ostream& operator<<(std::ostream& str, const record_a& r)
 {
-    str << record.sender_address << ": " << entry_type_name(record.etype) << " A " << record.name << record.address_string << " rclass 0x" << std::hex << record.rclass << std::dec << " ttl " << record.ttl << " length " << record.length;
+    str << r.sender_address << ": A " << r.name << " -> " << r.address_string
+        << " rclass 0x" << std::hex << r.rclass << std::dec
+        << " ttl " << r.ttl << " length " << r.length;
     return str;
 }
 
-inline std::ostream &operator<<(std::ostream &str, const record_aaaa_t &record)
+inline std::ostream& operator<<(std::ostream& str, const record_aaaa& r)
 {
-    str << record.sender_address << ": " << entry_type_name(record.etype) << " AAAA " << record.name << record.address_string << " rclass 0x" << std::hex << record.rclass << std::dec << " ttl " << record.ttl << " length " << record.length;
+    str << r.sender_address << ": AAAA " << r.name << " -> " << r.address_string
+        << " rclass 0x" << std::hex << r.rclass << std::dec
+        << " ttl " << r.ttl << " length " << r.length;
     return str;
 }
 
-inline std::ostream &operator<<(std::ostream &str, const record_txt_t &record)
+inline std::ostream& operator<<(std::ostream& str, const record_txt& r)
 {
-    str << record.sender_address << ": " << entry_type_name(record.etype) << " TXT " << record.key;
-    if(record.value.has_value())
-        str << "=" << *record.value;
-    str << " rclass 0x" << std::hex << record.rclass << std::dec << " ttl " << record.ttl << " length " << record.length;
+    str << r.sender_address << ": TXT " << r.name << " " << r.key;
+    if(r.value.has_value())
+        str << "=" << *r.value;
+    str << " rclass 0x" << std::hex << r.rclass << std::dec
+        << " ttl " << r.ttl << " length " << r.length;
     return str;
 }
 
-inline std::ostream &operator<<(std::ostream &str, const record_t &record)
-{
-    str << record.sender_address << ": " << entry_type_name(record.etype) << " " << record_type_name(record.rtype) << " " << record.name << " rclass 0x" << std::hex << record.rclass << std::dec << " ttl " << record.ttl << " length " << record.length;
-    return str;
-}
+} // namespace mdnspp
 
-}
-
-#endif
+#endif // MDNSPP_RECORDS_H

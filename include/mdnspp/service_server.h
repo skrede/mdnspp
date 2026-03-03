@@ -44,10 +44,10 @@ public:
 
     void update_txt_records(const std::vector<service_txt> &txt_records);
 
-    const std::string &service_instance_name() const;
+    std::string service_instance_name() const;
 
 private:
-    std::mutex m_mutex;
+    mutable std::mutex m_mutex;
     uint32_t m_send_buf_size;
     std::string m_hostname;
     std::string m_service_name;
@@ -58,7 +58,7 @@ private:
     std::shared_ptr<record_builder> m_builder;
 
     void start(const std::vector<service_txt> &txt_records);
-    void announce_goodbye();
+    void announce_goodbye_locked();
 
     void listen();
 

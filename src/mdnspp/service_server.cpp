@@ -89,10 +89,14 @@ void service_server::announce()
 
 void service_server::stop()
 {
-    std::lock_guard<std::mutex> l(m_mutex);
-    if(!m_running)
-        return;
-    announce_goodbye();
+    {
+        std::lock_guard<std::mutex> l(m_mutex);
+        if(!m_running)
+            return;
+        m_running = false;
+        announce_goodbye_locked();
+    }
+    mdns_base::stop();
     close_sockets();
 }
 
@@ -102,8 +106,9 @@ void service_server::update_txt_records(const std::vector<service_txt> &txt_reco
     m_builder->update_txt_records(txt_records);
 }
 
-const std::string &service_server::service_instance_name() const
+std::string service_server::service_instance_name() const
 {
+    std::lock_guard<std::mutex> l(m_mutex);
     return m_builder->service_instance();
 }
 
@@ -113,7 +118,7 @@ void service_server::start(const std::vector<service_txt> &txt_records)
     open_service_sockets();
 
     auto ipv4 = has_address_ipv4() ? address_ipv4() : std::nullopt;
-    auto ipv6 = has_address_ipv4() ? address_ipv6() : std::nullopt;
+    auto ipv6 = has_address_ipv6() ? address_ipv6() : std::nullopt;
 
     m_builder = std::make_shared<record_builder>(m_hostname, m_service_name, txt_records, ipv4, ipv6);
 
@@ -122,9 +127,8 @@ void service_server::start(const std::vector<service_txt> &txt_records)
     m_running = true;
 }
 
-void service_server::announce_goodbye()
+void service_server::announce_goodbye_locked()
 {
-    std::lock_guard<std::mutex> l(m_mutex);
     auto record_ptr = m_builder->mdns_record_ptr();
     auto additional = m_builder->additionals_for(MDNS_RECORDTYPE_PTR);
 

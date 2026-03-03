@@ -111,9 +111,11 @@ void mdns_base::open_service_sockets()
 
 void mdns_base::close_sockets()
 {
-    for(int socket = 0; socket < m_socket_count; ++socket)
+    int count = m_socket_count;
+    m_socket_count = 0;
+    for(int socket = 0; socket < count; ++socket)
         mdns_socket_close(m_sockets[socket]);
-    debug() << "Closed " << m_socket_count << " mDNS service socket" << (m_socket_count == 1 ? "" : "s");
+    debug() << "Closed " << count << " mDNS service socket" << (count == 1 ? "" : "s");
 }
 
 void mdns_base::send(const std::function<void(index_t, socket_t)> &send_cb) const
@@ -128,7 +130,7 @@ void mdns_base::listen_until_silence(const std::function<size_t(index_t, socket_
 
     size_t records = 0u;
     int ready_descriptors;
-    m_stop = false;
+    m_stop.store(false, std::memory_order_release);
 
     auto sec = std::chrono::duration_cast<std::chrono::seconds>(timeout);
     auto usec = std::chrono::duration_cast<std::chrono::microseconds>(timeout) - std::chrono::duration_cast<std::chrono::microseconds>(sec);
@@ -150,8 +152,13 @@ void mdns_base::listen_until_silence(const std::function<size_t(index_t, socket_
         int nfds = 0;
         fd_set readfs;
         FD_ZERO(&readfs);
-        for(index_t soc_idx = 0; soc_idx < m_socket_count; ++soc_idx)
+        int socket_count = m_socket_count;
+        if(socket_count <= 0)
+            break;
+        for(index_t soc_idx = 0; soc_idx < socket_count; ++soc_idx)
         {
+            if(m_sockets[soc_idx] >= FD_SETSIZE)
+                continue;
             if(m_sockets[soc_idx] >= nfds)
                 nfds = m_sockets[soc_idx] + 1;
             FD_SET(m_sockets[soc_idx], &readfs);
@@ -160,8 +167,8 @@ void mdns_base::listen_until_silence(const std::function<size_t(index_t, socket_
         records = 0u;
         ready_descriptors = select(nfds, &readfs, nullptr, nullptr, &time_out);
         if(ready_descriptors > 0)
-            for(index_t soc_idx = 0; soc_idx < m_socket_count; ++soc_idx)
-                if(FD_ISSET(m_sockets[soc_idx], &readfs))
+            for(index_t soc_idx = 0; soc_idx < socket_count; ++soc_idx)
+                if(m_sockets[soc_idx] < FD_SETSIZE && FD_ISSET(m_sockets[soc_idx], &readfs))
                     records += listen_func(soc_idx, m_sockets[soc_idx], buffer.get(), m_recv_buf_size, mdns_base::mdns_callback, this);
     } while(ready_descriptors > 0 && !m_stop);
 }

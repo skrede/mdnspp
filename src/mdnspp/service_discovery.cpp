@@ -58,8 +58,8 @@ bool service_discovery::filter_ignore_record(const std::shared_ptr<record_t> &re
         return true;
     for(const auto &filter : m_filters)
         if(filter(record))
-            return false;
-    return true;
+            return true;
+    return false;
 }
 
 void service_discovery::callback(socket_t socket, record_buffer &buffer)
@@ -68,12 +68,14 @@ void service_discovery::callback(socket_t socket, record_buffer &buffer)
     if(parser.record_type() == MDNS_RECORDTYPE_TXT)
     {
         for(const auto &txt : parser.parse_txt())
+        {
             if(filter_ignore_record(txt))
                 continue;
-            else if(m_on_discover)
+            if(m_on_discover)
                 m_on_discover(txt);
             else
                 info() << *txt;
+        }
     }
     else
     {

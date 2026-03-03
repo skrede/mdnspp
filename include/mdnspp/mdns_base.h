@@ -63,13 +63,18 @@ protected:
 
         auto sec = std::chrono::duration_cast<std::chrono::seconds>(timeout);
         auto usec = std::chrono::duration_cast<std::chrono::microseconds>(timeout) - std::chrono::duration_cast<std::chrono::microseconds>(sec);
-        while(listen())
+        while(listen() && !m_stop.load(std::memory_order_acquire))
         {
             int nfds = 0;
             fd_set readfs;
             FD_ZERO(&readfs);
-            for(index_t soc_idx = 0; soc_idx < m_socket_count; ++soc_idx)
+            int socket_count = m_socket_count;
+            if(socket_count <= 0)
+                break;
+            for(index_t soc_idx = 0; soc_idx < socket_count; ++soc_idx)
             {
+                if(m_sockets[soc_idx] >= FD_SETSIZE)
+                    continue;
                 if(m_sockets[soc_idx] >= nfds)
                     nfds = m_sockets[soc_idx] + 1;
                 FD_SET(m_sockets[soc_idx], &readfs);
@@ -89,11 +94,10 @@ protected:
             };
 
             if(select(nfds, &readfs, nullptr, nullptr, &time_out) >= 0)
-                for(index_t soc_idx = 0; soc_idx < m_socket_count; ++soc_idx)
+                for(index_t soc_idx = 0; soc_idx < socket_count; ++soc_idx)
                 {
-                    if(FD_ISSET(m_sockets[soc_idx], &readfs))
+                    if(m_sockets[soc_idx] < FD_SETSIZE && FD_ISSET(m_sockets[soc_idx], &readfs))
                         mdns_recv_func(m_sockets[soc_idx], buffer.get(), m_recv_buf_size, mdns_base::mdns_callback, this);
-                    FD_SET(m_sockets[soc_idx], &readfs);
                 }
             else
                 break;

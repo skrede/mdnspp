@@ -77,6 +77,29 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/testing
 )
 
+# Optional ASIO policy — fetched only when MDNSPP_ENABLE_ASIO_POLICY=ON
+option(MDNSPP_ENABLE_ASIO_POLICY "Build AsioSocketPolicy and AsioTimerPolicy (requires network at configure time)" OFF)
+
+if(MDNSPP_ENABLE_ASIO_POLICY)
+    FetchContent_Declare(
+        asio
+        GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
+        GIT_TAG        asio-1-36-0
+    )
+    FetchContent_MakeAvailable(asio)
+
+    add_library(mdnspp_asio INTERFACE)
+    add_library(mdnspp::asio ALIAS mdnspp_asio)
+    target_include_directories(mdnspp_asio INTERFACE
+        ${asio_SOURCE_DIR}/asio/include
+        ${INCLUDE_DIRECTORY}
+    )
+    target_compile_definitions(mdnspp_asio INTERFACE
+        ASIO_STANDALONE
+    )
+    target_link_libraries(mdnspp_asio INTERFACE mdnspp)
+endif()
+
 if(${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(example)
 endif()

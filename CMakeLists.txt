@@ -1,8 +1,9 @@
-cmake_minimum_required(VERSION 3.20)
+cmake_minimum_required(VERSION 3.25)
 project(mdnspp)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_VERBOSE_MAKEFILE ON)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 set(Boost_NO_WARN_NEW_VERSIONS ON)
 
 option(MDNSPP_BUILD_TESTS OFF)
@@ -72,7 +73,7 @@ if(${MDNSPP_BUILD_TESTS})
     FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG v3.3.2
+        GIT_TAG v3.7.1
     )
     FetchContent_MakeAvailable(Catch2)
     enable_testing()

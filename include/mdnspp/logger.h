@@ -1,5 +1,5 @@
-#ifndef MDNSPP_LOGGER_H
-#define MDNSPP_LOGGER_H
+#ifndef HPP_GUARD_MDNSPP_LOGGER_H
+#define HPP_GUARD_MDNSPP_LOGGER_H
 
 #include <string>
 #include <cstdint>
@@ -23,16 +23,16 @@ inline std::string log_level_string(log_level level)
 {
     switch(level)
     {
-        case log_level::trace:
-            return "trace";
-        case log_level::debug:
-            return "debug";
-        case log_level::warn:
-            return "warn";
-        case log_level::err:
-            return "error";
-        default:
-            return "info";
+    case log_level::trace:
+        return "trace";
+    case log_level::debug:
+        return "debug";
+    case log_level::warn:
+        return "warn";
+    case log_level::err:
+        return "error";
+    default:
+        return "info";
     }
 }
 
@@ -46,7 +46,7 @@ public:
     };
 };
 
-template<void (*callable_f)(const std::string &)>
+template <void (*callable_f)(const std::string &)>
 class log_sink_f : public log_sink
 {
 public:
@@ -57,7 +57,7 @@ public:
 
 };
 
-template<std::ostream&stream>
+template <std::ostream&stream>
 class log_sink_s : public log_sink
 {
 public:

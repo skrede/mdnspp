@@ -43,20 +43,20 @@ std::string record_parser::record_type_name() const
 {
     switch(m_buffer.rtype)
     {
-        case MDNS_RECORDTYPE_A:
-            return "A";
-        case MDNS_RECORDTYPE_PTR:
-            return "PTR";
-        case MDNS_RECORDTYPE_TXT:
-            return "TXT";
-        case MDNS_RECORDTYPE_AAAA:
-            return "AAAA";
-        case MDNS_RECORDTYPE_SRV:
-            return "SRV";
-        case MDNS_RECORDTYPE_ANY:
-            return "ANY";
-        default:
-            return "UNKNOWN";
+    case MDNS_RECORDTYPE_A:
+        return "A";
+    case MDNS_RECORDTYPE_PTR:
+        return "PTR";
+    case MDNS_RECORDTYPE_TXT:
+        return "TXT";
+    case MDNS_RECORDTYPE_AAAA:
+        return "AAAA";
+    case MDNS_RECORDTYPE_SRV:
+        return "SRV";
+    case MDNS_RECORDTYPE_ANY:
+        return "ANY";
+    default:
+        return "UNKNOWN";
     }
 }
 
@@ -79,14 +79,14 @@ std::string record_parser::entry_type_name() const
 {
     switch(m_buffer.entry)
     {
-        case MDNS_ENTRYTYPE_QUESTION:
-            return "QUESTION";
-        case MDNS_ENTRYTYPE_ANSWER:
-            return "ANSWER";
-        case MDNS_ENTRYTYPE_AUTHORITY:
-            return "AUTHORITY";
-        default:
-            return "ADDITIONAL";
+    case MDNS_ENTRYTYPE_QUESTION:
+        return "QUESTION";
+    case MDNS_ENTRYTYPE_ANSWER:
+        return "ANSWER";
+    case MDNS_ENTRYTYPE_AUTHORITY:
+        return "AUTHORITY";
+    default:
+        return "ADDITIONAL";
     }
 }
 

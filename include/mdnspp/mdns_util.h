@@ -1,5 +1,5 @@
-#ifndef MDNSPP_MDNS_UTIL_H
-#define MDNSPP_MDNS_UTIL_H
+#ifndef HPP_GUARD_MDNSPP_MDNS_UTIL_H
+#define HPP_GUARD_MDNSPP_MDNS_UTIL_H
 
 /*
  * Adapted from https://github.com/mjansson/mdns/blob/main/mdns.c

@@ -19,7 +19,7 @@ namespace mdnspp {
 
 struct service_txt
 {
-    std::string              key;
+    std::string key;
     std::optional<std::string> value;
 };
 
@@ -99,6 +99,6 @@ struct record_txt_t : public record_t
     std::optional<std::string> value;
 };
 
-} // namespace mdnspp
+}
 
-#endif // MDNSPP_LEGACY_RECORDS_H
+#endif

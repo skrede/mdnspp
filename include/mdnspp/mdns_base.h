@@ -1,5 +1,5 @@
-#ifndef MDNSPP_MDNS_BASE_H
-#define MDNSPP_MDNS_BASE_H
+#ifndef HPP_GUARD_MDNSPP_MDNS_BASE_H
+#define HPP_GUARD_MDNSPP_MDNS_BASE_H
 
 #include "mdnspp/log.h"
 #include "mdnspp/logger.h"
@@ -47,7 +47,7 @@ protected:
 
     void listen_until_silence(const std::function<size_t(index_t soc_idx, socket_t socket, void *buffer, size_t capacity, mdns_record_callback_fn callback, void *user_data)> &listen_func, std::chrono::milliseconds timeout);
 
-    template<size_t (*mdns_recv_func)(socket_t socket, void *buffer, size_t capacity, mdns_record_callback_fn callback, void *user_data)>
+    template <size_t (*mdns_recv_func)(socket_t socket, void *buffer, size_t capacity, mdns_record_callback_fn callback, void *user_data)>
     void listen_until_silence(std::chrono::milliseconds timeout)
     {
         listen_until_silence(
@@ -58,7 +58,7 @@ protected:
         );
     }
 
-    template<size_t (*mdns_recv_func)(socket_t socket, void *buffer, size_t capacity, mdns_record_callback_fn callback, void *user_data)>
+    template <size_t (*mdns_recv_func)(socket_t socket, void *buffer, size_t capacity, mdns_record_callback_fn callback, void *user_data)>
     void listen_while(const std::function<bool()> &listen, std::chrono::milliseconds timeout)
     {
         auto buffer = std::make_unique<char[]>(m_recv_buf_size);
@@ -88,7 +88,7 @@ protected:
             timeval time_out{
 #ifdef WIN32
                 static_cast<long>(sec.count()),
-            static_cast<long>(usec.count())
+                static_cast<long>(usec.count())
 #elif defined __APPLE__
                 sec.count(),
                 static_cast<int>(usec.count())

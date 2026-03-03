@@ -119,7 +119,7 @@ bool record_builder::service_name_match(const std::string &name) const
     return name == m_service_instance;
 }
 
-const std::string& record_builder::service_instance() const
+const std::string &record_builder::service_instance() const
 {
     return m_service_instance;
 }

@@ -1,5 +1,5 @@
-#ifndef MDNSPP_LOG_H
-#define MDNSPP_LOG_H
+#ifndef HPP_GUARD_MDNSPP_LOG_H
+#define HPP_GUARD_MDNSPP_LOG_H
 
 #include "mdnspp/logger.h"
 
@@ -8,11 +8,11 @@
 
 namespace mdnspp {
 
-template<log_level L>
+template <log_level L>
 class logger
 {
 public:
-    logger(std::shared_ptr<log_sink> sink)
+    explicit logger(std::shared_ptr<log_sink> sink)
         : m_sink(std::move(sink))
     {
     }
@@ -29,7 +29,7 @@ public:
             m_sink->log(L, m_stream.str());
     }
 
-    template<typename T>
+    template <typename T>
     std::ostream &operator<<(T v)
     {
         if(m_sink)

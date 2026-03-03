@@ -1,5 +1,7 @@
 #include <mdnspp/querent.h>
 
+#include <mdnspp/logger.h>
+
 class example_sink : public mdnspp::log_sink
 {
 public:

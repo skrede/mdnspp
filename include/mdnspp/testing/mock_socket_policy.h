@@ -1,5 +1,5 @@
-#ifndef MDNSPP_TESTING_MOCK_SOCKET_POLICY_H
-#define MDNSPP_TESTING_MOCK_SOCKET_POLICY_H
+#ifndef HPP_GUARD_MDNSPP_TESTING_MOCK_SOCKET_POLICY_H
+#define HPP_GUARD_MDNSPP_TESTING_MOCK_SOCKET_POLICY_H
 
 #include "mdnspp/endpoint.h"
 #include <span>
@@ -12,25 +12,23 @@ namespace mdnspp::testing {
 
 struct sent_packet
 {
-    endpoint               dest;
+    endpoint dest;
     std::vector<std::byte> data;
 };
 
 class MockSocketPolicy
 {
 public:
-    // Test setup
     void enqueue(std::vector<std::byte> packet)
     {
         m_receive_queue.push(std::move(packet));
     }
 
-    // SocketPolicy interface
     void async_receive(std::function<void(std::span<std::byte>, endpoint)> handler)
     {
-        if (!m_receive_queue.empty())
+        if(!m_receive_queue.empty())
         {
-            auto& front = m_receive_queue.front();
+            auto &front = m_receive_queue.front();
             handler(std::span<std::byte>(front), endpoint{});
             m_receive_queue.pop();
         }
@@ -44,18 +42,30 @@ public:
         });
     }
 
-    void close() noexcept {}
+    void close() noexcept
+    {
+    }
 
-    // Test assertions
-    const std::vector<sent_packet>& sent_packets() const { return m_sent_packets; }
-    bool queue_empty() const { return m_receive_queue.empty(); }
-    void clear_sent() { m_sent_packets.clear(); }
+    const std::vector<sent_packet> &sent_packets() const
+    {
+        return m_sent_packets;
+    }
+
+    bool queue_empty() const
+    {
+        return m_receive_queue.empty();
+    }
+
+    void clear_sent()
+    {
+        m_sent_packets.clear();
+    }
 
 private:
     std::queue<std::vector<std::byte>> m_receive_queue;
-    std::vector<sent_packet>           m_sent_packets;
+    std::vector<sent_packet> m_sent_packets;
 };
 
-} // namespace mdnspp::testing
+}
 
-#endif // MDNSPP_TESTING_MOCK_SOCKET_POLICY_H
+#endif

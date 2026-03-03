@@ -1,5 +1,5 @@
-#ifndef MDNSPP_MDNS_ERROR_H
-#define MDNSPP_MDNS_ERROR_H
+#ifndef HPP_GUARD_MDNSPP_MDNS_ERROR_H
+#define HPP_GUARD_MDNSPP_MDNS_ERROR_H
 
 #include <cstdint>
 
@@ -16,6 +16,6 @@ enum class mdns_error : uint32_t
     not_implemented = 7
 };
 
-} // namespace mdnspp
+}
 
-#endif // MDNSPP_MDNS_ERROR_H
+#endif

@@ -36,6 +36,7 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
     ${INCLUDE_DIRECTORY}/mdnspp/socket_policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/timer_policy.h
+    ${INCLUDE_DIRECTORY}/mdnspp/parse.h
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_socket_policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_timer_policy.h
 )
@@ -47,6 +48,7 @@ set(CORE_SOURCES
     ${SOURCE_DIRECTORY}/mdnspp/record_parser.cpp
     ${SOURCE_DIRECTORY}/mdnspp/record_builder.h
     ${SOURCE_DIRECTORY}/mdnspp/record_builder.cpp
+    ${SOURCE_DIRECTORY}/mdnspp/parse.cpp
 )
 
 add_library(mdnspp STATIC

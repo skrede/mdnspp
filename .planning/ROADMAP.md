@@ -37,7 +37,7 @@ Plans:
 - [x] 01-02-PLAN.md — Core value type headers: endpoint.h, mdns_error.h, new records.h
 - [x] 01-03-PLAN.md — SocketPolicy concept, MockSocketPolicy, and four service template stubs
 - [x] 01-04-PLAN.md — CMake wiring, concept conformance test, end-to-end build validation
-- [ ] 01-05-PLAN.md — Gap closure: service_discovery.h header guard, legacy headers from PUBLIC_HEADERS, ROADMAP/REQUIREMENTS scope alignment
+- [x] 01-05-PLAN.md — Gap closure: service_discovery.h header guard, legacy headers from PUBLIC_HEADERS, ROADMAP/REQUIREMENTS scope alignment
 
 ### Phase 2: recv_loop and AsioSocketPolicy
 **Goal**: `recv_loop<S>` is a standalone tested component that drives the async receive chain; `AsioSocketPolicy` wraps ASIO multicast UDP; both work with MockSocketPolicy in tests without a real network
@@ -102,7 +102,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundational Types and SocketPolicy | 4/5 | Gap closure | 2026-03-03 |
+| 1. Foundational Types and SocketPolicy | 5/5 | Complete   | 2026-03-03 |
 | 2. recv_loop and AsioSocketPolicy | 0/TBD | Not started | - |
 | 3. record_parser Free Functions | 0/TBD | Not started | - |
 | 4. Refactor service_discovery and querent | 0/TBD | Not started | - |

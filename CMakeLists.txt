@@ -35,7 +35,9 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
     ${INCLUDE_DIRECTORY}/mdnspp/socket_policy.h
+    ${INCLUDE_DIRECTORY}/mdnspp/timer_policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_socket_policy.h
+    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_timer_policy.h
 )
 
 set(CORE_SOURCES
@@ -69,7 +71,9 @@ install(FILES ${PUBLIC_HEADERS}
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp
 )
 
-install(FILES ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_socket_policy.h
+install(FILES
+    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_socket_policy.h
+    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_timer_policy.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/testing
 )
 

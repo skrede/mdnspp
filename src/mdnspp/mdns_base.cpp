@@ -15,7 +15,8 @@ mdns_base::mdns_base(size_t recv_buf_size)
 #ifdef _WIN32
     WORD versionWanted = MAKEWORD(1, 1);
     WSADATA wsaData;
-    if (WSAStartup(versionWanted, &wsaData)) {
+    if(WSAStartup(versionWanted, &wsaData))
+    {
         error() << "Failed to initialize WinSock";
     }
 #endif
@@ -33,7 +34,8 @@ mdns_base::mdns_base(std::shared_ptr<log_sink> sink, size_t buffer_capacity)
 #ifdef _WIN32
     WORD versionWanted = MAKEWORD(1, 1);
     WSADATA wsaData;
-    if (WSAStartup(versionWanted, &wsaData)) {
+    if(WSAStartup(versionWanted, &wsaData))
+    {
         error() << "Failed to initialize WinSock";
     }
 #endif
@@ -193,71 +195,71 @@ int mdns_base::mdns_callback(socket_t socket, const sockaddr *from, size_t addrl
 logger<log_level::trace> mdns_base::trace()
 {
     if(m_loglvl == log_level::trace)
-        return {m_log_sink};
-    return {nullptr};
+        return logger<log_level::trace>(m_log_sink);
+    return logger<log_level::trace>(nullptr);
 }
 
 logger<log_level::debug> mdns_base::debug()
 {
     if(m_loglvl <= log_level::debug)
-        return {m_log_sink};
-    return {nullptr};
+        return logger<log_level::debug>(m_log_sink);
+    return logger<log_level::debug>(nullptr);
 }
 
 logger<log_level::info> mdns_base::info()
 {
     if(m_loglvl <= log_level::info)
-        return {m_log_sink};
-    return {nullptr};
+        return logger<log_level::info>(m_log_sink);
+    return logger<log_level::info>(nullptr);
 }
 
 logger<log_level::warn> mdns_base::warn()
 {
     if(m_loglvl <= log_level::warn)
-        return {m_log_sink};
-    return {nullptr};
+        return logger<log_level::warn>(m_log_sink);
+    return logger<log_level::warn>(nullptr);
 }
 
 logger<log_level::err> mdns_base::error()
 {
     if(m_loglvl <= log_level::err)
-        return {m_log_sink};
-    return {nullptr};
+        return logger<log_level::err>(m_log_sink);
+    return logger<log_level::err>(nullptr);
 }
 
 logger<log_level::trace> mdns_base::trace(const std::string &label)
 {
     if(m_loglvl == log_level::trace)
-        return {label, m_log_sink};
-    return {nullptr};
+        return logger<log_level::trace>(label, m_log_sink);
+    return logger<log_level::trace>(nullptr);
 }
 
 logger<log_level::debug> mdns_base::debug(const std::string &label)
 {
     if(m_loglvl <= log_level::debug)
-        return {label, m_log_sink};
-    return {nullptr};
+        return logger<log_level::debug>(label, m_log_sink);
+    return logger<log_level::debug>(nullptr);
 }
 
 logger<log_level::info> mdns_base::info(const std::string &label)
 {
     if(m_loglvl <= log_level::info)
-        return {label, m_log_sink};
-    return {nullptr};
+        return logger<log_level::info>(label, m_log_sink);
+    return logger<log_level::info>(nullptr);
 }
 
 logger<log_level::warn> mdns_base::warn(const std::string &label)
 {
     if(m_loglvl <= log_level::warn)
-        return {label, m_log_sink};
-    return {nullptr};
+        return logger<log_level::warn>(label, m_log_sink);
+    return logger<log_level::warn>(nullptr);
 }
 
 logger<log_level::err> mdns_base::error(const std::string &label)
 {
     if(m_loglvl <= log_level::err)
-        return {label, m_log_sink};
-    return {nullptr};
+        return logger<log_level::err>(label, m_log_sink);
+    return logger<log_level::err>(nullptr);
 }
 
 int mdns_base::open_client_sockets(int *sockets, std::size_t max_sockets, int port, sockaddr_in &service_address_ipv4, sockaddr_in6 &service_address_ipv6)
@@ -267,24 +269,29 @@ int mdns_base::open_client_sockets(int *sockets, std::size_t max_sockets, int po
     int num_sockets = 0;
 
 #ifdef _WIN32
-    IP_ADAPTER_ADDRESSES* adapter_address = 0;
+    IP_ADAPTER_ADDRESSES *adapter_address = 0;
     ULONG address_size = 8000;
     unsigned int ret;
     unsigned int num_retries = 4;
-    do {
+    do
+    {
         adapter_address = (IP_ADAPTER_ADDRESSES*)malloc(address_size);
         ret = GetAdaptersAddresses(AF_UNSPEC, GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_ANYCAST, 0,
                                    adapter_address, &address_size);
-        if (ret == ERROR_BUFFER_OVERFLOW) {
+        if(ret == ERROR_BUFFER_OVERFLOW)
+        {
             free(adapter_address);
             adapter_address = 0;
             address_size *= 2;
-        } else {
+        }
+        else
+        {
             break;
         }
-    } while (num_retries-- > 0);
+    } while(num_retries-- > 0);
 
-    if (!adapter_address || (ret != NO_ERROR)) {
+    if(!adapter_address || (ret != NO_ERROR))
+    {
         free(adapter_address);
         error() << "Failed to get network adapter addresses to open mDNS sockets.";
         return num_sockets;
@@ -292,71 +299,122 @@ int mdns_base::open_client_sockets(int *sockets, std::size_t max_sockets, int po
 
     int first_ipv4 = 1;
     int first_ipv6 = 1;
-    for (PIP_ADAPTER_ADDRESSES adapter = adapter_address; adapter; adapter = adapter->Next) {
-        if (adapter->TunnelType == TUNNEL_TYPE_TEREDO)
+    for(PIP_ADAPTER_ADDRESSES adapter = adapter_address; adapter; adapter = adapter->Next)
+    {
+        if(adapter->TunnelType == TUNNEL_TYPE_TEREDO)
             continue;
-        if (adapter->OperStatus != IfOperStatusUp)
+        if(adapter->OperStatus != IfOperStatusUp)
             continue;
 
-        for (IP_ADAPTER_UNICAST_ADDRESS* unicast = adapter->FirstUnicastAddress; unicast;
-             unicast = unicast->Next) {
-            if (unicast->Address.lpSockaddr->sa_family == AF_INET) {
+        for(IP_ADAPTER_UNICAST_ADDRESS *unicast = adapter->FirstUnicastAddress; unicast;
+            unicast = unicast->Next)
+        {
+            if(unicast->Address.lpSockaddr->sa_family == AF_INET)
+            {
                 auto saddr = reinterpret_cast<sockaddr_in*>(unicast->Address.lpSockaddr);
-                if ((saddr->sin_addr.S_un.S_un_b.s_b1 != 127) ||
+                if((saddr->sin_addr.S_un.S_un_b.s_b1 != 127) ||
                     (saddr->sin_addr.S_un.S_un_b.s_b2 != 0) ||
                     (saddr->sin_addr.S_un.S_un_b.s_b3 != 0) ||
-                    (saddr->sin_addr.S_un.S_un_b.s_b4 != 1)) {
+                    (saddr->sin_addr.S_un.S_un_b.s_b4 != 1))
+                {
                     int log_addr = 0;
-                    if (first_ipv4) {
+                    if(first_ipv4)
+                    {
                         service_address_ipv4 = *saddr;
                         first_ipv4 = 0;
                         log_addr = 1;
                     }
-                    if (num_sockets < max_sockets) {
+                    if(num_sockets < max_sockets)
+                    {
                         saddr->sin_port = htons((unsigned short)port);
                         int sock = mdns_socket_open_ipv4(saddr);
-                        if (sock >= 0) {
+                        if(sock >= 0)
+                        {
                             sockets[num_sockets++] = sock;
                             log_addr = 1;
-                        } else {
+                        }
+                        else
+                        {
                             log_addr = 0;
                         }
                     }
-                    if (log_addr) {
+                    if(log_addr)
+                    {
                         char buffer[128];
                         mdns_string_t addr = ipv4_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in));
                         info() << std::format("Local IPv4 address: {}", std::string(addr.str, addr.length));
                     }
                 }
-            } else if (unicast->Address.lpSockaddr->sa_family == AF_INET6) {
+            }
+            else if(unicast->Address.lpSockaddr->sa_family == AF_INET6)
+            {
                 auto saddr = reinterpret_cast<sockaddr_in6*>(unicast->Address.lpSockaddr);
                 // Ignore link-local addresses
-                if (saddr->sin6_scope_id)
+                if(saddr->sin6_scope_id)
                     continue;
-                static const unsigned char localhost[] = {0, 0, 0, 0, 0, 0, 0, 0,
-                                                          0, 0, 0, 0, 0, 0, 0, 1};
-                static const unsigned char localhost_mapped[] = {0, 0, 0,    0,    0,    0, 0, 0,
-                                                                 0, 0, 0xff, 0xff, 0x7f, 0, 0, 1};
-                if ((unicast->DadState == NldsPreferred) &&
+                static const unsigned char localhost[] = {
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    1
+                };
+                static const unsigned char localhost_mapped[] = {
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0xff,
+                    0xff,
+                    0x7f,
+                    0,
+                    0,
+                    1
+                };
+                if((unicast->DadState == NldsPreferred) &&
                     memcmp(saddr->sin6_addr.s6_addr, localhost, 16) &&
-                    memcmp(saddr->sin6_addr.s6_addr, localhost_mapped, 16)) {
+                    memcmp(saddr->sin6_addr.s6_addr, localhost_mapped, 16))
+                {
                     int log_addr = 0;
-                    if (first_ipv6) {
+                    if(first_ipv6)
+                    {
                         service_address_ipv6 = *saddr;
                         first_ipv6 = 0;
                         log_addr = 1;
                     }
-                    if (num_sockets < max_sockets) {
+                    if(num_sockets < max_sockets)
+                    {
                         saddr->sin6_port = htons((unsigned short)port);
                         int sock = mdns_socket_open_ipv6(saddr);
-                        if (sock >= 0) {
+                        if(sock >= 0)
+                        {
                             sockets[num_sockets++] = sock;
                             log_addr = 1;
-                        } else {
+                        }
+                        else
+                        {
                             log_addr = 0;
                         }
                     }
-                    if (log_addr) {
+                    if(log_addr)
+                    {
                         char buffer[128];
                         mdns_string_t addr = ipv6_address_to_string(buffer, sizeof(buffer), saddr, sizeof(sockaddr_in6));
                         info() << std::format("Local IPv6 address: {}", std::string(addr.str, addr.length));
@@ -428,12 +486,40 @@ int mdns_base::open_client_sockets(int *sockets, std::size_t max_sockets, int po
             if(saddr->sin6_scope_id)
                 continue;
             static const unsigned char localhost[] = {
-                0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0, 0, 0, 0, 0, 1
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1
             };
             static const unsigned char localhost_mapped[] = {
-                0, 0, 0, 0, 0, 0, 0, 0,
-                0, 0, 0xff, 0xff, 0x7f, 0, 0, 1
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0xff,
+                0xff,
+                0x7f,
+                0,
+                0,
+                1
             };
             if(memcmp(saddr->sin6_addr.s6_addr, localhost, 16) && memcmp(saddr->sin6_addr.s6_addr, localhost_mapped, 16))
             {

@@ -33,6 +33,7 @@ service_discovery::service_discovery(std::function<void(std::shared_ptr<record_t
 
 void service_discovery::discover()
 {
+    reset_stop();
     open_client_sockets();
     send(
         [&](index_t soc_idx, socket_t socket)

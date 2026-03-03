@@ -35,6 +35,7 @@ observer::observer(std::function<void(std::shared_ptr<record_t>)> on_observe, st
 
 void observer::observe()
 {
+    reset_stop();
     m_running = true;
     open_service_sockets();
     listen_while<mdns_socket_listen>(

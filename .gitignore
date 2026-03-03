@@ -55,3 +55,7 @@ cmake-build-*
 *.ilk
 *.pdb
 *.exp
+
+.claude/
+build/
+.planning/

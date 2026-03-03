@@ -41,6 +41,8 @@ protected:
 
     void close_sockets();
 
+    void reset_stop();
+
     void send(const std::function<void(index_t soc_idx, socket_t socket)> &send_cb) const;
 
     void listen_until_silence(const std::function<size_t(index_t soc_idx, socket_t socket, void *buffer, size_t capacity, mdns_record_callback_fn callback, void *user_data)> &listen_func, std::chrono::milliseconds timeout);
@@ -68,13 +70,16 @@ protected:
             int nfds = 0;
             fd_set readfs;
             FD_ZERO(&readfs);
-            int socket_count = m_socket_count;
+            int socket_count = m_socket_count.load(std::memory_order_acquire);
             if(socket_count <= 0)
                 break;
             for(index_t soc_idx = 0; soc_idx < socket_count; ++soc_idx)
             {
                 if(m_sockets[soc_idx] >= FD_SETSIZE)
+                {
+                    warn() << "Socket fd " << m_sockets[soc_idx] << " exceeds FD_SETSIZE (" << FD_SETSIZE << "), skipping";
                     continue;
+                }
                 if(m_sockets[soc_idx] >= nfds)
                     nfds = m_sockets[soc_idx] + 1;
                 FD_SET(m_sockets[soc_idx], &readfs);
@@ -94,11 +99,15 @@ protected:
             };
 
             if(select(nfds, &readfs, nullptr, nullptr, &time_out) >= 0)
+            {
                 for(index_t soc_idx = 0; soc_idx < socket_count; ++soc_idx)
                 {
                     if(m_sockets[soc_idx] < FD_SETSIZE && FD_ISSET(m_sockets[soc_idx], &readfs))
                         mdns_recv_func(m_sockets[soc_idx], buffer.get(), m_recv_buf_size, mdns_base::mdns_callback, this);
+                    if(m_stop.load(std::memory_order_acquire))
+                        return;
                 }
+            }
             else
                 break;
         }
@@ -117,7 +126,7 @@ protected:
     logger<log_level::err> error(const std::string &label);
 
 private:
-    int m_socket_count;
+    std::atomic<int> m_socket_count;
     uint8_t m_socket_limit;
     size_t m_recv_buf_size;
     std::atomic<bool> m_stop;

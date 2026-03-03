@@ -114,6 +114,7 @@ std::string service_server::service_instance_name() const
 
 void service_server::start(const std::vector<service_txt> &txt_records)
 {
+    reset_stop();
     std::lock_guard<std::mutex> l(m_mutex);
     open_service_sockets();
 

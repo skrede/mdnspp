@@ -51,9 +51,14 @@ void mdns_base::stop()
     m_stop = true;
 }
 
+void mdns_base::reset_stop()
+{
+    m_stop.store(false, std::memory_order_release);
+}
+
 size_t mdns_base::socket_count() const
 {
-    return m_socket_count;
+    return m_socket_count.load(std::memory_order_acquire);
 }
 
 bool mdns_base::has_address_ipv4() const
@@ -85,34 +90,35 @@ void mdns_base::open_client_sockets(uint16_t port)
 {
     sockaddr_in address_ipv4{};
     sockaddr_in6 address_ipv6{};
-    m_socket_count = open_client_sockets(m_sockets.get(), m_socket_limit, port, address_ipv4, address_ipv6);
-    if(m_socket_count <= 0)
+    int count = open_client_sockets(m_sockets.get(), m_socket_limit, port, address_ipv4, address_ipv6);
+    m_socket_count.store(count, std::memory_order_release);
+    if(count <= 0)
         throw std::runtime_error("Failed to open any client sockets");
     if(address_ipv4.sin_family == AF_INET)
         m_address_ipv4.emplace(address_ipv4);
     if(address_ipv6.sin6_family == AF_INET6)
         m_address_ipv6.emplace(address_ipv6);
-    debug() << "Opened " << m_socket_count << " client socket" << (m_socket_count == 1 ? "" : "s");
+    debug() << "Opened " << count << " client socket" << (count == 1 ? "" : "s");
 }
 
 void mdns_base::open_service_sockets()
 {
     sockaddr_in address_ipv4{};
     sockaddr_in6 address_ipv6{};
-    m_socket_count = open_service_sockets(m_sockets.get(), m_socket_limit, address_ipv4, address_ipv6);
-    if(m_socket_count <= 0)
+    int count = open_service_sockets(m_sockets.get(), m_socket_limit, address_ipv4, address_ipv6);
+    m_socket_count.store(count, std::memory_order_release);
+    if(count <= 0)
         throw std::runtime_error("Failed to open mDNS service sockets");
     if(address_ipv4.sin_family == AF_INET)
         m_address_ipv4.emplace(address_ipv4);
     if(address_ipv6.sin6_family == AF_INET6)
         m_address_ipv6.emplace(address_ipv6);
-    debug() << "Opened " << m_socket_count << " mDNS service socket" << (m_socket_count == 1 ? "" : "s");
+    debug() << "Opened " << count << " mDNS service socket" << (count == 1 ? "" : "s");
 }
 
 void mdns_base::close_sockets()
 {
-    int count = m_socket_count;
-    m_socket_count = 0;
+    int count = m_socket_count.exchange(0, std::memory_order_acq_rel);
     for(int socket = 0; socket < count; ++socket)
         mdns_socket_close(m_sockets[socket]);
     debug() << "Closed " << count << " mDNS service socket" << (count == 1 ? "" : "s");
@@ -120,7 +126,8 @@ void mdns_base::close_sockets()
 
 void mdns_base::send(const std::function<void(index_t, socket_t)> &send_cb) const
 {
-    for(index_t soc_idx = 0; soc_idx < m_socket_count; ++soc_idx)
+    int count = m_socket_count.load(std::memory_order_acquire);
+    for(index_t soc_idx = 0; soc_idx < count; ++soc_idx)
         send_cb(soc_idx, m_sockets[soc_idx]);
 }
 
@@ -130,7 +137,6 @@ void mdns_base::listen_until_silence(const std::function<size_t(index_t, socket_
 
     size_t records = 0u;
     int ready_descriptors;
-    m_stop.store(false, std::memory_order_release);
 
     auto sec = std::chrono::duration_cast<std::chrono::seconds>(timeout);
     auto usec = std::chrono::duration_cast<std::chrono::microseconds>(timeout) - std::chrono::duration_cast<std::chrono::microseconds>(sec);
@@ -152,13 +158,16 @@ void mdns_base::listen_until_silence(const std::function<size_t(index_t, socket_
         int nfds = 0;
         fd_set readfs;
         FD_ZERO(&readfs);
-        int socket_count = m_socket_count;
+        int socket_count = m_socket_count.load(std::memory_order_acquire);
         if(socket_count <= 0)
             break;
         for(index_t soc_idx = 0; soc_idx < socket_count; ++soc_idx)
         {
             if(m_sockets[soc_idx] >= FD_SETSIZE)
+            {
+                warn() << "Socket fd " << m_sockets[soc_idx] << " exceeds FD_SETSIZE (" << FD_SETSIZE << "), skipping";
                 continue;
+            }
             if(m_sockets[soc_idx] >= nfds)
                 nfds = m_sockets[soc_idx] + 1;
             FD_SET(m_sockets[soc_idx], &readfs);

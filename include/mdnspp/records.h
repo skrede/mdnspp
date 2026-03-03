@@ -3,6 +3,7 @@
 
 #include <variant>
 #include <string>
+#include <vector>
 #include <cstdint>
 #include <optional>
 #include <ostream>
@@ -65,8 +66,7 @@ struct record_txt
     uint16_t rclass{0};
     uint32_t length{0};
     std::string sender_address;
-    std::string key;
-    std::optional<std::string> value;
+    std::vector<service_txt> entries;
 };
 
 using mdns_record_variant = std::variant<
@@ -112,9 +112,13 @@ inline std::ostream &operator<<(std::ostream &str, const record_aaaa &r)
 
 inline std::ostream &operator<<(std::ostream &str, const record_txt &r)
 {
-    str << r.sender_address << ": TXT " << r.name << " " << r.key;
-    if(r.value.has_value())
-        str << "=" << *r.value;
+    str << r.sender_address << ": TXT " << r.name;
+    for (const auto &e : r.entries)
+    {
+        str << " " << e.key;
+        if (e.value.has_value())
+            str << "=" << *e.value;
+    }
     str << " rclass 0x" << std::hex << r.rclass << std::dec
         << " ttl " << r.ttl << " length " << r.length;
     return str;

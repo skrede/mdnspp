@@ -29,8 +29,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. A header in include/ can be compiled with -DMDNSPP_NO_MDNS_H (or equivalent) without error — no mdns.h type names appear in any public header
   2. `mdns_record_variant` is a `std::variant` of value types; a caller can `std::visit` it without including any C library header
   3. `static_assert(SocketPolicy<MockSocketPolicy>)` compiles in a translation unit that does not link against ASIO
-  4. `static_assert(SocketPolicy<AsioSocketPolicy>)` compiles when ASIO is linked
-  5. The project builds with `CMAKE_CXX_STANDARD 23` and `CMAKE_CXX_STANDARD_REQUIRED ON` on all three platforms
+  4. The project builds with `CMAKE_CXX_STANDARD 23` and `CMAKE_CXX_STANDARD_REQUIRED ON` on all three platforms
 **Plans**: 5 plans
 
 Plans:
@@ -50,6 +49,7 @@ Plans:
   3. Silence detection fires the silence callback after no packets for a configured duration, verified with a mock time source
   4. An `asio::io_context` is passed at construction and no executor parameter appears on any public mDNS method
   5. `AsioSocketPolicy` joins the multicast group and starts receiving without blocking the io_context thread (async_receive_from chain, not select())
+  6. `static_assert(SocketPolicy<AsioSocketPolicy>)` compiles when ASIO is linked (TEST-04 completion)
 **Plans**: TBD
 
 ### Phase 3: record_parser Free Functions

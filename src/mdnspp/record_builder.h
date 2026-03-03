@@ -1,7 +1,7 @@
 #ifndef MDNSPP_RECORD_BUILDER_H
 #define MDNSPP_RECORD_BUILDER_H
 
-#include "mdnspp/records.h"
+#include "legacy_records.h"
 
 #include <string>
 #include <vector>

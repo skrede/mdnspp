@@ -1,5 +1,5 @@
 #include "mdnspp/mdns_base.h"
-#include "mdnspp/record_parser.h"
+#include "record_parser.h"
 
 using namespace mdnspp;
 

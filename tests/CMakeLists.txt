@@ -10,4 +10,5 @@ function(make_test TEST_FILE)
 endfunction()
 
 make_test(log_test)
+make_test(concept_conformance_test)
 

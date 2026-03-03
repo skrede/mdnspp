@@ -1,10 +1,11 @@
 #ifndef MDNSPP_RECORD_PARSER_H
 #define MDNSPP_RECORD_PARSER_H
 
-#include "mdnspp/records.h"
+#include "legacy_records.h"
 #include "mdnspp/mdns_util.h"
 #include "mdnspp/record_buffer.h"
 
+#include <memory>
 #include <vector>
 
 namespace mdnspp {

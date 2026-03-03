@@ -32,7 +32,6 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/observer.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_base.h
     ${INCLUDE_DIRECTORY}/mdnspp/record_buffer.h
-    ${INCLUDE_DIRECTORY}/mdnspp/record_parser.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_server.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_discovery.h
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h

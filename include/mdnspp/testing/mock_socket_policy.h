@@ -28,9 +28,11 @@ public:
     {
         if(!m_receive_queue.empty())
         {
-            auto &front = m_receive_queue.front();
-            handler(std::span<std::byte>(front), endpoint{});
+            // Copy and pop before calling handler so recursive arm_receive()
+            // calls see the queue as already consumed.
+            std::vector<std::byte> packet = std::move(m_receive_queue.front());
             m_receive_queue.pop();
+            handler(std::span<std::byte>(packet), endpoint{});
         }
     }
 

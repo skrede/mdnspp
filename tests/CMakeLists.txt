@@ -11,4 +11,15 @@ endfunction()
 
 make_test(log_test)
 make_test(concept_conformance_test)
+make_test(recv_loop_test)
+
+if(MDNSPP_ENABLE_ASIO_POLICY)
+    function(make_asio_test TEST_FILE)
+        add_executable(${TEST_FILE} "${TEST_FILE}.cpp")
+        target_link_libraries(${TEST_FILE} PRIVATE mdnspp_asio Catch2::Catch2WithMain)
+        target_include_directories(${TEST_FILE} PRIVATE ${MDNSPP_SOURCE_DIR} ${UNIT_TEST_INCLUDE})
+        add_test(NAME ${TEST_FILE} COMMAND ${TEST_FILE})
+    endfunction()
+    make_asio_test(asio_conformance_test)
+endif()
 

@@ -1,41 +1,35 @@
 #ifndef MDNSPP_SERVICE_DISCOVERY_H
 #define MDNSPP_SERVICE_DISCOVERY_H
 
+#include "mdnspp/socket_policy.h"
 #include "mdnspp/records.h"
-#include "mdnspp/mdns_base.h"
+#include "mdnspp/mdns_error.h"
 
 namespace mdnspp {
 
-class service_discovery : public mdns_base
+namespace detail {
+template<typename T> struct always_false : std::false_type {};
+} // namespace detail
+
+template<SocketPolicy S>
+class service_discovery
 {
 public:
-    struct params
+    explicit service_discovery(S socket)
+        : m_socket(std::move(socket))
+    {}
+
+    // Method stub — implementation in Phase 4
+    void discover()
     {
-        params(): recv_buf_size(2048), timeout(500)
-        {
-        }
-
-        uint32_t recv_buf_size;
-        std::chrono::milliseconds timeout;
-    };
-
-    explicit service_discovery(params p = params());
-    explicit service_discovery(std::shared_ptr<log_sink> sink, params p = params());
-    explicit service_discovery(std::function<void(std::shared_ptr<record_t> record)> on_discover, params p = params());
-    service_discovery(std::function<void(std::shared_ptr<record_t> record)> on_discover, std::shared_ptr<log_sink> sink, params p = params());
-
-    void discover();
-    void discover(std::vector<record_filter> filters);
+        static_assert(detail::always_false<S>::value,
+            "service_discovery<S>::discover() not yet implemented — Phase 4");
+    }
 
 private:
-    std::chrono::milliseconds m_timeout;
-    std::vector<record_filter> m_filters;
-    std::function<void(std::shared_ptr<record_t> record)> m_on_discover;
-
-    bool filter_ignore_record(const std::shared_ptr<record_t> &record);
-    void callback(socket_t socket, record_buffer &buffer) override;
+    S m_socket;
 };
 
-}
+} // namespace mdnspp
 
-#endif
+#endif // MDNSPP_SERVICE_DISCOVERY_H

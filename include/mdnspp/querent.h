@@ -22,6 +22,15 @@
 #include "mdnspp/recv_loop.h"
 #include "mdnspp/dns_wire.h"
 
+#ifdef ASIO_STANDALONE
+#include <asio/async_result.hpp>
+#include <asio/dispatch.hpp>
+#include <asio/executor_work_guard.hpp>
+#include <asio/bind_allocator.hpp>
+#include <asio/recycling_allocator.hpp>
+#include <asio/associated_allocator.hpp>
+#endif
+
 namespace mdnspp {
 
 template <Policy P>
@@ -106,21 +115,87 @@ public:
     const timer_type  &timer()  const noexcept { return m_timer; }
     timer_type        &timer()        noexcept { return m_timer; }
 
-    // Sends a DNS query for name/qtype, arms recv_loop to accumulate records.
-    // Calls on_done once with (error_code{}, results) when the silence timeout fires.
-    // Must only be called once per lifetime (one query per instance).
+#ifndef ASIO_STANDALONE
+    // Non-template callback overload — used by NativePolicy and MockPolicy users.
+    // Not compiled when ASIO_STANDALONE is defined to avoid ambiguity with the
+    // template overload below (which also accepts plain std::function callbacks).
     void async_query(std::string_view name, uint16_t qtype, completion_handler on_done)
     {
         assert(m_loop == nullptr); // one query per lifetime
         m_on_completion = std::move(on_done);
+        do_query(std::string(name), qtype);
+    }
+#endif
+
+#ifdef ASIO_STANDALONE
+    /// ASIO completion token overload — accepts use_future, use_awaitable, deferred, or any callable.
+    /// NativePolicy users (no ASIO_STANDALONE) use the non-template overload above instead.
+    template <asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>
+                  CompletionToken>
+    auto async_query(std::string_view name, uint16_t qtype, CompletionToken&& token)
+    {
+        return asio::async_initiate<
+            CompletionToken,
+            void(std::error_code, std::vector<mdns_record_variant>)>(
+            [this](auto handler, std::string qname, uint16_t qt)
+            {
+                auto work = asio::make_work_guard(handler);
+
+                // Type-erase into completion_handler, dispatching via the handler's executor.
+                m_on_completion = [h = std::move(handler), w = std::move(work)](
+                    std::error_code ec, std::vector<mdns_record_variant> results) mutable
+                {
+                    auto alloc = asio::get_associated_allocator(
+                        h, asio::recycling_allocator<void>());
+                    asio::dispatch(w.get_executor(),
+                        asio::bind_allocator(alloc,
+                            [h2 = std::move(h), ec, r = std::move(results)]() mutable
+                            {
+                                std::move(h2)(ec, std::move(r));
+                            }));
+                };
+
+                do_query(std::move(qname), qt);
+            },
+            token,
+            std::string(name),  // decay-copy string_view for deferred safety
+            qtype);             // trivial copy
+    }
+#endif
+
+    // Access accumulated results (populated during io.run()).
+    // Remains valid after completion — the completion handler receives a copy.
+    const std::vector<mdns_record_variant> &results() const noexcept
+    {
+        return m_results;
+    }
+
+    // Early termination — stops the recv_loop and fires the completion handler.
+    void stop()
+    {
+        if (m_loop)
+        {
+            m_loop->stop();
+            if (auto h = std::exchange(m_on_completion, nullptr); h)
+                h(std::error_code{}, m_results);
+        }
+    }
+
+private:
+    // Common query body — assumes m_on_completion is already set.
+    // Sets up m_query_name, sends DNS query, creates and starts recv_loop.
+    // Must only be called once per lifetime (m_loop must be null on entry).
+    void do_query(std::string qname, uint16_t qtype)
+    {
+        assert(m_loop == nullptr); // one query per lifetime
         m_results.clear();
-        m_query_name = std::string(name);
+        m_query_name = std::move(qname);
         // Strip trailing dot so the name matches read_dns_name output (no trailing dot)
         if (!m_query_name.empty() && m_query_name.back() == '.')
             m_query_name.pop_back();
 
         // Build and send DNS query for the requested name and qtype
-        auto query_bytes = detail::build_dns_query(name, qtype);
+        auto query_bytes = detail::build_dns_query(m_query_name, qtype);
         m_socket.send(endpoint{"224.0.0.251", 5353},
                       std::span<const std::byte>(query_bytes));
 
@@ -175,31 +250,12 @@ public:
         m_loop->start();
     }
 
-    // Access accumulated results (populated during io.run()).
-    // Remains valid after completion — the completion handler receives a copy.
-    const std::vector<mdns_record_variant> &results() const noexcept
-    {
-        return m_results;
-    }
-
-    // Early termination — stops the recv_loop and fires the completion handler.
-    void stop()
-    {
-        if (m_loop)
-        {
-            m_loop->stop();
-            if (auto h = std::exchange(m_on_completion, nullptr); h)
-                h(std::error_code{}, m_results);
-        }
-    }
-
-private:
     socket_type      m_socket;
     timer_type       m_timer;
     std::chrono::milliseconds m_silence_timeout;
     record_callback  m_on_record;            // optional per-record callback
     completion_handler m_on_completion;      // fires once at silence timeout or stop()
-    std::string      m_query_name;           // set in async_query(), used for filtering
+    std::string      m_query_name;           // set in do_query(), used for filtering
     std::unique_ptr<recv_loop<P>> m_loop;    // null until async_query()
     std::vector<mdns_record_variant> m_results;
 };

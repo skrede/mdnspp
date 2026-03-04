@@ -20,6 +20,16 @@
 #include <system_error>
 #include <utility>
 
+#ifdef ASIO_STANDALONE
+#include <asio/async_result.hpp>
+#include <asio/detached.hpp>
+#include <asio/dispatch.hpp>
+#include <asio/executor_work_guard.hpp>
+#include <asio/bind_allocator.hpp>
+#include <asio/recycling_allocator.hpp>
+#include <asio/associated_allocator.hpp>
+#endif
+
 namespace mdnspp {
 
 // service_server<P> — mDNS service responder
@@ -141,6 +151,8 @@ public:
     {
     }
 
+#ifndef ASIO_STANDALONE
+    // Non-template callback overload — used by NativePolicy and MockPolicy users.
     // async_start() — arms the recv_loop and returns immediately.
     // on_done fires with error_code{} when stop() is called (or empty if omitted).
     // Incoming queries trigger RFC 6762-delayed responses.
@@ -149,20 +161,47 @@ public:
     {
         assert(m_loop == nullptr); // can only start once
         m_on_completion = std::move(on_done);
-
-        m_loop = std::make_unique<recv_loop<P>>(
-            m_socket,
-            m_recv_timer,
-            std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](std::span<std::byte> data, endpoint sender) -> bool
-            {
-                on_query(data, sender);
-                return true; // server needs to see all queries; always reset timer
-            },
-            []() { /* no-op on silence */ });
-
-        m_loop->start();
+        do_start();
     }
+#endif
+
+#ifdef ASIO_STANDALONE
+    /// Zero-argument fire-and-forget overload for ASIO users — equivalent to async_start(asio::detached).
+    void async_start()
+    {
+        async_start(asio::detached);
+    }
+
+    /// ASIO completion token overload — accepts use_future, use_awaitable, deferred, or any callable.
+    /// Fires when stop() is called with signature void(std::error_code).
+    /// NativePolicy users (no ASIO_STANDALONE) use the non-template overload above instead.
+    template <asio::completion_token_for<void(std::error_code)> CompletionToken>
+    auto async_start(CompletionToken&& token)
+    {
+        return asio::async_initiate<CompletionToken, void(std::error_code)>(
+            [this](auto handler)
+            {
+                auto work = asio::make_work_guard(handler);
+
+                // Type-erase into completion_handler, dispatching via the handler's executor.
+                m_on_completion = [h = std::move(handler), w = std::move(work)](
+                    std::error_code ec) mutable
+                {
+                    auto alloc = asio::get_associated_allocator(
+                        h, asio::recycling_allocator<void>());
+                    asio::dispatch(w.get_executor(),
+                        asio::bind_allocator(alloc,
+                            [h2 = std::move(h), ec]() mutable
+                            {
+                                std::move(h2)(ec);
+                            }));
+                };
+
+                do_start();
+            },
+            token);
+    }
+#endif
 
     // stop() — idempotent; fires the completion handler, cancels response timer,
     // destroys recv_loop.
@@ -189,6 +228,24 @@ public:
     timer_type        &recv_timer()        noexcept { return m_recv_timer; }
 
 private:
+    // Common start body — assumes m_on_completion is already set.
+    // Creates and starts the recv_loop with "infinite" silence timeout.
+    void do_start()
+    {
+        m_loop = std::make_unique<recv_loop<P>>(
+            m_socket,
+            m_recv_timer,
+            std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
+            [this](std::span<std::byte> data, endpoint sender) -> bool
+            {
+                on_query(data, sender);
+                return true; // server needs to see all queries; always reset timer
+            },
+            []() { /* no-op on silence */ });
+
+        m_loop->start();
+    }
+
     // Returns true if the wire-encoded DNS name at data[12..name_end) matches
     // any name this server is authoritative for.
     bool query_matches(std::span<const std::byte> data, size_t name_end) const

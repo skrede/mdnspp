@@ -16,6 +16,16 @@
 #include <system_error>
 #include <utility>
 
+#ifdef ASIO_STANDALONE
+#include <asio/async_result.hpp>
+#include <asio/detached.hpp>
+#include <asio/dispatch.hpp>
+#include <asio/executor_work_guard.hpp>
+#include <asio/bind_allocator.hpp>
+#include <asio/recycling_allocator.hpp>
+#include <asio/associated_allocator.hpp>
+#endif
+
 namespace mdnspp {
 
 // observer<P> — mDNS multicast listener
@@ -102,6 +112,8 @@ public:
     {
     }
 
+#ifndef ASIO_STANDALONE
+    // Non-template callback overload — used by NativePolicy and MockPolicy users.
     // async_observe() — arms the recv_loop and returns immediately.
     // on_done fires with error_code{} when stop() is called (or empty if omitted).
     // Incoming multicast packets are parsed and each record delivered to the callback.
@@ -110,20 +122,47 @@ public:
     {
         assert(m_loop == nullptr); // can only start once
         m_on_completion = std::move(on_done);
-
-        m_loop = std::make_unique<recv_loop<P>>(
-            m_socket,
-            m_timer,
-            std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](std::span<std::byte> data, endpoint sender) -> bool
-            {
-                on_packet(data, sender);
-                return true; // observer wants all traffic; always reset timer
-            },
-            []() { /* no-op on silence */ });
-
-        m_loop->start();
+        do_observe();
     }
+#endif
+
+#ifdef ASIO_STANDALONE
+    /// Zero-argument fire-and-forget overload for ASIO users — equivalent to async_observe(asio::detached).
+    void async_observe()
+    {
+        async_observe(asio::detached);
+    }
+
+    /// ASIO completion token overload — accepts use_future, use_awaitable, deferred, or any callable.
+    /// Fires when stop() is called with signature void(std::error_code).
+    /// NativePolicy users (no ASIO_STANDALONE) use the non-template overload above instead.
+    template <asio::completion_token_for<void(std::error_code)> CompletionToken>
+    auto async_observe(CompletionToken&& token)
+    {
+        return asio::async_initiate<CompletionToken, void(std::error_code)>(
+            [this](auto handler)
+            {
+                auto work = asio::make_work_guard(handler);
+
+                // Type-erase into completion_handler, dispatching via the handler's executor.
+                m_on_completion = [h = std::move(handler), w = std::move(work)](
+                    std::error_code ec) mutable
+                {
+                    auto alloc = asio::get_associated_allocator(
+                        h, asio::recycling_allocator<void>());
+                    asio::dispatch(w.get_executor(),
+                        asio::bind_allocator(alloc,
+                            [h2 = std::move(h), ec]() mutable
+                            {
+                                std::move(h2)(ec);
+                            }));
+                };
+
+                do_observe();
+            },
+            token);
+    }
+#endif
 
     // stop() — idempotent; fires the completion handler, then sets the stop flag.
     //
@@ -146,6 +185,24 @@ public:
     timer_type        &timer()        noexcept { return m_timer; }
 
 private:
+    // Common observe body — assumes m_on_completion is already set.
+    // Creates and starts the recv_loop with "infinite" silence timeout.
+    void do_observe()
+    {
+        m_loop = std::make_unique<recv_loop<P>>(
+            m_socket,
+            m_timer,
+            std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
+            [this](std::span<std::byte> data, endpoint sender) -> bool
+            {
+                on_packet(data, sender);
+                return true; // observer wants all traffic; always reset timer
+            },
+            []() { /* no-op on silence */ });
+
+        m_loop->start();
+    }
+
     // Called by recv_loop for every incoming packet.
     // Checks the stop flag, then walks the DNS frame and delivers each record.
     void on_packet(std::span<std::byte> data, endpoint sender)

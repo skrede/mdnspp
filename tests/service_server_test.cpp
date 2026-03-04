@@ -2,7 +2,7 @@
 // service_server<MockPolicy> unit tests — Phase 7, Plan 07-03
 // Verifies that build_dns_response() produces valid DNS wire-format responses
 // for PTR, SRV, A, AAAA, and TXT query types, parseable by walk_dns_frame().
-// Also verifies service_server<MockPolicy> constructor/start/stop lifecycle and RFC 6762 timing.
+// Also verifies service_server<MockPolicy> constructor/async_start/stop lifecycle and RFC 6762 timing.
 
 #include "mdnspp/service_info.h"
 #include "mdnspp/service_server.h"
@@ -359,16 +359,16 @@ SCENARIO("service_server constructs with direct constructor", "[service_server][
     }
 }
 
-SCENARIO("start and stop lifecycle", "[service_server][lifecycle]")
+SCENARIO("async_start and stop lifecycle", "[service_server][lifecycle]")
 {
     GIVEN("a service_server with no enqueued queries")
     {
         mock_executor ex;
         service_server<MockPolicy> server{ex, make_test_info()};
 
-        WHEN("start() is called")
+        WHEN("async_start() is called")
         {
-            server.start();
+            server.async_start();
 
             THEN("stop() can be called without error")
             {
@@ -378,6 +378,62 @@ SCENARIO("start and stop lifecycle", "[service_server][lifecycle]")
                 {
                     REQUIRE_NOTHROW(server.stop());
                 }
+            }
+        }
+    }
+}
+
+SCENARIO("async_start fires completion callback on stop", "[service_server][async]")
+{
+    GIVEN("a service_server with no enqueued queries")
+    {
+        mock_executor ex;
+        service_server<MockPolicy> server{ex, make_test_info()};
+
+        WHEN("async_start() is called with a completion callback")
+        {
+            std::error_code received_ec;
+            bool callback_fired = false;
+
+            server.async_start([&](std::error_code ec)
+            {
+                callback_fired = true;
+                received_ec = ec;
+            });
+
+            AND_WHEN("stop() is called")
+            {
+                server.stop();
+
+                THEN("the completion callback fires with error_code{}")
+                {
+                    REQUIRE(callback_fired);
+                    REQUIRE_FALSE(received_ec);
+                }
+            }
+        }
+    }
+}
+
+SCENARIO("async_start completion handler fires exactly once on double stop",
+         "[service_server][stop-idempotent][completion]")
+{
+    GIVEN("a started service_server with a completion callback")
+    {
+        mock_executor ex;
+        int completion_count = 0;
+
+        service_server<MockPolicy> server{ex, make_test_info()};
+        server.async_start([&](std::error_code) { ++completion_count; });
+
+        WHEN("stop() is called twice")
+        {
+            server.stop();
+            server.stop();
+
+            THEN("the completion callback fires exactly once")
+            {
+                REQUIRE(completion_count == 1);
             }
         }
     }
@@ -394,9 +450,9 @@ SCENARIO("service_server responds to PTR query after timer fires",
         service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_ptr_query("_http._tcp.local."), sender);
 
-        WHEN("start() is called (MockSocket drains queue, fires on_query)")
+        WHEN("async_start() is called (MockSocket drains queue, fires on_query)")
         {
-            server.start();
+            server.async_start();
 
             AND_WHEN("the response timer is fired")
             {
@@ -435,9 +491,9 @@ SCENARIO("response delay timer armed after query receipt",
         service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_ptr_query("_http._tcp.local."));
 
-        WHEN("start() is called")
+        WHEN("async_start() is called")
         {
-            server.start();
+            server.async_start();
 
             THEN("server.timer().has_pending() is true (response timer is armed)")
             {
@@ -461,9 +517,9 @@ SCENARIO("no response sent before timer fires",
         service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_ptr_query("_http._tcp.local."));
 
-        WHEN("start() is called but the timer is NOT fired")
+        WHEN("async_start() is called but the timer is NOT fired")
         {
-            server.start();
+            server.async_start();
 
             THEN("socket().sent_packets() is empty (no response until delay expires)")
             {
@@ -482,9 +538,9 @@ SCENARIO("stop before timer fires prevents response",
         service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_ptr_query("_http._tcp.local."));
 
-        WHEN("start() is called then stop() is called before firing the timer")
+        WHEN("async_start() is called then stop() is called before firing the timer")
         {
-            server.start();
+            server.async_start();
             server.stop();
 
             AND_WHEN("timer().fire() is called (simulating a late fire after cancel)")
@@ -509,9 +565,9 @@ SCENARIO("response to A query contains valid A record",
         service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_a_query("myhost.local."));
 
-        WHEN("start() is called and the response timer fires")
+        WHEN("async_start() is called and the response timer fires")
         {
-            server.start();
+            server.async_start();
             server.timer().fire();
 
             THEN("socket().sent_packets() is not empty")
@@ -550,9 +606,9 @@ SCENARIO("response sent to multicast by default, unicast when QU bit set",
         service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_ptr_query("_http._tcp.local."), sender);
 
-        WHEN("start() is called and the response timer fires")
+        WHEN("async_start() is called and the response timer fires")
         {
-            server.start();
+            server.async_start();
             server.timer().fire();
 
             THEN("response goes to multicast group (RFC 6762 section 6)")
@@ -571,9 +627,9 @@ SCENARIO("response sent to multicast by default, unicast when QU bit set",
         service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_qu_query("_http._tcp.local.", 12), sender);
 
-        WHEN("start() is called and the response timer fires")
+        WHEN("async_start() is called and the response timer fires")
         {
-            server.start();
+            server.async_start();
             server.timer().fire();
 
             THEN("response goes to sender's unicast address (RFC 6762 section 5.4)")

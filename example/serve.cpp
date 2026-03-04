@@ -37,6 +37,6 @@ int main()
     });
 
     std::cout << "Serving MyApp._http._tcp.local. on port 8080 (Ctrl-C to stop)\n";
-    srv.start();
+    srv.async_start(); // fire-and-forget (no completion callback needed)
     io.run();
 }

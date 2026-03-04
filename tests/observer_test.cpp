@@ -153,9 +153,9 @@ SCENARIO("observer delivers DNS records from a single packet to the callback",
         obs.socket().enqueue(
             make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."), sender);
 
-        WHEN("start() is called")
+        WHEN("async_observe() is called")
         {
-            obs.start();
+            obs.async_observe();
 
             THEN("the PTR record is delivered to the callback")
             {
@@ -192,15 +192,48 @@ SCENARIO("observer delivers records from multiple packets",
         obs.socket().enqueue(make_ptr_response("_http._tcp.local.", "First._http._tcp.local."));
         obs.socket().enqueue(make_a_response("myhost.local.", 192, 168, 0, 1));
 
-        WHEN("start() is called")
+        WHEN("async_observe() is called")
         {
-            obs.start();
+            obs.async_observe();
 
             THEN("records from all packets are delivered")
             {
                 REQUIRE(received_records.size() == 2);
                 REQUIRE(std::holds_alternative<record_ptr>(received_records[0]));
                 REQUIRE(std::holds_alternative<record_a>(received_records[1]));
+            }
+        }
+    }
+}
+
+SCENARIO("async_observe fires completion callback on stop", "[observer][async]")
+{
+    GIVEN("a fresh observer with no packets enqueued")
+    {
+        mock_executor ex;
+
+        observer<MockPolicy> obs{ex, [](mdns_record_variant, endpoint) {}};
+
+        WHEN("async_observe() is called with a completion callback")
+        {
+            std::error_code received_ec;
+            bool callback_fired = false;
+
+            obs.async_observe([&](std::error_code ec)
+            {
+                callback_fired = true;
+                received_ec = ec;
+            });
+
+            AND_WHEN("stop() is called")
+            {
+                obs.stop();
+
+                THEN("the completion callback fires with error_code{}")
+                {
+                    REQUIRE(callback_fired);
+                    REQUIRE_FALSE(received_ec);
+                }
             }
         }
     }
@@ -215,14 +248,38 @@ SCENARIO("stop() is idempotent — second call is a no-op",
 
         observer<MockPolicy> obs{ex, [](mdns_record_variant, endpoint) {}};
 
-        WHEN("start() and then stop() are called twice")
+        WHEN("async_observe() and then stop() are called twice")
         {
-            obs.start();
+            obs.async_observe();
 
             THEN("the second stop() call does not crash or assert")
             {
                 obs.stop();
                 REQUIRE_NOTHROW(obs.stop()); // second call must be no-op
+            }
+        }
+    }
+}
+
+SCENARIO("async_observe completion handler fires exactly once on double stop",
+         "[observer][stop-idempotent][completion]")
+{
+    GIVEN("an observer with a completion callback")
+    {
+        mock_executor ex;
+        int completion_count = 0;
+
+        observer<MockPolicy> obs{ex, [](mdns_record_variant, endpoint) {}};
+        obs.async_observe([&](std::error_code) { ++completion_count; });
+
+        WHEN("stop() is called twice")
+        {
+            obs.stop();
+            obs.stop();
+
+            THEN("the completion callback fires exactly once")
+            {
+                REQUIRE(completion_count == 1);
             }
         }
     }
@@ -239,12 +296,12 @@ SCENARIO("observer can be created, started, and stopped without any packet deliv
         observer<MockPolicy> obs{ex,
             [&](mdns_record_variant, endpoint) { ++callback_count; }};
 
-        WHEN("start() and stop() are called on the empty observer")
+        WHEN("async_observe() and stop() are called on the empty observer")
         {
-            obs.start();
+            obs.async_observe();
             obs.stop();
 
-            THEN("the callback is never invoked")
+            THEN("the record callback is never invoked")
             {
                 REQUIRE(callback_count == 0);
             }
@@ -275,11 +332,11 @@ SCENARIO("stop() called from within the record callback does not deadlock",
         obs.socket().enqueue(
             make_ptr_response("_http._tcp.local.", "Target._http._tcp.local."));
 
-        WHEN("start() is called (callback will call stop() inside itself)")
+        WHEN("async_observe() is called (callback will call stop() inside itself)")
         {
-            THEN("start() returns without deadlocking and stop flag is set")
+            THEN("async_observe() returns without deadlocking and stop flag is set")
             {
-                REQUIRE_NOTHROW(obs.start());
+                REQUIRE_NOTHROW(obs.async_observe());
                 REQUIRE(callback_count >= 1);
             }
         }
@@ -302,11 +359,11 @@ SCENARIO("observer skips malformed packets without crashing",
             [&](mdns_record_variant, endpoint) { ++callback_count; }};
         obs.socket().enqueue(malformed);
 
-        WHEN("start() is called with the malformed packet")
+        WHEN("async_observe() is called with the malformed packet")
         {
             THEN("no crash occurs and no records are delivered")
             {
-                REQUIRE_NOTHROW(obs.start());
+                REQUIRE_NOTHROW(obs.async_observe());
                 REQUIRE(callback_count == 0);
             }
         }

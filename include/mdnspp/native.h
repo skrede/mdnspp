@@ -12,7 +12,7 @@
 //
 //   mdnspp::NativeContext ctx;
 //   mdnspp::observer<mdnspp::NativePolicy> obs{ctx, my_callback};
-//   obs.start();
+//   obs.async_observe();
 //   ctx.run();
 
 #include "mdnspp/native/native_context.h"

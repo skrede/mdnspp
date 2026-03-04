@@ -1,6 +1,6 @@
 // tests/service_discovery_test.cpp
 // service_discovery<MockPolicy> unit tests — Phase 7, Plan 07-03
-// Tests the full discover() flow via MockPolicy.
+// Tests the full async_discover() flow via MockPolicy.
 
 #include "mdnspp/service_discovery.h"
 #include "mdnspp/testing/mock_policy.h"
@@ -189,7 +189,7 @@ SCENARIO("service_discovery constructs and discovers", "[service_discovery][crea
     }
 }
 
-SCENARIO("discover returns PTR record from mock socket", "[service_discovery][discover]")
+SCENARIO("async_discover returns PTR record from mock socket", "[service_discovery][discover]")
 {
     GIVEN("a service_discovery instance and a queued PTR response")
     {
@@ -197,9 +197,10 @@ SCENARIO("discover returns PTR record from mock socket", "[service_discovery][di
         service_discovery<MockPolicy> sd{ex, 500ms};
         sd.socket().enqueue(make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."));
 
-        WHEN("discover() is called for _http._tcp.local.")
+        WHEN("async_discover() is called for _http._tcp.local.")
         {
-            sd.discover("_http._tcp.local.");
+            sd.async_discover("_http._tcp.local.",
+                [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("results() contains one record_ptr")
             {
@@ -213,7 +214,51 @@ SCENARIO("discover returns PTR record from mock socket", "[service_discovery][di
     }
 }
 
-SCENARIO("discover accumulates multiple records from a single frame",
+SCENARIO("async_discover fires completion callback with results", "[service_discovery][async]")
+{
+    GIVEN("a service_discovery instance and a queued PTR response")
+    {
+        mock_executor ex;
+        service_discovery<MockPolicy> sd{ex, 500ms};
+        sd.socket().enqueue(make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."));
+
+        WHEN("async_discover() is called with a completion callback and the silence timer fires")
+        {
+            std::error_code received_ec;
+            std::vector<mdns_record_variant> received_results;
+            bool callback_fired = false;
+
+            sd.async_discover("_http._tcp.local.",
+                [&](std::error_code ec, std::vector<mdns_record_variant> results)
+                {
+                    callback_fired = true;
+                    received_ec = ec;
+                    received_results = std::move(results);
+                });
+
+            // MockSocket drains the queue synchronously during async_discover(),
+            // but the silence timer must be fired manually to trigger the completion callback.
+            sd.timer().fire();
+
+            THEN("the callback fires with error_code{} and the accumulated results")
+            {
+                REQUIRE(callback_fired);
+                REQUIRE_FALSE(received_ec);
+                REQUIRE(received_results.size() == 1);
+                REQUIRE(std::holds_alternative<record_ptr>(received_results[0]));
+                const auto &ptr = std::get<record_ptr>(received_results[0]);
+                REQUIRE(ptr.ptr_name.find("MyService") != std::string::npos);
+            }
+
+            AND_THEN("results() accessor is still populated (completion handler received a copy)")
+            {
+                REQUIRE(sd.results().size() == 1);
+            }
+        }
+    }
+}
+
+SCENARIO("async_discover accumulates multiple records from a single frame",
          "[service_discovery][discover][multi]")
 {
     GIVEN("a service_discovery instance and a multi-record response enqueued")
@@ -222,9 +267,10 @@ SCENARIO("discover accumulates multiple records from a single frame",
         service_discovery<MockPolicy> sd{ex, 500ms};
         sd.socket().enqueue(make_multi_record_response());
 
-        WHEN("discover() is called")
+        WHEN("async_discover() is called")
         {
-            sd.discover("_http._tcp.local.");
+            sd.async_discover("_http._tcp.local.",
+                [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("results() contains both records")
             {
@@ -234,7 +280,7 @@ SCENARIO("discover accumulates multiple records from a single frame",
     }
 }
 
-SCENARIO("discover sends DNS PTR query to multicast address",
+SCENARIO("async_discover sends DNS PTR query to multicast address",
          "[service_discovery][discover][query]")
 {
     GIVEN("a service_discovery instance with no enqueued responses")
@@ -242,9 +288,10 @@ SCENARIO("discover sends DNS PTR query to multicast address",
         mock_executor ex;
         service_discovery<MockPolicy> sd{ex, 500ms};
 
-        WHEN("discover() is called for _http._tcp.local.")
+        WHEN("async_discover() is called for _http._tcp.local.")
         {
-            sd.discover("_http._tcp.local.");
+            sd.async_discover("_http._tcp.local.",
+                [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("a DNS query was sent to 224.0.0.251:5353")
             {
@@ -274,7 +321,7 @@ SCENARIO("discover sends DNS PTR query to multicast address",
     }
 }
 
-SCENARIO("discover skips malformed records and returns valid ones",
+SCENARIO("async_discover skips malformed records and returns valid ones",
          "[service_discovery][discover][malformed]")
 {
     GIVEN("a DNS frame with a valid PTR and a truncated A record")
@@ -317,9 +364,10 @@ SCENARIO("discover skips malformed records and returns valid ones",
         service_discovery<MockPolicy> sd{ex, 500ms};
         sd.socket().enqueue(pkt);
 
-        WHEN("discover() is called")
+        WHEN("async_discover() is called")
         {
-            sd.discover("_http._tcp.local.");
+            sd.async_discover("_http._tcp.local.",
+                [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("results() contains only the valid PTR record")
             {
@@ -332,9 +380,9 @@ SCENARIO("discover skips malformed records and returns valid ones",
     }
 }
 
-// Note: Testing discover() with an empty queue (no responses, silence timeout only)
+// Note: Testing async_discover() with an empty queue (no responses, silence timeout only)
 // is not practical via service_discovery's public API with MockTimer:
 // MockTimer does not auto-fire; its fire() method is only accessible via
-// the timer local variable, which is inaccessible from outside discover().
+// the timer local variable, which is inaccessible from outside async_discover().
 // The silence-timeout path is covered by recv_loop_test.cpp directly.
 // With AsioTimer (real integration test) this scenario works correctly.

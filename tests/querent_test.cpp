@@ -1,6 +1,6 @@
 // tests/querent_test.cpp
 // querent<MockPolicy> unit tests — Phase 7, Plan 07-03
-// Tests the full query() flow via MockPolicy.
+// Tests the full async_query() flow via MockPolicy.
 
 #include "mdnspp/querent.h"
 #include "mdnspp/testing/mock_policy.h"
@@ -220,7 +220,7 @@ SCENARIO("querent constructs and is usable", "[querent][create]")
     }
 }
 
-SCENARIO("query returns A record from mock socket", "[querent][query][A]")
+SCENARIO("async_query returns A record from mock socket", "[querent][query][A]")
 {
     GIVEN("a querent instance and an A response for myhost.local. enqueued")
     {
@@ -228,9 +228,10 @@ SCENARIO("query returns A record from mock socket", "[querent][query][A]")
         querent<MockPolicy> q{ex, 500ms};
         q.socket().enqueue(make_a_response("myhost.local.", 192, 168, 1, 1));
 
-        WHEN("query() is called for myhost.local. with qtype=1 (A)")
+        WHEN("async_query() is called for myhost.local. with qtype=1 (A)")
         {
-            q.query("myhost.local.", 1);
+            q.async_query("myhost.local.", 1,
+                [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("results() contains one record_a")
             {
@@ -244,16 +245,61 @@ SCENARIO("query returns A record from mock socket", "[querent][query][A]")
     }
 }
 
-SCENARIO("query sends correct DNS query packet", "[querent][query][packet]")
+SCENARIO("async_query fires completion callback with results", "[querent][async]")
+{
+    GIVEN("a querent instance and an A response for myhost.local. enqueued")
+    {
+        mock_executor ex;
+        querent<MockPolicy> q{ex, 500ms};
+        q.socket().enqueue(make_a_response("myhost.local.", 10, 0, 0, 1));
+
+        WHEN("async_query() is called with a completion callback and the silence timer fires")
+        {
+            std::error_code received_ec;
+            std::vector<mdns_record_variant> received_results;
+            bool callback_fired = false;
+
+            q.async_query("myhost.local.", 1,
+                [&](std::error_code ec, std::vector<mdns_record_variant> results)
+                {
+                    callback_fired = true;
+                    received_ec = ec;
+                    received_results = std::move(results);
+                });
+
+            // MockSocket drains the queue synchronously during async_query(),
+            // but the silence timer must be fired manually to trigger the completion callback.
+            q.timer().fire();
+
+            THEN("the callback fires with error_code{} and the accumulated results")
+            {
+                REQUIRE(callback_fired);
+                REQUIRE_FALSE(received_ec);
+                REQUIRE(received_results.size() == 1);
+                REQUIRE(std::holds_alternative<record_a>(received_results[0]));
+                const auto &a = std::get<record_a>(received_results[0]);
+                REQUIRE(a.address_string == "10.0.0.1");
+            }
+
+            AND_THEN("results() accessor is still populated (completion handler received a copy)")
+            {
+                REQUIRE(q.results().size() == 1);
+            }
+        }
+    }
+}
+
+SCENARIO("async_query sends correct DNS query packet", "[querent][query][packet]")
 {
     GIVEN("a querent instance with no enqueued responses")
     {
         mock_executor ex;
         querent<MockPolicy> q{ex, 500ms};
 
-        WHEN("query() is called for myhost.local. with qtype=1 (A)")
+        WHEN("async_query() is called for myhost.local. with qtype=1 (A)")
         {
-            q.query("myhost.local.", 1);
+            q.async_query("myhost.local.", 1,
+                [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("a DNS query was sent to 224.0.0.251:5353")
             {
@@ -295,7 +341,7 @@ SCENARIO("query sends correct DNS query packet", "[querent][query][packet]")
     }
 }
 
-SCENARIO("query accumulates multiple records from a single frame",
+SCENARIO("async_query accumulates multiple records from a single frame",
          "[querent][query][multi]")
 {
     GIVEN("a querent instance and a multi-record response enqueued")
@@ -304,9 +350,10 @@ SCENARIO("query accumulates multiple records from a single frame",
         querent<MockPolicy> q{ex, 500ms};
         q.socket().enqueue(make_multi_record_response());
 
-        WHEN("query() is called")
+        WHEN("async_query() is called")
         {
-            q.query("myhost.local.", 1);
+            q.async_query("myhost.local.", 1,
+                [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("results() contains all records from the frame")
             {
@@ -316,7 +363,7 @@ SCENARIO("query accumulates multiple records from a single frame",
     }
 }
 
-SCENARIO("query skips malformed records and returns valid ones",
+SCENARIO("async_query skips malformed records and returns valid ones",
          "[querent][query][malformed]")
 {
     GIVEN("a DNS frame with a valid A record and an invalid A record (wrong rdlength)")
@@ -361,9 +408,10 @@ SCENARIO("query skips malformed records and returns valid ones",
         querent<MockPolicy> q{ex, 500ms};
         q.socket().enqueue(pkt);
 
-        WHEN("query() is called")
+        WHEN("async_query() is called")
         {
-            q.query("good.local.", 1);
+            q.async_query("good.local.", 1,
+                [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("results() contains only the valid A record")
             {
@@ -376,8 +424,8 @@ SCENARIO("query skips malformed records and returns valid ones",
     }
 }
 
-// Note: Testing query() with an empty queue (no responses, silence timeout only)
+// Note: Testing async_query() with an empty queue (no responses, silence timeout only)
 // is not practical via querent's public API with MockTimer:
 // MockTimer does not auto-fire; its fire() method is only accessible via
-// the timer local variable, which is inaccessible from outside query().
+// the timer local variable, which is inaccessible from outside async_query().
 // The silence-timeout path is covered by recv_loop_test.cpp directly.

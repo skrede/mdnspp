@@ -32,6 +32,16 @@ int main(int argc, char *argv[])
             }, rec);
         }};
 
-    q.query(name, qtype); // sends query, arms recv_loop
-    io.run();             // blocks until silence timeout
+    q.async_query(name, qtype,
+        [](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
+        {
+            if (ec)
+            {
+                std::cerr << "query error: " << ec.message() << "\n";
+                return;
+            }
+            std::cout << "Query complete — " << results.size() << " record(s)\n";
+        });
+
+    io.run(); // blocks until silence timeout
 }

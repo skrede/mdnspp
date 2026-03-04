@@ -21,6 +21,6 @@ int main()
             }, rec);
         }};
 
-    obs.start();
+    obs.async_observe(); // fire-and-forget (no completion callback needed)
     io.run();
 }

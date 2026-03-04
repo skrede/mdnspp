@@ -22,6 +22,16 @@ int main()
             }, rec);
         }};
 
-    sd.discover("_http._tcp.local.");  // sends PTR query, arms recv_loop
-    io.run();                          // blocks until silence timeout
+    sd.async_discover("_http._tcp.local.",
+        [](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
+        {
+            if (ec)
+            {
+                std::cerr << "discovery error: " << ec.message() << "\n";
+                return;
+            }
+            std::cout << "Discovery complete — " << results.size() << " record(s)\n";
+        });
+
+    io.run(); // blocks until silence timeout
 }

@@ -50,9 +50,9 @@ SCENARIO("service_server stop() from separate thread is data-race-free",
             return;
         }
 
-        WHEN("start() is called and the io_context runs on a background thread")
+        WHEN("async_start() is called and the io_context runs on a background thread")
         {
-            server->start();
+            server->async_start();
             std::thread io_thread([&io] { io.run(); });
 
             AND_WHEN("stop() is called from the main thread after a brief pause")
@@ -92,7 +92,7 @@ SCENARIO("service_server double stop is safe under concurrency",
             return;
         }
 
-        server->start();
+        server->async_start();
         std::thread io_thread([&io] { io.run(); });
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 

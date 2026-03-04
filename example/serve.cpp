@@ -1,9 +1,11 @@
 #include "mdnspp/service_server.h"
 #include "mdnspp/service_info.h"
+#include "mdnspp/endpoint.h"
 #include "mdnspp/asio/asio_socket_policy.h"
 #include "mdnspp/asio/asio_timer_policy.h"
 
 #include <asio.hpp>
+#include <cstdint>
 #include <iostream>
 
 int main()
@@ -30,9 +32,15 @@ int main()
         std::move(socket),
         std::move(response_timer),
         std::move(recv_timer),
-        std::move(info));
+        std::move(info),
+        [](mdnspp::endpoint sender, uint16_t qtype, bool unicast)
+        {
+            std::cout << sender.address << ":" << sender.port
+                      << " queried qtype=" << qtype
+                      << (unicast ? " (unicast)" : " (multicast)") << "\n";
+        });
 
-    if(!srv.has_value())
+    if (!srv.has_value())
     {
         std::cerr << "Failed to create service_server\n";
         return 1;

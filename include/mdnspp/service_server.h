@@ -10,6 +10,7 @@
 #include "mdnspp/recv_loop.h"
 #include "mdnspp/dns_wire.h"
 
+#include <algorithm>
 #include <expected>
 #include <memory>
 #include <random>
@@ -170,6 +171,20 @@ private:
     {
     }
 
+    // Returns true if the wire-encoded DNS name at data[12..name_end) matches
+    // any name this server is authoritative for.
+    bool query_matches(std::span<const std::byte> data, size_t name_end) const
+    {
+        auto qname = data.subspan(12, name_end - 12);
+        auto match = [&](std::string_view name) {
+            auto encoded = detail::encode_dns_name(name);
+            return std::ranges::equal(qname, std::span<const std::byte>(encoded));
+        };
+        return match(m_info.service_type)
+            || match(m_info.service_name)
+            || match(m_info.hostname);
+    }
+
     // Called by recv_loop on every incoming packet.
     void on_query(std::span<std::byte> data, endpoint sender)
     {
@@ -198,6 +213,10 @@ private:
 
         // Need 4 bytes for QTYPE(2) + QCLASS(2)
         if (offset + 4 > data.size())
+            return;
+
+        // Only respond to queries that match our service/hostname
+        if (!query_matches(data, offset))
             return;
 
         uint16_t qtype  = detail::read_u16_be(buf + offset);

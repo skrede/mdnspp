@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <expected>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -28,12 +29,17 @@ template <SocketPolicy S, TimerPolicy T>
 class querent
 {
 public:
+    /// Optional callback invoked per record as results arrive during a query.
+    using record_callback = std::function<void(const mdns_record_variant &, endpoint)>;
+
     // Factory function (API-03): construction cannot fail in Phase 4, but
     // std::expected is required by the API contract for future extensibility.
     [[nodiscard]] static std::expected<querent, mdns_error>
-    create(S socket, T timer, std::chrono::milliseconds silence_timeout)
+    create(S socket, T timer, std::chrono::milliseconds silence_timeout,
+           record_callback on_record = {})
     {
-        return querent(std::move(socket), std::move(timer), silence_timeout);
+        return querent(std::move(socket), std::move(timer),
+                       silence_timeout, std::move(on_record));
     }
 
     // Non-copyable (owns recv_loop by unique_ptr)
@@ -45,6 +51,7 @@ public:
         : m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
         , m_silence_timeout(other.m_silence_timeout)
+        , m_on_record(std::move(other.m_on_record))
         , m_loop(std::move(other.m_loop))
         , m_results(std::move(other.m_results))
     {
@@ -112,6 +119,11 @@ public:
 
                 if (relevant)
                 {
+                    if (m_on_record)
+                    {
+                        for (const auto &rec : batch)
+                            m_on_record(rec, sender);
+                    }
                     m_results.insert(m_results.end(),
                         std::make_move_iterator(batch.begin()),
                         std::make_move_iterator(batch.end()));
@@ -141,10 +153,12 @@ public:
     }
 
 private:
-    querent(S socket, T timer, std::chrono::milliseconds silence_timeout)
+    querent(S socket, T timer, std::chrono::milliseconds silence_timeout,
+            record_callback on_record)
         : m_socket(std::move(socket))
         , m_timer(std::move(timer))
         , m_silence_timeout(silence_timeout)
+        , m_on_record(std::move(on_record))
         , m_loop(nullptr)
     {
     }
@@ -152,6 +166,7 @@ private:
     S m_socket;
     T m_timer;
     std::chrono::milliseconds m_silence_timeout;
+    record_callback m_on_record;             // optional per-record callback
     std::string m_query_name;                // set in query(), used for filtering
     std::unique_ptr<recv_loop<S, T>> m_loop; // null until query()
     std::vector<mdns_record_variant> m_results;

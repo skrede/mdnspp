@@ -2,6 +2,7 @@
 #include "mdnspp/asio/asio_socket_policy.h"
 #include "mdnspp/asio/asio_timer_policy.h"
 #include "mdnspp/records.h"
+#include "mdnspp/endpoint.h"
 
 #include <asio.hpp>
 #include <iostream>
@@ -19,7 +20,15 @@ int main()
         mdnspp::asio_policy::AsioTimerPolicy>::create(
             std::move(socket),
             std::move(timer),
-            std::chrono::seconds(3));
+            std::chrono::seconds(3),
+            [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
+            {
+                std::visit([&sender](const auto &r)
+                {
+                    std::cout << sender.address << ":" << sender.port
+                              << " -> " << r << "\n";
+                }, rec);
+            });
 
     if (!sd.has_value())
     {
@@ -29,12 +38,4 @@ int main()
 
     sd->discover("_http._tcp.local.");  // sends PTR query, arms recv_loop
     io.run();                            // blocks until silence timeout
-
-    for (const auto &rec : sd->results())
-    {
-        std::visit([](const auto &r)
-        {
-            std::cout << r << "\n";
-        }, rec);
-    }
 }

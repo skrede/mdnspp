@@ -11,6 +11,8 @@
 #include <span>
 
 using namespace mdnspp;
+using mdnspp::dns_type;
+using mdnspp::dns_class;
 
 // Helper: build a byte vector from initializer list of unsigned chars
 static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
@@ -35,8 +37,8 @@ SCENARIO("parse::a parses a valid A record", "[parse][a]")
         record_metadata meta;
         meta.sender        = {"0.0.0.0", 0};
         meta.ttl           = 120;
-        meta.rclass        = 1;
-        meta.rtype         = 1; // A
+        meta.rclass        = dns_class::in;
+        meta.rtype         = dns_type::a; // A
         meta.name_offset   = 0;
         meta.record_offset = 0;
         meta.record_length = 4;
@@ -51,7 +53,7 @@ SCENARIO("parse::a parses a valid A record", "[parse][a]")
                 auto &r = std::get<record_a>(*result);
                 REQUIRE(r.address_string == "192.168.1.1");
                 REQUIRE(r.ttl == 120);
-                REQUIRE(r.rclass == 1);
+                REQUIRE(r.rclass == dns_class::in);
                 REQUIRE(r.length == 4);
             }
         }
@@ -65,7 +67,7 @@ SCENARIO("parse::a parses loopback address 127.0.0.1", "[parse][a]")
         auto buf = bytes({0x7F, 0x00, 0x00, 0x01});
 
         record_metadata meta;
-        meta.rtype         = 1;
+        meta.rtype         = dns_type::a;
         meta.record_offset = 0;
         meta.record_length = 4;
 
@@ -92,7 +94,7 @@ SCENARIO("parse::a returns error on truncated input", "[parse][a][malformed]")
         record_metadata meta;
         meta.record_offset = 0;
         meta.record_length = 4;
-        meta.rtype         = 1;
+        meta.rtype         = dns_type::a;
 
         WHEN("parse::a is called")
         {
@@ -116,7 +118,7 @@ SCENARIO("parse::a returns error when record_length is not 4", "[parse][a][malfo
         record_metadata meta;
         meta.record_offset = 0;
         meta.record_length = 5;
-        meta.rtype         = 1;
+        meta.rtype         = dns_type::a;
 
         WHEN("parse::a is called")
         {
@@ -148,7 +150,7 @@ SCENARIO("parse::aaaa parses a valid AAAA record", "[parse][aaaa]")
         });
 
         record_metadata meta;
-        meta.rtype         = 28; // AAAA
+        meta.rtype         = dns_type::aaaa; // AAAA
         meta.record_offset = 0;
         meta.record_length = 16;
 
@@ -179,7 +181,7 @@ SCENARIO("parse::aaaa returns error on truncated input", "[parse][aaaa][malforme
         record_metadata meta;
         meta.record_offset = 0;
         meta.record_length = 16;
-        meta.rtype         = 28;
+        meta.rtype         = dns_type::aaaa;
 
         WHEN("parse::aaaa is called")
         {
@@ -203,7 +205,7 @@ SCENARIO("parse::aaaa returns error when record_length is not 16", "[parse][aaaa
         record_metadata meta;
         meta.record_offset = 0;
         meta.record_length = 4;
-        meta.rtype         = 28;
+        meta.rtype         = dns_type::aaaa;
 
         WHEN("parse::aaaa is called")
         {
@@ -237,7 +239,7 @@ SCENARIO("parse::ptr parses a valid PTR record", "[parse][ptr]")
         });
 
         record_metadata meta;
-        meta.rtype         = 12; // PTR
+        meta.rtype         = dns_type::ptr; // PTR
         meta.name_offset   = 0;
         meta.record_offset = 0;
         meta.record_length = static_cast<size_t>(buf.size());
@@ -265,7 +267,7 @@ SCENARIO("parse::ptr returns error on truncated input", "[parse][ptr][malformed]
         auto buf = bytes({0x05, '_','h','t','t','p'});  // only 6 bytes
 
         record_metadata meta;
-        meta.rtype         = 12;
+        meta.rtype         = dns_type::ptr;
         meta.record_offset = 0;
         meta.record_length = 20; // claims 20 bytes but buffer has only 6
 
@@ -303,7 +305,7 @@ SCENARIO("parse::srv parses a valid SRV record", "[parse][srv]")
         });
 
         record_metadata meta;
-        meta.rtype         = 33; // SRV
+        meta.rtype         = dns_type::srv; // SRV
         meta.name_offset   = 0;
         meta.record_offset = 0;
         meta.record_length = static_cast<size_t>(buf.size());
@@ -333,7 +335,7 @@ SCENARIO("parse::srv returns error on truncated input", "[parse][srv][malformed]
         auto buf = bytes({0x00, 0x00, 0x1F}); // only 3 bytes
 
         record_metadata meta;
-        meta.rtype         = 33;
+        meta.rtype         = dns_type::srv;
         meta.record_offset = 0;
         meta.record_length = 20;
 
@@ -366,7 +368,7 @@ SCENARIO("parse::txt collects all key-value pairs from TXT wire format", "[parse
         });
 
         record_metadata meta;
-        meta.rtype         = 16; // TXT
+        meta.rtype         = dns_type::txt; // TXT
         meta.name_offset   = 0;
         meta.record_offset = 0;
         meta.record_length = static_cast<size_t>(buf.size());
@@ -397,7 +399,7 @@ SCENARIO("parse::txt handles empty TXT record gracefully", "[parse][txt]")
         auto buf = bytes({});
 
         record_metadata meta;
-        meta.rtype         = 16;
+        meta.rtype         = dns_type::txt;
         meta.record_offset = 0;
         meta.record_length = 0;
 
@@ -422,7 +424,7 @@ SCENARIO("parse::txt returns error on truncated input", "[parse][txt][malformed]
         auto buf = bytes({0x07, 'k','e','y'}); // only 4 bytes, claims 12
 
         record_metadata meta;
-        meta.rtype         = 16;
+        meta.rtype         = dns_type::txt;
         meta.record_offset = 0;
         meta.record_length = 12;
 
@@ -450,7 +452,7 @@ SCENARIO("parse::record dispatches to parse::a for rtype=1", "[parse][dispatch]"
         auto buf = bytes({0x7F, 0x00, 0x00, 0x01}); // 127.0.0.1
 
         record_metadata meta;
-        meta.rtype         = 1;
+        meta.rtype         = dns_type::a;
         meta.record_offset = 0;
         meta.record_length = 4;
 
@@ -479,7 +481,7 @@ SCENARIO("parse::record dispatches to parse::aaaa for rtype=28", "[parse][dispat
         });
 
         record_metadata meta;
-        meta.rtype         = 28;
+        meta.rtype         = dns_type::aaaa;
         meta.record_offset = 0;
         meta.record_length = 16;
 
@@ -503,7 +505,7 @@ SCENARIO("parse::record returns error for unknown rtype", "[parse][dispatch][mal
         auto buf = bytes({0x00});
 
         record_metadata meta;
-        meta.rtype         = 255;
+        meta.rtype         = dns_type::any;
         meta.record_offset = 0;
         meta.record_length = 1;
 

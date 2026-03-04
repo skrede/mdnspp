@@ -9,11 +9,6 @@ set(Boost_NO_WARN_NEW_VERSIONS ON)
 option(MDNSPP_BUILD_TESTS OFF)
 option(MDNSPP_BUILD_EXAMPLES OFF)
 
-include(FetchContent)
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
-
-
 set(SOURCE_DIRECTORY src)
 set(INCLUDE_DIRECTORY include)
 
@@ -66,11 +61,16 @@ install(FILES
 # Optional ASIO policy — fetched only when MDNSPP_ENABLE_ASIO_POLICY=ON
 option(MDNSPP_ENABLE_ASIO_POLICY "Build AsioPolicy (AsioSocket, AsioTimer) backed by asio::io_context" OFF)
 
-if(MDNSPP_ENABLE_ASIO_POLICY)
+include(FetchContent)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+if (MDNSPP_ENABLE_ASIO_POLICY)
+
     FetchContent_Declare(
         asio
         GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
-        GIT_TAG        asio-1-36-0
+        GIT_TAG asio-1-36-0
     )
     FetchContent_MakeAvailable(asio)
 
@@ -91,20 +91,20 @@ if(MDNSPP_ENABLE_ASIO_POLICY)
         ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_timer.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/asio
     )
-endif()
+endif ()
 
 # Optional NativePolicy — raw UDP multicast, no ASIO dependency
 option(MDNSPP_ENABLE_NATIVE_POLICY "Build NativePolicy (NativeSocket, NativeTimer, NativeContext)" OFF)
 
-if(MDNSPP_ENABLE_NATIVE_POLICY)
+if (MDNSPP_ENABLE_NATIVE_POLICY)
     add_library(mdnspp_native INTERFACE)
     add_library(mdnspp::native ALIAS mdnspp_native)
     target_include_directories(mdnspp_native INTERFACE ${INCLUDE_DIRECTORY})
     target_link_libraries(mdnspp_native INTERFACE mdnspp)
 
-    if(WIN32)
+    if (WIN32)
         target_link_libraries(mdnspp_native INTERFACE ws2_32)
-    endif()
+    endif ()
 
     install(FILES
         ${INCLUDE_DIRECTORY}/mdnspp/native.h
@@ -113,13 +113,13 @@ if(MDNSPP_ENABLE_NATIVE_POLICY)
     install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/native/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/native
     )
-endif()
+endif ()
 
-if(${MDNSPP_BUILD_EXAMPLES})
+if (${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(example)
-endif()
+endif ()
 
-if(${MDNSPP_BUILD_TESTS})
+if (${MDNSPP_BUILD_TESTS})
     FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git
@@ -128,4 +128,4 @@ if(${MDNSPP_BUILD_TESTS})
     FetchContent_MakeAvailable(Catch2)
     enable_testing()
     add_subdirectory(tests)
-endif()
+endif ()

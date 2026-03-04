@@ -7,6 +7,7 @@
 
 #include <arpa/inet.h>
 
+#include <expected>
 #include <span>
 #include <sstream>
 #include <vector>
@@ -85,6 +86,85 @@ inline bool skip_dns_name(std::span<const std::byte> buf, size_t &offset)
         offset += 1 + static_cast<size_t>(label_len);
         if (offset > buf.size())
             return false;
+    }
+}
+
+// Reads and decompresses a DNS name from the wire format at the given offset.
+//
+// Implements RFC 1035 §4.1.4 name decompression with RFC 9267 safety rules:
+//   - Backward-only compression pointers: ptr_target must be strictly less than
+//     the current offset; self-referential and forward pointers are rejected.
+//   - Maximum 4 pointer hops per name: prevents long chains even in the absence
+//     of cycles (which are impossible by the backward-only invariant).
+//   - Assembled name must not exceed 255 bytes (RFC 1035 §3.1).
+//   - Labels are transcribed as raw bytes (no IDN/punycode — mDNS names are ASCII).
+//
+// The result string uses dotted-label notation without a trailing dot
+// (e.g. "_http._tcp.local"). The root name (\x00) returns an empty string.
+//
+// Returns std::unexpected(mdns_error::parse_error) on any bounds violation,
+// pointer safety violation, or name-length overflow.
+inline std::expected<std::string, mdns_error>
+read_dns_name(std::span<const std::byte> buf, size_t offset)
+{
+    std::string result;
+    result.reserve(64);
+
+    int       hops       = 0;
+    constexpr int    max_hops     = 4;
+    constexpr size_t max_name_len = 255;
+
+    while (true)
+    {
+        if (offset >= buf.size())
+            return std::unexpected(mdns_error::parse_error);
+
+        uint8_t label_len = static_cast<uint8_t>(buf[offset]);
+
+        // Compression pointer: top 2 bits set (0xC0)
+        if ((label_len & 0xC0) == 0xC0)
+        {
+            // Pointer requires 2 bytes
+            if (offset + 1 >= buf.size())
+                return std::unexpected(mdns_error::parse_error);
+
+            size_t ptr_target =
+                ((static_cast<size_t>(label_len) & 0x3FU) << 8) |
+                 static_cast<size_t>(static_cast<uint8_t>(buf[offset + 1]));
+
+            // RFC 9267: pointer must be strictly backward — prevents self-referential
+            // and forward pointers; cycles are impossible by construction.
+            if (ptr_target >= offset)
+                return std::unexpected(mdns_error::parse_error);
+
+            if (++hops > max_hops)
+                return std::unexpected(mdns_error::parse_error);
+
+            offset = ptr_target;
+            continue;
+        }
+
+        // Root label — name is complete
+        if (label_len == 0)
+            return result;
+
+        // Regular label: bounds-check, then append
+        size_t label_start = offset + 1;
+        size_t label_end   = label_start + static_cast<size_t>(label_len);
+
+        if (label_end > buf.size())
+            return std::unexpected(mdns_error::parse_error);
+
+        if (!result.empty())
+            result += '.';
+
+        for (size_t i = label_start; i < label_end; ++i)
+            result += static_cast<char>(static_cast<uint8_t>(buf[i]));
+
+        if (result.size() > max_name_len)
+            return std::unexpected(mdns_error::parse_error);
+
+        offset = label_end;
     }
 }
 

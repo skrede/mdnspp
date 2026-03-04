@@ -1,17 +1,14 @@
 #ifndef HPP_GUARD_MDNSPP_SERVICE_SERVER_H
 #define HPP_GUARD_MDNSPP_SERVICE_SERVER_H
 
-#include "mdnspp/socket_policy.h"
-#include "mdnspp/timer_policy.h"
+#include "mdnspp/policy.h"
 #include "mdnspp/records.h"
-#include "mdnspp/mdns_error.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/recv_loop.h"
 #include "mdnspp/dns_wire.h"
 
 #include <algorithm>
-#include <expected>
 #include <memory>
 #include <random>
 #include <chrono>
@@ -23,28 +20,33 @@
 
 namespace mdnspp {
 
-// service_server<S, T> — mDNS service responder
+// service_server<P> — mDNS service responder
 //
 // Policy-based class template parameterized on:
-//   S — SocketPolicy: provides async_receive(), send(), close()
-//   T — TimerPolicy:  provides expires_after(), async_wait(), cancel()
+//   P — Policy: provides executor_type, socket_type, timer_type
 //
 // Lifecycle:
-//   1. create(socket, timer, info) — factory; returns std::expected
-//   2. start()                     — arms recv_loop; returns immediately
-//   3. stop()                      — idempotent; cancels timer, destroys loop
-//   4. ~service_server()           — calls stop() for RAII safety
+//   1. service_server(ex, info)        — direct constructor (throwing)
+//      service_server(ex, info, ec)    — non-throwing overload (ec set on failure)
+//   2. start()                         — arms recv_loop; returns immediately
+//   3. stop()                          — idempotent; cancels timer, destroys loop
+//   4. ~service_server()               — calls stop() for RAII safety
 //
 // No inheritance. No std::mutex. BEHAV-03 compliant.
 // Response delay 20-500ms per RFC 6762 section 6 (BEHAV-04).
 
-template <SocketPolicy S, TimerPolicy T>
+template <Policy P>
 class service_server
 {
 public:
+    using executor_type  = typename P::executor_type;
+    using socket_type    = typename P::socket_type;
+    using timer_type     = typename P::timer_type;
+
     /// Optional callback invoked when an incoming query is received and parsed.
     /// Parameters: sender endpoint, qtype requested, whether unicast was requested.
     using query_callback = std::function<void(endpoint, uint16_t, bool)>;
+
     // Non-copyable
     service_server(const service_server &) = delete;
     service_server &operator=(const service_server &) = delete;
@@ -70,7 +72,7 @@ public:
     {
         if (this == &other)
             return *this;
-        assert(m_loop == nullptr);   // this server must not be started
+        assert(m_loop == nullptr);       // this server must not be started
         assert(other.m_loop == nullptr); // source must not be started
         m_socket         = std::move(other.m_socket);
         m_response_timer = std::move(other.m_response_timer);
@@ -90,36 +92,53 @@ public:
         stop();
     }
 
-    // Factory — creates a service_server or returns an mdns_error.
-    //
-    // Takes two separate timer instances:
-    //   response_timer — used for RFC 6762 20-500ms response delay
-    //   recv_timer     — passed to recv_loop for silence-timeout tracking
-    //
-    // Two separate timers are required because T (e.g. AsioTimerPolicy) may wrap a
-    // non-copyable type (asio::steady_timer). Requiring the caller to provide two
-    // distinct timer instances avoids implicit copying and is explicit about ownership.
-    [[nodiscard]] static std::expected<service_server, mdns_error>
-    create(S socket, T response_timer, T recv_timer, service_info info,
-           query_callback on_query = {})
+    // Throwing constructor — constructs socket and both timers from executor.
+    explicit service_server(executor_type ex, service_info info,
+                            query_callback on_query = {})
+        : m_socket(ex)
+        , m_response_timer(ex)
+        , m_recv_timer(ex)
+        , m_info(std::move(info))
+        , m_on_query(std::move(on_query))
+        , m_rng(std::random_device{}())
+        , m_loop(nullptr)
+        , m_stopped(false)
     {
-        return service_server(std::move(socket), std::move(response_timer),
-                              std::move(recv_timer), std::move(info),
-                              std::move(on_query));
+    }
+
+    // Non-throwing constructors — ec is last (ASIO convention).
+    service_server(executor_type ex, service_info info,
+                   query_callback on_query, std::error_code &ec)
+        : m_socket(ex, ec)
+        , m_response_timer(ex)
+        , m_recv_timer(ex)
+        , m_info(std::move(info))
+        , m_on_query(std::move(on_query))
+        , m_rng(std::random_device{}())
+        , m_loop(nullptr)
+        , m_stopped(false)
+    {
+    }
+
+    service_server(executor_type ex, service_info info, std::error_code &ec)
+        : m_socket(ex, ec)
+        , m_response_timer(ex)
+        , m_recv_timer(ex)
+        , m_info(std::move(info))
+        , m_rng(std::random_device{}())
+        , m_loop(nullptr)
+        , m_stopped(false)
+    {
     }
 
     // start() — arms the recv_loop and returns immediately.
     // Incoming queries trigger RFC 6762-delayed responses.
     // Must only be called once; calling start() after start() is a logic error.
-    //
-    // m_socket and m_recv_timer are moved into the recv_loop on start().
-    // After start(), all socket access (including send_response) goes through
-    // m_loop->socket() — this supports non-copyable policies like AsioSocketPolicy.
     void start()
     {
         assert(m_loop == nullptr); // can only start once
 
-        m_loop = std::make_unique<recv_loop<S, T>>(
+        m_loop = std::make_unique<recv_loop<P>>(
             m_socket,
             m_recv_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
@@ -143,34 +162,15 @@ public:
         m_loop.reset(); // destructor calls stop() on the loop
     }
 
-    // Test accessors — allow tests to inspect internal socket/timer state.
-    // After start(), m_socket has been moved into m_loop; socket() returns the loop's copy.
-    // Before start(), returns m_socket directly (for pre-start inspection).
-    const S &socket() const noexcept
-    {
-        return m_loop ? m_loop->socket() : m_socket;
-    }
-    S &socket() noexcept
-    {
-        return m_loop ? m_loop->socket() : m_socket;
-    }
-    const T &timer() const noexcept  { return m_response_timer; }
-    T       &timer()       noexcept  { return m_response_timer; }
+    // Accessors — service_server owns socket and timers directly.
+    const socket_type &socket()      const noexcept { return m_socket; }
+    socket_type       &socket()            noexcept { return m_socket; }
+    const timer_type  &timer()       const noexcept { return m_response_timer; }
+    timer_type        &timer()             noexcept { return m_response_timer; }
+    const timer_type  &recv_timer()  const noexcept { return m_recv_timer; }
+    timer_type        &recv_timer()        noexcept { return m_recv_timer; }
 
 private:
-    explicit service_server(S socket, T response_timer, T recv_timer,
-                            service_info info, query_callback on_query)
-        : m_socket(std::move(socket))
-        , m_response_timer(std::move(response_timer))
-        , m_recv_timer(std::move(recv_timer))
-        , m_info(std::move(info))
-        , m_on_query(std::move(on_query))
-        , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
-    {
-    }
-
     // Returns true if the wire-encoded DNS name at data[12..name_end) matches
     // any name this server is authoritative for.
     bool query_matches(std::span<const std::byte> data, size_t name_end) const
@@ -253,26 +253,25 @@ private:
 
     // Builds and sends a DNS response to dest for the given qtype.
     // dest is either the multicast group (default) or the querier's unicast address
-    // (when QU bit was set in the question). Uses m_loop->socket() because
-    // m_socket was moved into the recv_loop on start().
+    // (when QU bit was set in the question). Uses m_socket directly — service_server
+    // owns the socket, not recv_loop.
     void send_response(endpoint dest, uint16_t qtype)
     {
         auto response = detail::build_dns_response(m_info, qtype);
         if (response.empty())
             return; // unmatched qtype or missing address
 
-        if (m_loop)
-            m_loop->socket().send(dest, std::span<const std::byte>(response));
+        m_socket.send(dest, std::span<const std::byte>(response));
     }
 
-    S          m_socket;           // socket used for sending responses
-    T          m_response_timer;   // RFC 6762 response delay timer
-    T          m_recv_timer;       // passed to recv_loop for silence tracking
-    service_info m_info;           // service description for DNS responses
-    query_callback m_on_query;     // optional per-query callback
-    std::mt19937 m_rng;            // PRNG for random delay generation
-    std::unique_ptr<recv_loop<S, T>> m_loop; // continuous query listener (null until start())
-    std::atomic<bool> m_stopped;   // idempotent stop flag
+    socket_type    m_socket;           // socket used for sending responses
+    timer_type     m_response_timer;   // RFC 6762 response delay timer
+    timer_type     m_recv_timer;       // passed to recv_loop for silence tracking
+    service_info   m_info;             // service description for DNS responses
+    query_callback m_on_query;         // optional per-query callback
+    std::mt19937   m_rng;              // PRNG for random delay generation
+    std::unique_ptr<recv_loop<P>> m_loop; // continuous query listener (null until start())
+    std::atomic<bool> m_stopped;          // idempotent stop flag
 };
 
 } // namespace mdnspp

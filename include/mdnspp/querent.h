@@ -1,14 +1,11 @@
 #ifndef HPP_GUARD_MDNSPP_QUERENT_H
 #define HPP_GUARD_MDNSPP_QUERENT_H
 
-#include "mdnspp/socket_policy.h"
-#include "mdnspp/timer_policy.h"
+#include "mdnspp/policy.h"
 #include "mdnspp/records.h"
-#include "mdnspp/mdns_error.h"
 #include "mdnspp/endpoint.h"
 
 #include <algorithm>
-#include <expected>
 #include <functional>
 #include <memory>
 #include <string>
@@ -25,22 +22,16 @@
 
 namespace mdnspp {
 
-template <SocketPolicy S, TimerPolicy T>
+template <Policy P>
 class querent
 {
 public:
+    using executor_type   = typename P::executor_type;
+    using socket_type     = typename P::socket_type;
+    using timer_type      = typename P::timer_type;
+
     /// Optional callback invoked per record as results arrive during a query.
     using record_callback = std::function<void(const mdns_record_variant &, endpoint)>;
-
-    // Factory function (API-03): construction cannot fail in Phase 4, but
-    // std::expected is required by the API contract for future extensibility.
-    [[nodiscard]] static std::expected<querent, mdns_error>
-    create(S socket, T timer, std::chrono::milliseconds silence_timeout,
-           record_callback on_record = {})
-    {
-        return querent(std::move(socket), std::move(timer),
-                       silence_timeout, std::move(on_record));
-    }
 
     // Non-copyable (owns recv_loop by unique_ptr)
     querent(const querent &) = delete;
@@ -65,16 +56,48 @@ public:
         m_loop.reset(); // destroyed before m_socket/m_timer (reverse declaration order)
     }
 
-    // Test accessors: access to the internal socket (mirrors
-    // recv_loop::timer() and service_discovery::socket() patterns).
-    const S &socket() const noexcept
+    // Throwing constructor — constructs socket and timer from executor.
+    // Silence timeout determines how long to wait after the last relevant packet
+    // before stopping the recv_loop.
+    explicit querent(executor_type ex,
+                     std::chrono::milliseconds silence_timeout,
+                     record_callback on_record = {})
+        : m_socket(ex)
+        , m_timer(ex)
+        , m_silence_timeout(silence_timeout)
+        , m_on_record(std::move(on_record))
+        , m_loop(nullptr)
     {
-        return m_loop ? m_loop->socket() : m_socket;
     }
-    S &socket() noexcept
+
+    // Non-throwing constructors — ec is last (ASIO convention).
+    querent(executor_type ex,
+            std::chrono::milliseconds silence_timeout,
+            record_callback on_record,
+            std::error_code &ec)
+        : m_socket(ex, ec)
+        , m_timer(ex)
+        , m_silence_timeout(silence_timeout)
+        , m_on_record(std::move(on_record))
+        , m_loop(nullptr)
     {
-        return m_loop ? m_loop->socket() : m_socket;
     }
+
+    querent(executor_type ex,
+            std::chrono::milliseconds silence_timeout,
+            std::error_code &ec)
+        : m_socket(ex, ec)
+        , m_timer(ex)
+        , m_silence_timeout(silence_timeout)
+        , m_loop(nullptr)
+    {
+    }
+
+    // Accessors — querent owns socket and timer directly.
+    const socket_type &socket() const noexcept { return m_socket; }
+    socket_type       &socket()       noexcept { return m_socket; }
+    const timer_type  &timer()  const noexcept { return m_timer; }
+    timer_type        &timer()        noexcept { return m_timer; }
 
     // Sends a DNS query for name/qtype, arms recv_loop to accumulate records.
     // Results are available via results() after io.run() returns.
@@ -90,7 +113,7 @@ public:
         m_socket.send(endpoint{"224.0.0.251", 5353},
                       std::span<const std::byte>(query_bytes));
 
-        m_loop = std::make_unique<recv_loop<S, T>>(
+        m_loop = std::make_unique<recv_loop<P>>(
             m_socket,
             m_timer,
             m_silence_timeout,
@@ -153,22 +176,12 @@ public:
     }
 
 private:
-    querent(S socket, T timer, std::chrono::milliseconds silence_timeout,
-            record_callback on_record)
-        : m_socket(std::move(socket))
-        , m_timer(std::move(timer))
-        , m_silence_timeout(silence_timeout)
-        , m_on_record(std::move(on_record))
-        , m_loop(nullptr)
-    {
-    }
-
-    S m_socket;
-    T m_timer;
+    socket_type      m_socket;
+    timer_type       m_timer;
     std::chrono::milliseconds m_silence_timeout;
-    record_callback m_on_record;             // optional per-record callback
-    std::string m_query_name;                // set in query(), used for filtering
-    std::unique_ptr<recv_loop<S, T>> m_loop; // null until query()
+    record_callback  m_on_record;            // optional per-record callback
+    std::string      m_query_name;           // set in query(), used for filtering
+    std::unique_ptr<recv_loop<P>> m_loop;    // null until query()
     std::vector<mdns_record_variant> m_results;
 };
 

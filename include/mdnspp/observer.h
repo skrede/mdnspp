@@ -1,15 +1,12 @@
 #ifndef HPP_GUARD_MDNSPP_OBSERVER_H
 #define HPP_GUARD_MDNSPP_OBSERVER_H
 
-#include "mdnspp/socket_policy.h"
-#include "mdnspp/timer_policy.h"
+#include "mdnspp/policy.h"
 #include "mdnspp/records.h"
-#include "mdnspp/mdns_error.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/recv_loop.h"
 #include "mdnspp/dns_wire.h"
 
-#include <expected>
 #include <memory>
 #include <atomic>
 #include <functional>
@@ -19,17 +16,17 @@
 
 namespace mdnspp {
 
-// observer<S, T> — mDNS multicast listener
+// observer<P> — mDNS multicast listener
 //
 // Policy-based class template parameterized on:
-//   S — SocketPolicy: provides async_receive(), send(), close()
-//   T — TimerPolicy:  provides expires_after(), async_wait(), cancel()
+//   P — Policy: provides executor_type, socket_type, timer_type
 //
 // Lifecycle:
-//   1. create(socket, timer, callback) — factory; returns std::expected
-//   2. start()                         — arms recv_loop; returns immediately
-//   3. stop()                          — idempotent; sets stop flag
-//   4. ~observer()                     — destroys recv_loop for RAII safety
+//   1. observer(ex, callback)        — direct constructor (throwing)
+//      observer(ex, callback, ec)    — non-throwing overload (ec set on failure)
+//   2. start()                       — arms recv_loop; returns immediately
+//   3. stop()                        — idempotent; sets stop flag
+//   4. ~observer()                   — destroys recv_loop for RAII safety
 //
 // Observer is a pure listener — no queries sent, no responses built.
 // All parsed records are delivered to the callback with the sender endpoint.
@@ -41,10 +38,13 @@ namespace mdnspp {
 //
 // No inheritance. No std::mutex. Single timer (unlike service_server).
 
-template <SocketPolicy S, TimerPolicy T>
+template <Policy P>
 class observer
 {
 public:
+    using executor_type   = typename P::executor_type;
+    using socket_type     = typename P::socket_type;
+    using timer_type      = typename P::timer_type;
     using record_callback = std::function<void(mdns_record_variant, endpoint)>;
 
     // Non-copyable
@@ -72,27 +72,36 @@ public:
         m_loop.reset(); // safe — destructor is never called from within callback chain
     }
 
-    // Factory — creates an observer or returns an mdns_error.
-    //
-    // Takes one socket and one timer (simpler than service_server's dual-timer pattern;
-    // observer has no response delay — it only needs the recv_loop silence timer).
-    [[nodiscard]] static std::expected<observer, mdns_error>
-    create(S socket, T timer, record_callback callback)
+    // Throwing constructor — constructs socket and timer from executor.
+    // Throws on construction failure (e.g. socket bind error).
+    explicit observer(executor_type ex, record_callback callback)
+        : m_socket(ex)
+        , m_timer(ex)
+        , m_callback(std::move(callback))
+        , m_loop(nullptr)
+        , m_stopped(false)
     {
-        return observer(std::move(socket), std::move(timer), std::move(callback));
+    }
+
+    // Non-throwing constructor — sets ec on failure instead of throwing.
+    // ec is the last parameter, matching ASIO convention.
+    observer(executor_type ex, record_callback callback, std::error_code &ec)
+        : m_socket(ex, ec)
+        , m_timer(ex)
+        , m_callback(std::move(callback))
+        , m_loop(nullptr)
+        , m_stopped(false)
+    {
     }
 
     // start() — arms the recv_loop and returns immediately.
     // Incoming multicast packets are parsed and each record delivered to the callback.
     // Must only be called once; calling start() after start() is a logic error.
-    //
-    // m_socket and m_timer are moved into the recv_loop on start().
-    // After start(), socket access goes through m_loop->socket().
     void start()
     {
         assert(m_loop == nullptr); // can only start once
 
-        m_loop = std::make_unique<recv_loop<S, T>>(
+        m_loop = std::make_unique<recv_loop<P>>(
             m_socket,
             m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
@@ -117,28 +126,13 @@ public:
             return; // already stopped — idempotent
     }
 
-    // Test accessor — expose internal socket for post-start inspection.
-    // After start(), m_socket has been moved into m_loop; socket() returns the loop's copy.
-    // Before start(), returns m_socket directly.
-    const S &socket() const noexcept
-    {
-        return m_loop ? m_loop->socket() : m_socket;
-    }
-    S &socket() noexcept
-    {
-        return m_loop ? m_loop->socket() : m_socket;
-    }
+    // Accessors — observer owns socket and timer directly.
+    const socket_type &socket() const noexcept { return m_socket; }
+    socket_type       &socket()       noexcept { return m_socket; }
+    const timer_type  &timer()  const noexcept { return m_timer; }
+    timer_type        &timer()        noexcept { return m_timer; }
 
 private:
-    explicit observer(S socket, T timer, record_callback callback)
-        : m_socket(std::move(socket))
-        , m_timer(std::move(timer))
-        , m_callback(std::move(callback))
-        , m_loop(nullptr)
-        , m_stopped(false)
-    {
-    }
-
     // Called by recv_loop for every incoming packet.
     // Checks the stop flag, then walks the DNS frame and delivers each record.
     void on_packet(std::span<std::byte> data, endpoint sender)
@@ -156,11 +150,11 @@ private:
             });
     }
 
-    S              m_socket;    // socket used for receiving multicast packets
-    T              m_timer;     // passed to recv_loop for silence-timeout tracking
-    record_callback m_callback; // called once per successfully parsed record
-    std::unique_ptr<recv_loop<S, T>> m_loop; // continuous listener (null until start())
-    std::atomic<bool> m_stopped;             // idempotent stop flag
+    socket_type      m_socket;    // socket used for receiving multicast packets
+    timer_type       m_timer;     // passed to recv_loop for silence-timeout tracking
+    record_callback  m_callback;  // called once per successfully parsed record
+    std::unique_ptr<recv_loop<P>> m_loop; // continuous listener (null until start())
+    std::atomic<bool> m_stopped;          // idempotent stop flag
 };
 
 } // namespace mdnspp

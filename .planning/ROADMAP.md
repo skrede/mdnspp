@@ -81,7 +81,9 @@
   2. `co_await async_observe(asio::use_awaitable)` compiles and suspends correctly in a C++23 coroutine context
   3. Completion handlers are dispatched on the handler's associated executor — TSan reports no data races on a two-thread `io_context`
   4. `async_discover(asio::deferred)` produces a composable operation that does not initiate I/O until it is launched
-**Plans**: TBD
+**Plans**: 2 plans
+  - [ ] 10-01-PLAN.md — Rename entry-point methods to async_ prefix, add callback-based completion handlers to all four public types, update tests and examples
+  - [ ] 10-02-PLAN.md — Add ASIO completion token template overloads via async_initiate (use_future, use_awaitable, deferred), create integration tests
 
 ### Phase 11: Service Aggregation
 **Goal**: Callers receive a single `resolved_service` value per discovered service rather than a stream of raw record variants
@@ -109,5 +111,5 @@
 | 7. Policy Unification and Direct Construction | 3/3 | Complete   | 2026-03-04 | - |
 | 8. Native DNS Protocol | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 9. NativePolicy Standalone Networking | v2.0 | 1/2 | In progress | - |
-| 10. ASIO Completion Tokens | v2.0 | 0/? | Not started | - |
+| 10. ASIO Completion Tokens | v2.0 | 0/2 | Not started | - |
 | 11. Service Aggregation | v2.0 | 0/? | Not started | - |

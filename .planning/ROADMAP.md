@@ -68,7 +68,9 @@
   2. `NativePolicy::run()` blocks and processes I/O until `stop()` is called; `poll_one()` returns immediately when no I/O is ready
   3. IPv4 multicast group `224.0.0.251:5353` is joined on Linux, macOS, and Windows without silent failure (`SO_REUSEPORT` guarded, bind uses `INADDR_ANY`)
   4. All four public types (`observer`, `service_discovery`, `querent`, `service_server`) instantiate and function with `NativePolicy`
-**Plans**: TBD
+**Plans**: 2 plans
+  - [x] 09-01-PLAN.md — NativeContext event loop + NativeTimer (platform abstractions, poll/stop, timer dispatch)
+  - [ ] 09-02-PLAN.md — NativeSocket + NativePolicy + CMake target + conformance tests + umbrella header
 
 ### Phase 10: ASIO Completion Tokens
 **Goal**: Every async operation on all four public types accepts any ASIO completion token — callback, future, coroutine, and deferred — from a single function call
@@ -106,6 +108,6 @@
 | 6. Refactor observer | v1.0 | 2/2 | Complete | 2026-03-04 |
 | 7. Policy Unification and Direct Construction | 3/3 | Complete   | 2026-03-04 | - |
 | 8. Native DNS Protocol | v2.0 | 2/2 | Complete | 2026-03-04 |
-| 9. NativePolicy Standalone Networking | v2.0 | 0/? | Not started | - |
+| 9. NativePolicy Standalone Networking | v2.0 | 1/2 | In progress | - |
 | 10. ASIO Completion Tokens | v2.0 | 0/? | Not started | - |
 | 11. Service Aggregation | v2.0 | 0/? | Not started | - |

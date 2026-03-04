@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Standalone & Ergonomic
-status: in_progress
-last_updated: "2026-03-04T14:00:00.000Z"
+status: unknown
+last_updated: "2026-03-04T14:44:53Z"
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
+  total_phases: 2
+  completed_phases: 2
+  total_plans: 5
+  completed_plans: 5
 ---
 
 # Project State
@@ -18,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** A C++23 mDNS library that composes naturally with any executor or event loop — no owned threads, no hidden allocations, no C types leaking into user code. Truly standalone.
-**Current focus:** Phase 8 — Native DNS Protocol
+**Current focus:** Phase 9 — NativePolicy Standalone Networking
 
 ## Current Position
 
-Phase: 8 of 11 (Native DNS Protocol)
-Plan: 03 (08-02 complete)
+Phase: 9 of 11 (NativePolicy Standalone Networking)
+Plan: 02 (09-01 complete)
 Status: In progress
-Last activity: 2026-03-04 — Completed 08-02 (mjansson/mdns fully removed; all five record types native C++; all 10 tests pass)
+Last activity: 2026-03-04 — Completed 09-01 (NativeContext event loop + NativeTimer; poll/eventfd/pipe wakeup; all 10 native_timer tests pass)
 
 Progress: [░░░░░░░░░░] 3% (v2.0)
 
@@ -45,6 +45,7 @@ Progress: [░░░░░░░░░░] 3% (v2.0)
 | Phase 07-policy-unification-and-direct-construction P03 | 573 | 2 tasks | 21 files |
 | Phase 08-native-dns-protocol P01 | ~4 min | 1 task | 3 files |
 | Phase 08-native-dns-protocol P02 | ~7 min | 2 tasks | 6 files |
+| Phase 09-nativepolicy-standalone-networking P01 | ~5 min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,9 @@ Progress: [░░░░░░░░░░] 3% (v2.0)
 - [Phase 08]: read_dns_name takes offset by value (not reference) — stateless decode from a fixed point, matching parse.cpp usage of meta.name_offset
 - [Phase 08-02]: Owner name extraction is lenient (empty string on failure) — parse_test buffers use raw record data at name_offset=0, mjansson was also lenient
 - [Phase 08-02]: Trailing dot stripped in querent/service_discovery stored name, not in read_dns_name — callers normalize to match no-trailing-dot convention
+- [Phase 09-01]: NativeContext forward-declares NativeTimer; compute_next_timeout_ms/fire_expired_timers defined out-of-line in native_timer.h after full NativeTimer definition — breaks mutual include dependency cleanly
+- [Phase 09-01]: compute_next_timeout_ms returns -1 when no timer has a pending handler (poll blocks indefinitely — avoids busy-polling when idle)
+- [Phase 09-01]: expires_after drops pending handler silently without calling it (matches MockTimer semantics required by recv_loop)
 
 ### Pending Todos
 
@@ -79,6 +83,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T14:00:00.000Z
-Stopped at: Completed 08-02-PLAN.md (mjansson/mdns removal; native C++ record parsing). Phase 08 Plan 02 complete.
+Last session: 2026-03-04T14:44:53Z
+Stopped at: Completed 09-01-PLAN.md (NativeContext event loop + NativeTimer; TDD; 10 tests pass). Phase 09 Plan 01 complete.
 Resume file: None

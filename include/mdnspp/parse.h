@@ -4,6 +4,7 @@
 #include "mdnspp/records.h"
 #include "mdnspp/mdns_error.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/detail/dns_enums.h"
 
 #include <span>
 #include <expected>
@@ -16,8 +17,8 @@ struct record_metadata
 {
     endpoint sender;
     uint32_t ttl{0};
-    uint16_t rclass{0};
-    uint16_t rtype{0}; // 1=A, 12=PTR, 16=TXT, 28=AAAA, 33=SRV
+    dns_class rclass{dns_class::none};
+    dns_type  rtype{dns_type::none};
     size_t name_offset{0};
     size_t record_offset{0};
     size_t record_length{0};

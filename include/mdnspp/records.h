@@ -1,6 +1,8 @@
 #ifndef HPP_GUARD_MDNSPP_RECORDS_H
 #define HPP_GUARD_MDNSPP_RECORDS_H
 
+#include "mdnspp/detail/dns_enums.h"
+
 #include <variant>
 #include <string>
 #include <vector>
@@ -20,7 +22,7 @@ struct record_ptr
 {
     std::string name;
     uint32_t ttl{0};
-    uint16_t rclass{0};
+    dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
     std::string ptr_name;
@@ -30,7 +32,7 @@ struct record_srv
 {
     std::string name;
     uint32_t ttl{0};
-    uint16_t rclass{0};
+    dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
     uint16_t port{0};
@@ -43,7 +45,7 @@ struct record_a
 {
     std::string name;
     uint32_t ttl{0};
-    uint16_t rclass{0};
+    dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
     std::string address_string; // "192.168.1.1" — no sockaddr_in
@@ -53,7 +55,7 @@ struct record_aaaa
 {
     std::string name;
     uint32_t ttl{0};
-    uint16_t rclass{0};
+    dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
     std::string address_string; // "fe80::1" — no sockaddr_in6
@@ -63,7 +65,7 @@ struct record_txt
 {
     std::string name;
     uint32_t ttl{0};
-    uint16_t rclass{0};
+    dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
     std::vector<service_txt> entries;
@@ -80,7 +82,7 @@ using mdns_record_variant = std::variant<
 inline std::ostream &operator<<(std::ostream &str, const record_ptr &r)
 {
     str << r.sender_address << ": PTR " << r.name << " -> " << r.ptr_name
-        << " rclass 0x" << std::hex << r.rclass << std::dec
+        << " rclass " << to_string(r.rclass)
         << " ttl " << r.ttl << " length " << r.length;
     return str;
 }
@@ -89,7 +91,7 @@ inline std::ostream &operator<<(std::ostream &str, const record_srv &r)
 {
     str << r.sender_address << ": SRV " << r.name << " -> " << r.srv_name
         << " port " << r.port << " weight " << r.weight << " priority " << r.priority
-        << " rclass 0x" << std::hex << r.rclass << std::dec
+        << " rclass " << to_string(r.rclass)
         << " ttl " << r.ttl << " length " << r.length;
     return str;
 }
@@ -97,7 +99,7 @@ inline std::ostream &operator<<(std::ostream &str, const record_srv &r)
 inline std::ostream &operator<<(std::ostream &str, const record_a &r)
 {
     str << r.sender_address << ": A " << r.name << " -> " << r.address_string
-        << " rclass 0x" << std::hex << r.rclass << std::dec
+        << " rclass " << to_string(r.rclass)
         << " ttl " << r.ttl << " length " << r.length;
     return str;
 }
@@ -105,7 +107,7 @@ inline std::ostream &operator<<(std::ostream &str, const record_a &r)
 inline std::ostream &operator<<(std::ostream &str, const record_aaaa &r)
 {
     str << r.sender_address << ": AAAA " << r.name << " -> " << r.address_string
-        << " rclass 0x" << std::hex << r.rclass << std::dec
+        << " rclass " << to_string(r.rclass)
         << " ttl " << r.ttl << " length " << r.length;
     return str;
 }
@@ -119,7 +121,7 @@ inline std::ostream &operator<<(std::ostream &str, const record_txt &r)
         if (e.value.has_value())
             str << "=" << *e.value;
     }
-    str << " rclass 0x" << std::hex << r.rclass << std::dec
+    str << " rclass " << to_string(r.rclass)
         << " ttl " << r.ttl << " length " << r.length;
     return str;
 }

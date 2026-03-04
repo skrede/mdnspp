@@ -42,6 +42,16 @@ constexpr std::string_view to_string(dns_type t) noexcept
     return "unknown";
 }
 
+constexpr std::string_view to_string(dns_class c) noexcept
+{
+    switch (c)
+    {
+        case dns_class::none: return "none";
+        case dns_class::in:   return "IN";
+    }
+    return "unknown";
+}
+
 } // namespace mdnspp
 
 #endif // HPP_GUARD_MDNSPP_DETAIL_DNS_ENUMS_H

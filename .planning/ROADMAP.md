@@ -55,7 +55,9 @@
   2. `read_dns_name` correctly decompresses a self-referential pointer (`{0xC0, 0x0C}` at offset 12) without looping — returns an error
   3. PTR, SRV, TXT, A, and AAAA records parse identically to the previous mjansson-backed implementation — all existing record parser tests pass with no behavioral changes
   4. No `<mdns.h>` include appears anywhere in `src/` or `include/`
-**Plans**: TBD
+**Plans**: 2 plans
+  - [ ] 08-01-PLAN.md — TDD: Implement read_dns_name in dns_wire.h with RFC 1035/9267 safety tests
+  - [ ] 08-02-PLAN.md — Replace mjansson calls in parse.cpp, clean mdns_util, remove C library from build
 
 ### Phase 9: NativePolicy Standalone Networking
 **Goal**: Users can drive mdnspp service discovery and announcement using only OS sockets — no ASIO header in the include chain

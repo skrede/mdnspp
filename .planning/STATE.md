@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in_progress
-last_updated: "2026-03-04T05:40:31Z"
+status: unknown
+last_updated: "2026-03-04T05:52:36.289Z"
 progress:
   total_phases: 6
-  completed_phases: 5
-  total_plans: 17
-  completed_plans: 17
+  completed_phases: 6
+  total_plans: 18
+  completed_plans: 18
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A C++23 mDNS library that composes naturally with any executor or event loop — no owned threads, no hidden allocations, no C types leaking into user code.
-**Current focus:** Phase 6 Plan 01 COMPLETE — observer<S,T> class template implemented with create/start/stop lifecycle, callback-safe stop, and 6 BDD test scenarios (all passing)
+**Current focus:** Phase 6 COMPLETE — 9 legacy files deleted (mdns_base, record_buffer, record_parser, record_builder, legacy_records), ARCH-05 satisfied (zero mdns_base references), observe.cpp rewritten with AsioSocketPolicy/AsioTimerPolicy, 9/9 tests (standard) + 11/11 tests (ASIO) passing
 
 ## Current Position
 
-Phase: 6 of 6 (refactor-observer) — Plan 1 of 1 COMPLETE
-Plan: 1 of 1 in phase — COMPLETE
-Status: Plan 06-01 complete — observer<S,T> with recv_loop composition, atomic stop flag, walk_dns_frame integration; 9/9 tests passing (8 existing + 1 new)
-Last activity: 2026-03-04 — Completed 06-01 (observer<S,T> TDD: 6 scenarios, policy-based class template, callback-safe stop)
+Phase: 6 of 6 (refactor-observer) — COMPLETE
+Plan: 2 of 2 in phase — COMPLETE
+Status: Plan 06-02 complete — all legacy files deleted, ARCH-05 grep gate passes, observe.cpp uses new observer<S,T> API, both build configurations fully green
+Last activity: 2026-03-04 — Completed 06-02 (legacy deletion, CMake cleanup, observe.cpp rewrite, ARCH-05 satisfied)
 
-Progress: [████████████████████] Phase 6 Plan 1 complete
+Progress: [████████████████████] ALL PHASES COMPLETE
 
 ## Performance Metrics
 
@@ -45,7 +45,7 @@ Progress: [████████████████████] Phase 6
 | 03-record-parser-free-functions | 2 | 17 min | 8.5 min |
 | 04-refactor-service-discovery-and-querent | 2 | 10 min | 5.0 min |
 | 05-refactor-service-server | 3 | 16 min | 5.3 min |
-| 06-refactor-observer | 1 | 3 min | 3.0 min |
+| 06-refactor-observer | 2 | 10 min | 5.0 min |
 
 **Recent Trend:**
 - Last 5 plans: 04-02 (4 min), 05-01 (5 min), 05-02 (3 min), 05-03 (8 min), 06-01 (3 min)
@@ -55,6 +55,7 @@ Progress: [████████████████████] Phase 6
 | Phase 05-refactor-service-server P02 | 3 | 2 tasks | 2 files |
 | Phase 05-refactor-service-server P03 | 8 | 1 tasks | 5 files |
 | Phase 06-refactor-observer P01 | 3 | 2 tasks | 3 files |
+| Phase 06-refactor-observer P02 | 7 | 2 tasks | 20 files |
 
 ## Accumulated Context
 
@@ -119,6 +120,9 @@ Recent decisions affecting current work:
 - [Phase 06-01]: observer is movable before start() to satisfy std::expected<T,E> constructibility — std::expected requires is_constructible_v<T, Args...>; plan's "non-movable" intent was for post-start safety, which the assert in move ctor enforces
 - [Phase 06-01]: stop() sets atomic flag only; does NOT reset m_loop — callback-safe pattern prevents use-after-free when stop() is called from within the record callback
 - [Phase 06-01]: observer::~observer() stores m_stopped=true then resets m_loop — safe because destructor never called from within recv_loop callback chain
+- [Phase 06-02]: src/ promoted from PRIVATE to PUBLIC in mdnspp target_include_directories — public headers include private implementation headers; downstream consumers need src/ to resolve recv_loop.h and dns_wire.h
+- [Phase 06-02]: Stale pre-refactor example files removed — discover/inquire/serve/log_sink.cpp used non-template APIs refactored away in Phases 4-5
+- [Phase 06-02]: observe example links mdnspp_asio (not mdnspp) and is gated behind MDNSPP_ENABLE_ASIO_POLICY in example/CMakeLists.txt
 
 ### Pending Todos
 
@@ -128,10 +132,10 @@ None yet.
 
 - Research flag: Multicast join platform behavior (macOS, Windows) warrants empirical validation before Phase 2 plan is finalized
 - Research flag: mdns C library fork compatibility with -std=c++23 should be verified early in Phase 1
-- legacy_records.h bridge for Phase 3/6 migration (record_builder and record_parser still use old C-based record types)
+- legacy_records.h bridge for Phase 3/6 migration — RESOLVED in 06-02 (file deleted)
 
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 06-01-PLAN.md (observer<S,T> implementation)
-Resume file: .planning/phases/06-refactor-observer/06-01-SUMMARY.md
+Stopped at: Completed 06-02-PLAN.md (legacy files deleted, observe.cpp rewritten, ARCH-05 satisfied)
+Resume file: .planning/phases/06-refactor-observer/06-02-SUMMARY.md

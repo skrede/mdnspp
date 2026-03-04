@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-04T04:20:00.000Z"
+last_updated: "2026-03-04T04:13:03Z"
 progress:
-  total_phases: 4
+  total_phases: 6
   completed_phases: 4
-  total_plans: 13
-  completed_plans: 13
+  total_plans: 14
+  completed_plans: 14
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A C++23 mDNS library that composes naturally with any executor or event loop — no owned threads, no hidden allocations, no C types leaking into user code.
-**Current focus:** Phase 4 COMPLETE — querent<S,T> implemented and verified; ready for Phase 5 (service_server refactor)
+**Current focus:** Phase 5 Plan 01 COMPLETE — service_info.h, build_dns_response(), MockSocketPolicy endpoint enqueue; ready for Plan 05-02 (service_server<S,T>)
 
 ## Current Position
 
-Phase: 4 of 6 (refactor-service-discovery-and-querent) — COMPLETE
-Plan: 2 of 2 in phase — COMPLETE
-Status: Plan 04-02 complete — querent<S,T> template, querent_test (6 scenarios, all pass), all 4 Phase 4 ROADMAP criteria verified
-Last activity: 2026-03-04 — Completed 04-02 (querent.h, querent_test.cpp, all 6 test suites pass, Phase 4 human verification approved)
+Phase: 5 of 6 (refactor-service-server) — IN PROGRESS
+Plan: 1 of 2 in phase — COMPLETE
+Status: Plan 05-01 complete — service_info.h public type, build_dns_response() wire builder (7 scenarios, all pass), MockSocketPolicy enqueue with endpoint, 8 tests total pass
+Last activity: 2026-03-04 — Completed 05-01 (service_info.h, dns_wire.h build_dns_response, mock_socket_policy enqueue overload, 8 tests pass)
 
-Progress: [████████████] 67% (Phase 1 + Phase 2 + Phase 3 + Phase 4 complete)
+Progress: [██████████████] 72% (Phase 1 + Phase 2 + Phase 3 + Phase 4 complete + Phase 5 Plan 1)
 
 ## Performance Metrics
 
@@ -44,9 +44,10 @@ Progress: [████████████] 67% (Phase 1 + Phase 2 + Phase 
 | 02-recv-loop-and-asio-socket-policy | 4 | 13 min | 3.2 min |
 | 03-record-parser-free-functions | 2 | 17 min | 8.5 min |
 | 04-refactor-service-discovery-and-querent | 2 | 10 min | 5.0 min |
+| 05-refactor-service-server | 1 | 5 min | 5.0 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-01 (12 min), 03-02 (5 min), 04-01 (6 min), 04-02 (4 min)
+- Last 5 plans: 03-02 (5 min), 04-01 (6 min), 04-02 (4 min), 05-01 (5 min)
 - Trend: stable
 
 *Updated after each plan completion*
@@ -102,6 +103,10 @@ Recent decisions affecting current work:
 - [Phase 04-02]: query() signature is query(std::string_view name, uint16_t qtype) — flat DNS-idiomatic parameters; caller specifies QNAME and QTYPE directly
 - [Phase 04-02]: recv_loop constructed with copies of m_socket and m_timer inside query() — same pattern as discover(); allows multiple query() calls per querent instance
 - [Phase 04-02]: socket() test accessor added to querent — needed to inspect sent_packets from m_socket internal copy; mirrors service_discovery::socket() pattern
+- [Phase 05-01]: response_detail namespace used for build_dns_response internal helpers — keeps them scoped without polluting mdnspp::detail
+- [Phase 05-01]: MockSocketPolicy queue changed from queue<vector<byte>> to queue<pair<vector<byte>, endpoint>> — stores sender for endpoint-aware delivery; backward compat via enqueue(packet) calling enqueue(packet, endpoint{})
+- [Phase 05-01]: build_dns_response returns empty vector for A/AAAA when no address available — caller checks before sending
+- [Phase 05-01]: qtype=255 (ANY) produces all available records as answers (not additional) — simplifies ANY response assembly
 
 ### Pending Todos
 
@@ -116,5 +121,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 04-02-PLAN.md (querent<S,T> template, querent_test, all 6 test suites pass, Phase 4 complete)
+Stopped at: Completed 05-01-PLAN.md (service_info.h, build_dns_response, MockSocketPolicy enqueue overload, 8 tests pass)
 Resume file: None

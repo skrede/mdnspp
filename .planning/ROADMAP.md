@@ -97,11 +97,12 @@ Plans:
   2. A MockSocketPolicy unit test injects a PTR query and verifies the response is sent to the correct endpoint with a 20–500ms delay (simulated via mock timer)
   3. `service_server` does not inherit from `mdns_base`
   4. `std::mutex` is absent from `service_server` source after the dedicated strand-migration commit
-**Plans**: 2 plans
+**Plans**: 3 plans
 
 Plans:
-- [ ] 05-01-PLAN.md — service_info type, build_dns_response(), MockSocketPolicy endpoint extension, CMake wiring
+- [x] 05-01-PLAN.md — service_info type, build_dns_response(), MockSocketPolicy endpoint extension, CMake wiring (completed 2026-03-04)
 - [ ] 05-02-PLAN.md — service_server<S,T> template implementation and BDD tests
+- [ ] 05-03-PLAN.md — ThreadSanitizer hard-gate test for service_server with AsioSocketPolicy
 
 ### Phase 6: Refactor observer
 **Goal**: `observer<S>` is a class template composing `recv_loop<S>` for perpetual operation; `mdns_base` is fully deleted from the codebase
@@ -124,5 +125,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. recv_loop and AsioSocketPolicy | 4/4 | Complete   | 2026-03-03 |
 | 3. record_parser Free Functions | 2/2 | Complete   | 2026-03-03 |
 | 4. Refactor service_discovery and querent | 2/2 | Complete   | 2026-03-04 |
-| 5. Refactor service_server | 0/TBD | Not started | - |
+| 5. Refactor service_server | 1/3 | In progress | - |
 | 6. Refactor observer | 0/TBD | Not started | - |

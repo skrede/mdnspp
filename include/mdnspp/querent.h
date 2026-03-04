@@ -14,6 +14,8 @@
 #include <string_view>
 #include <cstdint>
 #include <cassert>
+#include <system_error>
+#include <utility>
 
 // These private headers are available via the src/ include directory
 // (added as PRIVATE to each test target in CMakeLists.txt)
@@ -33,16 +35,21 @@ public:
     /// Optional callback invoked per record as results arrive during a query.
     using record_callback = std::function<void(const mdns_record_variant &, endpoint)>;
 
+    /// Completion callback fired once when the silence timeout expires (or stop() is called).
+    /// Receives error_code (always success for normal completion) and the accumulated results.
+    using completion_handler = std::function<void(std::error_code, std::vector<mdns_record_variant>)>;
+
     // Non-copyable (owns recv_loop by unique_ptr)
     querent(const querent &) = delete;
     querent &operator=(const querent &) = delete;
 
-    // Movable only before query() is called (m_loop must be null).
+    // Movable only before async_query() is called (m_loop must be null).
     querent(querent &&other) noexcept
         : m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
         , m_silence_timeout(other.m_silence_timeout)
         , m_on_record(std::move(other.m_on_record))
+        , m_on_completion(std::move(other.m_on_completion))
         , m_loop(std::move(other.m_loop))
         , m_results(std::move(other.m_results))
     {
@@ -100,11 +107,12 @@ public:
     timer_type        &timer()        noexcept { return m_timer; }
 
     // Sends a DNS query for name/qtype, arms recv_loop to accumulate records.
-    // Results are available via results() after io.run() returns.
+    // Calls on_done once with (error_code{}, results) when the silence timeout fires.
     // Must only be called once per lifetime (one query per instance).
-    void query(std::string_view name, uint16_t qtype)
+    void async_query(std::string_view name, uint16_t qtype, completion_handler on_done)
     {
         assert(m_loop == nullptr); // one query per lifetime
+        m_on_completion = std::move(on_done);
         m_results.clear();
         m_query_name = std::string(name);
         // Strip trailing dot so the name matches read_dns_name output (no trailing dot)
@@ -156,26 +164,33 @@ public:
                 }
                 return relevant;
             },
-            // on_silence: stop the loop (io.run() returns)
+            // on_silence: stop the loop and fire the completion handler with results
             [this]()
             {
                 m_loop->stop();
+                if (auto h = std::exchange(m_on_completion, nullptr); h)
+                    h(std::error_code{}, m_results);
             });
 
         m_loop->start();
     }
 
     // Access accumulated results (populated during io.run()).
+    // Remains valid after completion — the completion handler receives a copy.
     const std::vector<mdns_record_variant> &results() const noexcept
     {
         return m_results;
     }
 
-    // Early termination — stops the recv_loop.
+    // Early termination — stops the recv_loop and fires the completion handler.
     void stop()
     {
         if (m_loop)
+        {
             m_loop->stop();
+            if (auto h = std::exchange(m_on_completion, nullptr); h)
+                h(std::error_code{}, m_results);
+        }
     }
 
 private:
@@ -183,8 +198,9 @@ private:
     timer_type       m_timer;
     std::chrono::milliseconds m_silence_timeout;
     record_callback  m_on_record;            // optional per-record callback
-    std::string      m_query_name;           // set in query(), used for filtering
-    std::unique_ptr<recv_loop<P>> m_loop;    // null until query()
+    completion_handler m_on_completion;      // fires once at silence timeout or stop()
+    std::string      m_query_name;           // set in async_query(), used for filtering
+    std::unique_ptr<recv_loop<P>> m_loop;    // null until async_query()
     std::vector<mdns_record_variant> m_results;
 };
 

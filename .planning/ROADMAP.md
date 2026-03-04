@@ -111,5 +111,5 @@
 | 7. Policy Unification and Direct Construction | 3/3 | Complete   | 2026-03-04 | - |
 | 8. Native DNS Protocol | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 9. NativePolicy Standalone Networking | v2.0 | 1/2 | In progress | - |
-| 10. ASIO Completion Tokens | v2.0 | 0/2 | Not started | - |
+| 10. ASIO Completion Tokens | 1/2 | In Progress|  | - |
 | 11. Service Aggregation | v2.0 | 0/? | Not started | - |

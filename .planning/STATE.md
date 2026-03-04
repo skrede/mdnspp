@@ -2,13 +2,16 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Standalone & Ergonomic
-status: unknown
-last_updated: "2026-03-04T14:55:46Z"
+status: executing
+stopped_at: Completed 10-01-PLAN.md (async_discover, async_query, async_observe, async_start with callback completions; all 13 tests pass). Ready for Plan 10-02.
+last_updated: "2026-03-04T16:09:08.209Z"
+last_activity: 2026-03-04 — Completed 09-02 (NativeSocket, NativePolicy, native.h umbrella, mdnspp_native CMake target, native_conformance_test; 12 tests pass)
 progress:
-  total_phases: 2
-  completed_phases: 2
-  total_plans: 5
-  completed_plans: 5
+  total_phases: 5
+  completed_phases: 3
+  total_plans: 9
+  completed_plans: 8
+  percent: 3
 ---
 
 # Project State
@@ -18,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** A C++23 mDNS library that composes naturally with any executor or event loop — no owned threads, no hidden allocations, no C types leaking into user code. Truly standalone.
-**Current focus:** Phase 9 — NativePolicy Standalone Networking
+**Current focus:** Phase 10 — ASIO Completion Tokens
 
 ## Current Position
 
-Phase: 9 of 11 (NativePolicy Standalone Networking)
-Plan: 02 (09-02 complete — Phase 9 complete)
+Phase: 10 of 11 (ASIO Completion Tokens)
+Plan: 01 (10-01 complete — async_ callback API on all four public types)
 Status: In progress
-Last activity: 2026-03-04 — Completed 09-02 (NativeSocket, NativePolicy, native.h umbrella, mdnspp_native CMake target, native_conformance_test; 12 tests pass)
+Last activity: 2026-03-04 — Completed 10-01 (async_discover, async_query, async_observe, async_start with callback completions; all 13 tests pass)
 
-Progress: [░░░░░░░░░░] 3% (v2.0)
+Progress: [█████████░] 89% (v2.0)
 
 ## Performance Metrics
 
@@ -47,6 +50,7 @@ Progress: [░░░░░░░░░░] 3% (v2.0)
 | Phase 08-native-dns-protocol P02 | ~7 min | 2 tasks | 6 files |
 | Phase 09-nativepolicy-standalone-networking P01 | ~5 min | 2 tasks | 4 files |
 | Phase 09-nativepolicy-standalone-networking P02 | ~5 min | 2 tasks | 6 files |
+| Phase 10-asio-completion-tokens P01 | 15 | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -75,6 +79,7 @@ Progress: [░░░░░░░░░░] 3% (v2.0)
 - [Phase 09-02]: SO_REUSEPORT failure is non-fatal (warn, do not throw) — not universally supported and non-critical for correctness
 - [Phase 09-02]: send() is synchronous sendto() — mDNS sends are tiny/infrequent, async complexity not warranted
 - [Phase 09-02]: async_receive delegates to NativeContext.register_receive — context owns recvfrom dispatch, NativeSocket just arms it
+- [Phase 10-asio-completion-tokens]: async_ prefix for all public entry-point methods; completion_handler fires via std::exchange for exactly-once semantics; results() accessor gets copy (not move) so it stays populated after completion fires
 
 ### Pending Todos
 
@@ -87,6 +92,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T14:55:46Z
-Stopped at: Completed 09-02-PLAN.md (NativeSocket, NativePolicy, native.h umbrella, mdnspp_native CMake target, native_conformance_test; all 12 tests pass). Phase 09 complete.
+Last session: 2026-03-04T16:09:08.208Z
+Stopped at: Completed 10-01-PLAN.md (async_discover, async_query, async_observe, async_start with callback completions; all 13 tests pass). Ready for Plan 10-02.
 Resume file: None

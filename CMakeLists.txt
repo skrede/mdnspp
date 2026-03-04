@@ -13,13 +13,6 @@ include(FetchContent)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-find_path(MDNS_INCLUDE_DIRS "mdns.h")
-if(NOT MDNS_INCLUDE_DIRS_FOUND)
-    FetchContent_Declare(mdns
-        GIT_REPOSITORY https://github.com/skrede/mdns.git
-        GIT_TAG        2e0deec08c5e1cb97f5baf4e6f47f4fc1be4be49)
-    FetchContent_MakeAvailable(mdns)
-endif()
 
 set(SOURCE_DIRECTORY src)
 set(INCLUDE_DIRECTORY include)
@@ -56,7 +49,6 @@ target_include_directories(mdnspp
     PUBLIC ${INCLUDE_DIRECTORY} ${SOURCE_DIRECTORY}
 )
 
-target_link_libraries(mdnspp PUBLIC mdns)
 
 install(TARGETS mdnspp
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

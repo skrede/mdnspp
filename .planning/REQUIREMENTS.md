@@ -39,13 +39,13 @@ Requirements for milestone v2.0: Standalone & Ergonomic.
 
 ### NET — Standalone Networking
 
-- [ ] **NET-01**: `NativePolicy` provides raw UDP socket operations without ASIO
+- [x] **NET-01**: `NativePolicy` provides raw UDP socket operations without ASIO
 - [x] **NET-02**: `NativePolicy` provides timer operations using OS primitives
 - [x] **NET-03**: `NativePolicy::run()` blocks and processes I/O (mirrors `io_context::run()`)
 - [x] **NET-04**: `NativePolicy::poll()` / `poll_one()` process ready I/O without blocking
-- [ ] **NET-05**: IPv4 multicast group join (`224.0.0.251:5353`) on all interfaces
+- [x] **NET-05**: IPv4 multicast group join (`224.0.0.251:5353`) on all interfaces
 - [x] **NET-06**: Cross-platform: Linux, macOS, Windows (`poll()` / `WSAPoll()`)
-- [ ] **NET-07**: All four public types work with `NativePolicy` — `observer<NativePolicy>(native, cb)` compiles and runs
+- [x] **NET-07**: All four public types work with `NativePolicy` — `observer<NativePolicy>(native, cb)` compiles and runs
 
 ### AGG — Service Aggregation
 
@@ -107,13 +107,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PROTO-03 | Phase 8 | Complete |
 | PROTO-04 | Phase 8 | Complete |
 | PROTO-05 | Phase 8 | Complete |
-| NET-01 | Phase 9 | Pending |
+| NET-01 | Phase 9 | Complete |
 | NET-02 | Phase 9 | Complete |
 | NET-03 | Phase 9 | Complete |
 | NET-04 | Phase 9 | Complete |
-| NET-05 | Phase 9 | Pending |
+| NET-05 | Phase 9 | Complete |
 | NET-06 | Phase 9 | Complete |
-| NET-07 | Phase 9 | Pending |
+| NET-07 | Phase 9 | Complete |
 | AGG-01 | Phase 11 | Pending |
 | AGG-02 | Phase 11 | Pending |
 | AGG-03 | Phase 11 | Pending |

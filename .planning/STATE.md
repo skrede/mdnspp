@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Standalone & Ergonomic
 status: unknown
-last_updated: "2026-03-04T14:44:53Z"
+last_updated: "2026-03-04T14:55:46Z"
 progress:
   total_phases: 2
   completed_phases: 2
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 ## Current Position
 
 Phase: 9 of 11 (NativePolicy Standalone Networking)
-Plan: 02 (09-01 complete)
+Plan: 02 (09-02 complete — Phase 9 complete)
 Status: In progress
-Last activity: 2026-03-04 — Completed 09-01 (NativeContext event loop + NativeTimer; poll/eventfd/pipe wakeup; all 10 native_timer tests pass)
+Last activity: 2026-03-04 — Completed 09-02 (NativeSocket, NativePolicy, native.h umbrella, mdnspp_native CMake target, native_conformance_test; 12 tests pass)
 
 Progress: [░░░░░░░░░░] 3% (v2.0)
 
@@ -46,6 +46,7 @@ Progress: [░░░░░░░░░░] 3% (v2.0)
 | Phase 08-native-dns-protocol P01 | ~4 min | 1 task | 3 files |
 | Phase 08-native-dns-protocol P02 | ~7 min | 2 tasks | 6 files |
 | Phase 09-nativepolicy-standalone-networking P01 | ~5 min | 2 tasks | 4 files |
+| Phase 09-nativepolicy-standalone-networking P02 | ~5 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,9 @@ Progress: [░░░░░░░░░░] 3% (v2.0)
 - [Phase 09-01]: NativeContext forward-declares NativeTimer; compute_next_timeout_ms/fire_expired_timers defined out-of-line in native_timer.h after full NativeTimer definition — breaks mutual include dependency cleanly
 - [Phase 09-01]: compute_next_timeout_ms returns -1 when no timer has a pending handler (poll blocks indefinitely — avoids busy-polling when idle)
 - [Phase 09-01]: expires_after drops pending handler silently without calling it (matches MockTimer semantics required by recv_loop)
+- [Phase 09-02]: SO_REUSEPORT failure is non-fatal (warn, do not throw) — not universally supported and non-critical for correctness
+- [Phase 09-02]: send() is synchronous sendto() — mDNS sends are tiny/infrequent, async complexity not warranted
+- [Phase 09-02]: async_receive delegates to NativeContext.register_receive — context owns recvfrom dispatch, NativeSocket just arms it
 
 ### Pending Todos
 
@@ -83,6 +87,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T14:44:53Z
-Stopped at: Completed 09-01-PLAN.md (NativeContext event loop + NativeTimer; TDD; 10 tests pass). Phase 09 Plan 01 complete.
+Last session: 2026-03-04T14:55:46Z
+Stopped at: Completed 09-02-PLAN.md (NativeSocket, NativePolicy, native.h umbrella, mdnspp_native CMake target, native_conformance_test; all 12 tests pass). Phase 09 complete.
 Resume file: None

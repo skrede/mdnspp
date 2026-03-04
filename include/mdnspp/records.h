@@ -115,10 +115,10 @@ inline std::ostream &operator<<(std::ostream &str, const record_aaaa &r)
 inline std::ostream &operator<<(std::ostream &str, const record_txt &r)
 {
     str << r.sender_address << ": TXT " << r.name;
-    for (const auto &e : r.entries)
+    for(const auto &e : r.entries)
     {
         str << " " << e.key;
-        if (e.value.has_value())
+        if(e.value.has_value())
             str << "=" << *e.value;
     }
     str << " rclass " << to_string(r.rclass)

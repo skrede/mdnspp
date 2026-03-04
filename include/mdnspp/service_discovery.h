@@ -268,7 +268,7 @@ private:
             m_service_type.pop_back();
 
         // Build and send DNS PTR query (qtype = 12) — same as do_discover()
-        auto query_bytes = detail::build_dns_query(m_service_type, 12);
+        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr);
         m_socket.send(endpoint{"224.0.0.251", 5353},
                       std::span<const std::byte>(query_bytes));
 
@@ -336,7 +336,7 @@ private:
             m_service_type.pop_back();
 
         // Build and send DNS PTR query (qtype = 12)
-        auto query_bytes = detail::build_dns_query(m_service_type, 12);
+        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr);
         m_socket.send(endpoint{"224.0.0.251", 5353},
                       std::span<const std::byte>(query_bytes));
 

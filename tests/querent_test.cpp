@@ -19,6 +19,7 @@
 using namespace mdnspp;
 using namespace mdnspp::testing;
 using namespace std::chrono_literals;
+using mdnspp::dns_type;
 
 // ---------------------------------------------------------------------------
 // Byte-building helpers
@@ -230,7 +231,7 @@ SCENARIO("async_query returns A record from mock socket", "[querent][query][A]")
 
         WHEN("async_query() is called for myhost.local. with qtype=1 (A)")
         {
-            q.async_query("myhost.local.", 1,
+            q.async_query("myhost.local.", dns_type::a,
                 [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("results() contains one record_a")
@@ -259,7 +260,7 @@ SCENARIO("async_query fires completion callback with results", "[querent][async]
             std::vector<mdns_record_variant> received_results;
             bool callback_fired = false;
 
-            q.async_query("myhost.local.", 1,
+            q.async_query("myhost.local.", dns_type::a,
                 [&](std::error_code ec, std::vector<mdns_record_variant> results)
                 {
                     callback_fired = true;
@@ -298,7 +299,7 @@ SCENARIO("async_query sends correct DNS query packet", "[querent][query][packet]
 
         WHEN("async_query() is called for myhost.local. with qtype=1 (A)")
         {
-            q.async_query("myhost.local.", 1,
+            q.async_query("myhost.local.", dns_type::a,
                 [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("a DNS query was sent to 224.0.0.251:5353")
@@ -352,7 +353,7 @@ SCENARIO("async_query accumulates multiple records from a single frame",
 
         WHEN("async_query() is called")
         {
-            q.async_query("myhost.local.", 1,
+            q.async_query("myhost.local.", dns_type::a,
                 [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("results() contains all records from the frame")
@@ -410,7 +411,7 @@ SCENARIO("async_query skips malformed records and returns valid ones",
 
         WHEN("async_query() is called")
         {
-            q.async_query("good.local.", 1,
+            q.async_query("good.local.", dns_type::a,
                 [](std::error_code, std::vector<mdns_record_variant>) {});
 
             THEN("results() contains only the valid A record")

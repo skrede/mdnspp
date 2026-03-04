@@ -22,6 +22,7 @@
 using namespace mdnspp;
 using namespace mdnspp::detail;
 using namespace mdnspp::testing;
+using mdnspp::dns_type;
 
 // ---------------------------------------------------------------------------
 // Test fixture: a fully populated service_info
@@ -75,17 +76,17 @@ static service_info make_test_info()
 
 static std::vector<std::byte> make_ptr_query(std::string_view service_type)
 {
-    return build_dns_query(service_type, 12);
+    return build_dns_query(service_type, dns_type::ptr);
 }
 
 static std::vector<std::byte> make_a_query(std::string_view hostname)
 {
-    return build_dns_query(hostname, 1);
+    return build_dns_query(hostname, dns_type::a);
 }
 
 // Builds a DNS query with the QU bit set (QCLASS = 0x8001).
 // RFC 6762 section 5.4: QU bit requests unicast response.
-static std::vector<std::byte> make_qu_query(std::string_view name, uint16_t qtype)
+static std::vector<std::byte> make_qu_query(std::string_view name, dns_type qtype)
 {
     auto pkt = build_dns_query(name, qtype);
     // QCLASS is the last 2 bytes of the packet; set the QU bit (top bit)
@@ -106,7 +107,7 @@ SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response]
 
         WHEN("build_dns_response is called with qtype=12 (PTR)")
         {
-            auto pkt = build_dns_response(info, 12);
+            auto pkt = build_dns_response(info, dns_type::ptr);
 
             THEN("the packet is non-empty")
             {
@@ -164,7 +165,7 @@ SCENARIO("build_dns_response PTR response includes additional SRV and A records"
 
         WHEN("build_dns_response is called with qtype=12 (PTR)")
         {
-            auto pkt = build_dns_response(info, 12);
+            auto pkt = build_dns_response(info, dns_type::ptr);
 
             THEN("walk_dns_frame yields PTR, SRV, and A records in the packet")
             {
@@ -197,7 +198,7 @@ SCENARIO("build_dns_response produces valid A response", "[build_dns_response][A
 
         WHEN("build_dns_response is called with qtype=1 (A)")
         {
-            auto pkt = build_dns_response(info, 1);
+            auto pkt = build_dns_response(info, dns_type::a);
 
             THEN("walk_dns_frame parses a record_a with address_string \"192.168.1.10\"")
             {
@@ -232,7 +233,7 @@ SCENARIO("build_dns_response returns empty for A when no IPv4 address",
 
         WHEN("build_dns_response is called with qtype=1 (A)")
         {
-            auto pkt = build_dns_response(info, 1);
+            auto pkt = build_dns_response(info, dns_type::a);
 
             THEN("the returned vector is empty")
             {
@@ -254,7 +255,7 @@ SCENARIO("build_dns_response produces valid SRV response", "[build_dns_response]
 
         WHEN("build_dns_response is called with qtype=33 (SRV)")
         {
-            auto pkt = build_dns_response(info, 33);
+            auto pkt = build_dns_response(info, dns_type::srv);
 
             THEN("walk_dns_frame parses a record_srv with port 8080")
             {
@@ -289,7 +290,7 @@ SCENARIO("build_dns_response returns empty for unknown qtype",
         WHEN("build_dns_response is called with qtype=255 (ANY — not in required set)")
         {
             // qtype=255 is ANY, handled separately; test an actually unknown type
-            auto pkt = build_dns_response(info, 999);
+            auto pkt = build_dns_response(info, static_cast<dns_type>(999));
 
             THEN("the returned vector is empty")
             {
@@ -311,7 +312,7 @@ SCENARIO("build_dns_response produces valid TXT response", "[build_dns_response]
 
         WHEN("build_dns_response is called with qtype=16 (TXT)")
         {
-            auto pkt = build_dns_response(info, 16);
+            auto pkt = build_dns_response(info, dns_type::txt);
 
             THEN("the packet is non-empty")
             {
@@ -625,7 +626,7 @@ SCENARIO("response sent to multicast by default, unicast when QU bit set",
         endpoint sender{"10.0.0.1", 5353};
 
         service_server<MockPolicy> server{ex, make_test_info()};
-        server.socket().enqueue(make_qu_query("_http._tcp.local.", 12), sender);
+        server.socket().enqueue(make_qu_query("_http._tcp.local.", dns_type::ptr), sender);
 
         WHEN("async_start() is called and the response timer fires")
         {

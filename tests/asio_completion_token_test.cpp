@@ -11,6 +11,7 @@
 #include "mdnspp/service_server.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/asio/asio_policy.h"
+#include "mdnspp/detail/dns_enums.h"
 
 #include <asio.hpp>
 #include <asio/use_future.hpp>
@@ -68,7 +69,7 @@ SCENARIO("async_query with use_future returns future with results",
     {
         mdnspp::querent<mdnspp::AsioPolicy> q{io, std::chrono::milliseconds(500)};
 
-        auto fut = q.async_query("_nonexistent._tcp.local.", 12, asio::use_future);
+        auto fut = q.async_query("_nonexistent._tcp.local.", mdnspp::dns_type::ptr, asio::use_future);
 
         io.run();
 

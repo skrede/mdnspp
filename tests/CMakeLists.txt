@@ -20,6 +20,7 @@ make_test(service_server_test)
 make_test(observer_test)
 make_test(dns_wire_test)
 make_test(native_timer_test)
+make_test(service_aggregation_test)
 
 if(MDNSPP_ENABLE_ASIO_POLICY)
     function(make_asio_test TEST_FILE)

@@ -23,7 +23,7 @@
 
 **Milestone Goal:** Make mdnspp truly standalone (no C library, optional ASIO) with an ergonomic single-policy API using ASIO completion token patterns.
 
-- [ ] **Phase 7: Policy Unification and Direct Construction** - Merge dual policies into one `Policy` concept; direct constructors with throw/error_code; `MockPolicy` unified test double
+- [x] **Phase 7: Policy Unification and Direct Construction** - Merge dual policies into one `Policy` concept; direct constructors with throw/error_code; `MockPolicy` unified test double (completed 2026-03-04)
 - [ ] **Phase 8: Native DNS Protocol** - Replace mjansson/mdns C library with a pure C++ RFC 1035-compliant decoder; remove all C library dependencies from the build
 - [ ] **Phase 9: NativePolicy Standalone Networking** - Raw UDP multicast socket policy with `run()`/`poll()` event loop; no ASIO in include chain; cross-platform
 - [ ] **Phase 10: ASIO Completion Tokens** - Wire `async_initiate` across all four public types; support callback, `use_future`, `use_awaitable`, and `deferred` from one call site
@@ -102,7 +102,7 @@
 | 4. Refactor service_discovery and querent | v1.0 | 2/2 | Complete | 2026-03-04 |
 | 5. Refactor service_server | v1.0 | 3/3 | Complete | 2026-03-04 |
 | 6. Refactor observer | v1.0 | 2/2 | Complete | 2026-03-04 |
-| 7. Policy Unification and Direct Construction | 2/3 | In Progress|  | - |
+| 7. Policy Unification and Direct Construction | 3/3 | Complete   | 2026-03-04 | - |
 | 8. Native DNS Protocol | v2.0 | 0/? | Not started | - |
 | 9. NativePolicy Standalone Networking | v2.0 | 0/? | Not started | - |
 | 10. ASIO Completion Tokens | v2.0 | 0/? | Not started | - |

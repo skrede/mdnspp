@@ -55,8 +55,7 @@ add_library(mdnspp STATIC
 add_library(mdnspp::mdnspp ALIAS mdnspp)
 
 target_include_directories(mdnspp
-    PUBLIC ${INCLUDE_DIRECTORY}
-    PRIVATE ${SOURCE_DIRECTORY}
+    PUBLIC ${INCLUDE_DIRECTORY} ${SOURCE_DIRECTORY}
 )
 
 target_link_libraries(mdnspp PUBLIC mdns)

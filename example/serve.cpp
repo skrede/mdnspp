@@ -1,10 +1,10 @@
 #include "mdnspp/service_server.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/asio/asio_policy.h"
 
 #include <asio.hpp>
-#include <cstdint>
 #include <iostream>
 
 int main()
@@ -24,10 +24,10 @@ int main()
     mdnspp::service_server<mdnspp::AsioPolicy> srv{
         io,
         std::move(info),
-        [](mdnspp::endpoint sender, uint16_t qtype, bool unicast)
+        [](mdnspp::endpoint sender, mdnspp::dns_type qtype, bool unicast)
         {
             std::cout << sender.address << ":" << sender.port
-                << " queried qtype=" << qtype
+                << " queried qtype=" << to_string(qtype)
                 << (unicast ? " (unicast)" : " (multicast)") << std::endl;
         }
     };

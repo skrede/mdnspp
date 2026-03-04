@@ -3,12 +3,12 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: unknown
-last_updated: "2026-03-04T04:13:03Z"
+last_updated: "2026-03-04T04:26:48.605Z"
 progress:
-  total_phases: 6
+  total_phases: 5
   completed_phases: 4
-  total_plans: 14
-  completed_plans: 14
+  total_plans: 16
+  completed_plans: 15
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A C++23 mDNS library that composes naturally with any executor or event loop — no owned threads, no hidden allocations, no C types leaking into user code.
-**Current focus:** Phase 5 Plan 01 COMPLETE — service_info.h, build_dns_response(), MockSocketPolicy endpoint enqueue; ready for Plan 05-02 (service_server<S,T>)
+**Current focus:** Phase 5 Plan 02 COMPLETE — service_server<S,T> with create()/start()/stop(), recv_loop query listening, RFC 6762 delay timer; ready for Plan 05-03 (TSan/Asio integration)
 
 ## Current Position
 
 Phase: 5 of 6 (refactor-service-server) — IN PROGRESS
-Plan: 1 of 2 in phase — COMPLETE
-Status: Plan 05-01 complete — service_info.h public type, build_dns_response() wire builder (7 scenarios, all pass), MockSocketPolicy enqueue with endpoint, 8 tests total pass
-Last activity: 2026-03-04 — Completed 05-01 (service_info.h, dns_wire.h build_dns_response, mock_socket_policy enqueue overload, 8 tests pass)
+Plan: 2 of 2 in phase — COMPLETE
+Status: Plan 05-02 complete — service_server<S,T> class template, 8 BDD scenarios (40 assertions all pass), BEHAV-03 (no mutex) and BEHAV-04 (20-500ms delay) satisfied
+Last activity: 2026-03-04 — Completed 05-02 (service_server<S,T>, dual timer ownership, RFC 6762 random delay, 15 total test scenarios pass)
 
-Progress: [██████████████] 72% (Phase 1 + Phase 2 + Phase 3 + Phase 4 complete + Phase 5 Plan 1)
+Progress: [███████████████] 78% (Phase 1 + Phase 2 + Phase 3 + Phase 4 complete + Phase 5 Plans 1+2)
 
 ## Performance Metrics
 
@@ -44,13 +44,14 @@ Progress: [██████████████] 72% (Phase 1 + Phase 2 + 
 | 02-recv-loop-and-asio-socket-policy | 4 | 13 min | 3.2 min |
 | 03-record-parser-free-functions | 2 | 17 min | 8.5 min |
 | 04-refactor-service-discovery-and-querent | 2 | 10 min | 5.0 min |
-| 05-refactor-service-server | 1 | 5 min | 5.0 min |
+| 05-refactor-service-server | 2 | 8 min | 4.0 min |
 
 **Recent Trend:**
-- Last 5 plans: 03-02 (5 min), 04-01 (6 min), 04-02 (4 min), 05-01 (5 min)
+- Last 5 plans: 04-01 (6 min), 04-02 (4 min), 05-01 (5 min), 05-02 (3 min)
 - Trend: stable
 
 *Updated after each plan completion*
+| Phase 05-refactor-service-server P02 | 3 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -107,6 +108,8 @@ Recent decisions affecting current work:
 - [Phase 05-01]: MockSocketPolicy queue changed from queue<vector<byte>> to queue<pair<vector<byte>, endpoint>> — stores sender for endpoint-aware delivery; backward compat via enqueue(packet) calling enqueue(packet, endpoint{})
 - [Phase 05-01]: build_dns_response returns empty vector for A/AAAA when no address available — caller checks before sending
 - [Phase 05-01]: qtype=255 (ANY) produces all available records as answers (not additional) — simplifies ANY response assembly
+- [Phase 05-02]: service_server dual-timer ownership: copy to m_response_timer, move to m_recv_timer — independent timer lifecycles without shared state
+- [Phase 05-02]: recv_loop silence timeout = 24*365h in service_server — run-until-stop semantics, avoids restart complexity
 
 ### Pending Todos
 
@@ -121,5 +124,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 05-01-PLAN.md (service_info.h, build_dns_response, MockSocketPolicy enqueue overload, 8 tests pass)
+Stopped at: Completed 05-02-PLAN.md (service_server<S,T> implementation, 8 BDD scenarios, 40 assertions pass, BEHAV-03+BEHAV-04 satisfied)
 Resume file: None

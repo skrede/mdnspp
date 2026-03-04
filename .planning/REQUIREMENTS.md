@@ -29,8 +29,8 @@ Requirements for milestone v1.0: Clean API & Architecture.
 
 - [x] **BEHAV-01**: `discover()` and `query()` return accumulated results (`std::expected<std::vector<mdns_record_variant>, mdns_error>`; per-record callback removed as primary interface)
 - [x] **BEHAV-02**: Executor injected at construction and hidden from public mDNS methods (user passes `asio::any_io_executor` or `asio::io_context&` once at construction; `announce()`, `discover()`, `query()`, `observe()` have no executor parameters)
-- [ ] **BEHAV-03**: `asio::strand` replaces `std::mutex` in `service_server` (all shared state access serialised through strand; mutex removed only after ThreadSanitizer clean run in a dedicated isolated commit)
-- [ ] **BEHAV-04**: RFC 6762 response timing preserved in `service_server` (20–500ms random delay before multicast responses; timing logic maintained through strand-based dispatch)
+- [x] **BEHAV-03**: `asio::strand` replaces `std::mutex` in `service_server` (all shared state access serialised through strand; mutex removed only after ThreadSanitizer clean run in a dedicated isolated commit)
+- [x] **BEHAV-04**: RFC 6762 response timing preserved in `service_server` (20–500ms random delay before multicast responses; timing logic maintained through strand-based dispatch)
 
 ### Testing — Unit Coverage
 
@@ -105,8 +105,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BEHAV-01 | Phase 4 | Complete |
 | API-03 | Phase 4 | Complete |
 | TEST-01 | Phase 4 | Complete |
-| BEHAV-03 | Phase 5 | Pending |
-| BEHAV-04 | Phase 5 | Pending |
+| BEHAV-03 | Phase 5 | Complete |
+| BEHAV-04 | Phase 5 | Complete |
 | ARCH-05 | Phase 6 | Pending |
 
 **Coverage:**

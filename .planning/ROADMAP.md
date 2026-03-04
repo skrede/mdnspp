@@ -125,5 +125,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. recv_loop and AsioSocketPolicy | 4/4 | Complete   | 2026-03-03 |
 | 3. record_parser Free Functions | 2/2 | Complete   | 2026-03-03 |
 | 4. Refactor service_discovery and querent | 2/2 | Complete   | 2026-03-04 |
-| 5. Refactor service_server | 1/3 | In progress | - |
+| 5. Refactor service_server | 2/3 | In Progress|  |
 | 6. Refactor observer | 0/TBD | Not started | - |

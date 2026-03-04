@@ -15,16 +15,18 @@ template <SocketPolicy S, TimerPolicy T>
 class recv_loop
 {
 public:
-    using packet_handler = std::function<void(std::span<std::byte>, endpoint)>;
+    // Returns true if the packet was relevant (resets silence timer),
+    // false to ignore (timer continues counting down).
+    using packet_handler = std::function<bool(std::span<std::byte>, endpoint)>;
 
     recv_loop(
-        S socket,
-        T timer,
+        S &socket,
+        T &timer,
         std::chrono::milliseconds silence_timeout,
         packet_handler on_packet,
         std::function<void()> on_silence)
-        : m_socket(std::move(socket))
-        , m_timer(std::move(timer))
+        : m_socket(socket)
+        , m_timer(timer)
         , m_silence_timeout(silence_timeout)
         , m_on_packet(std::move(on_packet))
         , m_on_silence(std::move(on_silence))
@@ -80,8 +82,9 @@ private:
                 {
                     return;
                 }
-                m_on_packet(data, ep);
-                arm_silence_timer();
+                bool relevant = m_on_packet(data, ep);
+                if (relevant)
+                    arm_silence_timer();
                 arm_receive();
             });
     }
@@ -100,8 +103,8 @@ private:
             });
     }
 
-    S m_socket;
-    T m_timer;
+    S &m_socket;
+    T &m_timer;
     std::chrono::milliseconds m_silence_timeout;
     packet_handler m_on_packet;
     std::function<void()> m_on_silence;

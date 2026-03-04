@@ -31,12 +31,13 @@ TEST_CASE("recv_loop delivers injected packets")
 
     std::vector<std::vector<std::byte>> received;
     recv_loop loop{
-        std::move(sock),
-        std::move(timer),
+        sock,
+        timer,
         SILENCE_TIMEOUT,
-        [&](std::span<std::byte> data, endpoint /*ep*/)
+        [&](std::span<std::byte> data, endpoint /*ep*/) -> bool
         {
             received.emplace_back(data.begin(), data.end());
+            return true;
         },
         [] {}};
 
@@ -53,10 +54,10 @@ TEST_CASE("recv_loop silence callback fires on timer fire")
 
     bool silence_called = false;
     recv_loop loop{
-        std::move(sock),
-        std::move(timer),
+        sock,
+        timer,
         SILENCE_TIMEOUT,
-        [](std::span<std::byte>, endpoint) {},
+        [](std::span<std::byte>, endpoint) -> bool { return true; },
         [&] { silence_called = true; }};
 
     loop.start();
@@ -73,10 +74,10 @@ TEST_CASE("recv_loop stop is idempotent")
     MockTimerPolicy timer;
 
     recv_loop loop{
-        std::move(sock),
-        std::move(timer),
+        sock,
+        timer,
         SILENCE_TIMEOUT,
-        [](std::span<std::byte>, endpoint) {},
+        [](std::span<std::byte>, endpoint) -> bool { return true; },
         [] {}};
 
     loop.start();
@@ -96,10 +97,10 @@ TEST_CASE("recv_loop stop prevents on_packet after stop")
 
     int packet_calls = 0;
     recv_loop loop{
-        std::move(sock),
-        std::move(timer),
+        sock,
+        timer,
         SILENCE_TIMEOUT,
-        [&](std::span<std::byte>, endpoint) { ++packet_calls; },
+        [&](std::span<std::byte>, endpoint) -> bool { ++packet_calls; return true; },
         [] {}};
 
     loop.stop();
@@ -118,10 +119,10 @@ TEST_CASE("recv_loop resets silence timer on each packet")
     sock.enqueue(make_packet(4));
 
     recv_loop loop{
-        std::move(sock),
-        std::move(timer),
+        sock,
+        timer,
         SILENCE_TIMEOUT,
-        [](std::span<std::byte>, endpoint) {},
+        [](std::span<std::byte>, endpoint) -> bool { return true; },
         [] {}};
 
     loop.start();

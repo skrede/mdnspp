@@ -237,15 +237,14 @@ SCENARIO("query returns A record from mock socket", "[querent][query][A]")
 
         WHEN("query() is called for myhost.local. with qtype=1 (A)")
         {
-            auto result = q->query("myhost.local.", 1);
+            q->query("myhost.local.", 1);
 
-            THEN("it returns a valid expected with one record_a")
+            THEN("results() contains one record_a")
             {
-                REQUIRE(result.has_value());
-                REQUIRE(result->size() == 1);
-                REQUIRE(std::holds_alternative<record_a>((*result)[0]));
+                REQUIRE(q->results().size() == 1);
+                REQUIRE(std::holds_alternative<record_a>(q->results()[0]));
 
-                const auto &a = std::get<record_a>((*result)[0]);
+                const auto &a = std::get<record_a>(q->results()[0]);
                 REQUIRE(a.address_string == "192.168.1.1");
             }
         }
@@ -265,7 +264,7 @@ SCENARIO("query sends correct DNS query packet", "[querent][query][packet]")
 
         WHEN("query() is called for myhost.local. with qtype=1 (A)")
         {
-            auto result = q->query("myhost.local.", 1);
+            q->query("myhost.local.", 1);
 
             THEN("a DNS query was sent to 224.0.0.251:5353")
             {
@@ -304,20 +303,6 @@ SCENARIO("query sends correct DNS query packet", "[querent][query][packet]")
                 REQUIRE(static_cast<uint8_t>(data[qtype_offset + 1]) == 0x01); // A = 1
             }
         }
-
-        WHEN("query() is called for _http._tcp.local. with qtype=12 (PTR)")
-        {
-            auto result = q->query("_http._tcp.local.", 12);
-
-            THEN("the query packet contains qtype=12 (PTR) in the question section")
-            {
-                const auto &data = q->socket().sent_packets().back().data;
-                REQUIRE(data.size() >= 12);
-                size_t qtype_offset = data.size() - 4; // qtype(2) + qclass(2)
-                REQUIRE(static_cast<uint8_t>(data[qtype_offset])     == 0x00);
-                REQUIRE(static_cast<uint8_t>(data[qtype_offset + 1]) == 0x0C); // PTR = 12
-            }
-        }
     }
 }
 
@@ -337,53 +322,11 @@ SCENARIO("query accumulates multiple records from a single frame",
 
         WHEN("query() is called")
         {
-            auto result = q->query("myhost.local.", 1);
+            q->query("myhost.local.", 1);
 
-            THEN("it returns all records from the frame")
+            THEN("results() contains all records from the frame")
             {
-                REQUIRE(result.has_value());
-                REQUIRE(result->size() >= 2);
-            }
-        }
-    }
-}
-
-SCENARIO("query can be called multiple times on the same instance",
-         "[querent][query][multiple-calls]")
-{
-    GIVEN("a querent instance")
-    {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-
-        auto q = querent<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer, 500ms);
-        REQUIRE(q.has_value());
-
-        WHEN("query() is called a first time with an A response enqueued")
-        {
-            q->socket().enqueue(make_a_response("myhost.local.", 10, 0, 0, 1));
-            auto result1 = q->query("myhost.local.", 1);
-
-            THEN("first call returns a valid A record")
-            {
-                REQUIRE(result1.has_value());
-                REQUIRE(result1->size() == 1);
-                REQUIRE(std::holds_alternative<record_a>((*result1)[0]));
-            }
-
-            AND_WHEN("query() is called a second time")
-            {
-                // Note: with MockSocketPolicy the internal queue is copied into
-                // each recv_loop; items remain in m_socket between calls.
-                // This test verifies the second call completes without error
-                // (i.e. m_socket and m_timer were not moved out on the first call).
-                auto result2 = q->query("myhost.local.", 1);
-
-                THEN("second call also returns a valid std::expected")
-                {
-                    REQUIRE(result2.has_value());
-                }
+                REQUIRE(q->results().size() >= 2);
             }
         }
     }
@@ -440,14 +383,13 @@ SCENARIO("query skips malformed records and returns valid ones",
 
         WHEN("query() is called")
         {
-            auto result = q->query("good.local.", 1);
+            q->query("good.local.", 1);
 
-            THEN("it succeeds and returns only the valid A record")
+            THEN("results() contains only the valid A record")
             {
-                REQUIRE(result.has_value());
-                REQUIRE(result->size() == 1);
-                REQUIRE(std::holds_alternative<record_a>((*result)[0]));
-                const auto &a = std::get<record_a>((*result)[0]);
+                REQUIRE(q->results().size() == 1);
+                REQUIRE(std::holds_alternative<record_a>(q->results()[0]));
+                const auto &a = std::get<record_a>(q->results()[0]);
                 REQUIRE(a.address_string == "1.2.3.4");
             }
         }

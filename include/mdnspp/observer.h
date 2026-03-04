@@ -93,12 +93,13 @@ public:
         assert(m_loop == nullptr); // can only start once
 
         m_loop = std::make_unique<recv_loop<S, T>>(
-            std::move(m_socket),   // move — recv_loop owns the socket
-            std::move(m_timer),    // move — recv_loop owns the timer
+            m_socket,
+            m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](std::span<std::byte> data, endpoint sender)
+            [this](std::span<std::byte> data, endpoint sender) -> bool
             {
                 on_packet(data, sender);
+                return true; // observer wants all traffic; always reset timer
             },
             []() { /* no-op on silence */ });
 

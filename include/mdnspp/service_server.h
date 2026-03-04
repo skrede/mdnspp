@@ -112,12 +112,13 @@ public:
         assert(m_loop == nullptr); // can only start once
 
         m_loop = std::make_unique<recv_loop<S, T>>(
-            std::move(m_socket),     // move — recv_loop owns the socket; we access via m_loop->socket()
-            std::move(m_recv_timer), // move — recv_loop owns the recv timer
+            m_socket,
+            m_recv_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](std::span<std::byte> data, endpoint sender)
+            [this](std::span<std::byte> data, endpoint sender) -> bool
             {
                 on_query(data, sender);
+                return true; // server needs to see all queries; always reset timer
             },
             []() { /* no-op on silence */ });
 

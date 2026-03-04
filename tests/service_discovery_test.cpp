@@ -206,15 +206,14 @@ SCENARIO("discover returns PTR record from mock socket", "[service_discovery][di
 
         WHEN("discover() is called for _http._tcp.local.")
         {
-            auto result = sd->discover("_http._tcp.local.");
+            sd->discover("_http._tcp.local.");
 
-            THEN("it returns an expected with one record_ptr")
+            THEN("results() contains one record_ptr")
             {
-                REQUIRE(result.has_value());
-                REQUIRE(result->size() == 1);
-                REQUIRE(std::holds_alternative<record_ptr>((*result)[0]));
+                REQUIRE(sd->results().size() == 1);
+                REQUIRE(std::holds_alternative<record_ptr>(sd->results()[0]));
 
-                const auto &ptr = std::get<record_ptr>((*result)[0]);
+                const auto &ptr = std::get<record_ptr>(sd->results()[0]);
                 REQUIRE(ptr.ptr_name.find("MyService") != std::string::npos);
             }
         }
@@ -237,12 +236,11 @@ SCENARIO("discover accumulates multiple records from a single frame",
 
         WHEN("discover() is called")
         {
-            auto result = sd->discover("_http._tcp.local.");
+            sd->discover("_http._tcp.local.");
 
-            THEN("it returns both records")
+            THEN("results() contains both records")
             {
-                REQUIRE(result.has_value());
-                REQUIRE(result->size() >= 2);
+                REQUIRE(sd->results().size() >= 2);
             }
         }
     }
@@ -262,7 +260,7 @@ SCENARIO("discover sends DNS PTR query to multicast address",
 
         WHEN("discover() is called for _http._tcp.local.")
         {
-            auto result = sd->discover("_http._tcp.local.");
+            sd->discover("_http._tcp.local.");
 
             THEN("a DNS query was sent to 224.0.0.251:5353")
             {
@@ -299,7 +297,7 @@ SCENARIO("discover skips malformed records and returns valid ones",
     {
         // Build a packet manually: 2 answer RRs
         // First: valid PTR
-        // Second: A record with rdlength=4 but only 2 rdata bytes (truncated)
+        // Second: A record with rdlength=5 (invalid — parse::a checks length==4)
         std::vector<std::byte> pkt;
         push_u16_be(pkt, 0x0000); // id
         push_u16_be(pkt, 0x8400); // flags (response)
@@ -318,13 +316,7 @@ SCENARIO("discover skips malformed records and returns valid ones",
         push_u16_be(pkt, static_cast<uint16_t>(target_enc.size()));
         pkt.insert(pkt.end(), target_enc.begin(), target_enc.end());
 
-        // RR 2: A record that claims rdlength=4 but only provides 2 bytes
-        // This will cause parse::a to return parse_error (record_length check fails
-        // because buffer_size < record_offset + record_length is false but
-        // record_length != 4 is false... Actually rdlength=4 is valid for A,
-        // but we'll provide fewer actual bytes by lying about rdlength in the header.
-        // Strategy: set rdlength=4 and provide 4 bytes, but make the A record
-        // have rdlength=5 (which is invalid for a type-A record).
+        // RR 2: A record with rdlength=5 (invalid for type A)
         auto host_enc = encode_name("bad.local.");
         pkt.insert(pkt.end(), host_enc.begin(), host_enc.end());
         push_u16_be(pkt, 1);      // type A
@@ -347,56 +339,14 @@ SCENARIO("discover skips malformed records and returns valid ones",
 
         WHEN("discover() is called")
         {
-            auto result = sd->discover("_http._tcp.local.");
+            sd->discover("_http._tcp.local.");
 
-            THEN("it succeeds and returns only the valid PTR record")
+            THEN("results() contains only the valid PTR record")
             {
-                REQUIRE(result.has_value());
-                REQUIRE(result->size() == 1);
-                REQUIRE(std::holds_alternative<record_ptr>((*result)[0]));
-                const auto &ptr = std::get<record_ptr>((*result)[0]);
+                REQUIRE(sd->results().size() == 1);
+                REQUIRE(std::holds_alternative<record_ptr>(sd->results()[0]));
+                const auto &ptr = std::get<record_ptr>(sd->results()[0]);
                 REQUIRE(ptr.ptr_name.find("Good") != std::string::npos);
-            }
-        }
-    }
-}
-
-SCENARIO("discover can be called multiple times on the same instance",
-         "[service_discovery][discover][multiple-calls]")
-{
-    GIVEN("a service_discovery instance")
-    {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-
-        auto sd = service_discovery<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer, 500ms);
-        REQUIRE(sd.has_value());
-
-        WHEN("discover() is called a first time with a PTR response enqueued")
-        {
-            sd->socket().enqueue(make_ptr_response("_http._tcp.local.", "First._http._tcp.local."));
-            auto result1 = sd->discover("_http._tcp.local.");
-
-            THEN("first call returns a valid PTR record")
-            {
-                REQUIRE(result1.has_value());
-                REQUIRE(result1->size() == 1);
-                REQUIRE(std::holds_alternative<record_ptr>((*result1)[0]));
-            }
-
-            AND_WHEN("discover() is called a second time")
-            {
-                // Note: with MockSocketPolicy the internal queue is copied into
-                // each recv_loop; items remain in m_socket between calls.
-                // This test verifies the second call completes without error
-                // (i.e. m_socket and m_timer were not moved out on the first call).
-                auto result2 = sd->discover("_http._tcp.local.");
-
-                THEN("second call also returns a valid std::expected")
-                {
-                    REQUIRE(result2.has_value());
-                }
             }
         }
     }

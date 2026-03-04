@@ -12,7 +12,7 @@ namespace mdnspp {
 
 // service_info — public vocabulary type describing an mDNS service to announce.
 //
-// Passed to service_server::create() to specify what the server will respond to
+// Passed to service_server<P> to specify what the server will respond to
 // and what data it will include in DNS responses (RFC 6762 / RFC 6763).
 //
 // Field naming follows RFC 6763 terminology:

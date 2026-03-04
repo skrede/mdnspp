@@ -1,5 +1,5 @@
 // tests/service_server_tsan_test.cpp
-// ThreadSanitizer hard-gate test for service_server<AsioSocketPolicy, AsioTimerPolicy>.
+// ThreadSanitizer hard-gate test for service_server<AsioPolicy>.
 //
 // Purpose: BEHAV-03 requires "mutex removed only after ThreadSanitizer clean run in a
 // dedicated isolated commit." This test exercises the concurrent stop() path that would
@@ -10,8 +10,7 @@
 // failing the test. The REQUIRE(true) at the end documents the absence of TSan errors.
 
 #include "mdnspp/service_server.h"
-#include "mdnspp/asio/asio_socket_policy.h"
-#include "mdnspp/asio/asio_timer_policy.h"
+#include "mdnspp/asio/asio_policy.h"
 #include "mdnspp/service_info.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -33,31 +32,17 @@ static mdnspp::service_info make_test_info()
 SCENARIO("service_server stop() from separate thread is data-race-free",
          "[service_server][tsan][asio]")
 {
-    GIVEN("an asio::io_context and service_server created with AsioSocketPolicy and AsioTimerPolicy")
+    GIVEN("an asio::io_context and service_server<AsioPolicy>")
     {
         asio::io_context io;
 
-        // AsioSocketPolicy construction joins a multicast group — may fail in sandboxed CI
-        // with no network interface. Warn and skip gracefully; this matches the pattern in
-        // asio_conformance_test.cpp. The TSan gate only fires when the socket succeeds.
-        std::optional<mdnspp::service_server<
-            mdnspp::asio_policy::AsioSocketPolicy,
-            mdnspp::asio_policy::AsioTimerPolicy>> server;
+        // AsioSocket construction joins a multicast group — may fail in sandboxed CI
+        // with no network interface. Warn and skip gracefully.
+        std::optional<mdnspp::service_server<mdnspp::AsioPolicy>> server;
 
         try
         {
-            mdnspp::asio_policy::AsioSocketPolicy sock{io};
-            mdnspp::asio_policy::AsioTimerPolicy  response_timer{io};
-            mdnspp::asio_policy::AsioTimerPolicy  recv_timer{io};
-
-            auto result = mdnspp::service_server<
-                mdnspp::asio_policy::AsioSocketPolicy,
-                mdnspp::asio_policy::AsioTimerPolicy>::create(
-                    std::move(sock), std::move(response_timer), std::move(recv_timer),
-                    make_test_info());
-
-            REQUIRE(result.has_value());
-            server.emplace(std::move(*result));
+            server.emplace(io, make_test_info());
         }
         catch (const std::exception &e)
         {
@@ -91,28 +76,15 @@ SCENARIO("service_server stop() from separate thread is data-race-free",
 SCENARIO("service_server double stop is safe under concurrency",
          "[service_server][tsan][asio]")
 {
-    GIVEN("an asio::io_context and a started service_server")
+    GIVEN("an asio::io_context and a started service_server<AsioPolicy>")
     {
         asio::io_context io;
 
-        std::optional<mdnspp::service_server<
-            mdnspp::asio_policy::AsioSocketPolicy,
-            mdnspp::asio_policy::AsioTimerPolicy>> server;
+        std::optional<mdnspp::service_server<mdnspp::AsioPolicy>> server;
 
         try
         {
-            mdnspp::asio_policy::AsioSocketPolicy sock{io};
-            mdnspp::asio_policy::AsioTimerPolicy  response_timer{io};
-            mdnspp::asio_policy::AsioTimerPolicy  recv_timer{io};
-
-            auto result = mdnspp::service_server<
-                mdnspp::asio_policy::AsioSocketPolicy,
-                mdnspp::asio_policy::AsioTimerPolicy>::create(
-                    std::move(sock), std::move(response_timer), std::move(recv_timer),
-                    make_test_info());
-
-            REQUIRE(result.has_value());
-            server.emplace(std::move(*result));
+            server.emplace(io, make_test_info());
         }
         catch (const std::exception &e)
         {

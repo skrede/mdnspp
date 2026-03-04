@@ -1,6 +1,5 @@
 #include "mdnspp/querent.h"
-#include "mdnspp/asio/asio_socket_policy.h"
-#include "mdnspp/asio/asio_timer_policy.h"
+#include "mdnspp/asio/asio_policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 
@@ -22,14 +21,7 @@ int main(int argc, char *argv[])
 
     asio::io_context io;
 
-    mdnspp::asio_policy::AsioSocketPolicy socket{io};
-    mdnspp::asio_policy::AsioTimerPolicy timer{io};
-
-    auto q = mdnspp::querent<
-        mdnspp::asio_policy::AsioSocketPolicy,
-        mdnspp::asio_policy::AsioTimerPolicy>::create(
-        std::move(socket),
-        std::move(timer),
+    mdnspp::querent<mdnspp::AsioPolicy> q{io,
         std::chrono::seconds(3),
         [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
         {
@@ -38,14 +30,8 @@ int main(int argc, char *argv[])
                 std::cout << sender.address << ":" << sender.port
                     << " -> " << r << "\n";
             }, rec);
-        });
+        }};
 
-    if(!q.has_value())
-    {
-        std::cerr << "Failed to create querent\n";
-        return 1;
-    }
-
-    q->query(name, qtype); // sends query, arms recv_loop
-    io.run();              // blocks until silence timeout
+    q.query(name, qtype); // sends query, arms recv_loop
+    io.run();             // blocks until silence timeout
 }

@@ -36,12 +36,8 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
     ${INCLUDE_DIRECTORY}/mdnspp/policy.h
-    ${INCLUDE_DIRECTORY}/mdnspp/socket_policy.h
-    ${INCLUDE_DIRECTORY}/mdnspp/timer_policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/parse.h
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_policy.h
-    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_socket_policy.h
-    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_timer_policy.h
 )
 
 set(CORE_SOURCES
@@ -72,13 +68,11 @@ install(FILES ${PUBLIC_HEADERS}
 
 install(FILES
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_policy.h
-    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_socket_policy.h
-    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_timer_policy.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/testing
 )
 
 # Optional ASIO policy — fetched only when MDNSPP_ENABLE_ASIO_POLICY=ON
-option(MDNSPP_ENABLE_ASIO_POLICY "Build AsioSocketPolicy and AsioTimerPolicy (requires network at configure time)" OFF)
+option(MDNSPP_ENABLE_ASIO_POLICY "Build AsioPolicy (AsioSocket, AsioTimer) backed by asio::io_context" OFF)
 
 if(MDNSPP_ENABLE_ASIO_POLICY)
     FetchContent_Declare(
@@ -103,8 +97,6 @@ if(MDNSPP_ENABLE_ASIO_POLICY)
         ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_policy.h
         ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_socket.h
         ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_timer.h
-        ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_socket_policy.h
-        ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_timer_policy.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/asio
     )
 endif()

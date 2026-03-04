@@ -13,6 +13,7 @@ make_test(log_test)
 make_test(concept_conformance_test)
 make_test(recv_loop_test)
 make_test(parse_test)
+make_test(service_discovery_test)
 
 if(MDNSPP_ENABLE_ASIO_POLICY)
     function(make_asio_test TEST_FILE)

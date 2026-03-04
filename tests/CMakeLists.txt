@@ -30,6 +30,7 @@ if(MDNSPP_ENABLE_ASIO_POLICY)
     endfunction()
     make_asio_test(asio_conformance_test)
     make_asio_test(service_server_tsan_test)
+    make_asio_test(asio_completion_token_test)
 endif()
 
 if(MDNSPP_ENABLE_NATIVE_POLICY)

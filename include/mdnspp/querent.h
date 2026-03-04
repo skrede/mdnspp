@@ -122,7 +122,10 @@ public:
     void async_query(std::string_view name, uint16_t qtype, completion_handler on_done)
     {
         assert(m_loop == nullptr); // one query per lifetime
-        m_on_completion = std::move(on_done);
+        // Only store if non-empty — prevents wrapping an empty std::function in
+        // move_only_function (which would evaluate as truthy but throw on call).
+        if (on_done)
+            m_on_completion = std::move(on_done);
         do_query(std::string(name), qtype);
     }
 #endif
@@ -142,15 +145,20 @@ public:
                 auto work = asio::make_work_guard(handler);
 
                 // Type-erase into completion_handler, dispatching via the handler's executor.
+                // The work guard is moved into the final dispatch lambda so it is released
+                // only AFTER the handler executes, preventing premature io_context::run() return.
                 m_on_completion = [h = std::move(handler), w = std::move(work)](
                     std::error_code ec, std::vector<mdns_record_variant> results) mutable
                 {
+                    auto ex    = w.get_executor();
                     auto alloc = asio::get_associated_allocator(
                         h, asio::recycling_allocator<void>());
-                    asio::dispatch(w.get_executor(),
+                    asio::dispatch(ex,
                         asio::bind_allocator(alloc,
-                            [h2 = std::move(h), ec, r = std::move(results)]() mutable
+                            [h2 = std::move(h), w2 = std::move(w), ec, r = std::move(results)]() mutable
                             {
+                                // w2 keeps io_context alive until this lambda executes.
+                                (void)w2;
                                 std::move(h2)(ec, std::move(r));
                             }));
                 };
@@ -254,7 +262,10 @@ private:
     timer_type       m_timer;
     std::chrono::milliseconds m_silence_timeout;
     record_callback  m_on_record;            // optional per-record callback
-    completion_handler m_on_completion;      // fires once at silence timeout or stop()
+    // Move-only function: supports both copyable std::function handlers (NativePolicy)
+    // and move-only ASIO coroutine handlers (use_awaitable via ASIO_STANDALONE path).
+    std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>
+        m_on_completion;                     // fires once at silence timeout or stop()
     std::string      m_query_name;           // set in do_query(), used for filtering
     std::unique_ptr<recv_loop<P>> m_loop;    // null until async_query()
     std::vector<mdns_record_variant> m_results;

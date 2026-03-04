@@ -160,7 +160,10 @@ public:
     void async_start(completion_handler on_done = {})
     {
         assert(m_loop == nullptr); // can only start once
-        m_on_completion = std::move(on_done);
+        // Only store if non-empty — prevents wrapping an empty std::function in
+        // move_only_function (which would evaluate as truthy but throw on call).
+        if (on_done)
+            m_on_completion = std::move(on_done);
         do_start();
     }
 #endif
@@ -184,15 +187,20 @@ public:
                 auto work = asio::make_work_guard(handler);
 
                 // Type-erase into completion_handler, dispatching via the handler's executor.
+                // The work guard is moved into the final dispatch lambda so it is released
+                // only AFTER the handler executes, preventing premature io_context::run() return.
                 m_on_completion = [h = std::move(handler), w = std::move(work)](
                     std::error_code ec) mutable
                 {
+                    auto ex    = w.get_executor();
                     auto alloc = asio::get_associated_allocator(
                         h, asio::recycling_allocator<void>());
-                    asio::dispatch(w.get_executor(),
+                    asio::dispatch(ex,
                         asio::bind_allocator(alloc,
-                            [h2 = std::move(h), ec]() mutable
+                            [h2 = std::move(h), w2 = std::move(w), ec]() mutable
                             {
+                                // w2 keeps io_context alive until this lambda executes.
+                                (void)w2;
                                 std::move(h2)(ec);
                             }));
                 };
@@ -344,7 +352,10 @@ private:
     timer_type     m_recv_timer;       // passed to recv_loop for silence tracking
     service_info   m_info;             // service description for DNS responses
     query_callback m_on_query;         // optional per-query callback
-    completion_handler m_on_completion; // fires once when stop() is called
+    // Move-only function: supports both copyable std::function handlers (NativePolicy)
+    // and move-only ASIO coroutine handlers (use_awaitable via ASIO_STANDALONE path).
+    std::move_only_function<void(std::error_code)>
+        m_on_completion; // fires once when stop() is called
     std::mt19937   m_rng;              // PRNG for random delay generation
     std::unique_ptr<recv_loop<P>> m_loop; // continuous query listener (null until async_start())
     std::atomic<bool> m_stopped;          // idempotent stop flag

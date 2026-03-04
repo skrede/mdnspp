@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: recv_loop and AsioSocketPolicy** - Implement and test the shared async receive infrastructure and production ASIO socket policy (completed 2026-03-03)
 - [x] **Phase 3: record_parser Free Functions** - Extract parser as pure byte-span transforms, isolate mdns.h to src/, add parser unit tests (completed 2026-03-03)
 - [x] **Phase 4: Refactor service_discovery and querent** - Convert discovery and query types to policy-based templates returning accumulated std::expected results (completed 2026-03-04)
-- [ ] **Phase 5: Refactor service_server** - Convert announcement type to policy-based template with strand safety and RFC 6762 timing preserved
+- [x] **Phase 5: Refactor service_server** - Convert announcement type to policy-based template with strand safety and RFC 6762 timing preserved (completed 2026-03-04)
 - [ ] **Phase 6: Refactor observer** - Convert observer to policy-based template, completing mdns_base elimination and validating perpetual recv_loop path
 
 ## Phase Details
@@ -101,8 +101,8 @@ Plans:
 
 Plans:
 - [x] 05-01-PLAN.md — service_info type, build_dns_response(), MockSocketPolicy endpoint extension, CMake wiring (completed 2026-03-04)
-- [ ] 05-02-PLAN.md — service_server<S,T> template implementation and BDD tests
-- [ ] 05-03-PLAN.md — ThreadSanitizer hard-gate test for service_server with AsioSocketPolicy
+- [x] 05-02-PLAN.md — service_server<S,T> template implementation and BDD tests (completed 2026-03-04)
+- [x] 05-03-PLAN.md — ThreadSanitizer hard-gate test for service_server with AsioSocketPolicy (completed 2026-03-04)
 
 ### Phase 6: Refactor observer
 **Goal**: `observer<S>` is a class template composing `recv_loop<S>` for perpetual operation; `mdns_base` is fully deleted from the codebase
@@ -112,7 +112,11 @@ Plans:
   1. `grep -r "mdns_base" include/ src/` returns no matches — the class is gone
   2. `observer<MockSocketPolicy>` receives continuously injected packets and delivers them to a callback until `stop()` is called — verified by unit test
   3. `stop()` on a running observer is idempotent: a second call is a no-op with no crash or assertion failure
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 06-01-PLAN.md — observer<S,T> class template implementation and BDD tests (TDD)
+- [ ] 06-02-PLAN.md — Legacy file deletion, CMake cleanup, observe.cpp example rewrite
 
 ## Progress
 
@@ -125,5 +129,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6
 | 2. recv_loop and AsioSocketPolicy | 4/4 | Complete   | 2026-03-03 |
 | 3. record_parser Free Functions | 2/2 | Complete   | 2026-03-03 |
 | 4. Refactor service_discovery and querent | 2/2 | Complete   | 2026-03-04 |
-| 5. Refactor service_server | 2/3 | In Progress|  |
-| 6. Refactor observer | 0/TBD | Not started | - |
+| 5. Refactor service_server | 3/3 | Complete   | 2026-03-04 |
+| 6. Refactor observer | 0/2 | Not started | - |

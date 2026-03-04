@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Standalone & Ergonomic
 status: executing
-stopped_at: Completed 10-01-PLAN.md (async_discover, async_query, async_observe, async_start with callback completions; all 13 tests pass). Ready for Plan 10-02.
-last_updated: "2026-03-04T16:09:08.209Z"
-last_activity: 2026-03-04 — Completed 09-02 (NativeSocket, NativePolicy, native.h umbrella, mdnspp_native CMake target, native_conformance_test; 12 tests pass)
+stopped_at: Completed 10-02-PLAN.md (async_initiate template overloads, move_only_function, asio_completion_token_test; all 25 tests pass). Phase 10 complete.
+last_updated: "2026-03-04T16:45:00.000Z"
+last_activity: 2026-03-04 — Completed 10-02 (async_initiate template overloads for all four public types; use_future/use_awaitable/deferred/TSan tests; 25 tests pass)
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 9
-  completed_plans: 8
-  percent: 3
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 
 ## Current Position
 
-Phase: 10 of 11 (ASIO Completion Tokens)
-Plan: 01 (10-01 complete — async_ callback API on all four public types)
-Status: In progress
-Last activity: 2026-03-04 — Completed 10-01 (async_discover, async_query, async_observe, async_start with callback completions; all 13 tests pass)
+Phase: 10 of 11 (ASIO Completion Tokens) — COMPLETE
+Plan: 02 (10-02 complete — async_initiate template overloads, completion token tests)
+Status: Phase 10 complete
+Last activity: 2026-03-04 — Completed 10-02 (async_initiate template overloads for use_future/use_awaitable/deferred; 25 tests pass, TSan clean)
 
-Progress: [█████████░] 89% (v2.0)
+Progress: [██████████] 100% (v2.0)
 
 ## Performance Metrics
 
@@ -51,6 +51,7 @@ Progress: [█████████░] 89% (v2.0)
 | Phase 09-nativepolicy-standalone-networking P01 | ~5 min | 2 tasks | 4 files |
 | Phase 09-nativepolicy-standalone-networking P02 | ~5 min | 2 tasks | 6 files |
 | Phase 10-asio-completion-tokens P01 | 15 | 3 tasks | 14 files |
+| Phase 10-asio-completion-tokens P02 | ~30 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,9 @@ Progress: [█████████░] 89% (v2.0)
 - [Phase 09-02]: send() is synchronous sendto() — mDNS sends are tiny/infrequent, async complexity not warranted
 - [Phase 09-02]: async_receive delegates to NativeContext.register_receive — context owns recvfrom dispatch, NativeSocket just arms it
 - [Phase 10-asio-completion-tokens]: async_ prefix for all public entry-point methods; completion_handler fires via std::exchange for exactly-once semantics; results() accessor gets copy (not move) so it stays populated after completion fires
+- [Phase 10-02]: std::move_only_function replaces std::function for m_on_completion — required for use_awaitable move-only coroutine handles; empty std::function must be checked before storing (truthy-but-throws wrapper otherwise)
+- [Phase 10-02]: Work guard (w2) moved into final dispatch lambda — released AFTER handler executes, preventing premature io_context::run() return
+- [Phase 10-02]: io.stop() in use_awaitable observer tests — observer::stop() leaves recv_loop running by design; explicit io.stop() needed for single-threaded test drain
 
 ### Pending Todos
 
@@ -92,6 +96,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T16:09:08.208Z
-Stopped at: Completed 10-01-PLAN.md (async_discover, async_query, async_observe, async_start with callback completions; all 13 tests pass). Ready for Plan 10-02.
+Last session: 2026-03-04T16:45:00.000Z
+Stopped at: Completed 10-02-PLAN.md (async_initiate template overloads, move_only_function, asio_completion_token_test; all 25 tests pass, TSan clean). Phase 10 complete.
 Resume file: None

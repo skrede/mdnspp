@@ -25,9 +25,9 @@ Requirements for milestone v2.0: Standalone & Ergonomic.
 
 - [x] **API-09**: All async operations accept ASIO completion tokens via `async_initiate`
 - [x] **API-10**: Callback path — `async_discover(callback)` fires callback with result
-- [ ] **API-11**: Future path — `async_discover(asio::use_future)` returns `std::future<T>`
-- [ ] **API-12**: Coroutine path — `co_await async_discover(asio::use_awaitable)` returns awaitable
-- [ ] **API-13**: Deferred path — `async_discover(asio::deferred)` returns composable deferred operation
+- [x] **API-11**: Future path — `async_discover(asio::use_future)` returns `std::future<T>`
+- [x] **API-12**: Coroutine path — `co_await async_discover(asio::use_awaitable)` returns awaitable
+- [x] **API-13**: Deferred path — `async_discover(asio::deferred)` returns composable deferred operation
 
 ### PROTO — Native C++ Protocol
 
@@ -99,9 +99,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 | API-08 | Phase 7 | Complete |
 | API-09 | Phase 10 | Complete |
 | API-10 | Phase 10 | Complete |
-| API-11 | Phase 10 | Pending |
-| API-12 | Phase 10 | Pending |
-| API-13 | Phase 10 | Pending |
+| API-11 | Phase 10 | Complete |
+| API-12 | Phase 10 | Complete |
+| API-13 | Phase 10 | Complete |
 | PROTO-01 | Phase 8 | Complete |
 | PROTO-02 | Phase 8 | Complete |
 | PROTO-03 | Phase 8 | Complete |

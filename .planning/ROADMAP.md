@@ -26,7 +26,7 @@
 - [x] **Phase 7: Policy Unification and Direct Construction** - Merge dual policies into one `Policy` concept; direct constructors with throw/error_code; `MockPolicy` unified test double (completed 2026-03-04)
 - [x] **Phase 8: Native DNS Protocol** - Replace mjansson/mdns C library with a pure C++ RFC 1035-compliant decoder; remove all C library dependencies from the build (completed 2026-03-04)
 - [ ] **Phase 9: NativePolicy Standalone Networking** - Raw UDP multicast socket policy with `run()`/`poll()` event loop; no ASIO in include chain; cross-platform
-- [ ] **Phase 10: ASIO Completion Tokens** - Wire `async_initiate` across all four public types; support callback, `use_future`, `use_awaitable`, and `deferred` from one call site
+- [x] **Phase 10: ASIO Completion Tokens** - Wire `async_initiate` across all four public types; support callback, `use_future`, `use_awaitable`, and `deferred` from one call site (completed 2026-03-04)
 - [ ] **Phase 11: Service Aggregation** - `resolved_service` struct correlating PTR+SRV+TXT+A/AAAA records; `async_discover` returns aggregated results in one completion
 
 ## Phase Details
@@ -111,5 +111,5 @@
 | 7. Policy Unification and Direct Construction | 3/3 | Complete   | 2026-03-04 | - |
 | 8. Native DNS Protocol | v2.0 | 2/2 | Complete | 2026-03-04 |
 | 9. NativePolicy Standalone Networking | v2.0 | 1/2 | In progress | - |
-| 10. ASIO Completion Tokens | 1/2 | In Progress|  | - |
+| 10. ASIO Completion Tokens | 2/2 | Complete   | 2026-03-04 | - |
 | 11. Service Aggregation | v2.0 | 0/? | Not started | - |

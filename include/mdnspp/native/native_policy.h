@@ -26,4 +26,4 @@ struct NativePolicy
 static_assert(mdnspp::Policy<mdnspp::NativePolicy>,
               "NativePolicy must satisfy Policy — check NativeSocket/NativeTimer constructor signatures");
 
-#endif // HPP_GUARD_MDNSPP_NATIVE_NATIVE_POLICY_H
+#endif

@@ -14,7 +14,9 @@
 
 namespace mdnspp::testing {
 
-struct mock_executor {};
+struct mock_executor
+{
+};
 
 struct sent_packet
 {
@@ -29,7 +31,9 @@ public:
     MockSocket() = default;
 
     // Concept-satisfying constructors — take mock_executor (no-op).
-    explicit MockSocket(mock_executor) {}
+    explicit MockSocket(mock_executor)
+    {
+    }
 
     explicit MockSocket(mock_executor, std::error_code &ec)
     {
@@ -71,7 +75,9 @@ public:
         });
     }
 
-    void close() noexcept {}
+    void close() noexcept
+    {
+    }
 
     const std::vector<sent_packet> &sent_packets() const { return m_sent_packets; }
     bool queue_empty() const { return m_receive_queue.empty(); }
@@ -91,8 +97,13 @@ public:
     MockTimer() = default;
 
     // Concept-satisfying constructors — take mock_executor (no-op).
-    explicit MockTimer(mock_executor) {}
-    explicit MockTimer(mock_executor, std::error_code &) {}
+    explicit MockTimer(mock_executor)
+    {
+    }
+
+    explicit MockTimer(mock_executor, std::error_code &)
+    {
+    }
 
     void expires_after(std::chrono::milliseconds)
     {
@@ -136,13 +147,12 @@ private:
 struct MockPolicy
 {
     using executor_type = mock_executor;
-    using socket_type   = MockSocket;
-    using timer_type    = MockTimer;
+    using socket_type = MockSocket;
+    using timer_type = MockTimer;
 };
 
-} // namespace mdnspp::testing
+}
 
-static_assert(mdnspp::Policy<mdnspp::testing::MockPolicy>,
-              "MockPolicy must satisfy Policy concept");
+static_assert(mdnspp::Policy<mdnspp::testing::MockPolicy>, "MockPolicy must satisfy Policy concept");
 
-#endif // HPP_GUARD_MDNSPP_TESTING_MOCK_POLICY_H
+#endif

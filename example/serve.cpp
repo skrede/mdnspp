@@ -14,21 +14,23 @@ int main()
     mdnspp::service_info info;
     info.service_name = "MyApp._http._tcp.local.";
     info.service_type = "_http._tcp.local.";
-    info.hostname     = "myhost.local.";
-    info.port         = 8080;
-    info.priority     = 0;
-    info.weight       = 0;
+    info.hostname = "myhost.local.";
+    info.port = 8080;
+    info.priority = 0;
+    info.weight = 0;
     info.address_ipv4 = "192.168.1.69";
-    info.txt_records  = {{"path", "/index.html"}};
+    info.txt_records = {{"path", "/index.html"}};
 
-    mdnspp::service_server<mdnspp::AsioPolicy> srv{io,
+    mdnspp::service_server<mdnspp::AsioPolicy> srv{
+        io,
         std::move(info),
         [](mdnspp::endpoint sender, uint16_t qtype, bool unicast)
         {
             std::cout << sender.address << ":" << sender.port
-                      << " queried qtype=" << qtype
-                      << (unicast ? " (unicast)" : " (multicast)") << "\n";
-        }};
+                << " queried qtype=" << qtype
+                << (unicast ? " (unicast)" : " (multicast)") << std::endl;
+        }
+    };
 
     asio::signal_set signals(io, SIGINT);
     signals.async_wait([&srv](std::error_code, int)

@@ -13,12 +13,11 @@ namespace mdnspp {
 // convention: asio::ip::tcp::socket takes io_context & but stores executor).
 struct AsioPolicy
 {
-    using executor_type = asio::io_context &;
-    using socket_type   = AsioSocket;
-    using timer_type    = AsioTimer;
+    using executor_type = asio::io_context&;
+    using socket_type = AsioSocket;
+    using timer_type = AsioTimer;
 };
 
-} // namespace mdnspp
+}
 
-static_assert(mdnspp::Policy<mdnspp::AsioPolicy>,
-              "AsioPolicy must satisfy Policy concept");
+static_assert(mdnspp::Policy<mdnspp::AsioPolicy>, "AsioPolicy must satisfy Policy concept");

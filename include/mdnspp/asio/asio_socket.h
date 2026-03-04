@@ -87,9 +87,7 @@ private:
     std::vector<std::byte> m_buffer;
 };
 
-} // namespace mdnspp
+}
 
-static_assert(
-    mdnspp::SocketLike<mdnspp::AsioSocket>,
-    "AsioSocket must satisfy SocketLike — check async_receive/send/close signatures"
+static_assert(mdnspp::SocketLike<mdnspp::AsioSocket>, "AsioSocket must satisfy SocketLike — check async_receive/send/close signatures"
 );

@@ -15,7 +15,7 @@ class recv_loop
 {
 public:
     using socket_type = typename P::socket_type;
-    using timer_type  = typename P::timer_type;
+    using timer_type = typename P::timer_type;
 
     // Returns true if the packet was relevant (resets silence timer),
     // false to ignore (timer continues counting down).
@@ -23,7 +23,7 @@ public:
 
     recv_loop(
         socket_type &socket,
-        timer_type  &timer,
+        timer_type &timer,
         std::chrono::milliseconds silence_timeout,
         packet_handler on_packet,
         std::function<void()> on_silence)
@@ -79,7 +79,7 @@ private:
                     return;
                 }
                 bool relevant = m_on_packet(data, ep);
-                if (relevant)
+                if(relevant)
                     arm_silence_timer();
                 arm_receive();
             });
@@ -100,7 +100,7 @@ private:
     }
 
     socket_type &m_socket;
-    timer_type  &m_timer;
+    timer_type &m_timer;
     std::chrono::milliseconds m_silence_timeout;
     packet_handler m_on_packet;
     std::function<void()> m_on_silence;
@@ -108,6 +108,6 @@ private:
     std::vector<std::byte> m_buffer;
 };
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_RECV_LOOP_H
+#endif

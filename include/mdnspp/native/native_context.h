@@ -47,7 +47,7 @@ namespace mdnspp {
 namespace detail {
 
 #ifdef _WIN32
-using native_socket_t              = SOCKET;
+using native_socket_t = SOCKET;
 inline constexpr native_socket_t invalid_socket = INVALID_SOCKET;
 
 inline void close_socket(native_socket_t fd) noexcept
@@ -55,12 +55,12 @@ inline void close_socket(native_socket_t fd) noexcept
     ::closesocket(fd);
 }
 
-inline int poll_sockets(pollfd* fds, unsigned long nfds, int timeout_ms)
+inline int poll_sockets(pollfd *fds, unsigned long nfds, int timeout_ms)
 {
     return ::WSAPoll(fds, nfds, timeout_ms);
 }
 #else
-using native_socket_t              = int;
+using native_socket_t = int;
 inline constexpr native_socket_t invalid_socket = -1;
 
 inline void close_socket(native_socket_t fd) noexcept
@@ -68,7 +68,7 @@ inline void close_socket(native_socket_t fd) noexcept
     ::close(fd);
 }
 
-inline int poll_sockets(pollfd* fds, nfds_t nfds, int timeout_ms)
+inline int poll_sockets(pollfd *fds, nfds_t nfds, int timeout_ms)
 {
     return ::poll(fds, nfds, timeout_ms);
 }
@@ -101,10 +101,10 @@ public:
 #endif
     }
 
-    winsock_guard(const winsock_guard&)            = delete;
-    winsock_guard& operator=(const winsock_guard&) = delete;
-    winsock_guard(winsock_guard&&)                 = delete;
-    winsock_guard& operator=(winsock_guard&&)      = delete;
+    winsock_guard(const winsock_guard &) = delete;
+    winsock_guard &operator=(const winsock_guard &) = delete;
+    winsock_guard(winsock_guard &&) = delete;
+    winsock_guard &operator=(winsock_guard &&) = delete;
 };
 
 // ---------------------------------------------------------------------------
@@ -125,10 +125,10 @@ public:
         close_wakeup_fd();
     }
 
-    NativeContext(const NativeContext&)            = delete;
-    NativeContext& operator=(const NativeContext&) = delete;
-    NativeContext(NativeContext&&)                 = delete;
-    NativeContext& operator=(NativeContext&&)      = delete;
+    NativeContext(const NativeContext &) = delete;
+    NativeContext &operator=(const NativeContext &) = delete;
+    NativeContext(NativeContext &&) = delete;
+    NativeContext &operator=(NativeContext &&) = delete;
 
     // -----------------------------------------------------------------------
     // Public event-loop interface
@@ -140,9 +140,9 @@ public:
         m_stopped.store(false, std::memory_order_relaxed);
         while(!m_stopped.load(std::memory_order_acquire))
         {
-            const auto now     = std::chrono::steady_clock::now();
-            const int  timeout = compute_next_timeout_ms(now);
-            const int  rc      = do_poll(timeout);
+            const auto now = std::chrono::steady_clock::now();
+            const int timeout = compute_next_timeout_ms(now);
+            const int rc = do_poll(timeout);
 
             if(rc < 0)
             {
@@ -222,13 +222,13 @@ public:
         m_receive_handler = std::move(handler);
     }
 
-    void register_timer(NativeTimer* t)
+    void register_timer(NativeTimer *t)
     {
         if(std::find(m_timers.begin(), m_timers.end(), t) == m_timers.end())
             m_timers.push_back(t);
     }
 
-    void deregister_timer(NativeTimer* t)
+    void deregister_timer(NativeTimer *t)
     {
         std::erase(m_timers, t);
     }
@@ -237,18 +237,18 @@ public:
     // Private helpers (declared here; timer-dependent ones defined in
     // native_timer.h after NativeTimer is fully defined)
     // -----------------------------------------------------------------------
-    int  compute_next_timeout_ms(std::chrono::steady_clock::time_point now) const;
+    int compute_next_timeout_ms(std::chrono::steady_clock::time_point now) const;
     void fire_expired_timers();
 
 private:
     // winsock_guard MUST be the first member — initialised before any sockets.
-    winsock_guard                                        m_wsa{};
-    std::atomic<bool>                                    m_stopped{false};
-    detail::native_socket_t                              m_socket_fd{detail::invalid_socket};
-    std::function<void(std::span<std::byte>, endpoint)>  m_receive_handler;
-    std::vector<NativeTimer*>                            m_timers;
-    std::array<std::byte, 4096>                          m_recv_buf{};
-    sockaddr_in                                          m_sender_addr{};
+    winsock_guard m_wsa{};
+    std::atomic<bool> m_stopped{false};
+    detail::native_socket_t m_socket_fd{detail::invalid_socket};
+    std::function<void(std::span<std::byte>, endpoint)> m_receive_handler;
+    std::vector<NativeTimer*> m_timers;
+    std::array<std::byte, 4096> m_recv_buf{};
+    sockaddr_in m_sender_addr{};
 
     // Stop-wakeup mechanism — platform-specific members.
 #if defined(__linux__)
@@ -280,9 +280,9 @@ private:
             throw std::system_error(::WSAGetLastError(), std::system_category(), "socket(wakeup_recv)");
 
         sockaddr_in addr{};
-        addr.sin_family      = AF_INET;
+        addr.sin_family = AF_INET;
         addr.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
-        addr.sin_port        = 0;
+        addr.sin_port = 0;
 
         if(::bind(m_wakeup_recv, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
         {
@@ -345,7 +345,7 @@ private:
         m_wakeup_recv = INVALID_SOCKET;
         m_wakeup_send = INVALID_SOCKET;
 #else
-        for(int& fd : m_pipe)
+        for(int &fd : m_pipe)
         {
             if(fd >= 0)
             {
@@ -377,10 +377,14 @@ private:
         (void)::read(m_wakeup_fd, &val, sizeof(val));
 #elif defined(_WIN32)
         char buf[64];
-        while(::recv(m_wakeup_recv, buf, sizeof(buf), 0) > 0) {}
+        while(::recv(m_wakeup_recv, buf, sizeof(buf), 0) > 0)
+        {
+        }
 #else
         char buf[64];
-        while(::read(m_pipe[0], buf, sizeof(buf)) > 0) {}
+        while(::read(m_pipe[0], buf, sizeof(buf)) > 0)
+        {
+        }
 #endif
     }
 
@@ -401,34 +405,34 @@ private:
     int do_poll(int timeout_ms)
     {
         m_wakeup_ready = false;
-        m_data_ready   = false;
+        m_data_ready = false;
 
         const bool has_socket = (m_socket_fd != detail::invalid_socket);
 
         pollfd fds[2]{};
-        fds[0].fd     = static_cast<int>(wakeup_poll_fd());
+        fds[0].fd = static_cast<int>(wakeup_poll_fd());
         fds[0].events = POLLIN;
 
         if(has_socket)
         {
-            fds[1].fd     = static_cast<int>(m_socket_fd);
+            fds[1].fd = static_cast<int>(m_socket_fd);
             fds[1].events = POLLIN;
         }
 
         const nfds_t nfds = has_socket ? 2u : 1u;
-        const int    rc   = detail::poll_sockets(fds, nfds, timeout_ms);
+        const int rc = detail::poll_sockets(fds, nfds, timeout_ms);
 
         if(rc > 0)
         {
             m_wakeup_ready = (fds[0].revents & POLLIN) != 0;
-            m_data_ready   = has_socket && ((fds[1].revents & POLLIN) != 0);
+            m_data_ready = has_socket && ((fds[1].revents & POLLIN) != 0);
         }
 
         return rc;
     }
 
     [[nodiscard]] bool wakeup_readable() const noexcept { return m_wakeup_ready; }
-    [[nodiscard]] bool data_readable()   const noexcept { return m_data_ready; }
+    [[nodiscard]] bool data_readable() const noexcept { return m_data_ready; }
 
     // ------------------------------------------------------------------
     // Receive dispatch
@@ -479,6 +483,6 @@ private:
     }
 };
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_NATIVE_NATIVE_CONTEXT_H
+#endif

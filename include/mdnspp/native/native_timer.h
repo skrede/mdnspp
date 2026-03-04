@@ -23,14 +23,16 @@ class NativeTimer
 {
 public:
     /// Construct from a NativeContext. Stores reference; does not register yet.
-    explicit NativeTimer(NativeContext& ctx)
+    explicit NativeTimer(NativeContext &ctx)
         : m_ctx{ctx}
-    {}
+    {
+    }
 
     /// error_code-based constructor — timer construction is infallible.
-    explicit NativeTimer(NativeContext& ctx, std::error_code&)
+    explicit NativeTimer(NativeContext &ctx, std::error_code &)
         : m_ctx{ctx}
-    {}
+    {
+    }
 
     /// Destructor deregisters this timer from the context.
     ~NativeTimer()
@@ -38,10 +40,10 @@ public:
         m_ctx.deregister_timer(this);
     }
 
-    NativeTimer(const NativeTimer&)            = delete;
-    NativeTimer& operator=(const NativeTimer&) = delete;
-    NativeTimer(NativeTimer&&)                 = delete;
-    NativeTimer& operator=(NativeTimer&&)      = delete;
+    NativeTimer(const NativeTimer &) = delete;
+    NativeTimer &operator=(const NativeTimer &) = delete;
+    NativeTimer(NativeTimer &&) = delete;
+    NativeTimer &operator=(NativeTimer &&) = delete;
 
     // -----------------------------------------------------------------------
     // TimerLike interface
@@ -52,7 +54,7 @@ public:
     void expires_after(std::chrono::milliseconds dur)
     {
         m_pending_handler = nullptr; // DROP — do not call
-        m_deadline        = std::chrono::steady_clock::now() + dur;
+        m_deadline = std::chrono::steady_clock::now() + dur;
         m_ctx.register_timer(this);
     }
 
@@ -99,9 +101,9 @@ public:
     }
 
 private:
-    NativeContext&                            m_ctx;
-    std::chrono::steady_clock::time_point     m_deadline{};
-    std::function<void(std::error_code)>      m_pending_handler;
+    NativeContext &m_ctx;
+    std::chrono::steady_clock::time_point m_deadline{};
+    std::function<void(std::error_code)> m_pending_handler;
 };
 
 // ---------------------------------------------------------------------------
@@ -121,7 +123,7 @@ namespace mdnspp {
 inline int NativeContext::compute_next_timeout_ms(std::chrono::steady_clock::time_point now) const
 {
     int min_ms = -1; // -1 = no pending timer, poll blocks indefinitely
-    for(const NativeTimer* t : m_timers)
+    for(const NativeTimer *t : m_timers)
     {
         if(!t->has_pending())
             continue;
@@ -131,7 +133,7 @@ inline int NativeContext::compute_next_timeout_ms(std::chrono::steady_clock::tim
 
         // Clamp to 0: already-expired timers fire on the next poll cycle.
         const auto raw = diff.count();
-        const int  ms  = static_cast<int>(raw > 0 ? raw : 0);
+        const int ms = static_cast<int>(raw > 0 ? raw : 0);
 
         if(min_ms < 0 || ms < min_ms)
             min_ms = ms;
@@ -143,10 +145,10 @@ inline void NativeContext::fire_expired_timers()
 {
     // Snapshot to avoid iterator invalidation if a handler calls register/deregister.
     const auto timers = m_timers;
-    for(NativeTimer* t : timers)
+    for(NativeTimer *t : timers)
         t->fire_if_expired();
 }
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_NATIVE_NATIVE_TIMER_H
+#endif

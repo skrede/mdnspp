@@ -20,4 +20,4 @@
 #include "mdnspp/native/native_timer.h"
 #include "mdnspp/native/native_policy.h"
 
-#endif // HPP_GUARD_MDNSPP_NATIVE_H
+#endif

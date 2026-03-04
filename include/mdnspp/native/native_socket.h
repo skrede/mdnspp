@@ -401,6 +401,6 @@ private:
 static_assert(mdnspp::SocketLike<mdnspp::NativeSocket>,
               "NativeSocket must satisfy SocketLike — check async_receive/send/close signatures");
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_NATIVE_NATIVE_SOCKET_H
+#endif

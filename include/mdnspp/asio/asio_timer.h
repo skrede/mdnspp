@@ -40,9 +40,7 @@ private:
     asio::steady_timer m_timer;
 };
 
-} // namespace mdnspp
+}
 
-static_assert(
-    mdnspp::TimerLike<mdnspp::AsioTimer>,
-    "AsioTimer must satisfy TimerLike — check expires_after/async_wait/cancel signatures"
+static_assert(mdnspp::TimerLike<mdnspp::AsioTimer>, "AsioTimer must satisfy TimerLike — check expires_after/async_wait/cancel signatures"
 );

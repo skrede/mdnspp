@@ -27,17 +27,17 @@ namespace mdnspp {
 //   txt_records   — RFC 6763 TXT key/value pairs (key-only entries have no value)
 struct service_info
 {
-    std::string service_name;                     // e.g. "MyApp._http._tcp.local."
-    std::string service_type;                     // e.g. "_http._tcp.local."
-    std::string hostname;                         // e.g. "myhost.local."
-    uint16_t    port{0};
-    uint16_t    priority{0};
-    uint16_t    weight{0};
-    std::optional<std::string> address_ipv4;      // e.g. "192.168.1.10"
-    std::optional<std::string> address_ipv6;      // e.g. "fe80::1"
-    std::vector<service_txt>   txt_records;       // RFC 6763 key/value or key-only entries
+    std::string service_name; // e.g. "MyApp._http._tcp.local."
+    std::string service_type; // e.g. "_http._tcp.local."
+    std::string hostname;     // e.g. "myhost.local."
+    uint16_t port{0};
+    uint16_t priority{0};
+    uint16_t weight{0};
+    std::optional<std::string> address_ipv4; // e.g. "192.168.1.10"
+    std::optional<std::string> address_ipv6; // e.g. "fe80::1"
+    std::vector<service_txt> txt_records;    // RFC 6763 key/value or key-only entries
 };
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_SERVICE_INFO_H
+#endif

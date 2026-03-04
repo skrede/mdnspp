@@ -53,9 +53,9 @@ template <Policy P>
 class service_server
 {
 public:
-    using executor_type  = typename P::executor_type;
-    using socket_type    = typename P::socket_type;
-    using timer_type     = typename P::timer_type;
+    using executor_type = typename P::executor_type;
+    using socket_type = typename P::socket_type;
+    using timer_type = typename P::timer_type;
 
     /// Optional callback invoked when an incoming query is received and parsed.
     /// Parameters: sender endpoint, qtype requested, whether unicast was requested.
@@ -89,18 +89,18 @@ public:
 
     service_server &operator=(service_server &&other) noexcept
     {
-        if (this == &other)
+        if(this == &other)
             return *this;
         assert(m_loop == nullptr);       // this server must not be started
         assert(other.m_loop == nullptr); // source must not be started
-        m_socket         = std::move(other.m_socket);
+        m_socket = std::move(other.m_socket);
         m_response_timer = std::move(other.m_response_timer);
-        m_recv_timer     = std::move(other.m_recv_timer);
-        m_info           = std::move(other.m_info);
-        m_on_query       = std::move(other.m_on_query);
-        m_on_completion  = std::move(other.m_on_completion);
-        m_rng            = std::move(other.m_rng);
-        m_loop           = std::move(other.m_loop);
+        m_recv_timer = std::move(other.m_recv_timer);
+        m_info = std::move(other.m_info);
+        m_on_query = std::move(other.m_on_query);
+        m_on_completion = std::move(other.m_on_completion);
+        m_rng = std::move(other.m_rng);
+        m_loop = std::move(other.m_loop);
         m_stopped.store(other.m_stopped.load(std::memory_order_acquire),
                         std::memory_order_release);
         other.m_stopped.store(true, std::memory_order_release);
@@ -162,7 +162,7 @@ public:
         assert(m_loop == nullptr); // can only start once
         // Only store if non-empty — prevents wrapping an empty std::function in
         // move_only_function (which would evaluate as truthy but throw on call).
-        if (on_done)
+        if(on_done)
             m_on_completion = std::move(on_done);
         do_start();
     }
@@ -179,7 +179,7 @@ public:
     /// Fires when stop() is called with signature void(std::error_code).
     /// NativePolicy users (no ASIO_STANDALONE) use the non-template overload above instead.
     template <asio::completion_token_for<void(std::error_code)> CompletionToken>
-    auto async_start(CompletionToken&& token)
+    auto async_start(CompletionToken &&token)
     {
         return asio::async_initiate<CompletionToken, void(std::error_code)>(
             [this](auto handler)
@@ -191,19 +191,19 @@ public:
                 // only AFTER the handler executes, preventing premature io_context::run() return.
                 m_on_completion = [h = std::move(handler), w = std::move(work)](
                     std::error_code ec) mutable
-                {
-                    auto ex    = w.get_executor();
-                    auto alloc = asio::get_associated_allocator(
-                        h, asio::recycling_allocator<void>());
-                    asio::dispatch(ex,
-                        asio::bind_allocator(alloc,
-                            [h2 = std::move(h), w2 = std::move(w), ec]() mutable
-                            {
-                                // w2 keeps io_context alive until this lambda executes.
-                                (void)w2;
-                                std::move(h2)(ec);
-                            }));
-                };
+                    {
+                        auto ex = w.get_executor();
+                        auto alloc = asio::get_associated_allocator(
+                            h, asio::recycling_allocator<void>());
+                        asio::dispatch(ex,
+                                       asio::bind_allocator(alloc,
+                                                            [h2 = std::move(h), w2 = std::move(w), ec]() mutable
+                                                            {
+                                                                // w2 keeps io_context alive until this lambda executes.
+                                                                (void)w2;
+                                                                std::move(h2)(ec);
+                                                            }));
+                    };
 
                 do_start();
             },
@@ -217,10 +217,10 @@ public:
     // so the handler can safely access server state.
     void stop()
     {
-        if (m_stopped.exchange(true, std::memory_order_acq_rel))
+        if(m_stopped.exchange(true, std::memory_order_acq_rel))
             return; // already stopped
 
-        if (auto h = std::exchange(m_on_completion, nullptr); h)
+        if(auto h = std::exchange(m_on_completion, nullptr); h)
             h(std::error_code{});
 
         m_response_timer.cancel();
@@ -228,12 +228,12 @@ public:
     }
 
     // Accessors — service_server owns socket and timers directly.
-    const socket_type &socket()      const noexcept { return m_socket; }
-    socket_type       &socket()            noexcept { return m_socket; }
-    const timer_type  &timer()       const noexcept { return m_response_timer; }
-    timer_type        &timer()             noexcept { return m_response_timer; }
-    const timer_type  &recv_timer()  const noexcept { return m_recv_timer; }
-    timer_type        &recv_timer()        noexcept { return m_recv_timer; }
+    const socket_type &socket() const noexcept { return m_socket; }
+    socket_type &socket() noexcept { return m_socket; }
+    const timer_type &timer() const noexcept { return m_response_timer; }
+    timer_type &timer() noexcept { return m_response_timer; }
+    const timer_type &recv_timer() const noexcept { return m_recv_timer; }
+    timer_type &recv_timer() noexcept { return m_recv_timer; }
 
 private:
     // Common start body — assumes m_on_completion is already set.
@@ -249,7 +249,10 @@ private:
                 on_query(data, sender);
                 return true; // server needs to see all queries; always reset timer
             },
-            []() { /* no-op on silence */ });
+            []()
+            {
+                /* no-op on silence */
+            });
 
         m_loop->start();
     }
@@ -259,7 +262,8 @@ private:
     bool query_matches(std::span<const std::byte> data, size_t name_end) const
     {
         auto qname = data.subspan(12, name_end - 12);
-        auto match = [&](std::string_view name) {
+        auto match = [&](std::string_view name)
+        {
             auto encoded = detail::encode_dns_name(name);
             return std::ranges::equal(qname, std::span<const std::byte>(encoded));
         };
@@ -271,38 +275,38 @@ private:
     // Called by recv_loop on every incoming packet.
     void on_query(std::span<std::byte> data, endpoint sender)
     {
-        if (m_stopped.load(std::memory_order_acquire))
+        if(m_stopped.load(std::memory_order_acquire))
             return;
 
         // Parse QTYPE from the DNS query:
         //   Bytes 0-11: DNS header
         //   Byte 4-5:   qdcount
         //   Byte 12+:   question section — name (variable), then qtype(2), qclass(2)
-        if (data.size() < 12)
+        if(data.size() < 12)
             return;
 
         const std::byte *buf = data.data();
 
         // Extract qdcount (offset 4, big-endian 2 bytes)
         uint16_t qdcount = detail::read_u16_be(buf + 4);
-        if (qdcount == 0)
+        if(qdcount == 0)
             return;
 
         // Skip past question name to reach QTYPE
         size_t offset = 12;
-        if (!detail::skip_dns_name(
-                std::span<const std::byte>(data.data(), data.size()), offset))
+        if(!detail::skip_dns_name(
+            std::span<const std::byte>(data.data(), data.size()), offset))
             return;
 
         // Need 4 bytes for QTYPE(2) + QCLASS(2)
-        if (offset + 4 > data.size())
+        if(offset + 4 > data.size())
             return;
 
         // Only respond to queries that match our service/hostname
-        if (!query_matches(data, offset))
+        if(!query_matches(data, offset))
             return;
 
-        uint16_t qtype  = detail::read_u16_be(buf + offset);
+        uint16_t qtype = detail::read_u16_be(buf + offset);
         uint16_t qclass = detail::read_u16_be(buf + offset + 2);
 
         // RFC 6762 section 5.4: QU bit is the top bit of QCLASS.
@@ -310,7 +314,7 @@ private:
         // Otherwise, respond via multicast so all listeners benefit.
         bool unicast_response = (qclass & 0x8000) != 0;
 
-        if (m_on_query)
+        if(m_on_query)
             m_on_query(sender, qtype, unicast_response);
 
         // RFC 6762 section 6: random delay 20-500ms before responding via multicast.
@@ -320,15 +324,15 @@ private:
 
         // Choose destination: unicast back to querier, or multicast to the group
         endpoint dest = unicast_response
-            ? sender
-            : endpoint{"224.0.0.251", 5353};
+                            ? sender
+                            : endpoint{"224.0.0.251", 5353};
 
         // Arm response timer with delay; capture dest and qtype by value
         m_response_timer.expires_after(std::chrono::milliseconds(delay_ms));
         m_response_timer.async_wait(
             [this, dest, qtype](std::error_code ec)
             {
-                if (ec || m_stopped.load(std::memory_order_acquire))
+                if(ec || m_stopped.load(std::memory_order_acquire))
                     return;
                 send_response(dest, qtype);
             });
@@ -341,26 +345,25 @@ private:
     void send_response(endpoint dest, uint16_t qtype)
     {
         auto response = detail::build_dns_response(m_info, qtype);
-        if (response.empty())
+        if(response.empty())
             return; // unmatched qtype or missing address
 
         m_socket.send(dest, std::span<const std::byte>(response));
     }
 
-    socket_type    m_socket;           // socket used for sending responses
-    timer_type     m_response_timer;   // RFC 6762 response delay timer
-    timer_type     m_recv_timer;       // passed to recv_loop for silence tracking
-    service_info   m_info;             // service description for DNS responses
-    query_callback m_on_query;         // optional per-query callback
+    socket_type m_socket;        // socket used for sending responses
+    timer_type m_response_timer; // RFC 6762 response delay timer
+    timer_type m_recv_timer;     // passed to recv_loop for silence tracking
+    service_info m_info;         // service description for DNS responses
+    query_callback m_on_query;   // optional per-query callback
     // Move-only function: supports both copyable std::function handlers (NativePolicy)
     // and move-only ASIO coroutine handlers (use_awaitable via ASIO_STANDALONE path).
-    std::move_only_function<void(std::error_code)>
-        m_on_completion; // fires once when stop() is called
-    std::mt19937   m_rng;              // PRNG for random delay generation
-    std::unique_ptr<recv_loop<P>> m_loop; // continuous query listener (null until async_start())
-    std::atomic<bool> m_stopped;          // idempotent stop flag
+    std::move_only_function<void(std::error_code)> m_on_completion; // fires once when stop() is called
+    std::mt19937 m_rng;                                             // PRNG for random delay generation
+    std::unique_ptr<recv_loop<P>> m_loop;                           // continuous query listener (null until async_start())
+    std::atomic<bool> m_stopped;                                    // idempotent stop flag
 };
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_SERVICE_SERVER_H
+#endif

@@ -55,9 +55,9 @@ template <Policy P>
 class observer
 {
 public:
-    using executor_type   = typename P::executor_type;
-    using socket_type     = typename P::socket_type;
-    using timer_type      = typename P::timer_type;
+    using executor_type = typename P::executor_type;
+    using socket_type = typename P::socket_type;
+    using timer_type = typename P::timer_type;
     using record_callback = std::function<void(mdns_record_variant, endpoint)>;
 
     /// Completion callback fired once when stop() is called.
@@ -123,7 +123,7 @@ public:
         assert(m_loop == nullptr); // can only start once
         // Only store if non-empty — prevents wrapping an empty std::function in
         // move_only_function (which would evaluate as truthy but throw on call).
-        if (on_done)
+        if(on_done)
             m_on_completion = std::move(on_done);
         do_observe();
     }
@@ -140,7 +140,7 @@ public:
     /// Fires when stop() is called with signature void(std::error_code).
     /// NativePolicy users (no ASIO_STANDALONE) use the non-template overload above instead.
     template <asio::completion_token_for<void(std::error_code)> CompletionToken>
-    auto async_observe(CompletionToken&& token)
+    auto async_observe(CompletionToken &&token)
     {
         return asio::async_initiate<CompletionToken, void(std::error_code)>(
             [this](auto handler)
@@ -152,19 +152,19 @@ public:
                 // only AFTER the handler executes, preventing premature io_context::run() return.
                 m_on_completion = [h = std::move(handler), w = std::move(work)](
                     std::error_code ec) mutable
-                {
-                    auto ex   = w.get_executor();
-                    auto alloc = asio::get_associated_allocator(
-                        h, asio::recycling_allocator<void>());
-                    asio::dispatch(ex,
-                        asio::bind_allocator(alloc,
-                            [h2 = std::move(h), w2 = std::move(w), ec]() mutable
-                            {
-                                // w2 keeps io_context alive until this lambda executes.
-                                (void)w2;
-                                std::move(h2)(ec);
-                            }));
-                };
+                    {
+                        auto ex = w.get_executor();
+                        auto alloc = asio::get_associated_allocator(
+                            h, asio::recycling_allocator<void>());
+                        asio::dispatch(ex,
+                                       asio::bind_allocator(alloc,
+                                                            [h2 = std::move(h), w2 = std::move(w), ec]() mutable
+                                                            {
+                                                                // w2 keeps io_context alive until this lambda executes.
+                                                                (void)w2;
+                                                                std::move(h2)(ec);
+                                                            }));
+                    };
 
                 do_observe();
             },
@@ -179,18 +179,18 @@ public:
     // any in-progress callback chain can complete without accessing a dangling loop.
     void stop()
     {
-        if (m_stopped.exchange(true, std::memory_order_acq_rel))
+        if(m_stopped.exchange(true, std::memory_order_acq_rel))
             return; // already stopped — idempotent
 
-        if (auto h = std::exchange(m_on_completion, nullptr); h)
+        if(auto h = std::exchange(m_on_completion, nullptr); h)
             h(std::error_code{});
     }
 
     // Accessors — observer owns socket and timer directly.
     const socket_type &socket() const noexcept { return m_socket; }
-    socket_type       &socket()       noexcept { return m_socket; }
-    const timer_type  &timer()  const noexcept { return m_timer; }
-    timer_type        &timer()        noexcept { return m_timer; }
+    socket_type &socket() noexcept { return m_socket; }
+    const timer_type &timer() const noexcept { return m_timer; }
+    timer_type &timer() noexcept { return m_timer; }
 
 private:
     // Common observe body — assumes m_on_completion is already set.
@@ -206,7 +206,10 @@ private:
                 on_packet(data, sender);
                 return true; // observer wants all traffic; always reset timer
             },
-            []() { /* no-op on silence */ });
+            []()
+            {
+                /* no-op on silence */
+            });
 
         m_loop->start();
     }
@@ -215,7 +218,7 @@ private:
     // Checks the stop flag, then walks the DNS frame and delivers each record.
     void on_packet(std::span<std::byte> data, endpoint sender)
     {
-        if (m_stopped.load(std::memory_order_acquire))
+        if(m_stopped.load(std::memory_order_acquire))
             return;
 
         detail::walk_dns_frame(
@@ -223,18 +226,18 @@ private:
             sender,
             [this, sender](mdns_record_variant rec)
             {
-                if (!m_stopped.load(std::memory_order_acquire))
+                if(!m_stopped.load(std::memory_order_acquire))
                     m_callback(std::move(rec), sender);
             });
     }
 
-    socket_type      m_socket;          // socket used for receiving multicast packets
-    timer_type       m_timer;           // passed to recv_loop for silence-timeout tracking
-    record_callback  m_callback;        // called once per successfully parsed record
+    socket_type m_socket;       // socket used for receiving multicast packets
+    timer_type m_timer;         // passed to recv_loop for silence-timeout tracking
+    record_callback m_callback; // called once per successfully parsed record
     // Move-only function: supports both copyable std::function handlers (NativePolicy)
     // and move-only ASIO coroutine handlers (use_awaitable via ASIO_STANDALONE path).
     std::move_only_function<void(std::error_code)>
-        m_on_completion; // fires once when stop() is called
+    m_on_completion;                      // fires once when stop() is called
     std::unique_ptr<recv_loop<P>> m_loop; // continuous listener (null until async_observe())
     std::atomic<bool> m_stopped;          // idempotent stop flag
 };

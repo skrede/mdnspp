@@ -32,10 +32,10 @@ Requirements for milestone v2.0: Standalone & Ergonomic.
 ### PROTO — Native C++ Protocol
 
 - [x] **PROTO-01**: `read_dns_name` implements RFC 1035 §4.1.4 name decompression with RFC 9267 safety (backward-only pointers, hop limit, name length limit)
-- [ ] **PROTO-02**: Native C++ record parsing replaces all mjansson/mdns parse calls in `src/`
-- [ ] **PROTO-03**: mjansson/mdns C library fully removed (FetchContent, link targets, includes)
-- [ ] **PROTO-04**: All existing record types (PTR, SRV, A, AAAA, TXT) parse correctly via native implementation
-- [ ] **PROTO-05**: Existing unit tests pass against native parser with no behavioral changes
+- [x] **PROTO-02**: Native C++ record parsing replaces all mjansson/mdns parse calls in `src/`
+- [x] **PROTO-03**: mjansson/mdns C library fully removed (FetchContent, link targets, includes)
+- [x] **PROTO-04**: All existing record types (PTR, SRV, A, AAAA, TXT) parse correctly via native implementation
+- [x] **PROTO-05**: Existing unit tests pass against native parser with no behavioral changes
 
 ### NET — Standalone Networking
 
@@ -103,10 +103,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | API-12 | Phase 10 | Pending |
 | API-13 | Phase 10 | Pending |
 | PROTO-01 | Phase 8 | Complete |
-| PROTO-02 | Phase 8 | Pending |
-| PROTO-03 | Phase 8 | Pending |
-| PROTO-04 | Phase 8 | Pending |
-| PROTO-05 | Phase 8 | Pending |
+| PROTO-02 | Phase 8 | Complete |
+| PROTO-03 | Phase 8 | Complete |
+| PROTO-04 | Phase 8 | Complete |
+| PROTO-05 | Phase 8 | Complete |
 | NET-01 | Phase 9 | Pending |
 | NET-02 | Phase 9 | Pending |
 | NET-03 | Phase 9 | Pending |

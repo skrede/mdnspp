@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Standalone & Ergonomic
 status: in_progress
-last_updated: "2026-03-04T13:00:00.000Z"
+last_updated: "2026-03-04T14:00:00.000Z"
 progress:
   total_phases: 1
   completed_phases: 1
@@ -23,9 +23,9 @@ See: .planning/PROJECT.md (updated 2026-03-04)
 ## Current Position
 
 Phase: 8 of 11 (Native DNS Protocol)
-Plan: 02 (08-01 complete)
+Plan: 03 (08-02 complete)
 Status: In progress
-Last activity: 2026-03-04 — Completed 08-01 (detail::read_dns_name: RFC 1035 §4.1.4 name decompression with RFC 9267 safety)
+Last activity: 2026-03-04 — Completed 08-02 (mjansson/mdns fully removed; all five record types native C++; all 10 tests pass)
 
 Progress: [░░░░░░░░░░] 3% (v2.0)
 
@@ -44,6 +44,7 @@ Progress: [░░░░░░░░░░] 3% (v2.0)
 | Phase 07-policy-unification-and-direct-construction P02 | 3 | 2 tasks | 5 files |
 | Phase 07-policy-unification-and-direct-construction P03 | 573 | 2 tasks | 21 files |
 | Phase 08-native-dns-protocol P01 | ~4 min | 1 task | 3 files |
+| Phase 08-native-dns-protocol P02 | ~7 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -64,6 +65,8 @@ Progress: [░░░░░░░░░░] 3% (v2.0)
 - [Phase 07]: MockTimer::fire() accessed via local timer variable — recv_loop no longer exposes timer() accessor
 - [Phase 08]: read_dns_name produces dotted-label names without trailing dot (e.g. "_http._tcp.local"); existing parse_test uses find() so no regressions
 - [Phase 08]: read_dns_name takes offset by value (not reference) — stateless decode from a fixed point, matching parse.cpp usage of meta.name_offset
+- [Phase 08-02]: Owner name extraction is lenient (empty string on failure) — parse_test buffers use raw record data at name_offset=0, mjansson was also lenient
+- [Phase 08-02]: Trailing dot stripped in querent/service_discovery stored name, not in read_dns_name — callers normalize to match no-trailing-dot convention
 
 ### Pending Todos
 
@@ -76,6 +79,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T13:00:00.000Z
-Stopped at: Completed 08-01-PLAN.md (read_dns_name: RFC 1035 name decompression with RFC 9267 safety). Phase 08 Plan 01 complete.
+Last session: 2026-03-04T14:00:00.000Z
+Stopped at: Completed 08-02-PLAN.md (mjansson/mdns removal; native C++ record parsing). Phase 08 Plan 02 complete.
 Resume file: None

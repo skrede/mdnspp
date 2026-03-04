@@ -4,6 +4,7 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/resolved_service.h"
 
 #include <algorithm>
 #include <functional>
@@ -47,21 +48,28 @@ public:
     /// Receives error_code (always success for normal completion) and the accumulated results.
     using completion_handler = std::function<void(std::error_code, std::vector<mdns_record_variant>)>;
 
+    /// Completion callback for async_browse — delivers aggregated resolved_service values.
+    using browse_completion_handler = std::function<void(std::error_code, std::vector<resolved_service>)>;
+
     // Non-copyable (owns recv_loop by unique_ptr)
     service_discovery(const service_discovery &) = delete;
     service_discovery &operator=(const service_discovery &) = delete;
 
-    // Movable only before async_discover() is called (m_loop must be null).
+    // Movable only before async_discover()/async_browse() is called (loops must be null).
     service_discovery(service_discovery &&other) noexcept
         : m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
         , m_silence_timeout(other.m_silence_timeout)
         , m_on_record(std::move(other.m_on_record))
         , m_on_completion(std::move(other.m_on_completion))
+        , m_on_browse_completion(std::move(other.m_on_browse_completion))
         , m_loop(std::move(other.m_loop))
+        , m_browse_loop(std::move(other.m_browse_loop))
         , m_results(std::move(other.m_results))
+        , m_services(std::move(other.m_services))
     {
-        assert(other.m_loop == nullptr); // source must not have been started
+        assert(other.m_loop == nullptr);        // source must not have been started
+        assert(other.m_browse_loop == nullptr); // source must not have been started
     }
 
     service_discovery &operator=(service_discovery &&) = delete;
@@ -69,6 +77,7 @@ public:
     ~service_discovery()
     {
         m_loop.reset();
+        m_browse_loop.reset();
     }
 
     // Throwing constructor — constructs socket and timer from executor.
@@ -127,6 +136,17 @@ public:
             m_on_completion = std::move(on_done);
         do_discover(std::string(service_type));
     }
+
+    /// Aggregating browse — delivers resolved_service values via RFC 6763 name-chain
+    /// correlation (PTR -> SRV -> TXT -> A/AAAA) at the silence timeout.
+    /// Completion signature: void(std::error_code, std::vector<resolved_service>).
+    void async_browse(std::string_view service_type, browse_completion_handler on_done)
+    {
+        assert(m_browse_loop == nullptr); // one browse per lifetime
+        if (on_done)
+            m_on_browse_completion = std::move(on_done);
+        do_browse(std::string(service_type));
+    }
 #endif
 
 #ifdef ASIO_STANDALONE
@@ -167,16 +187,58 @@ public:
             token,
             std::string(service_type));  // decay-copy string_view for deferred safety
     }
+
+    /// ASIO completion token overload for async_browse.
+    /// Aggregates mDNS records into resolved_service values at the silence timeout.
+    /// Completion signature: void(std::error_code, std::vector<resolved_service>).
+    template <asio::completion_token_for<void(std::error_code, std::vector<resolved_service>)>
+                  CompletionToken>
+    auto async_browse(std::string_view service_type, CompletionToken&& token)
+    {
+        return asio::async_initiate<
+            CompletionToken,
+            void(std::error_code, std::vector<resolved_service>)>(
+            [this](auto handler, std::string svc_type)
+            {
+                auto work = asio::make_work_guard(handler);
+
+                m_on_browse_completion = [h = std::move(handler), w = std::move(work)](
+                    std::error_code ec, std::vector<resolved_service> services) mutable
+                {
+                    auto ex    = w.get_executor();
+                    auto alloc = asio::get_associated_allocator(
+                        h, asio::recycling_allocator<void>());
+                    asio::dispatch(ex,
+                        asio::bind_allocator(alloc,
+                            [h2 = std::move(h), w2 = std::move(w), ec, s = std::move(services)]() mutable
+                            {
+                                (void)w2;
+                                std::move(h2)(ec, std::move(s));
+                            }));
+                };
+
+                do_browse(std::move(svc_type));
+            },
+            token,
+            std::string(service_type));
+    }
 #endif
 
-    // Access accumulated results (populated during io.run()).
+    // Access accumulated raw record results (populated during io.run()).
     // Remains valid after completion — the completion handler receives a copy.
     const std::vector<mdns_record_variant> &results() const noexcept
     {
         return m_results;
     }
 
-    // Early termination — stops the recv_loop and fires the completion handler.
+    // Access aggregated resolved_service values produced by async_browse.
+    // Populated at silence timeout (or stop()) — empty until browse completes.
+    const std::vector<resolved_service> &services() const noexcept
+    {
+        return m_services;
+    }
+
+    // Early termination — stops the recv_loop(s) and fires the completion handler(s).
     void stop()
     {
         if (m_loop)
@@ -185,9 +247,84 @@ public:
             if (auto h = std::exchange(m_on_completion, nullptr); h)
                 h(std::error_code{}, m_results);
         }
+        if (m_browse_loop)
+        {
+            m_browse_loop->stop();
+            m_services = mdnspp::aggregate(m_results);
+            if (auto h = std::exchange(m_on_browse_completion, nullptr); h)
+                h(std::error_code{}, m_services);
+        }
     }
 
 private:
+    // Common browse body — assumes m_on_browse_completion is already set.
+    // Mirrors do_discover() exactly; silence callback calls aggregate(m_results)
+    // instead of firing the discover handler.
+    // Must only be called once per lifetime (m_browse_loop must be null on entry).
+    void do_browse(std::string svc_type)
+    {
+        assert(m_browse_loop == nullptr); // one browse per lifetime
+        m_results.clear();
+        m_service_type = std::move(svc_type);
+        if (!m_service_type.empty() && m_service_type.back() == '.')
+            m_service_type.pop_back();
+
+        // Build and send DNS PTR query (qtype = 12) — same as do_discover()
+        auto query_bytes = detail::build_dns_query(m_service_type, 12);
+        m_socket.send(endpoint{"224.0.0.251", 5353},
+                      std::span<const std::byte>(query_bytes));
+
+        m_browse_loop = std::make_unique<recv_loop<P>>(
+            m_socket,
+            m_timer,
+            m_silence_timeout,
+            // on_packet: identical to do_discover() — accumulates into m_results,
+            // fires m_on_record per relevant record.
+            [this](std::span<std::byte> data, endpoint sender) -> bool
+            {
+                std::vector<mdns_record_variant> batch;
+                detail::walk_dns_frame(
+                    std::span<const std::byte>(data.data(), data.size()),
+                    sender,
+                    [&batch](mdns_record_variant rec)
+                    {
+                        batch.push_back(std::move(rec));
+                    });
+
+                bool relevant = std::any_of(batch.begin(), batch.end(),
+                    [this](const mdns_record_variant &rec)
+                    {
+                        return std::visit([this](const auto &r)
+                        {
+                            return r.name == m_service_type;
+                        }, rec);
+                    });
+
+                if (relevant)
+                {
+                    if (m_on_record)
+                    {
+                        for (const auto &rec : batch)
+                            m_on_record(rec, sender);
+                    }
+                    m_results.insert(m_results.end(),
+                        std::make_move_iterator(batch.begin()),
+                        std::make_move_iterator(batch.end()));
+                }
+                return relevant;
+            },
+            // on_silence: aggregate raw records into resolved_service values, fire handler
+            [this]()
+            {
+                m_browse_loop->stop();
+                m_services = mdnspp::aggregate(m_results);
+                if (auto h = std::exchange(m_on_browse_completion, nullptr); h)
+                    h(std::error_code{}, m_services);
+            });
+
+        m_browse_loop->start();
+    }
+
     // Common discover body — assumes m_on_completion is already set.
     // Sets up m_service_type, sends DNS query, creates and starts recv_loop.
     // Must only be called once per lifetime (m_loop must be null on entry).
@@ -264,9 +401,13 @@ private:
     // and move-only ASIO coroutine handlers (use_awaitable via ASIO_STANDALONE path).
     std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>
         m_on_completion;                     // fires once at silence timeout or stop()
-    std::string      m_service_type;         // set in do_discover(), used for filtering
+    std::move_only_function<void(std::error_code, std::vector<resolved_service>)>
+        m_on_browse_completion;              // fires once at silence timeout or stop()
+    std::string      m_service_type;         // set in do_discover()/do_browse(), used for filtering
     std::unique_ptr<recv_loop<P>> m_loop;    // null until async_discover()
+    std::unique_ptr<recv_loop<P>> m_browse_loop; // null until async_browse()
     std::vector<mdns_record_variant> m_results;
+    std::vector<resolved_service>    m_services; // populated by do_browse() at silence timeout
 };
 
 } // namespace mdnspp

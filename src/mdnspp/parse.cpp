@@ -1,6 +1,6 @@
 #include "mdnspp/parse.h"
-#include "mdnspp/mdns_util.h"
-#include "dns_wire.h"
+#include "mdnspp/detail/mdns_util.h"
+#include "mdnspp/detail/dns_wire.h"
 
 #include <cstring>
 

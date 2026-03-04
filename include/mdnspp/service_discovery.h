@@ -17,8 +17,8 @@
 #include <system_error>
 #include <utility>
 
-#include "mdnspp/recv_loop.h"
-#include "mdnspp/dns_wire.h"
+#include "mdnspp/detail/recv_loop.h"
+#include "mdnspp/detail/dns_wire.h"
 
 #ifdef ASIO_STANDALONE
 #include <asio/async_result.hpp>

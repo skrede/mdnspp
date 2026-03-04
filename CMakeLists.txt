@@ -41,7 +41,8 @@ add_library(mdnspp STATIC
 add_library(mdnspp::mdnspp ALIAS mdnspp)
 
 target_include_directories(mdnspp
-    PUBLIC ${INCLUDE_DIRECTORY} ${SOURCE_DIRECTORY}
+    PUBLIC  ${INCLUDE_DIRECTORY}
+    PRIVATE ${SOURCE_DIRECTORY}
 )
 
 
@@ -114,6 +115,10 @@ if (MDNSPP_ENABLE_NATIVE_POLICY)
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/native
     )
 endif ()
+
+install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/detail/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/detail
+)
 
 if (${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(example)

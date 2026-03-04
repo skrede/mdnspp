@@ -1,11 +1,11 @@
-#ifndef HPP_GUARD_MDNSPP_DNS_WIRE_H
-#define HPP_GUARD_MDNSPP_DNS_WIRE_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_WIRE_H
+#define HPP_GUARD_MDNSPP_DETAIL_DNS_WIRE_H
 
 #include "mdnspp/parse.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
 
-#include <arpa/inet.h>
+#include "mdnspp/detail/platform.h"
 
 #include <expected>
 #include <span>

@@ -8,7 +8,7 @@
 #include "mdnspp/service_server.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
-#include "mdnspp/dns_wire.h"
+#include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/testing/mock_policy.h"
 
 #include <catch2/catch_test_macros.hpp>

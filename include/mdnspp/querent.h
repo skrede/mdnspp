@@ -17,10 +17,8 @@
 #include <system_error>
 #include <utility>
 
-// These private headers are available via the src/ include directory
-// (added as PRIVATE to each test target in CMakeLists.txt)
-#include "mdnspp/recv_loop.h"
-#include "mdnspp/dns_wire.h"
+#include "mdnspp/detail/recv_loop.h"
+#include "mdnspp/detail/dns_wire.h"
 
 #ifdef ASIO_STANDALONE
 #include <asio/async_result.hpp>

@@ -1,4 +1,4 @@
-#include "mdnspp/recv_loop.h"
+#include "mdnspp/detail/recv_loop.h"
 #include "mdnspp/testing/mock_policy.h"
 
 #include <catch2/catch_test_macros.hpp>

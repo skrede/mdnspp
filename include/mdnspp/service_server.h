@@ -5,8 +5,8 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
-#include "mdnspp/recv_loop.h"
-#include "mdnspp/dns_wire.h"
+#include "mdnspp/detail/recv_loop.h"
+#include "mdnspp/detail/dns_wire.h"
 
 #include <algorithm>
 #include <memory>

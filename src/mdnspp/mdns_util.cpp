@@ -1,4 +1,4 @@
-#include "mdnspp/mdns_util.h"
+#include "mdnspp/detail/mdns_util.h"
 
 std::string mdnspp::ip_address_to_string(const sockaddr *addr, size_t addrlen)
 {

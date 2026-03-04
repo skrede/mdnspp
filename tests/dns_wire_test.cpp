@@ -2,7 +2,7 @@
 // Unit tests for detail::read_dns_name — RFC 1035 §4.1.4 name decompression
 // with RFC 9267 safety guarantees (backward-only pointers, hop limit, name length limit).
 
-#include "mdnspp/dns_wire.h"
+#include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/mdns_error.h"
 
 #include <catch2/catch_test_macros.hpp>

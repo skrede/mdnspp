@@ -4,7 +4,7 @@
 
 #include "mdnspp/service_info.h"
 #include "mdnspp/testing/mock_policy.h"
-#include "mdnspp/dns_wire.h"
+#include "mdnspp/detail/dns_wire.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>

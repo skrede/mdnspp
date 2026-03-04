@@ -107,6 +107,9 @@ public:
         assert(m_loop == nullptr); // one query per lifetime
         m_results.clear();
         m_query_name = std::string(name);
+        // Strip trailing dot so the name matches read_dns_name output (no trailing dot)
+        if (!m_query_name.empty() && m_query_name.back() == '.')
+            m_query_name.pop_back();
 
         // Build and send DNS query for the requested name and qtype
         auto query_bytes = detail::build_dns_query(name, qtype);

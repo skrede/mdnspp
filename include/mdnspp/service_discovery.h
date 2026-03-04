@@ -106,6 +106,9 @@ public:
         assert(m_loop == nullptr); // one discover per lifetime
         m_results.clear();
         m_service_type = std::string(service_type);
+        // Strip trailing dot so the name matches read_dns_name output (no trailing dot)
+        if (!m_service_type.empty() && m_service_type.back() == '.')
+            m_service_type.pop_back();
 
         // Build and send DNS PTR query (qtype = 12)
         auto query_bytes = detail::build_dns_query(service_type, 12);

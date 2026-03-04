@@ -1,8 +1,18 @@
 #include "mdnspp/parse.h"
 #include "mdnspp/mdns_util.h"
-#include <mdns.h>
+#include "dns_wire.h"
+
+#include <cstring>
 
 namespace mdnspp::parse {
+
+// Extract the owner name from the buffer at meta.name_offset.
+// Returns empty string if the name cannot be decoded (lenient, matching mjansson behaviour).
+static std::string extract_owner_name(std::span<const std::byte> buffer, const record_metadata &meta)
+{
+    auto name = detail::read_dns_name(buffer, meta.name_offset);
+    return name ? std::move(*name) : std::string{};
+}
 
 std::expected<mdns_record_variant, mdns_error>
 a(std::span<const std::byte> buffer, const record_metadata &meta)
@@ -13,20 +23,12 @@ a(std::span<const std::byte> buffer, const record_metadata &meta)
     if (meta.record_length != 4)
         return std::unexpected(mdns_error::parse_error);
 
-    const void *raw = static_cast<const void *>(buffer.data());
-
-    // Extract owner name
-    char name_buf[256];
-    size_t name_offset_copy = meta.name_offset;
-    mdns_string_t name_str = mdns_string_extract(
-        raw, buffer.size(), &name_offset_copy, name_buf, sizeof(name_buf));
-
     sockaddr_in addr{};
-    mdns_record_parse_a(raw, buffer.size(),
-                        meta.record_offset, meta.record_length, &addr);
+    addr.sin_family = AF_INET;
+    std::memcpy(&addr.sin_addr.s_addr, buffer.data() + meta.record_offset, 4);
 
     record_a r;
-    r.name           = std::string(name_str.str, name_str.length);
+    r.name           = extract_owner_name(buffer, meta);
     r.ttl            = meta.ttl;
     r.rclass         = meta.rclass;
     r.length         = static_cast<uint32_t>(meta.record_length);
@@ -45,20 +47,12 @@ aaaa(std::span<const std::byte> buffer, const record_metadata &meta)
     if (meta.record_length != 16)
         return std::unexpected(mdns_error::parse_error);
 
-    const void *raw = static_cast<const void *>(buffer.data());
-
-    // Extract owner name
-    char name_buf[256];
-    size_t name_offset_copy = meta.name_offset;
-    mdns_string_t name_str = mdns_string_extract(
-        raw, buffer.size(), &name_offset_copy, name_buf, sizeof(name_buf));
-
     sockaddr_in6 addr{};
-    mdns_record_parse_aaaa(raw, buffer.size(),
-                           meta.record_offset, meta.record_length, &addr);
+    addr.sin6_family = AF_INET6;
+    std::memcpy(&addr.sin6_addr, buffer.data() + meta.record_offset, 16);
 
     record_aaaa r;
-    r.name           = std::string(name_str.str, name_str.length);
+    r.name           = extract_owner_name(buffer, meta);
     r.ttl            = meta.ttl;
     r.rclass         = meta.rclass;
     r.length         = static_cast<uint32_t>(meta.record_length);
@@ -74,28 +68,16 @@ ptr(std::span<const std::byte> buffer, const record_metadata &meta)
     if (buffer.size() < meta.record_offset + meta.record_length)
         return std::unexpected(mdns_error::parse_error);
 
-    const void *raw = static_cast<const void *>(buffer.data());
-
-    // Extract owner name
-    char name_buf[256];
-    size_t name_offset_copy = meta.name_offset;
-    mdns_string_t name_str = mdns_string_extract(
-        raw, buffer.size(), &name_offset_copy, name_buf, sizeof(name_buf));
-
-    // Extract PTR target name
-    char ptr_buf[256];
-    mdns_string_t ptr_str = mdns_record_parse_ptr(
-        raw, buffer.size(),
-        meta.record_offset, meta.record_length,
-        ptr_buf, sizeof(ptr_buf));
+    auto ptr_name = detail::read_dns_name(buffer, meta.record_offset);
+    if (!ptr_name) return std::unexpected(mdns_error::parse_error);
 
     record_ptr r;
-    r.name           = std::string(name_str.str, name_str.length);
+    r.name           = extract_owner_name(buffer, meta);
     r.ttl            = meta.ttl;
     r.rclass         = meta.rclass;
     r.length         = static_cast<uint32_t>(meta.record_length);
     r.sender_address = meta.sender.address;
-    r.ptr_name       = std::string(ptr_str.str, ptr_str.length);
+    r.ptr_name       = std::move(*ptr_name);
 
     return r;
 }
@@ -106,31 +88,27 @@ srv(std::span<const std::byte> buffer, const record_metadata &meta)
     if (buffer.size() < meta.record_offset + meta.record_length)
         return std::unexpected(mdns_error::parse_error);
 
-    const void *raw = static_cast<const void *>(buffer.data());
+    if (meta.record_length < 7)
+        return std::unexpected(mdns_error::parse_error);
 
-    // Extract owner name
-    char name_buf[256];
-    size_t name_offset_copy = meta.name_offset;
-    mdns_string_t name_str = mdns_string_extract(
-        raw, buffer.size(), &name_offset_copy, name_buf, sizeof(name_buf));
+    const std::byte *rdata = buffer.data() + meta.record_offset;
+    uint16_t priority = detail::read_u16_be(rdata + 0);
+    uint16_t weight   = detail::read_u16_be(rdata + 2);
+    uint16_t port     = detail::read_u16_be(rdata + 4);
 
-    // Extract SRV fields
-    char srv_buf[256];
-    mdns_record_srv_t srv_data = mdns_record_parse_srv(
-        raw, buffer.size(),
-        meta.record_offset, meta.record_length,
-        srv_buf, sizeof(srv_buf));
+    auto srv_name = detail::read_dns_name(buffer, meta.record_offset + 6);
+    if (!srv_name) return std::unexpected(mdns_error::parse_error);
 
     record_srv r;
-    r.name           = std::string(name_str.str, name_str.length);
+    r.name           = extract_owner_name(buffer, meta);
     r.ttl            = meta.ttl;
     r.rclass         = meta.rclass;
     r.length         = static_cast<uint32_t>(meta.record_length);
     r.sender_address = meta.sender.address;
-    r.port           = srv_data.port;
-    r.weight         = srv_data.weight;
-    r.priority       = srv_data.priority;
-    r.srv_name       = std::string(srv_data.name.str, srv_data.name.length);
+    r.priority       = priority;
+    r.weight         = weight;
+    r.port           = port;
+    r.srv_name       = std::move(*srv_name);
 
     return r;
 }
@@ -141,35 +119,48 @@ txt(std::span<const std::byte> buffer, const record_metadata &meta)
     if (buffer.size() < meta.record_offset + meta.record_length)
         return std::unexpected(mdns_error::parse_error);
 
-    const void *raw = static_cast<const void *>(buffer.data());
-
-    // Extract owner name
-    char name_buf[256];
-    size_t name_offset_copy = meta.name_offset;
-    mdns_string_t name_str = mdns_string_extract(
-        raw, buffer.size(), &name_offset_copy, name_buf, sizeof(name_buf));
-
-    // Parse TXT entries
-    mdns_record_txt_t txt_buf[128];
-    size_t count = mdns_record_parse_txt(
-        raw, buffer.size(),
-        meta.record_offset, meta.record_length,
-        txt_buf, sizeof(txt_buf) / sizeof(mdns_record_txt_t));
-
     record_txt r;
-    r.name           = std::string(name_str.str, name_str.length);
+    r.name           = extract_owner_name(buffer, meta);
     r.ttl            = meta.ttl;
     r.rclass         = meta.rclass;
     r.length         = static_cast<uint32_t>(meta.record_length);
     r.sender_address = meta.sender.address;
 
-    for (size_t i = 0; i < count; ++i)
+    size_t pos = meta.record_offset;
+    const size_t end = meta.record_offset + meta.record_length;
+
+    while (pos < end)
     {
-        service_txt entry;
-        entry.key = std::string(txt_buf[i].key.str, txt_buf[i].key.length);
-        if (txt_buf[i].value.length > 0)
-            entry.value = std::string(txt_buf[i].value.str, txt_buf[i].value.length);
-        r.entries.push_back(std::move(entry));
+        uint8_t entry_len = static_cast<uint8_t>(buffer[pos]);
+        ++pos;
+
+        if (pos + entry_len > end)
+            break; // silently stop — matches mjansson behaviour
+
+        // Entry starts with '=' means no key (separator at position 0): skip
+        if (entry_len > 0 && static_cast<char>(static_cast<uint8_t>(buffer[pos])) == '=')
+        {
+            pos += entry_len;
+            continue;
+        }
+
+        std::string_view entry_sv(
+            reinterpret_cast<const char *>(buffer.data() + pos), entry_len);
+        pos += entry_len;
+
+        service_txt kv;
+        if (auto sep = entry_sv.find('='); sep != std::string_view::npos)
+        {
+            kv.key   = std::string(entry_sv.substr(0, sep));
+            kv.value = std::string(entry_sv.substr(sep + 1));
+        }
+        else
+        {
+            kv.key = std::string(entry_sv);
+            // value remains std::nullopt
+        }
+
+        r.entries.push_back(std::move(kv));
     }
 
     return r;

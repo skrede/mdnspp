@@ -5,6 +5,7 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
+#include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/recv_loop.h"
 #include "mdnspp/detail/dns_wire.h"
 
@@ -59,7 +60,7 @@ public:
 
     /// Optional callback invoked when an incoming query is received and parsed.
     /// Parameters: sender endpoint, qtype requested, whether unicast was requested.
-    using query_callback = std::function<void(endpoint, uint16_t, bool)>;
+    using query_callback = std::function<void(endpoint, dns_type, bool)>;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
@@ -306,7 +307,7 @@ private:
         if(!query_matches(data, offset))
             return;
 
-        uint16_t qtype = detail::read_u16_be(buf + offset);
+        dns_type qtype = static_cast<dns_type>(detail::read_u16_be(buf + offset));
         uint16_t qclass = detail::read_u16_be(buf + offset + 2);
 
         // RFC 6762 section 5.4: QU bit is the top bit of QCLASS.
@@ -342,7 +343,7 @@ private:
     // dest is either the multicast group (default) or the querier's unicast address
     // (when QU bit was set in the question). Uses m_socket directly — service_server
     // owns the socket, not recv_loop.
-    void send_response(endpoint dest, uint16_t qtype)
+    void send_response(endpoint dest, dns_type qtype)
     {
         auto response = detail::build_dns_response(m_info, qtype);
         if(response.empty())

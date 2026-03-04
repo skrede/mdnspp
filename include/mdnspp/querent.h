@@ -4,6 +4,7 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/detail/dns_enums.h"
 
 #include <algorithm>
 #include <functional>
@@ -117,7 +118,7 @@ public:
     // Non-template callback overload — used by NativePolicy and MockPolicy users.
     // Not compiled when ASIO_STANDALONE is defined to avoid ambiguity with the
     // template overload below (which also accepts plain std::function callbacks).
-    void async_query(std::string_view name, uint16_t qtype, completion_handler on_done)
+    void async_query(std::string_view name, dns_type qtype, completion_handler on_done)
     {
         assert(m_loop == nullptr); // one query per lifetime
         // Only store if non-empty — prevents wrapping an empty std::function in
@@ -133,12 +134,12 @@ public:
     /// NativePolicy users (no ASIO_STANDALONE) use the non-template overload above instead.
     template <asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>
         CompletionToken>
-    auto async_query(std::string_view name, uint16_t qtype, CompletionToken &&token)
+    auto async_query(std::string_view name, dns_type qtype, CompletionToken &&token)
     {
         return asio::async_initiate<
             CompletionToken,
             void(std::error_code, std::vector<mdns_record_variant>)>(
-            [this](auto handler, std::string qname, uint16_t qt)
+            [this](auto handler, std::string qname, dns_type qt)
             {
                 auto work = asio::make_work_guard(handler);
 
@@ -191,7 +192,7 @@ private:
     // Common query body — assumes m_on_completion is already set.
     // Sets up m_query_name, sends DNS query, creates and starts recv_loop.
     // Must only be called once per lifetime (m_loop must be null on entry).
-    void do_query(std::string qname, uint16_t qtype)
+    void do_query(std::string qname, dns_type qtype)
     {
         assert(m_loop == nullptr); // one query per lifetime
         m_results.clear();

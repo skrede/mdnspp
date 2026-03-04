@@ -7,17 +7,16 @@
 #include <iostream>
 #include <string>
 #include <variant>
-#include <cstdint>
 
 int main(int argc, char *argv[])
 {
     std::string name = "_http._tcp.local.";
-    uint16_t qtype = 12; // PTR
+    mdnspp::dns_type qtype = mdnspp::dns_type::ptr;
 
     if(argc >= 2)
         name = argv[1];
     if(argc >= 3)
-        qtype = static_cast<uint16_t>(std::stoi(argv[2]));
+        qtype = static_cast<mdnspp::dns_type>(std::stoi(argv[2]));
 
     asio::io_context io;
 

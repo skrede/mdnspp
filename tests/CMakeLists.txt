@@ -26,5 +26,6 @@ if(MDNSPP_ENABLE_ASIO_POLICY)
         add_test(NAME ${TEST_FILE} COMMAND ${TEST_FILE})
     endfunction()
     make_asio_test(asio_conformance_test)
+    make_asio_test(service_server_tsan_test)
 endif()
 

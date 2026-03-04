@@ -85,28 +85,36 @@ public:
     }
 
     // Factory — creates a service_server or returns an mdns_error.
+    //
+    // Takes two separate timer instances:
+    //   response_timer — used for RFC 6762 20-500ms response delay
+    //   recv_timer     — passed to recv_loop for silence-timeout tracking
+    //
+    // Two separate timers are required because T (e.g. AsioTimerPolicy) may wrap a
+    // non-copyable type (asio::steady_timer). Requiring the caller to provide two
+    // distinct timer instances avoids implicit copying and is explicit about ownership.
     [[nodiscard]] static std::expected<service_server, mdns_error>
-    create(S socket, T timer, service_info info)
+    create(S socket, T response_timer, T recv_timer, service_info info)
     {
-        return service_server(std::move(socket), std::move(timer), std::move(info));
+        return service_server(std::move(socket), std::move(response_timer),
+                              std::move(recv_timer), std::move(info));
     }
 
     // start() — arms the recv_loop and returns immediately.
     // Incoming queries trigger RFC 6762-delayed responses.
     // Must only be called once; calling start() after start() is a logic error.
+    //
+    // m_socket and m_recv_timer are moved into the recv_loop on start().
+    // After start(), all socket access (including send_response) goes through
+    // m_loop->socket() — this supports non-copyable policies like AsioSocketPolicy.
     void start()
     {
         assert(m_loop == nullptr); // can only start once
 
-        // Construct recv_loop with:
-        //   - copies of m_socket and m_recv_timer (recv_loop takes ownership by value)
-        //   - very long silence timeout (server runs until stop() is called)
-        //   - on_packet callback dispatches to on_query()
-        //   - on_silence is a no-op (server does not auto-stop on silence)
         m_loop = std::make_unique<recv_loop<S, T>>(
-            m_socket,    // copy of socket for recv_loop's internal use
-            m_recv_timer,
-            std::chrono::hours(24 * 365), // "infinite" silence timeout
+            std::move(m_socket),     // move — recv_loop owns the socket; we access via m_loop->socket()
+            std::move(m_recv_timer), // move — recv_loop owns the recv timer
+            std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
             [this](std::span<std::byte> data, endpoint sender)
             {
                 on_query(data, sender);
@@ -127,16 +135,24 @@ public:
     }
 
     // Test accessors — allow tests to inspect internal socket/timer state.
-    const S &socket() const noexcept { return m_socket; }
-    S       &socket()       noexcept { return m_socket; }
+    // After start(), m_socket has been moved into m_loop; socket() returns the loop's copy.
+    // Before start(), returns m_socket directly (for pre-start inspection).
+    const S &socket() const noexcept
+    {
+        return m_loop ? m_loop->socket() : m_socket;
+    }
+    S &socket() noexcept
+    {
+        return m_loop ? m_loop->socket() : m_socket;
+    }
     const T &timer() const noexcept  { return m_response_timer; }
     T       &timer()       noexcept  { return m_response_timer; }
 
 private:
-    explicit service_server(S socket, T timer, service_info info)
+    explicit service_server(S socket, T response_timer, T recv_timer, service_info info)
         : m_socket(std::move(socket))
-        , m_response_timer(timer)          // copy — this is the response delay timer
-        , m_recv_timer(std::move(timer))   // move — this will be passed to recv_loop
+        , m_response_timer(std::move(response_timer))
+        , m_recv_timer(std::move(recv_timer))
         , m_info(std::move(info))
         , m_rng(std::random_device{}())
         , m_loop(nullptr)
@@ -192,13 +208,15 @@ private:
     }
 
     // Builds and sends a DNS response to dest for the given qtype.
+    // Uses m_loop->socket() because m_socket was moved into the recv_loop on start().
     void send_response(endpoint dest, uint16_t qtype)
     {
         auto response = detail::build_dns_response(m_info, qtype);
         if (response.empty())
             return; // unmatched qtype or missing address
 
-        m_socket.send(dest, std::span<const std::byte>(response));
+        if (m_loop)
+            m_loop->socket().send(dest, std::span<const std::byte>(response));
     }
 
     S          m_socket;           // socket used for sending responses

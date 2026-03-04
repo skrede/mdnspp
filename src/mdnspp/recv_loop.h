@@ -59,8 +59,11 @@ public:
         m_socket.close();
     }
 
-    // test accessor
-    T &timer() noexcept { return m_timer; }
+    // Accessors — expose internal policies for owners who moved their policy into the loop.
+    // service_server uses socket() to send responses after moving m_socket into recv_loop.
+    S       &socket()       noexcept { return m_socket; }
+    const S &socket() const noexcept { return m_socket; }
+    T       &timer()        noexcept { return m_timer; }
 
 private:
     void arm_receive()

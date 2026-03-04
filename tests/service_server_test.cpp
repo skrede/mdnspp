@@ -337,12 +337,14 @@ SCENARIO("service_server::create returns valid instance", "[service_server][crea
     GIVEN("MockSocketPolicy and MockTimerPolicy")
     {
         MockSocketPolicy socket;
-        MockTimerPolicy timer;
+        MockTimerPolicy response_timer;
+        MockTimerPolicy recv_timer;
 
         WHEN("create() is called with a test service_info")
         {
             auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-                std::move(socket), std::move(timer), make_test_info());
+                std::move(socket), std::move(response_timer), std::move(recv_timer),
+                make_test_info());
 
             THEN("the result has a value")
             {
@@ -357,9 +359,11 @@ SCENARIO("start and stop lifecycle", "[service_server][lifecycle]")
     GIVEN("a created service_server with no enqueued queries")
     {
         MockSocketPolicy socket;
-        MockTimerPolicy timer;
+        MockTimerPolicy response_timer;
+        MockTimerPolicy recv_timer;
         auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(timer), make_test_info());
+            std::move(socket), std::move(response_timer), std::move(recv_timer),
+            make_test_info());
         REQUIRE(result.has_value());
         auto &server = *result;
 
@@ -386,12 +390,14 @@ SCENARIO("service_server responds to PTR query after timer fires",
     GIVEN("a service_server with a PTR query for _http._tcp.local. enqueued with sender endpoint")
     {
         MockSocketPolicy socket;
-        MockTimerPolicy timer;
+        MockTimerPolicy response_timer;
+        MockTimerPolicy recv_timer;
         endpoint sender{"192.168.1.50", 5353};
         socket.enqueue(make_ptr_query("_http._tcp.local."), sender);
 
         auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(timer), make_test_info());
+            std::move(socket), std::move(response_timer), std::move(recv_timer),
+            make_test_info());
         REQUIRE(result.has_value());
         auto &server = *result;
 
@@ -433,11 +439,13 @@ SCENARIO("response delay timer armed after query receipt",
     GIVEN("a service_server with a PTR query enqueued")
     {
         MockSocketPolicy socket;
-        MockTimerPolicy timer;
+        MockTimerPolicy response_timer;
+        MockTimerPolicy recv_timer;
         socket.enqueue(make_ptr_query("_http._tcp.local."));
 
         auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(timer), make_test_info());
+            std::move(socket), std::move(response_timer), std::move(recv_timer),
+            make_test_info());
         REQUIRE(result.has_value());
         auto &server = *result;
 
@@ -464,11 +472,13 @@ SCENARIO("no response sent before timer fires",
     GIVEN("a service_server with a PTR query enqueued")
     {
         MockSocketPolicy socket;
-        MockTimerPolicy timer;
+        MockTimerPolicy response_timer;
+        MockTimerPolicy recv_timer;
         socket.enqueue(make_ptr_query("_http._tcp.local."));
 
         auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(timer), make_test_info());
+            std::move(socket), std::move(response_timer), std::move(recv_timer),
+            make_test_info());
         REQUIRE(result.has_value());
         auto &server = *result;
 
@@ -490,11 +500,13 @@ SCENARIO("stop before timer fires prevents response",
     GIVEN("a service_server with a PTR query enqueued")
     {
         MockSocketPolicy socket;
-        MockTimerPolicy timer;
+        MockTimerPolicy response_timer;
+        MockTimerPolicy recv_timer;
         socket.enqueue(make_ptr_query("_http._tcp.local."));
 
         auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(timer), make_test_info());
+            std::move(socket), std::move(response_timer), std::move(recv_timer),
+            make_test_info());
         REQUIRE(result.has_value());
         auto &server = *result;
 
@@ -522,11 +534,13 @@ SCENARIO("response to A query contains valid A record",
     GIVEN("a service_server with an A query for myhost.local. enqueued")
     {
         MockSocketPolicy socket;
-        MockTimerPolicy timer;
+        MockTimerPolicy response_timer;
+        MockTimerPolicy recv_timer;
         socket.enqueue(make_a_query("myhost.local."));
 
         auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(timer), make_test_info());
+            std::move(socket), std::move(response_timer), std::move(recv_timer),
+            make_test_info());
         REQUIRE(result.has_value());
         auto &server = *result;
 
@@ -566,12 +580,14 @@ SCENARIO("response sent to correct sender endpoint",
     GIVEN("a service_server with a PTR query enqueued from {10.0.0.1, 5353}")
     {
         MockSocketPolicy socket;
-        MockTimerPolicy timer;
+        MockTimerPolicy response_timer;
+        MockTimerPolicy recv_timer;
         endpoint expected_dest{"10.0.0.1", 5353};
         socket.enqueue(make_ptr_query("_http._tcp.local."), expected_dest);
 
         auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(timer), make_test_info());
+            std::move(socket), std::move(response_timer), std::move(recv_timer),
+            make_test_info());
         REQUIRE(result.has_value());
         auto &server = *result;
 

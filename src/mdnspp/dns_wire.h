@@ -31,6 +31,22 @@ inline uint32_t read_u32_be(const std::byte *p)
             static_cast<uint32_t>(static_cast<uint8_t>(p[3]));
 }
 
+// Appends a 16-bit value to buf in big-endian byte order (most-significant byte first).
+inline void push_u16_be(std::vector<std::byte> &buf, uint16_t v)
+{
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>(v >> 8)));
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>(v & 0xFF)));
+}
+
+// Appends a 32-bit value to buf in big-endian byte order.
+inline void push_u32_be(std::vector<std::byte> &buf, uint32_t v)
+{
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 24) & 0xFF)));
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 16) & 0xFF)));
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >>  8) & 0xFF)));
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>( v        & 0xFF)));
+}
+
 // Walks a DNS name at buf[offset], advancing offset past the name.
 // Handles compression pointers (top 2 bits = 0xC0).
 // Returns false if any read would go out of bounds.

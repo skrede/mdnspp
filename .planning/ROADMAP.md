@@ -97,7 +97,11 @@ Plans:
   2. A MockSocketPolicy unit test injects a PTR query and verifies the response is sent to the correct endpoint with a 20–500ms delay (simulated via mock timer)
   3. `service_server` does not inherit from `mdns_base`
   4. `std::mutex` is absent from `service_server` source after the dedicated strand-migration commit
-**Plans**: TBD
+**Plans**: 2 plans
+
+Plans:
+- [ ] 05-01-PLAN.md — service_info type, build_dns_response(), MockSocketPolicy endpoint extension, CMake wiring
+- [ ] 05-02-PLAN.md — service_server<S,T> template implementation and BDD tests
 
 ### Phase 6: Refactor observer
 **Goal**: `observer<S>` is a class template composing `recv_loop<S>` for perpetual operation; `mdns_base` is fully deleted from the codebase

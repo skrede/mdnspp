@@ -5,6 +5,7 @@
 #include <span>
 #include <cstddef>
 #include <functional>
+#include <utility>
 #include <vector>
 #include <queue>
 
@@ -19,9 +20,18 @@ struct sent_packet
 class MockSocketPolicy
 {
 public:
+    // Enqueue a packet with a specific sender endpoint.
+    // The endpoint is delivered to the async_receive handler instead of endpoint{}.
+    void enqueue(std::vector<std::byte> packet, endpoint from)
+    {
+        m_receive_queue.push({std::move(packet), std::move(from)});
+    }
+
+    // Enqueue a packet with the default sender (endpoint{}).
+    // Backward-compatible: existing code calling enqueue(packet) is unchanged.
     void enqueue(std::vector<std::byte> packet)
     {
-        m_receive_queue.push(std::move(packet));
+        enqueue(std::move(packet), endpoint{});
     }
 
     void async_receive(std::function<void(std::span<std::byte>, endpoint)> handler)
@@ -30,9 +40,9 @@ public:
         {
             // Copy and pop before calling handler so recursive arm_receive()
             // calls see the queue as already consumed.
-            std::vector<std::byte> packet = std::move(m_receive_queue.front());
+            auto [packet, sender] = std::move(m_receive_queue.front());
             m_receive_queue.pop();
-            handler(std::span<std::byte>(packet), endpoint{});
+            handler(std::span<std::byte>(packet), std::move(sender));
         }
     }
 
@@ -64,7 +74,7 @@ public:
     }
 
 private:
-    std::queue<std::vector<std::byte>> m_receive_queue;
+    std::queue<std::pair<std::vector<std::byte>, endpoint>> m_receive_queue;
     std::vector<sent_packet> m_sent_packets;
 };
 

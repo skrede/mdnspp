@@ -31,6 +31,7 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/records.h
     ${INCLUDE_DIRECTORY}/mdnspp/observer.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_server.h
+    ${INCLUDE_DIRECTORY}/mdnspp/service_info.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_discovery.h
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h

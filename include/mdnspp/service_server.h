@@ -41,6 +41,9 @@ template <SocketPolicy S, TimerPolicy T>
 class service_server
 {
 public:
+    /// Optional callback invoked when an incoming query is received and parsed.
+    /// Parameters: sender endpoint, qtype requested, whether unicast was requested.
+    using query_callback = std::function<void(endpoint, uint16_t, bool)>;
     // Non-copyable
     service_server(const service_server &) = delete;
     service_server &operator=(const service_server &) = delete;
@@ -52,6 +55,7 @@ public:
         , m_response_timer(std::move(other.m_response_timer))
         , m_recv_timer(std::move(other.m_recv_timer))
         , m_info(std::move(other.m_info))
+        , m_on_query(std::move(other.m_on_query))
         , m_rng(std::move(other.m_rng))
         , m_loop(std::move(other.m_loop))
         , m_stopped(other.m_stopped.load(std::memory_order_acquire))
@@ -71,6 +75,7 @@ public:
         m_response_timer = std::move(other.m_response_timer);
         m_recv_timer     = std::move(other.m_recv_timer);
         m_info           = std::move(other.m_info);
+        m_on_query       = std::move(other.m_on_query);
         m_rng            = std::move(other.m_rng);
         m_loop           = std::move(other.m_loop);
         m_stopped.store(other.m_stopped.load(std::memory_order_acquire),
@@ -94,10 +99,12 @@ public:
     // non-copyable type (asio::steady_timer). Requiring the caller to provide two
     // distinct timer instances avoids implicit copying and is explicit about ownership.
     [[nodiscard]] static std::expected<service_server, mdns_error>
-    create(S socket, T response_timer, T recv_timer, service_info info)
+    create(S socket, T response_timer, T recv_timer, service_info info,
+           query_callback on_query = {})
     {
         return service_server(std::move(socket), std::move(response_timer),
-                              std::move(recv_timer), std::move(info));
+                              std::move(recv_timer), std::move(info),
+                              std::move(on_query));
     }
 
     // start() — arms the recv_loop and returns immediately.
@@ -150,11 +157,13 @@ public:
     T       &timer()       noexcept  { return m_response_timer; }
 
 private:
-    explicit service_server(S socket, T response_timer, T recv_timer, service_info info)
+    explicit service_server(S socket, T response_timer, T recv_timer,
+                            service_info info, query_callback on_query)
         : m_socket(std::move(socket))
         , m_response_timer(std::move(response_timer))
         , m_recv_timer(std::move(recv_timer))
         , m_info(std::move(info))
+        , m_on_query(std::move(on_query))
         , m_rng(std::random_device{}())
         , m_loop(nullptr)
         , m_stopped(false)
@@ -187,29 +196,46 @@ private:
                 std::span<const std::byte>(data.data(), data.size()), offset))
             return;
 
-        // Need 2 bytes for QTYPE
-        if (offset + 2 > data.size())
+        // Need 4 bytes for QTYPE(2) + QCLASS(2)
+        if (offset + 4 > data.size())
             return;
 
-        uint16_t qtype = detail::read_u16_be(buf + offset);
+        uint16_t qtype  = detail::read_u16_be(buf + offset);
+        uint16_t qclass = detail::read_u16_be(buf + offset + 2);
 
-        // Generate random delay in [20, 500] ms — RFC 6762 section 6
+        // RFC 6762 section 5.4: QU bit is the top bit of QCLASS.
+        // If set, the querier requests a unicast response directly to its address.
+        // Otherwise, respond via multicast so all listeners benefit.
+        bool unicast_response = (qclass & 0x8000) != 0;
+
+        if (m_on_query)
+            m_on_query(sender, qtype, unicast_response);
+
+        // RFC 6762 section 6: random delay 20-500ms before responding via multicast.
+        // Unicast responses may be sent immediately, but we apply the delay uniformly.
         std::uniform_int_distribution<int> dist(20, 500);
         int delay_ms = dist(m_rng);
 
-        // Arm response timer with delay; capture sender and qtype by value
+        // Choose destination: unicast back to querier, or multicast to the group
+        endpoint dest = unicast_response
+            ? sender
+            : endpoint{"224.0.0.251", 5353};
+
+        // Arm response timer with delay; capture dest and qtype by value
         m_response_timer.expires_after(std::chrono::milliseconds(delay_ms));
         m_response_timer.async_wait(
-            [this, sender, qtype](std::error_code ec)
+            [this, dest, qtype](std::error_code ec)
             {
                 if (ec || m_stopped.load(std::memory_order_acquire))
                     return;
-                send_response(sender, qtype);
+                send_response(dest, qtype);
             });
     }
 
     // Builds and sends a DNS response to dest for the given qtype.
-    // Uses m_loop->socket() because m_socket was moved into the recv_loop on start().
+    // dest is either the multicast group (default) or the querier's unicast address
+    // (when QU bit was set in the question). Uses m_loop->socket() because
+    // m_socket was moved into the recv_loop on start().
     void send_response(endpoint dest, uint16_t qtype)
     {
         auto response = detail::build_dns_response(m_info, qtype);
@@ -224,6 +250,7 @@ private:
     T          m_response_timer;   // RFC 6762 response delay timer
     T          m_recv_timer;       // passed to recv_loop for silence tracking
     service_info m_info;           // service description for DNS responses
+    query_callback m_on_query;     // optional per-query callback
     std::mt19937 m_rng;            // PRNG for random delay generation
     std::unique_ptr<recv_loop<S, T>> m_loop; // continuous query listener (null until start())
     std::atomic<bool> m_stopped;   // idempotent stop flag

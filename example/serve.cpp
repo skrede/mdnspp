@@ -21,7 +21,7 @@ int main()
     info.port         = 8080;
     info.priority     = 0;
     info.weight       = 0;
-    info.address_ipv4 = "192.168.1.10";
+    info.address_ipv4 = "192.168.1.69";
     info.txt_records  = {{"path", "/index.html"}};
 
     auto srv = mdnspp::service_server<

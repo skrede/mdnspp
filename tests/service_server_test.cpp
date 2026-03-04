@@ -85,6 +85,17 @@ static std::vector<std::byte> make_a_query(std::string_view hostname)
     return build_dns_query(hostname, 1);
 }
 
+// Builds a DNS query with the QU bit set (QCLASS = 0x8001).
+// RFC 6762 section 5.4: QU bit requests unicast response.
+static std::vector<std::byte> make_qu_query(std::string_view name, uint16_t qtype)
+{
+    auto pkt = build_dns_query(name, qtype);
+    // QCLASS is the last 2 bytes of the packet; set the QU bit (top bit)
+    pkt[pkt.size() - 2] = static_cast<std::byte>(0x80);
+    // pkt[pkt.size() - 1] is already 0x01 (IN class)
+    return pkt;
+}
+
 // ---------------------------------------------------------------------------
 // SCENARIO: PTR response (qtype=12)
 // ---------------------------------------------------------------------------
@@ -413,9 +424,9 @@ SCENARIO("service_server responds to PTR query after timer fires",
                 {
                     REQUIRE_FALSE(server.socket().sent_packets().empty());
 
-                    AND_THEN("the response destination matches the sender endpoint")
+                    AND_THEN("the response destination is the multicast group (no QU bit)")
                     {
-                        REQUIRE(server.socket().sent_packets()[0].dest == sender);
+                        REQUIRE(server.socket().sent_packets()[0].dest == endpoint{"224.0.0.251", 5353});
                     }
 
                     AND_THEN("the response has DNS header flags 0x8400")
@@ -574,16 +585,16 @@ SCENARIO("response to A query contains valid A record",
     }
 }
 
-SCENARIO("response sent to correct sender endpoint",
-         "[service_server][endpoint]")
+SCENARIO("response sent to multicast by default, unicast when QU bit set",
+         "[service_server][endpoint][rfc6762]")
 {
-    GIVEN("a service_server with a PTR query enqueued from {10.0.0.1, 5353}")
+    GIVEN("a service_server with a standard PTR query (no QU bit) from {10.0.0.1, 5353}")
     {
         MockSocketPolicy socket;
         MockTimerPolicy response_timer;
         MockTimerPolicy recv_timer;
-        endpoint expected_dest{"10.0.0.1", 5353};
-        socket.enqueue(make_ptr_query("_http._tcp.local."), expected_dest);
+        endpoint sender{"10.0.0.1", 5353};
+        socket.enqueue(make_ptr_query("_http._tcp.local."), sender);
 
         auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
             std::move(socket), std::move(response_timer), std::move(recv_timer),
@@ -596,10 +607,37 @@ SCENARIO("response sent to correct sender endpoint",
             server.start();
             server.timer().fire();
 
-            THEN("socket().sent_packets()[0].dest == {10.0.0.1, 5353}")
+            THEN("response goes to multicast group (RFC 6762 section 6)")
             {
                 REQUIRE_FALSE(server.socket().sent_packets().empty());
-                REQUIRE(server.socket().sent_packets()[0].dest == expected_dest);
+                REQUIRE(server.socket().sent_packets()[0].dest == endpoint{"224.0.0.251", 5353});
+            }
+        }
+    }
+
+    GIVEN("a service_server with a QU-bit PTR query from {10.0.0.1, 5353}")
+    {
+        MockSocketPolicy socket;
+        MockTimerPolicy response_timer;
+        MockTimerPolicy recv_timer;
+        endpoint sender{"10.0.0.1", 5353};
+        socket.enqueue(make_qu_query("_http._tcp.local.", 12), sender);
+
+        auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
+            std::move(socket), std::move(response_timer), std::move(recv_timer),
+            make_test_info());
+        REQUIRE(result.has_value());
+        auto &server = *result;
+
+        WHEN("start() is called and the response timer fires")
+        {
+            server.start();
+            server.timer().fire();
+
+            THEN("response goes to sender's unicast address (RFC 6762 section 5.4)")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                REQUIRE(server.socket().sent_packets()[0].dest == sender);
             }
         }
     }

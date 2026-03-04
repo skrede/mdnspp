@@ -1,8 +1,10 @@
 // tests/service_discovery_test.cpp
 // service_discovery<MockPolicy> unit tests — Phase 7, Plan 07-03
 // Tests the full async_discover() flow via MockPolicy.
+// Phase 11, Plan 11-02 adds async_browse tests.
 
 #include "mdnspp/service_discovery.h"
+#include "mdnspp/resolved_service.h"
 #include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
@@ -386,3 +388,335 @@ SCENARIO("async_discover skips malformed records and returns valid ones",
 // the timer local variable, which is inaccessible from outside async_discover().
 // The silence-timeout path is covered by recv_loop_test.cpp directly.
 // With AsioTimer (real integration test) this scenario works correctly.
+
+// ---------------------------------------------------------------------------
+// Additional wire-format helpers for async_browse tests
+// ---------------------------------------------------------------------------
+
+// Builds a mDNS response with one SRV record.
+//   owner           — fully-qualified service instance name (e.g. "My Service._http._tcp.local.")
+//   target_hostname — SRV target (e.g. "myhost.local.")
+//   port            — service port
+static std::vector<std::byte> make_srv_response(std::string_view owner,
+                                                 std::string_view target_hostname,
+                                                 uint16_t port)
+{
+    std::vector<std::byte> pkt;
+
+    push_u16_be(pkt, 0x0000); // id
+    push_u16_be(pkt, 0x8400); // flags (response|authoritative)
+    push_u16_be(pkt, 0x0000); // qdcount
+    push_u16_be(pkt, 0x0001); // ancount
+    push_u16_be(pkt, 0x0000); // nscount
+    push_u16_be(pkt, 0x0000); // arcount
+
+    auto owner_enc  = encode_name(owner);
+    auto target_enc = encode_name(target_hostname);
+
+    pkt.insert(pkt.end(), owner_enc.begin(), owner_enc.end());
+    push_u16_be(pkt, 33);      // type SRV
+    push_u16_be(pkt, 0x0001); // class IN
+    push_u32_be(pkt, 120);    // ttl
+
+    // SRV rdata: priority(2) + weight(2) + port(2) + target
+    auto rdlength = static_cast<uint16_t>(2 + 2 + 2 + target_enc.size());
+    push_u16_be(pkt, rdlength);
+    push_u16_be(pkt, 0);      // priority
+    push_u16_be(pkt, 0);      // weight
+    push_u16_be(pkt, port);
+    pkt.insert(pkt.end(), target_enc.begin(), target_enc.end());
+
+    return pkt;
+}
+
+// Builds a single DNS response packet containing PTR + SRV + A records
+// for one fully-resolved service instance.
+//   instance_name — e.g. "MyService._http._tcp.local."
+//   hostname      — e.g. "myhost.local."
+//   port          — service port
+//   ipv4          — { a, b, c, d }
+static std::vector<std::byte> make_full_service_response(
+    std::string_view instance_name,
+    std::string_view service_type,
+    std::string_view hostname,
+    uint16_t         port,
+    uint8_t a, uint8_t b, uint8_t c, uint8_t d)
+{
+    std::vector<std::byte> pkt;
+
+    push_u16_be(pkt, 0x0000); // id
+    push_u16_be(pkt, 0x8400); // flags
+    push_u16_be(pkt, 0x0000); // qdcount
+    push_u16_be(pkt, 0x0003); // ancount = 3 (PTR + SRV + A)
+    push_u16_be(pkt, 0x0000); // nscount
+    push_u16_be(pkt, 0x0000); // arcount
+
+    // RR 1: PTR  service_type -> instance_name
+    auto svc_enc      = encode_name(service_type);
+    auto instance_enc = encode_name(instance_name);
+    pkt.insert(pkt.end(), svc_enc.begin(), svc_enc.end());
+    push_u16_be(pkt, 12);     // type PTR
+    push_u16_be(pkt, 0x0001);
+    push_u32_be(pkt, 4500);
+    push_u16_be(pkt, static_cast<uint16_t>(instance_enc.size()));
+    pkt.insert(pkt.end(), instance_enc.begin(), instance_enc.end());
+
+    // RR 2: SRV  instance_name -> hostname + port
+    auto host_enc = encode_name(hostname);
+    pkt.insert(pkt.end(), instance_enc.begin(), instance_enc.end());
+    push_u16_be(pkt, 33);     // type SRV
+    push_u16_be(pkt, 0x0001);
+    push_u32_be(pkt, 120);
+    push_u16_be(pkt, static_cast<uint16_t>(2 + 2 + 2 + host_enc.size()));
+    push_u16_be(pkt, 0);      // priority
+    push_u16_be(pkt, 0);      // weight
+    push_u16_be(pkt, port);
+    pkt.insert(pkt.end(), host_enc.begin(), host_enc.end());
+
+    // RR 3: A  hostname -> IPv4
+    pkt.insert(pkt.end(), host_enc.begin(), host_enc.end());
+    push_u16_be(pkt, 1);      // type A
+    push_u16_be(pkt, 0x0001);
+    push_u32_be(pkt, 120);
+    push_u16_be(pkt, 4);
+    pkt.push_back(static_cast<std::byte>(a));
+    pkt.push_back(static_cast<std::byte>(b));
+    pkt.push_back(static_cast<std::byte>(c));
+    pkt.push_back(static_cast<std::byte>(d));
+
+    return pkt;
+}
+
+// ---------------------------------------------------------------------------
+// async_browse tests
+// ---------------------------------------------------------------------------
+
+SCENARIO("async_browse delivers fully resolved service after PTR+SRV+A response",
+         "[service_discovery][browse]")
+{
+    GIVEN("a service_discovery and a full-service response (PTR+SRV+A)")
+    {
+        mock_executor ex;
+        service_discovery<MockPolicy> sd{ex, 500ms};
+
+        sd.socket().enqueue(make_full_service_response(
+            "MyService._http._tcp.local.",
+            "_http._tcp.local.",
+            "myhost.local.",
+            8080,
+            192, 168, 1, 1));
+
+        WHEN("async_browse() is called and the silence timer fires")
+        {
+            std::error_code            received_ec;
+            std::vector<resolved_service> received_services;
+            bool callback_fired = false;
+
+            sd.async_browse("_http._tcp.local.",
+                [&](std::error_code ec, std::vector<resolved_service> svcs)
+                {
+                    callback_fired    = true;
+                    received_ec       = ec;
+                    received_services = std::move(svcs);
+                });
+
+            sd.timer().fire();
+
+            THEN("callback fires with one resolved_service")
+            {
+                REQUIRE(callback_fired);
+                REQUIRE_FALSE(received_ec);
+                REQUIRE(received_services.size() == 1);
+
+                const auto &svc = received_services[0];
+                // read_dns_name produces no trailing dot — convention throughout the library
+                REQUIRE(svc.instance_name == "MyService._http._tcp.local");
+                REQUIRE(svc.hostname == "myhost.local");
+                REQUIRE(svc.port == 8080);
+                REQUIRE(svc.ipv4_addresses.size() == 1);
+                REQUIRE(svc.ipv4_addresses[0] == "192.168.1.1");
+            }
+
+            AND_THEN("services() accessor matches callback data")
+            {
+                REQUIRE(sd.services().size() == 1);
+                REQUIRE(sd.services()[0].instance_name == "MyService._http._tcp.local");
+                REQUIRE(sd.services()[0].port == 8080);
+            }
+
+            AND_THEN("results() is also populated with raw records")
+            {
+                // PTR + SRV + A = 3 raw records (all in the packet)
+                REQUIRE(sd.results().size() >= 2);
+            }
+        }
+    }
+}
+
+SCENARIO("async_browse delivers partial service when only PTR record arrives",
+         "[service_discovery][browse][partial]")
+{
+    GIVEN("a service_discovery and a PTR-only response")
+    {
+        mock_executor ex;
+        service_discovery<MockPolicy> sd{ex, 500ms};
+
+        sd.socket().enqueue(make_ptr_response(
+            "_http._tcp.local.",
+            "PartialService._http._tcp.local."));
+
+        WHEN("async_browse() is called and the silence timer fires")
+        {
+            std::vector<resolved_service> received_services;
+            bool callback_fired = false;
+
+            sd.async_browse("_http._tcp.local.",
+                [&](std::error_code, std::vector<resolved_service> svcs)
+                {
+                    callback_fired    = true;
+                    received_services = std::move(svcs);
+                });
+
+            sd.timer().fire();
+
+            THEN("callback fires with one partial service (empty hostname/port/addresses)")
+            {
+                REQUIRE(callback_fired);
+                REQUIRE(received_services.size() == 1);
+
+                const auto &svc = received_services[0];
+                // read_dns_name produces no trailing dot — convention throughout the library
+                REQUIRE(svc.instance_name == "PartialService._http._tcp.local");
+                REQUIRE(svc.hostname.empty());
+                REQUIRE(svc.port == 0);
+                REQUIRE(svc.ipv4_addresses.empty());
+                REQUIRE(svc.ipv6_addresses.empty());
+            }
+        }
+    }
+}
+
+SCENARIO("async_browse delivers multiple resolved services",
+         "[service_discovery][browse][multi]")
+{
+    GIVEN("a service_discovery and two separate full-service response packets")
+    {
+        mock_executor ex;
+        service_discovery<MockPolicy> sd{ex, 500ms};
+
+        sd.socket().enqueue(make_full_service_response(
+            "Alpha._http._tcp.local.",
+            "_http._tcp.local.",
+            "alpha.local.",
+            80,
+            10, 0, 0, 1));
+
+        sd.socket().enqueue(make_full_service_response(
+            "Beta._http._tcp.local.",
+            "_http._tcp.local.",
+            "beta.local.",
+            443,
+            10, 0, 0, 2));
+
+        WHEN("async_browse() is called and the silence timer fires")
+        {
+            std::vector<resolved_service> received_services;
+
+            sd.async_browse("_http._tcp.local.",
+                [&](std::error_code, std::vector<resolved_service> svcs)
+                {
+                    received_services = std::move(svcs);
+                });
+
+            sd.timer().fire();
+
+            THEN("two resolved_service entries are delivered")
+            {
+                REQUIRE(received_services.size() == 2);
+
+                // Find Alpha and Beta (order not guaranteed due to unordered_map)
+                auto alpha_it = std::find_if(received_services.begin(), received_services.end(),
+                    [](const resolved_service &s){ return s.instance_name.find("Alpha") != std::string::npos; });
+                auto beta_it  = std::find_if(received_services.begin(), received_services.end(),
+                    [](const resolved_service &s){ return s.instance_name.find("Beta") != std::string::npos; });
+
+                REQUIRE(alpha_it != received_services.end());
+                REQUIRE(beta_it  != received_services.end());
+
+                REQUIRE(alpha_it->port == 80);
+                REQUIRE(beta_it->port  == 443);
+            }
+        }
+    }
+}
+
+SCENARIO("stop() during async_browse fires completion with partial aggregated results",
+         "[service_discovery][browse][stop]")
+{
+    GIVEN("a service_discovery with a PTR-only response and no silence timeout fired")
+    {
+        mock_executor ex;
+        service_discovery<MockPolicy> sd{ex, 500ms};
+
+        sd.socket().enqueue(make_ptr_response(
+            "_http._tcp.local.",
+            "StoppedService._http._tcp.local."));
+
+        std::vector<resolved_service> received_services;
+        bool callback_fired = false;
+
+        sd.async_browse("_http._tcp.local.",
+            [&](std::error_code, std::vector<resolved_service> svcs)
+            {
+                callback_fired    = true;
+                received_services = std::move(svcs);
+            });
+
+        WHEN("stop() is called before the silence timeout")
+        {
+            sd.stop();
+
+            THEN("browse completion fires with whatever was aggregated so far")
+            {
+                REQUIRE(callback_fired);
+                REQUIRE(received_services.size() == 1);
+                // read_dns_name produces no trailing dot — convention throughout the library
+                REQUIRE(received_services[0].instance_name == "StoppedService._http._tcp.local");
+            }
+        }
+    }
+}
+
+SCENARIO("on_record callback fires during async_browse (same as async_discover)",
+         "[service_discovery][browse][on_record]")
+{
+    GIVEN("a service_discovery with an on_record callback and a PTR response")
+    {
+        mock_executor ex;
+        std::vector<mdns_record_variant> captured_records;
+
+        service_discovery<MockPolicy> sd{ex, 500ms,
+            [&](const mdns_record_variant &rec, endpoint)
+            {
+                captured_records.push_back(rec);
+            }};
+
+        sd.socket().enqueue(make_ptr_response(
+            "_http._tcp.local.",
+            "MyService._http._tcp.local."));
+
+        WHEN("async_browse() is called and silence timer fires")
+        {
+            sd.async_browse("_http._tcp.local.",
+                [](std::error_code, std::vector<resolved_service>) {});
+
+            sd.timer().fire();
+
+            THEN("on_record callback was invoked for each relevant record")
+            {
+                REQUIRE(captured_records.size() == 1);
+                REQUIRE(std::holds_alternative<record_ptr>(captured_records[0]));
+            }
+        }
+    }
+}

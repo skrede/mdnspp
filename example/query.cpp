@@ -12,7 +12,7 @@
 int main(int argc, char *argv[])
 {
     std::string name = "_http._tcp.local.";
-    uint16_t qtype   = 12; // PTR
+    uint16_t qtype = 12; // PTR
 
     if(argc >= 2)
         name = argv[1];
@@ -21,7 +21,8 @@ int main(int argc, char *argv[])
 
     asio::io_context io;
 
-    mdnspp::querent<mdnspp::AsioPolicy> q{io,
+    mdnspp::querent<mdnspp::AsioPolicy> q{
+        io,
         std::chrono::seconds(3),
         [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
         {
@@ -30,18 +31,19 @@ int main(int argc, char *argv[])
                 std::cout << sender.address << ":" << sender.port
                     << " -> " << r << "\n";
             }, rec);
-        }};
+        }
+    };
 
     q.async_query(name, qtype,
-        [](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
-        {
-            if (ec)
-            {
-                std::cerr << "query error: " << ec.message() << "\n";
-                return;
-            }
-            std::cout << "Query complete — " << results.size() << " record(s)\n";
-        });
+                  [](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
+                  {
+                      if(ec)
+                      {
+                          std::cerr << "query error: " << ec.message() << "\n";
+                          return;
+                      }
+                      std::cout << "Query complete — " << results.size() << " record(s)\n";
+                  });
 
     io.run(); // blocks until silence timeout
 }

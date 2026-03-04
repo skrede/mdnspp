@@ -11,15 +11,17 @@ int main()
 {
     asio::io_context io;
 
-    mdnspp::observer<mdnspp::AsioPolicy> obs{io,
+    mdnspp::observer<mdnspp::AsioPolicy> obs{
+        io,
         [](mdnspp::mdns_record_variant rec, mdnspp::endpoint sender)
         {
             std::visit([&sender](const auto &r)
             {
                 std::cout << sender.address << ":" << sender.port
-                          << " -> " << r << "\n";
+                    << " -> " << r << "\n";
             }, rec);
-        }};
+        }
+    };
 
     obs.async_observe(); // fire-and-forget (no completion callback needed)
     io.run();

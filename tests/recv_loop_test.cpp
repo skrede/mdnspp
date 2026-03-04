@@ -1,6 +1,5 @@
 #include "mdnspp/recv_loop.h"
-#include "mdnspp/testing/mock_socket_policy.h"
-#include "mdnspp/testing/mock_timer_policy.h"
+#include "mdnspp/testing/mock_policy.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <chrono>
@@ -24,13 +23,13 @@ static std::vector<std::byte> make_packet(std::size_t n)
 
 TEST_CASE("recv_loop delivers injected packets")
 {
-    MockSocketPolicy sock;
-    MockTimerPolicy timer;
+    MockSocket sock{mock_executor{}};
+    MockTimer timer{mock_executor{}};
     auto pkt = make_packet(8);
     sock.enqueue(pkt);
 
     std::vector<std::vector<std::byte>> received;
-    recv_loop loop{
+    recv_loop<MockPolicy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -49,11 +48,11 @@ TEST_CASE("recv_loop delivers injected packets")
 
 TEST_CASE("recv_loop silence callback fires on timer fire")
 {
-    MockSocketPolicy sock;
-    MockTimerPolicy timer;
+    MockSocket sock{mock_executor{}};
+    MockTimer timer{mock_executor{}};
 
     bool silence_called = false;
-    recv_loop loop{
+    recv_loop<MockPolicy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -63,17 +62,17 @@ TEST_CASE("recv_loop silence callback fires on timer fire")
     loop.start();
 
     // Fire the pending timer handler — simulates silence timeout expiring
-    loop.timer().fire();
+    timer.fire();
 
     REQUIRE(silence_called == true);
 }
 
 TEST_CASE("recv_loop stop is idempotent")
 {
-    MockSocketPolicy sock;
-    MockTimerPolicy timer;
+    MockSocket sock{mock_executor{}};
+    MockTimer timer{mock_executor{}};
 
-    recv_loop loop{
+    recv_loop<MockPolicy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -89,14 +88,14 @@ TEST_CASE("recv_loop stop is idempotent")
 
 TEST_CASE("recv_loop stop prevents on_packet after stop")
 {
-    MockSocketPolicy sock;
-    MockTimerPolicy timer;
+    MockSocket sock{mock_executor{}};
+    MockTimer timer{mock_executor{}};
 
     // Enqueue a packet — but stop() before start()
     sock.enqueue(make_packet(4));
 
     int packet_calls = 0;
-    recv_loop loop{
+    recv_loop<MockPolicy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -111,14 +110,14 @@ TEST_CASE("recv_loop stop prevents on_packet after stop")
 
 TEST_CASE("recv_loop resets silence timer on each packet")
 {
-    MockSocketPolicy sock;
-    MockTimerPolicy timer;
+    MockSocket sock{mock_executor{}};
+    MockTimer timer{mock_executor{}};
 
     // Enqueue 2 packets — each delivery should call arm_silence_timer()
     sock.enqueue(make_packet(4));
     sock.enqueue(make_packet(4));
 
-    recv_loop loop{
+    recv_loop<MockPolicy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -131,5 +130,5 @@ TEST_CASE("recv_loop resets silence timer on each packet")
     //   packet 1 triggers arm_silence_timer() (expires_after +1) + arm_receive()
     //   packet 2 triggers arm_silence_timer() (expires_after +1) + arm_receive() (no-op)
     // Minimum cancel_count >= 2 (at least 2 expires_after calls post-initial)
-    REQUIRE(loop.timer().cancel_count() >= 2);
+    REQUIRE(timer.cancel_count() >= 2);
 }

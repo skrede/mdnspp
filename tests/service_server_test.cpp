@@ -1,17 +1,15 @@
 // tests/service_server_test.cpp
-// Phase 05, Plan 05-01, Task 2 — build_dns_response() tests
-// Phase 05, Plan 05-02, Task 1+2 — service_server<S,T> BDD tests
+// service_server<MockPolicy> unit tests — Phase 7, Plan 07-03
 // Verifies that build_dns_response() produces valid DNS wire-format responses
 // for PTR, SRV, A, AAAA, and TXT query types, parseable by walk_dns_frame().
-// Also verifies service_server<S,T> create/start/stop lifecycle and RFC 6762 timing.
+// Also verifies service_server<MockPolicy> constructor/start/stop lifecycle and RFC 6762 timing.
 
 #include "mdnspp/service_info.h"
 #include "mdnspp/service_server.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/dns_wire.h"
-#include "mdnspp/testing/mock_socket_policy.h"
-#include "mdnspp/testing/mock_timer_policy.h"
+#include "mdnspp/testing/mock_policy.h"
 
 #include <catch2/catch_test_macros.hpp>
 #include <cstddef>
@@ -340,26 +338,22 @@ SCENARIO("build_dns_response produces valid TXT response", "[build_dns_response]
 }
 
 // ===========================================================================
-// service_server<S,T> BDD scenarios — Phase 05, Plan 05-02, Task 2
+// service_server<MockPolicy> BDD scenarios — Phase 07, Plan 07-03
 // ===========================================================================
 
-SCENARIO("service_server::create returns valid instance", "[service_server][create]")
+SCENARIO("service_server constructs with direct constructor", "[service_server][create]")
 {
-    GIVEN("MockSocketPolicy and MockTimerPolicy")
+    GIVEN("a mock_executor")
     {
-        MockSocketPolicy socket;
-        MockTimerPolicy response_timer;
-        MockTimerPolicy recv_timer;
+        mock_executor ex;
 
-        WHEN("create() is called with a test service_info")
+        WHEN("service_server<MockPolicy> is constructed with a test service_info")
         {
-            auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-                std::move(socket), std::move(response_timer), std::move(recv_timer),
-                make_test_info());
+            service_server<MockPolicy> server{ex, make_test_info()};
 
-            THEN("the result has a value")
+            THEN("the server is constructed successfully (socket is accessible)")
             {
-                REQUIRE(result.has_value());
+                REQUIRE(server.socket().queue_empty());
             }
         }
     }
@@ -367,16 +361,10 @@ SCENARIO("service_server::create returns valid instance", "[service_server][crea
 
 SCENARIO("start and stop lifecycle", "[service_server][lifecycle]")
 {
-    GIVEN("a created service_server with no enqueued queries")
+    GIVEN("a service_server with no enqueued queries")
     {
-        MockSocketPolicy socket;
-        MockTimerPolicy response_timer;
-        MockTimerPolicy recv_timer;
-        auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(response_timer), std::move(recv_timer),
-            make_test_info());
-        REQUIRE(result.has_value());
-        auto &server = *result;
+        mock_executor ex;
+        service_server<MockPolicy> server{ex, make_test_info()};
 
         WHEN("start() is called")
         {
@@ -400,19 +388,13 @@ SCENARIO("service_server responds to PTR query after timer fires",
 {
     GIVEN("a service_server with a PTR query for _http._tcp.local. enqueued with sender endpoint")
     {
-        MockSocketPolicy socket;
-        MockTimerPolicy response_timer;
-        MockTimerPolicy recv_timer;
+        mock_executor ex;
         endpoint sender{"192.168.1.50", 5353};
-        socket.enqueue(make_ptr_query("_http._tcp.local."), sender);
 
-        auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(response_timer), std::move(recv_timer),
-            make_test_info());
-        REQUIRE(result.has_value());
-        auto &server = *result;
+        service_server<MockPolicy> server{ex, make_test_info()};
+        server.socket().enqueue(make_ptr_query("_http._tcp.local."), sender);
 
-        WHEN("start() is called (MockSocketPolicy drains queue, fires on_query)")
+        WHEN("start() is called (MockSocket drains queue, fires on_query)")
         {
             server.start();
 
@@ -449,16 +431,9 @@ SCENARIO("response delay timer armed after query receipt",
 {
     GIVEN("a service_server with a PTR query enqueued")
     {
-        MockSocketPolicy socket;
-        MockTimerPolicy response_timer;
-        MockTimerPolicy recv_timer;
-        socket.enqueue(make_ptr_query("_http._tcp.local."));
-
-        auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(response_timer), std::move(recv_timer),
-            make_test_info());
-        REQUIRE(result.has_value());
-        auto &server = *result;
+        mock_executor ex;
+        service_server<MockPolicy> server{ex, make_test_info()};
+        server.socket().enqueue(make_ptr_query("_http._tcp.local."));
 
         WHEN("start() is called")
         {
@@ -482,16 +457,9 @@ SCENARIO("no response sent before timer fires",
 {
     GIVEN("a service_server with a PTR query enqueued")
     {
-        MockSocketPolicy socket;
-        MockTimerPolicy response_timer;
-        MockTimerPolicy recv_timer;
-        socket.enqueue(make_ptr_query("_http._tcp.local."));
-
-        auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(response_timer), std::move(recv_timer),
-            make_test_info());
-        REQUIRE(result.has_value());
-        auto &server = *result;
+        mock_executor ex;
+        service_server<MockPolicy> server{ex, make_test_info()};
+        server.socket().enqueue(make_ptr_query("_http._tcp.local."));
 
         WHEN("start() is called but the timer is NOT fired")
         {
@@ -510,16 +478,9 @@ SCENARIO("stop before timer fires prevents response",
 {
     GIVEN("a service_server with a PTR query enqueued")
     {
-        MockSocketPolicy socket;
-        MockTimerPolicy response_timer;
-        MockTimerPolicy recv_timer;
-        socket.enqueue(make_ptr_query("_http._tcp.local."));
-
-        auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(response_timer), std::move(recv_timer),
-            make_test_info());
-        REQUIRE(result.has_value());
-        auto &server = *result;
+        mock_executor ex;
+        service_server<MockPolicy> server{ex, make_test_info()};
+        server.socket().enqueue(make_ptr_query("_http._tcp.local."));
 
         WHEN("start() is called then stop() is called before firing the timer")
         {
@@ -544,16 +505,9 @@ SCENARIO("response to A query contains valid A record",
 {
     GIVEN("a service_server with an A query for myhost.local. enqueued")
     {
-        MockSocketPolicy socket;
-        MockTimerPolicy response_timer;
-        MockTimerPolicy recv_timer;
-        socket.enqueue(make_a_query("myhost.local."));
-
-        auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(response_timer), std::move(recv_timer),
-            make_test_info());
-        REQUIRE(result.has_value());
-        auto &server = *result;
+        mock_executor ex;
+        service_server<MockPolicy> server{ex, make_test_info()};
+        server.socket().enqueue(make_a_query("myhost.local."));
 
         WHEN("start() is called and the response timer fires")
         {
@@ -590,17 +544,11 @@ SCENARIO("response sent to multicast by default, unicast when QU bit set",
 {
     GIVEN("a service_server with a standard PTR query (no QU bit) from {10.0.0.1, 5353}")
     {
-        MockSocketPolicy socket;
-        MockTimerPolicy response_timer;
-        MockTimerPolicy recv_timer;
+        mock_executor ex;
         endpoint sender{"10.0.0.1", 5353};
-        socket.enqueue(make_ptr_query("_http._tcp.local."), sender);
 
-        auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(response_timer), std::move(recv_timer),
-            make_test_info());
-        REQUIRE(result.has_value());
-        auto &server = *result;
+        service_server<MockPolicy> server{ex, make_test_info()};
+        server.socket().enqueue(make_ptr_query("_http._tcp.local."), sender);
 
         WHEN("start() is called and the response timer fires")
         {
@@ -617,17 +565,11 @@ SCENARIO("response sent to multicast by default, unicast when QU bit set",
 
     GIVEN("a service_server with a QU-bit PTR query from {10.0.0.1, 5353}")
     {
-        MockSocketPolicy socket;
-        MockTimerPolicy response_timer;
-        MockTimerPolicy recv_timer;
+        mock_executor ex;
         endpoint sender{"10.0.0.1", 5353};
-        socket.enqueue(make_qu_query("_http._tcp.local.", 12), sender);
 
-        auto result = service_server<MockSocketPolicy, MockTimerPolicy>::create(
-            std::move(socket), std::move(response_timer), std::move(recv_timer),
-            make_test_info());
-        REQUIRE(result.has_value());
-        auto &server = *result;
+        service_server<MockPolicy> server{ex, make_test_info()};
+        server.socket().enqueue(make_qu_query("_http._tcp.local.", 12), sender);
 
         WHEN("start() is called and the response timer fires")
         {

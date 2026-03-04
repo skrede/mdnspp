@@ -1,10 +1,9 @@
 // tests/service_discovery_test.cpp
-// TEST-01: service_discovery unit tests (Phase 4, Plan 04-01)
-// Tests the full discover() flow via MockSocketPolicy and MockTimerPolicy.
+// service_discovery<MockPolicy> unit tests — Phase 7, Plan 07-03
+// Tests the full discover() flow via MockPolicy.
 
 #include "mdnspp/service_discovery.h"
-#include "mdnspp/testing/mock_socket_policy.h"
-#include "mdnspp/testing/mock_timer_policy.h"
+#include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 
@@ -171,21 +170,20 @@ static std::vector<std::byte> make_multi_record_response()
 // Tests
 // ---------------------------------------------------------------------------
 
-SCENARIO("service_discovery::create returns valid instance", "[service_discovery][create]")
+SCENARIO("service_discovery constructs and discovers", "[service_discovery][create]")
 {
-    GIVEN("a MockSocketPolicy and MockTimerPolicy")
+    GIVEN("a service_discovery instance with MockPolicy")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy timer;
+        mock_executor ex;
 
-        WHEN("create() is called with 500ms silence timeout")
+        WHEN("constructed with 500ms silence timeout")
         {
-            auto result = service_discovery<MockSocketPolicy, MockTimerPolicy>::create(
-                sock, timer, 500ms);
+            service_discovery<MockPolicy> sd{ex, 500ms};
 
-            THEN("it returns a valid expected (has_value() == true)")
+            THEN("it is usable (socket is empty, results empty)")
             {
-                REQUIRE(result.has_value());
+                REQUIRE(sd.socket().queue_empty());
+                REQUIRE(sd.results().empty());
             }
         }
     }
@@ -195,25 +193,20 @@ SCENARIO("discover returns PTR record from mock socket", "[service_discovery][di
 {
     GIVEN("a service_discovery instance and a queued PTR response")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-
-        sock.enqueue(make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."));
-
-        auto sd = service_discovery<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer, 500ms);
-        REQUIRE(sd.has_value());
+        mock_executor ex;
+        service_discovery<MockPolicy> sd{ex, 500ms};
+        sd.socket().enqueue(make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."));
 
         WHEN("discover() is called for _http._tcp.local.")
         {
-            sd->discover("_http._tcp.local.");
+            sd.discover("_http._tcp.local.");
 
             THEN("results() contains one record_ptr")
             {
-                REQUIRE(sd->results().size() == 1);
-                REQUIRE(std::holds_alternative<record_ptr>(sd->results()[0]));
+                REQUIRE(sd.results().size() == 1);
+                REQUIRE(std::holds_alternative<record_ptr>(sd.results()[0]));
 
-                const auto &ptr = std::get<record_ptr>(sd->results()[0]);
+                const auto &ptr = std::get<record_ptr>(sd.results()[0]);
                 REQUIRE(ptr.ptr_name.find("MyService") != std::string::npos);
             }
         }
@@ -225,22 +218,17 @@ SCENARIO("discover accumulates multiple records from a single frame",
 {
     GIVEN("a service_discovery instance and a multi-record response enqueued")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-
-        sock.enqueue(make_multi_record_response());
-
-        auto sd = service_discovery<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer, 500ms);
-        REQUIRE(sd.has_value());
+        mock_executor ex;
+        service_discovery<MockPolicy> sd{ex, 500ms};
+        sd.socket().enqueue(make_multi_record_response());
 
         WHEN("discover() is called")
         {
-            sd->discover("_http._tcp.local.");
+            sd.discover("_http._tcp.local.");
 
             THEN("results() contains both records")
             {
-                REQUIRE(sd->results().size() >= 2);
+                REQUIRE(sd.results().size() >= 2);
             }
         }
     }
@@ -251,27 +239,23 @@ SCENARIO("discover sends DNS PTR query to multicast address",
 {
     GIVEN("a service_discovery instance with no enqueued responses")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-
-        auto sd = service_discovery<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer, 500ms);
-        REQUIRE(sd.has_value());
+        mock_executor ex;
+        service_discovery<MockPolicy> sd{ex, 500ms};
 
         WHEN("discover() is called for _http._tcp.local.")
         {
-            sd->discover("_http._tcp.local.");
+            sd.discover("_http._tcp.local.");
 
             THEN("a DNS query was sent to 224.0.0.251:5353")
             {
-                REQUIRE_FALSE(sd->socket().sent_packets().empty());
-                const auto &sent = sd->socket().sent_packets()[0];
+                REQUIRE_FALSE(sd.socket().sent_packets().empty());
+                const auto &sent = sd.socket().sent_packets()[0];
                 REQUIRE(sent.dest == endpoint{"224.0.0.251", 5353});
             }
 
             AND_THEN("the query packet has correct DNS header (id=0, flags=0, qdcount=1)")
             {
-                const auto &data = sd->socket().sent_packets()[0].data;
+                const auto &data = sd.socket().sent_packets()[0].data;
                 REQUIRE(data.size() >= 12);
                 // Transaction ID: 0x0000
                 REQUIRE(static_cast<uint8_t>(data[0]) == 0x00);
@@ -329,23 +313,19 @@ SCENARIO("discover skips malformed records and returns valid ones",
         pkt.push_back(static_cast<std::byte>(1));
         pkt.push_back(static_cast<std::byte>(0)); // 5th byte — makes rdlength consistent
 
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-        sock.enqueue(pkt);
-
-        auto sd = service_discovery<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer, 500ms);
-        REQUIRE(sd.has_value());
+        mock_executor ex;
+        service_discovery<MockPolicy> sd{ex, 500ms};
+        sd.socket().enqueue(pkt);
 
         WHEN("discover() is called")
         {
-            sd->discover("_http._tcp.local.");
+            sd.discover("_http._tcp.local.");
 
             THEN("results() contains only the valid PTR record")
             {
-                REQUIRE(sd->results().size() == 1);
-                REQUIRE(std::holds_alternative<record_ptr>(sd->results()[0]));
-                const auto &ptr = std::get<record_ptr>(sd->results()[0]);
+                REQUIRE(sd.results().size() == 1);
+                REQUIRE(std::holds_alternative<record_ptr>(sd.results()[0]));
+                const auto &ptr = std::get<record_ptr>(sd.results()[0]);
                 REQUIRE(ptr.ptr_name.find("Good") != std::string::npos);
             }
         }
@@ -353,8 +333,8 @@ SCENARIO("discover skips malformed records and returns valid ones",
 }
 
 // Note: Testing discover() with an empty queue (no responses, silence timeout only)
-// is not practical via service_discovery's public API with MockTimerPolicy:
-// MockTimerPolicy does not auto-fire; its fire() method is only accessible via
-// recv_loop::timer(), which is inaccessible from outside discover().
+// is not practical via service_discovery's public API with MockTimer:
+// MockTimer does not auto-fire; its fire() method is only accessible via
+// the timer local variable, which is inaccessible from outside discover().
 // The silence-timeout path is covered by recv_loop_test.cpp directly.
-// With AsioTimerPolicy (real integration test) this scenario works correctly.
+// With AsioTimer (real integration test) this scenario works correctly.

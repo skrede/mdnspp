@@ -1,9 +1,9 @@
 // tests/service_info_test.cpp
-// Task 1 RED tests: service_info struct, MockSocketPolicy endpoint enqueue,
+// Tests: service_info struct, MockSocket endpoint enqueue,
 // push_u16_be / push_u32_be helpers in dns_wire.h
 
 #include "mdnspp/service_info.h"
-#include "mdnspp/testing/mock_socket_policy.h"
+#include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/dns_wire.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -45,10 +45,10 @@ TEST_CASE("service_info struct has all required fields", "[service_info]")
     REQUIRE(*info.txt_records[0].value == "/api");
 }
 
-TEST_CASE("MockSocketPolicy::enqueue(packet, endpoint) stores sender and delivers to handler",
-          "[mock_socket_policy][enqueue_with_endpoint]")
+TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to handler",
+          "[mock_socket][enqueue_with_endpoint]")
 {
-    MockSocketPolicy sock;
+    MockSocket sock{mock_executor{}};
 
     std::vector<std::byte> pkt = {std::byte{0xAB}, std::byte{0xCD}};
     endpoint sender{"192.168.1.5", 5353};
@@ -70,10 +70,10 @@ TEST_CASE("MockSocketPolicy::enqueue(packet, endpoint) stores sender and deliver
     REQUIRE(received_data[1] == std::byte{0xCD});
 }
 
-TEST_CASE("MockSocketPolicy::enqueue(packet) backward-compat delivers endpoint{}",
-          "[mock_socket_policy][enqueue_backward_compat]")
+TEST_CASE("MockSocket::enqueue(packet) delivers endpoint{}",
+          "[mock_socket][enqueue_default_endpoint]")
 {
-    MockSocketPolicy sock;
+    MockSocket sock{mock_executor{}};
 
     std::vector<std::byte> pkt = {std::byte{0x01}};
     sock.enqueue(pkt);

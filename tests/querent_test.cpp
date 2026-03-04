@@ -1,10 +1,9 @@
 // tests/querent_test.cpp
-// TEST-01: querent unit tests (Phase 4, Plan 04-02)
-// Tests the full query() flow via MockSocketPolicy and MockTimerPolicy.
+// querent<MockPolicy> unit tests — Phase 7, Plan 07-03
+// Tests the full query() flow via MockPolicy.
 
 #include "mdnspp/querent.h"
-#include "mdnspp/testing/mock_socket_policy.h"
-#include "mdnspp/testing/mock_timer_policy.h"
+#include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 
@@ -158,7 +157,7 @@ static std::vector<std::byte> make_aaaa_response(std::string_view name,
     return pkt;
 }
 
-// Builds a mDNS response with two RRs: an A and an AAAA record.
+// Builds a mDNS response with two RRs: an A and a SRV record.
 static std::vector<std::byte> make_multi_record_response()
 {
     std::vector<std::byte> pkt;
@@ -202,21 +201,20 @@ static std::vector<std::byte> make_multi_record_response()
 // Tests
 // ---------------------------------------------------------------------------
 
-SCENARIO("querent::create returns valid instance", "[querent][create]")
+SCENARIO("querent constructs and is usable", "[querent][create]")
 {
-    GIVEN("a MockSocketPolicy and MockTimerPolicy")
+    GIVEN("a querent instance with MockPolicy")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy timer;
+        mock_executor ex;
 
-        WHEN("create() is called with 500ms silence timeout")
+        WHEN("constructed with 500ms silence timeout")
         {
-            auto result = querent<MockSocketPolicy, MockTimerPolicy>::create(
-                sock, timer, 500ms);
+            querent<MockPolicy> q{ex, 500ms};
 
-            THEN("it returns a valid expected (has_value() == true)")
+            THEN("it is usable (socket is empty, results empty)")
             {
-                REQUIRE(result.has_value());
+                REQUIRE(q.socket().queue_empty());
+                REQUIRE(q.results().empty());
             }
         }
     }
@@ -226,25 +224,20 @@ SCENARIO("query returns A record from mock socket", "[querent][query][A]")
 {
     GIVEN("a querent instance and an A response for myhost.local. enqueued")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-
-        sock.enqueue(make_a_response("myhost.local.", 192, 168, 1, 1));
-
-        auto q = querent<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer, 500ms);
-        REQUIRE(q.has_value());
+        mock_executor ex;
+        querent<MockPolicy> q{ex, 500ms};
+        q.socket().enqueue(make_a_response("myhost.local.", 192, 168, 1, 1));
 
         WHEN("query() is called for myhost.local. with qtype=1 (A)")
         {
-            q->query("myhost.local.", 1);
+            q.query("myhost.local.", 1);
 
             THEN("results() contains one record_a")
             {
-                REQUIRE(q->results().size() == 1);
-                REQUIRE(std::holds_alternative<record_a>(q->results()[0]));
+                REQUIRE(q.results().size() == 1);
+                REQUIRE(std::holds_alternative<record_a>(q.results()[0]));
 
-                const auto &a = std::get<record_a>(q->results()[0]);
+                const auto &a = std::get<record_a>(q.results()[0]);
                 REQUIRE(a.address_string == "192.168.1.1");
             }
         }
@@ -255,27 +248,23 @@ SCENARIO("query sends correct DNS query packet", "[querent][query][packet]")
 {
     GIVEN("a querent instance with no enqueued responses")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-
-        auto q = querent<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer, 500ms);
-        REQUIRE(q.has_value());
+        mock_executor ex;
+        querent<MockPolicy> q{ex, 500ms};
 
         WHEN("query() is called for myhost.local. with qtype=1 (A)")
         {
-            q->query("myhost.local.", 1);
+            q.query("myhost.local.", 1);
 
             THEN("a DNS query was sent to 224.0.0.251:5353")
             {
-                REQUIRE_FALSE(q->socket().sent_packets().empty());
-                const auto &sent = q->socket().sent_packets()[0];
+                REQUIRE_FALSE(q.socket().sent_packets().empty());
+                const auto &sent = q.socket().sent_packets()[0];
                 REQUIRE(sent.dest == endpoint{"224.0.0.251", 5353});
             }
 
             AND_THEN("the query packet has correct DNS header (id=0, flags=0, qdcount=1)")
             {
-                const auto &data = q->socket().sent_packets()[0].data;
+                const auto &data = q.socket().sent_packets()[0].data;
                 REQUIRE(data.size() >= 12);
                 // Transaction ID: 0x0000
                 REQUIRE(static_cast<uint8_t>(data[0]) == 0x00);
@@ -293,7 +282,7 @@ SCENARIO("query sends correct DNS query packet", "[querent][query][packet]")
 
             AND_THEN("the query packet contains qtype=1 (A) in the question section")
             {
-                const auto &data = q->socket().sent_packets()[0].data;
+                const auto &data = q.socket().sent_packets()[0].data;
                 // Header is 12 bytes, followed by encoded name for "myhost.local."
                 // Name: \x06myhost\x05local\x00 = 1+6+1+5+1 = 14 bytes
                 // QTYPE starts at offset 12 + 14 = 26
@@ -311,22 +300,17 @@ SCENARIO("query accumulates multiple records from a single frame",
 {
     GIVEN("a querent instance and a multi-record response enqueued")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-
-        sock.enqueue(make_multi_record_response());
-
-        auto q = querent<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer, 500ms);
-        REQUIRE(q.has_value());
+        mock_executor ex;
+        querent<MockPolicy> q{ex, 500ms};
+        q.socket().enqueue(make_multi_record_response());
 
         WHEN("query() is called")
         {
-            q->query("myhost.local.", 1);
+            q.query("myhost.local.", 1);
 
             THEN("results() contains all records from the frame")
             {
-                REQUIRE(q->results().size() >= 2);
+                REQUIRE(q.results().size() >= 2);
             }
         }
     }
@@ -373,23 +357,19 @@ SCENARIO("query skips malformed records and returns valid ones",
         pkt.push_back(static_cast<std::byte>(8));
         pkt.push_back(static_cast<std::byte>(0)); // 5th byte
 
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-        sock.enqueue(pkt);
-
-        auto q = querent<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer, 500ms);
-        REQUIRE(q.has_value());
+        mock_executor ex;
+        querent<MockPolicy> q{ex, 500ms};
+        q.socket().enqueue(pkt);
 
         WHEN("query() is called")
         {
-            q->query("good.local.", 1);
+            q.query("good.local.", 1);
 
             THEN("results() contains only the valid A record")
             {
-                REQUIRE(q->results().size() == 1);
-                REQUIRE(std::holds_alternative<record_a>(q->results()[0]));
-                const auto &a = std::get<record_a>(q->results()[0]);
+                REQUIRE(q.results().size() == 1);
+                REQUIRE(std::holds_alternative<record_a>(q.results()[0]));
+                const auto &a = std::get<record_a>(q.results()[0]);
                 REQUIRE(a.address_string == "1.2.3.4");
             }
         }
@@ -397,7 +377,7 @@ SCENARIO("query skips malformed records and returns valid ones",
 }
 
 // Note: Testing query() with an empty queue (no responses, silence timeout only)
-// is not practical via querent's public API with MockTimerPolicy:
-// MockTimerPolicy does not auto-fire; its fire() method is only accessible via
-// recv_loop::timer(), which is inaccessible from outside query().
+// is not practical via querent's public API with MockTimer:
+// MockTimer does not auto-fire; its fire() method is only accessible via
+// the timer local variable, which is inaccessible from outside query().
 // The silence-timeout path is covered by recv_loop_test.cpp directly.

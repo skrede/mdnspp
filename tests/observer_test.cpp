@@ -1,10 +1,9 @@
 // tests/observer_test.cpp
-// TEST-06: observer<S, T> unit tests (Phase 6, Plan 06-01)
-// Tests the full observer lifecycle via MockSocketPolicy and MockTimerPolicy.
+// observer<MockPolicy> unit tests — Phase 7, Plan 07-03
+// Tests the full observer lifecycle via MockPolicy.
 
 #include "mdnspp/observer.h"
-#include "mdnspp/testing/mock_socket_policy.h"
-#include "mdnspp/testing/mock_timer_policy.h"
+#include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 
@@ -138,27 +137,25 @@ SCENARIO("observer delivers DNS records from a single packet to the callback",
 {
     GIVEN("an observer with one PTR packet enqueued")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-
+        mock_executor ex;
         endpoint sender{"192.168.1.10", 5353};
-        sock.enqueue(make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."), sender);
 
         std::vector<mdns_record_variant> received_records;
         std::vector<endpoint>            received_senders;
 
-        auto obs = observer<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer,
+        observer<MockPolicy> obs{ex,
             [&](mdns_record_variant rec, endpoint ep)
             {
                 received_records.push_back(std::move(rec));
                 received_senders.push_back(ep);
-            });
-        REQUIRE(obs.has_value());
+            }};
+
+        obs.socket().enqueue(
+            make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."), sender);
 
         WHEN("start() is called")
         {
-            obs->start();
+            obs.start();
 
             THEN("the PTR record is delivered to the callback")
             {
@@ -182,25 +179,22 @@ SCENARIO("observer delivers records from multiple packets",
 {
     GIVEN("an observer with two packets enqueued")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-
-        sock.enqueue(make_ptr_response("_http._tcp.local.", "First._http._tcp.local."));
-        sock.enqueue(make_a_response("myhost.local.", 192, 168, 0, 1));
+        mock_executor ex;
 
         std::vector<mdns_record_variant> received_records;
 
-        auto obs = observer<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer,
+        observer<MockPolicy> obs{ex,
             [&](mdns_record_variant rec, endpoint)
             {
                 received_records.push_back(std::move(rec));
-            });
-        REQUIRE(obs.has_value());
+            }};
+
+        obs.socket().enqueue(make_ptr_response("_http._tcp.local.", "First._http._tcp.local."));
+        obs.socket().enqueue(make_a_response("myhost.local.", 192, 168, 0, 1));
 
         WHEN("start() is called")
         {
-            obs->start();
+            obs.start();
 
             THEN("records from all packets are delivered")
             {
@@ -217,22 +211,18 @@ SCENARIO("stop() is idempotent — second call is a no-op",
 {
     GIVEN("a started observer with no packets enqueued")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
+        mock_executor ex;
 
-        auto obs = observer<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer,
-            [](mdns_record_variant, endpoint) {});
-        REQUIRE(obs.has_value());
+        observer<MockPolicy> obs{ex, [](mdns_record_variant, endpoint) {}};
 
         WHEN("start() and then stop() are called twice")
         {
-            obs->start();
+            obs.start();
 
             THEN("the second stop() call does not crash or assert")
             {
-                obs->stop();
-                REQUIRE_NOTHROW(obs->stop()); // second call must be no-op
+                obs.stop();
+                REQUIRE_NOTHROW(obs.stop()); // second call must be no-op
             }
         }
     }
@@ -243,20 +233,16 @@ SCENARIO("observer can be created, started, and stopped without any packet deliv
 {
     GIVEN("a fresh observer with no packets enqueued")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
-
+        mock_executor ex;
         int callback_count = 0;
 
-        auto obs = observer<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer,
-            [&](mdns_record_variant, endpoint) { ++callback_count; });
-        REQUIRE(obs.has_value());
+        observer<MockPolicy> obs{ex,
+            [&](mdns_record_variant, endpoint) { ++callback_count; }};
 
         WHEN("start() and stop() are called on the empty observer")
         {
-            obs->start();
-            obs->stop();
+            obs.start();
+            obs.stop();
 
             THEN("the callback is never invoked")
             {
@@ -271,31 +257,29 @@ SCENARIO("stop() called from within the record callback does not deadlock",
 {
     GIVEN("an observer with one packet enqueued")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
+        mock_executor ex;
 
-        sock.enqueue(make_ptr_response("_http._tcp.local.", "Target._http._tcp.local."));
-
-        observer<MockSocketPolicy, MockTimerPolicy> *obs_ptr = nullptr;
+        observer<MockPolicy> *obs_ptr = nullptr;
         int callback_count = 0;
 
-        auto obs = observer<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer,
+        observer<MockPolicy> obs{ex,
             [&](mdns_record_variant, endpoint)
             {
                 ++callback_count;
                 // Call stop() from within the callback — must not deadlock
                 if (obs_ptr)
                     obs_ptr->stop();
-            });
-        REQUIRE(obs.has_value());
-        obs_ptr = &(*obs);
+            }};
+        obs_ptr = &obs;
+
+        obs.socket().enqueue(
+            make_ptr_response("_http._tcp.local.", "Target._http._tcp.local."));
 
         WHEN("start() is called (callback will call stop() inside itself)")
         {
             THEN("start() returns without deadlocking and stop flag is set")
             {
-                REQUIRE_NOTHROW(obs->start());
+                REQUIRE_NOTHROW(obs.start());
                 REQUIRE(callback_count >= 1);
             }
         }
@@ -307,25 +291,22 @@ SCENARIO("observer skips malformed packets without crashing",
 {
     GIVEN("an observer with a truncated (malformed) packet enqueued")
     {
-        MockSocketPolicy sock;
-        MockTimerPolicy  timer;
+        mock_executor ex;
 
         // Only 5 bytes — too short to be a valid DNS header (needs 12)
         std::vector<std::byte> malformed = bytes({0x00, 0x00, 0x00, 0x00, 0x00});
-        sock.enqueue(malformed);
 
         int callback_count = 0;
 
-        auto obs = observer<MockSocketPolicy, MockTimerPolicy>::create(
-            sock, timer,
-            [&](mdns_record_variant, endpoint) { ++callback_count; });
-        REQUIRE(obs.has_value());
+        observer<MockPolicy> obs{ex,
+            [&](mdns_record_variant, endpoint) { ++callback_count; }};
+        obs.socket().enqueue(malformed);
 
         WHEN("start() is called with the malformed packet")
         {
             THEN("no crash occurs and no records are delivered")
             {
-                REQUIRE_NOTHROW(obs->start());
+                REQUIRE_NOTHROW(obs.start());
                 REQUIRE(callback_count == 0);
             }
         }

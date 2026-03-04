@@ -2,6 +2,11 @@ set(UNIT_TEST_RESOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/resources")
 set(UNIT_TEST_INCLUDE ${CMAKE_CURRENT_LIST_DIR}/include)
 set(MDNSPP_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../src/)
 
+# Standalone compile test for infrastructure headers (Phase 12)
+add_executable(infra_headers_compile_test compile/infra_headers_compile_test.cpp)
+target_include_directories(infra_headers_compile_test PRIVATE ${CMAKE_CURRENT_LIST_DIR}/../include)
+add_test(NAME infra_headers_compile_test COMMAND infra_headers_compile_test)
+
 function(make_test TEST_FILE)
     add_executable(${TEST_FILE} "${TEST_FILE}.cpp")
     target_link_libraries(${TEST_FILE} PRIVATE mdnspp Catch2::Catch2WithMain)

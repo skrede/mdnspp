@@ -32,3 +32,13 @@ if(MDNSPP_ENABLE_ASIO_POLICY)
     make_asio_test(service_server_tsan_test)
 endif()
 
+if(MDNSPP_ENABLE_NATIVE_POLICY)
+    function(make_native_test TEST_FILE)
+        add_executable(${TEST_FILE} "${TEST_FILE}.cpp")
+        target_link_libraries(${TEST_FILE} PRIVATE mdnspp_native Catch2::Catch2WithMain)
+        target_include_directories(${TEST_FILE} PRIVATE ${MDNSPP_SOURCE_DIR} ${UNIT_TEST_INCLUDE})
+        add_test(NAME ${TEST_FILE} COMMAND ${TEST_FILE})
+    endfunction()
+    make_native_test(native_conformance_test)
+endif()
+

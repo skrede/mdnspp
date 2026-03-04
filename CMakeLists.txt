@@ -93,6 +93,28 @@ if(MDNSPP_ENABLE_ASIO_POLICY)
     )
 endif()
 
+# Optional NativePolicy — raw UDP multicast, no ASIO dependency
+option(MDNSPP_ENABLE_NATIVE_POLICY "Build NativePolicy (NativeSocket, NativeTimer, NativeContext)" OFF)
+
+if(MDNSPP_ENABLE_NATIVE_POLICY)
+    add_library(mdnspp_native INTERFACE)
+    add_library(mdnspp::native ALIAS mdnspp_native)
+    target_include_directories(mdnspp_native INTERFACE ${INCLUDE_DIRECTORY})
+    target_link_libraries(mdnspp_native INTERFACE mdnspp)
+
+    if(WIN32)
+        target_link_libraries(mdnspp_native INTERFACE ws2_32)
+    endif()
+
+    install(FILES
+        ${INCLUDE_DIRECTORY}/mdnspp/native.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp
+    )
+    install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/native/
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/native
+    )
+endif()
+
 if(${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(example)
 endif()

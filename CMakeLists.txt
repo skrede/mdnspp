@@ -35,9 +35,11 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/service_discovery.h
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
+    ${INCLUDE_DIRECTORY}/mdnspp/policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/socket_policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/timer_policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/parse.h
+    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_socket_policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_timer_policy.h
 )
@@ -69,6 +71,7 @@ install(FILES ${PUBLIC_HEADERS}
 )
 
 install(FILES
+    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_socket_policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_timer_policy.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/testing
@@ -95,6 +98,15 @@ if(MDNSPP_ENABLE_ASIO_POLICY)
         ASIO_STANDALONE
     )
     target_link_libraries(mdnspp_asio INTERFACE mdnspp)
+
+    install(FILES
+        ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_policy.h
+        ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_socket.h
+        ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_timer.h
+        ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_socket_policy.h
+        ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_timer_policy.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/asio
+    )
 endif()
 
 if(${MDNSPP_BUILD_EXAMPLES})

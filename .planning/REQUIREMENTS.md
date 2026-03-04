@@ -21,7 +21,7 @@ Requirements for milestone v1.0: Clean API & Architecture.
 - [x] **ARCH-02**: All four public types are class templates parameterized on `SocketPolicy` (`service_discovery<S>`, `service_server<S>`, `querent<S>`, `observer<S>`)
 - [x] **ARCH-03**: `MockSocketPolicy` satisfies the `SocketPolicy` concept (hand-written test double with injected packet queue; `static_assert(SocketPolicy<MockSocketPolicy>)` in a translation unit that does not link against ASIO)
 - [x] **ARCH-04**: `AsioSocketPolicy` provides production async I/O (standalone ASIO 1.30.x; `asio::ip::udp::socket`; multicast join sequence; `async_receive_from` chain; `ASIO_STANDALONE` defined; no Boost dependency)
-- [ ] **ARCH-05**: `mdns_base` removed — flat composition replaces inheritance (`recv_loop<S>` is a member, not a base; each public type composes socket + recv_loop directly; no shared base class)
+- [x] **ARCH-05**: `mdns_base` removed — flat composition replaces inheritance (`recv_loop<S>` is a member, not a base; each public type composes socket + recv_loop directly; no shared base class)
 - [x] **ARCH-06**: `recv_loop<S>` implemented as a standalone internal component (owns receive buffer as `std::vector<std::byte>`; passes `std::span<std::byte>` to policy; silence detection via `asio::steady_timer`; stop is idempotent)
 - [x] **ARCH-07**: `record_parser` implemented as free functions in `mdnspp::parse` namespace (`std::span<const std::byte>` + endpoint → `mdns_record_variant`; `mdns.h` confined to `src/`; testable without sockets)
 
@@ -107,7 +107,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-01 | Phase 4 | Complete |
 | BEHAV-03 | Phase 5 | Complete |
 | BEHAV-04 | Phase 5 | Complete |
-| ARCH-05 | Phase 6 | Pending |
+| ARCH-05 | Phase 6 | Complete |
 
 **Coverage:**
 - v1.0 requirements: 23 total

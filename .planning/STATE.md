@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: unknown
-last_updated: "2026-03-04T04:39:33.806Z"
+status: in_progress
+last_updated: "2026-03-04T05:40:31Z"
 progress:
-  total_phases: 5
+  total_phases: 6
   completed_phases: 5
-  total_plans: 16
-  completed_plans: 16
+  total_plans: 17
+  completed_plans: 17
 ---
 
 # Project State
@@ -18,16 +18,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-03)
 
 **Core value:** A C++23 mDNS library that composes naturally with any executor or event loop — no owned threads, no hidden allocations, no C types leaking into user code.
-**Current focus:** Phase 5 Plan 03 COMPLETE — TSan hard-gate test for service_server<AsioSocketPolicy, AsioTimerPolicy>, TSan clean run verified, Phase 5 fully complete; ready for Phase 6 (ASIO wiring)
+**Current focus:** Phase 6 Plan 01 COMPLETE — observer<S,T> class template implemented with create/start/stop lifecycle, callback-safe stop, and 6 BDD test scenarios (all passing)
 
 ## Current Position
 
-Phase: 5 of 5 (refactor-service-server) — COMPLETE
-Plan: 3 of 3 in phase — COMPLETE
-Status: Plan 05-03 complete — TSan test (2 SCENARIO blocks, cross-thread stop + double-stop), ASIO build passes (10/10 tests), TSan build clean (no data races), Phase 5 DONE
-Last activity: 2026-03-04 — Completed 05-03 (TSan hard-gate test, fixed non-copyable ASIO type handling in service_server, recv_loop::socket() accessor added)
+Phase: 6 of 6 (refactor-observer) — Plan 1 of 1 COMPLETE
+Plan: 1 of 1 in phase — COMPLETE
+Status: Plan 06-01 complete — observer<S,T> with recv_loop composition, atomic stop flag, walk_dns_frame integration; 9/9 tests passing (8 existing + 1 new)
+Last activity: 2026-03-04 — Completed 06-01 (observer<S,T> TDD: 6 scenarios, policy-based class template, callback-safe stop)
 
-Progress: [████████████████████] 100% (All 5 phases complete)
+Progress: [████████████████████] Phase 6 Plan 1 complete
 
 ## Performance Metrics
 
@@ -45,14 +45,16 @@ Progress: [████████████████████] 100% (A
 | 03-record-parser-free-functions | 2 | 17 min | 8.5 min |
 | 04-refactor-service-discovery-and-querent | 2 | 10 min | 5.0 min |
 | 05-refactor-service-server | 3 | 16 min | 5.3 min |
+| 06-refactor-observer | 1 | 3 min | 3.0 min |
 
 **Recent Trend:**
-- Last 5 plans: 04-01 (6 min), 04-02 (4 min), 05-01 (5 min), 05-02 (3 min), 05-03 (8 min)
+- Last 5 plans: 04-02 (4 min), 05-01 (5 min), 05-02 (3 min), 05-03 (8 min), 06-01 (3 min)
 - Trend: stable
 
 *Updated after each plan completion*
 | Phase 05-refactor-service-server P02 | 3 | 2 tasks | 2 files |
 | Phase 05-refactor-service-server P03 | 8 | 1 tasks | 5 files |
+| Phase 06-refactor-observer P01 | 3 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -114,6 +116,9 @@ Recent decisions affecting current work:
 - [Phase 05-refactor-service-server]: service_server::create() now takes two separate timer parameters (response_timer, recv_timer) — AsioTimerPolicy wraps asio::steady_timer which is non-copyable
 - [Phase 05-refactor-service-server]: service_server::start() moves m_socket and m_recv_timer into recv_loop (not copy) — socket() accessor delegates to m_loop->socket() after start()
 - [Phase 05-refactor-service-server]: recv_loop::socket() accessor added to support service_server send path after m_socket is moved into recv_loop on start()
+- [Phase 06-01]: observer is movable before start() to satisfy std::expected<T,E> constructibility — std::expected requires is_constructible_v<T, Args...>; plan's "non-movable" intent was for post-start safety, which the assert in move ctor enforces
+- [Phase 06-01]: stop() sets atomic flag only; does NOT reset m_loop — callback-safe pattern prevents use-after-free when stop() is called from within the record callback
+- [Phase 06-01]: observer::~observer() stores m_stopped=true then resets m_loop — safe because destructor never called from within recv_loop callback chain
 
 ### Pending Todos
 
@@ -128,5 +133,5 @@ None yet.
 ## Session Continuity
 
 Last session: 2026-03-04
-Stopped at: Completed 05-03-PLAN.md (TSan hard-gate test, service_server non-copyable ASIO fix, TSan clean run, Phase 5 COMPLETE)
-Resume file: None
+Stopped at: Completed 06-01-PLAN.md (observer<S,T> implementation)
+Resume file: .planning/phases/06-refactor-observer/06-01-SUMMARY.md

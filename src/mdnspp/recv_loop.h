@@ -1,8 +1,7 @@
 #ifndef HPP_GUARD_MDNSPP_RECV_LOOP_H
 #define HPP_GUARD_MDNSPP_RECV_LOOP_H
 
-#include "mdnspp/socket_policy.h"
-#include "mdnspp/timer_policy.h"
+#include "mdnspp/policy.h"
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -11,17 +10,20 @@
 
 namespace mdnspp {
 
-template <SocketPolicy S, TimerPolicy T>
+template <Policy P>
 class recv_loop
 {
 public:
+    using socket_type = typename P::socket_type;
+    using timer_type  = typename P::timer_type;
+
     // Returns true if the packet was relevant (resets silence timer),
     // false to ignore (timer continues counting down).
     using packet_handler = std::function<bool(std::span<std::byte>, endpoint)>;
 
     recv_loop(
-        S &socket,
-        T &timer,
+        socket_type &socket,
+        timer_type  &timer,
         std::chrono::milliseconds silence_timeout,
         packet_handler on_packet,
         std::function<void()> on_silence)
@@ -61,12 +63,6 @@ public:
         m_socket.close();
     }
 
-    // Accessors — expose internal policies for owners who moved their policy into the loop.
-    // service_server uses socket() to send responses after moving m_socket into recv_loop.
-    S       &socket()       noexcept { return m_socket; }
-    const S &socket() const noexcept { return m_socket; }
-    T       &timer()        noexcept { return m_timer; }
-
 private:
     void arm_receive()
     {
@@ -103,8 +99,8 @@ private:
             });
     }
 
-    S &m_socket;
-    T &m_timer;
+    socket_type &m_socket;
+    timer_type  &m_timer;
     std::chrono::milliseconds m_silence_timeout;
     packet_handler m_on_packet;
     std::function<void()> m_on_silence;

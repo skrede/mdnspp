@@ -171,12 +171,12 @@ record(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     switch (meta.rtype)
     {
-    case 1:   return a(buffer, meta);
-    case 12:  return ptr(buffer, meta);
-    case 16:  return txt(buffer, meta);
-    case 28:  return aaaa(buffer, meta);
-    case 33:  return srv(buffer, meta);
-    default:  return std::unexpected(mdns_error::parse_error);
+    case dns_type::a:    return a(buffer, meta);
+    case dns_type::ptr:  return ptr(buffer, meta);
+    case dns_type::txt:  return txt(buffer, meta);
+    case dns_type::aaaa: return aaaa(buffer, meta);
+    case dns_type::srv:  return srv(buffer, meta);
+    default:             return std::unexpected(mdns_error::parse_error);
     }
 }
 

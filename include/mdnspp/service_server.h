@@ -34,7 +34,7 @@ namespace mdnspp {
 //   3. stop()                      — idempotent; cancels timer, destroys loop
 //   4. ~service_server()           — calls stop() for RAII safety
 //
-// No mdns_base inheritance. No std::mutex. BEHAV-03 compliant.
+// No inheritance. No std::mutex. BEHAV-03 compliant.
 // Response delay 20-500ms per RFC 6762 section 6 (BEHAV-04).
 
 template <SocketPolicy S, TimerPolicy T>

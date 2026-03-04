@@ -44,11 +44,6 @@ set(PUBLIC_HEADERS
 
 set(CORE_SOURCES
     ${SOURCE_DIRECTORY}/mdnspp/mdns_util.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/mdns_base.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/record_buffer.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/record_parser.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/record_builder.h
-    ${SOURCE_DIRECTORY}/mdnspp/record_builder.cpp
     ${SOURCE_DIRECTORY}/mdnspp/parse.cpp
 )
 

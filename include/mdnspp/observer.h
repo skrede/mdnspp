@@ -39,7 +39,7 @@ namespace mdnspp {
 // the recv_loop. The recv_loop is cleaned up in ~observer(), which is never
 // called from within the recv_loop callback chain.
 //
-// No mdns_base inheritance. No std::mutex. Single timer (unlike service_server).
+// No inheritance. No std::mutex. Single timer (unlike service_server).
 
 template <SocketPolicy S, TimerPolicy T>
 class observer

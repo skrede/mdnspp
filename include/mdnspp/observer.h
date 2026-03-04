@@ -13,6 +13,8 @@
 #include <span>
 #include <chrono>
 #include <cassert>
+#include <system_error>
+#include <utility>
 
 namespace mdnspp {
 
@@ -24,8 +26,9 @@ namespace mdnspp {
 // Lifecycle:
 //   1. observer(ex, callback)        — direct constructor (throwing)
 //      observer(ex, callback, ec)    — non-throwing overload (ec set on failure)
-//   2. start()                       — arms recv_loop; returns immediately
-//   3. stop()                        — idempotent; sets stop flag
+//   2. async_observe([on_done])      — arms recv_loop; returns immediately
+//                                      on_done fires with error_code{} when stop() is called
+//   3. stop()                        — idempotent; sets stop flag, fires completion handler
 //   4. ~observer()                   — destroys recv_loop for RAII safety
 //
 // Observer is a pure listener — no queries sent, no responses built.
@@ -47,16 +50,21 @@ public:
     using timer_type      = typename P::timer_type;
     using record_callback = std::function<void(mdns_record_variant, endpoint)>;
 
+    /// Completion callback fired once when stop() is called.
+    /// Receives error_code (always success).
+    using completion_handler = std::function<void(std::error_code)>;
+
     // Non-copyable
     observer(const observer &) = delete;
     observer &operator=(const observer &) = delete;
 
-    // Movable only before start() is called (m_loop must be null).
+    // Movable only before async_observe() is called (m_loop must be null).
     // Moving a started observer is a logic error (recv_loop callbacks capture this).
     observer(observer &&other) noexcept
         : m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
         , m_callback(std::move(other.m_callback))
+        , m_on_completion(std::move(other.m_on_completion))
         , m_loop(std::move(other.m_loop))
         , m_stopped(other.m_stopped.load(std::memory_order_acquire))
     {
@@ -94,12 +102,14 @@ public:
     {
     }
 
-    // start() — arms the recv_loop and returns immediately.
+    // async_observe() — arms the recv_loop and returns immediately.
+    // on_done fires with error_code{} when stop() is called (or empty if omitted).
     // Incoming multicast packets are parsed and each record delivered to the callback.
-    // Must only be called once; calling start() after start() is a logic error.
-    void start()
+    // Must only be called once; calling async_observe() twice is a logic error.
+    void async_observe(completion_handler on_done = {})
     {
         assert(m_loop == nullptr); // can only start once
+        m_on_completion = std::move(on_done);
 
         m_loop = std::make_unique<recv_loop<P>>(
             m_socket,
@@ -115,7 +125,7 @@ public:
         m_loop->start();
     }
 
-    // stop() — idempotent; sets the stop flag.
+    // stop() — idempotent; fires the completion handler, then sets the stop flag.
     //
     // Does NOT call m_loop.reset() here — this is critical for callback-safe stop.
     // The recv_loop remains alive until ~observer() destroys it, ensuring that
@@ -124,6 +134,9 @@ public:
     {
         if (m_stopped.exchange(true, std::memory_order_acq_rel))
             return; // already stopped — idempotent
+
+        if (auto h = std::exchange(m_on_completion, nullptr); h)
+            h(std::error_code{});
     }
 
     // Accessors — observer owns socket and timer directly.
@@ -150,10 +163,11 @@ private:
             });
     }
 
-    socket_type      m_socket;    // socket used for receiving multicast packets
-    timer_type       m_timer;     // passed to recv_loop for silence-timeout tracking
-    record_callback  m_callback;  // called once per successfully parsed record
-    std::unique_ptr<recv_loop<P>> m_loop; // continuous listener (null until start())
+    socket_type      m_socket;          // socket used for receiving multicast packets
+    timer_type       m_timer;           // passed to recv_loop for silence-timeout tracking
+    record_callback  m_callback;        // called once per successfully parsed record
+    completion_handler m_on_completion; // fires once when stop() is called
+    std::unique_ptr<recv_loop<P>> m_loop; // continuous listener (null until async_observe())
     std::atomic<bool> m_stopped;          // idempotent stop flag
 };
 

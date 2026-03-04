@@ -17,6 +17,8 @@
 #include <cstdint>
 #include <functional>
 #include <cassert>
+#include <system_error>
+#include <utility>
 
 namespace mdnspp {
 
@@ -26,11 +28,13 @@ namespace mdnspp {
 //   P — Policy: provides executor_type, socket_type, timer_type
 //
 // Lifecycle:
-//   1. service_server(ex, info)        — direct constructor (throwing)
-//      service_server(ex, info, ec)    — non-throwing overload (ec set on failure)
-//   2. start()                         — arms recv_loop; returns immediately
-//   3. stop()                          — idempotent; cancels timer, destroys loop
-//   4. ~service_server()               — calls stop() for RAII safety
+//   1. service_server(ex, info)          — direct constructor (throwing)
+//      service_server(ex, info, ec)      — non-throwing overload (ec set on failure)
+//   2. async_start([on_done])            — arms recv_loop; returns immediately
+//                                          on_done fires with error_code{} when stop() is called
+//   3. stop()                            — idempotent; fires completion handler, cancels timer,
+//                                          destroys loop
+//   4. ~service_server()                 — calls stop() for RAII safety
 //
 // No inheritance. No std::mutex. BEHAV-03 compliant.
 // Response delay 20-500ms per RFC 6762 section 6 (BEHAV-04).
@@ -47,11 +51,15 @@ public:
     /// Parameters: sender endpoint, qtype requested, whether unicast was requested.
     using query_callback = std::function<void(endpoint, uint16_t, bool)>;
 
+    /// Completion callback fired once when stop() is called.
+    /// Receives error_code (always success).
+    using completion_handler = std::function<void(std::error_code)>;
+
     // Non-copyable
     service_server(const service_server &) = delete;
     service_server &operator=(const service_server &) = delete;
 
-    // Movable only before start() is called (m_loop must be null).
+    // Movable only before async_start() is called (m_loop must be null).
     // Moving a started server is a logic error.
     service_server(service_server &&other) noexcept
         : m_socket(std::move(other.m_socket))
@@ -59,6 +67,7 @@ public:
         , m_recv_timer(std::move(other.m_recv_timer))
         , m_info(std::move(other.m_info))
         , m_on_query(std::move(other.m_on_query))
+        , m_on_completion(std::move(other.m_on_completion))
         , m_rng(std::move(other.m_rng))
         , m_loop(std::move(other.m_loop))
         , m_stopped(other.m_stopped.load(std::memory_order_acquire))
@@ -79,6 +88,7 @@ public:
         m_recv_timer     = std::move(other.m_recv_timer);
         m_info           = std::move(other.m_info);
         m_on_query       = std::move(other.m_on_query);
+        m_on_completion  = std::move(other.m_on_completion);
         m_rng            = std::move(other.m_rng);
         m_loop           = std::move(other.m_loop);
         m_stopped.store(other.m_stopped.load(std::memory_order_acquire),
@@ -131,12 +141,14 @@ public:
     {
     }
 
-    // start() — arms the recv_loop and returns immediately.
+    // async_start() — arms the recv_loop and returns immediately.
+    // on_done fires with error_code{} when stop() is called (or empty if omitted).
     // Incoming queries trigger RFC 6762-delayed responses.
-    // Must only be called once; calling start() after start() is a logic error.
-    void start()
+    // Must only be called once; calling async_start() twice is a logic error.
+    void async_start(completion_handler on_done = {})
     {
         assert(m_loop == nullptr); // can only start once
+        m_on_completion = std::move(on_done);
 
         m_loop = std::make_unique<recv_loop<P>>(
             m_socket,
@@ -152,11 +164,17 @@ public:
         m_loop->start();
     }
 
-    // stop() — idempotent; cancels response timer, destroys recv_loop.
+    // stop() — idempotent; fires the completion handler, cancels response timer,
+    // destroys recv_loop.
+    // The completion handler fires BEFORE canceling the timer and destroying the loop,
+    // so the handler can safely access server state.
     void stop()
     {
         if (m_stopped.exchange(true, std::memory_order_acq_rel))
             return; // already stopped
+
+        if (auto h = std::exchange(m_on_completion, nullptr); h)
+            h(std::error_code{});
 
         m_response_timer.cancel();
         m_loop.reset(); // destructor calls stop() on the loop
@@ -269,8 +287,9 @@ private:
     timer_type     m_recv_timer;       // passed to recv_loop for silence tracking
     service_info   m_info;             // service description for DNS responses
     query_callback m_on_query;         // optional per-query callback
+    completion_handler m_on_completion; // fires once when stop() is called
     std::mt19937   m_rng;              // PRNG for random delay generation
-    std::unique_ptr<recv_loop<P>> m_loop; // continuous query listener (null until start())
+    std::unique_ptr<recv_loop<P>> m_loop; // continuous query listener (null until async_start())
     std::atomic<bool> m_stopped;          // idempotent stop flag
 };
 

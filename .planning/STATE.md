@@ -2,16 +2,13 @@
 gsd_state_version: 1.0
 milestone: v2.0
 milestone_name: Standalone & Ergonomic
-status: executing
-stopped_at: Completed 07-03-PLAN.md (test migration, old header removal). Phase 07 complete.
-last_updated: "2026-03-04T12:35:58.878Z"
-last_activity: "2026-03-04 — Completed 07-01 (Policy concept layer: SocketLike, TimerLike, Policy, MockPolicy, AsioPolicy)"
+status: in_progress
+last_updated: "2026-03-04T13:00:00.000Z"
 progress:
-  total_phases: 5
+  total_phases: 1
   completed_phases: 1
-  total_plans: 3
-  completed_plans: 3
-  percent: 3
+  total_plans: 4
+  completed_plans: 4
 ---
 
 # Project State
@@ -21,14 +18,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-04)
 
 **Core value:** A C++23 mDNS library that composes naturally with any executor or event loop — no owned threads, no hidden allocations, no C types leaking into user code. Truly standalone.
-**Current focus:** Phase 7 — Policy Unification and Direct Construction
+**Current focus:** Phase 8 — Native DNS Protocol
 
 ## Current Position
 
-Phase: 7 of 11 (Policy Unification and Direct Construction)
-Plan: 02 (07-01 complete)
+Phase: 8 of 11 (Native DNS Protocol)
+Plan: 02 (08-01 complete)
 Status: In progress
-Last activity: 2026-03-04 — Completed 07-01 (Policy concept layer: SocketLike, TimerLike, Policy, MockPolicy, AsioPolicy)
+Last activity: 2026-03-04 — Completed 08-01 (detail::read_dns_name: RFC 1035 §4.1.4 name decompression with RFC 9267 safety)
 
 Progress: [░░░░░░░░░░] 3% (v2.0)
 
@@ -46,6 +43,7 @@ Progress: [░░░░░░░░░░] 3% (v2.0)
 | 07-policy-unification | 1 | ~6 min | ~6 min |
 | Phase 07-policy-unification-and-direct-construction P02 | 3 | 2 tasks | 5 files |
 | Phase 07-policy-unification-and-direct-construction P03 | 573 | 2 tasks | 21 files |
+| Phase 08-native-dns-protocol P01 | ~4 min | 1 task | 3 files |
 
 ## Accumulated Context
 
@@ -64,6 +62,8 @@ Progress: [░░░░░░░░░░] 3% (v2.0)
 - [Phase 07]: service_server exposes timer() for response timer and recv_timer() for recv loop timer as named accessors
 - [Phase 07]: recv_loop public socket()/timer() accessors removed — public types access their own members directly
 - [Phase 07]: MockTimer::fire() accessed via local timer variable — recv_loop no longer exposes timer() accessor
+- [Phase 08]: read_dns_name produces dotted-label names without trailing dot (e.g. "_http._tcp.local"); existing parse_test uses find() so no regressions
+- [Phase 08]: read_dns_name takes offset by value (not reference) — stateless decode from a fixed point, matching parse.cpp usage of meta.name_offset
 
 ### Pending Todos
 
@@ -76,6 +76,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-03-04T12:35:58.876Z
-Stopped at: Completed 07-03-PLAN.md (test migration, old header removal). Phase 07 complete.
+Last session: 2026-03-04T13:00:00.000Z
+Stopped at: Completed 08-01-PLAN.md (read_dns_name: RFC 1035 name decompression with RFC 9267 safety). Phase 08 Plan 01 complete.
 Resume file: None

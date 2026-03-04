@@ -56,7 +56,7 @@
   3. PTR, SRV, TXT, A, and AAAA records parse identically to the previous mjansson-backed implementation — all existing record parser tests pass with no behavioral changes
   4. No `<mdns.h>` include appears anywhere in `src/` or `include/`
 **Plans**: 2 plans
-  - [ ] 08-01-PLAN.md — TDD: Implement read_dns_name in dns_wire.h with RFC 1035/9267 safety tests
+  - [x] 08-01-PLAN.md — TDD: Implement read_dns_name in dns_wire.h with RFC 1035/9267 safety tests
   - [ ] 08-02-PLAN.md — Replace mjansson calls in parse.cpp, clean mdns_util, remove C library from build
 
 ### Phase 9: NativePolicy Standalone Networking
@@ -105,7 +105,7 @@
 | 5. Refactor service_server | v1.0 | 3/3 | Complete | 2026-03-04 |
 | 6. Refactor observer | v1.0 | 2/2 | Complete | 2026-03-04 |
 | 7. Policy Unification and Direct Construction | 3/3 | Complete   | 2026-03-04 | - |
-| 8. Native DNS Protocol | v2.0 | 0/? | Not started | - |
+| 8. Native DNS Protocol | v2.0 | 1/2 | In progress | - |
 | 9. NativePolicy Standalone Networking | v2.0 | 0/? | Not started | - |
 | 10. ASIO Completion Tokens | v2.0 | 0/? | Not started | - |
 | 11. Service Aggregation | v2.0 | 0/? | Not started | - |

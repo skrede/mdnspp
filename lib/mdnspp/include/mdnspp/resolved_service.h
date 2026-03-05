@@ -86,7 +86,10 @@ inline std::vector<resolved_service> aggregate(std::span<const mdns_record_varia
                     it->second.svc.hostname = r.srv_name;
                     it->second.svc.port = r.port;
                     // Record the host -> instance mapping for address correlation
-                    host_to_instances.try_emplace(r.srv_name).first->second.push_back(r.name);
+                    if(auto hi = host_to_instances.find(r.srv_name); hi != host_to_instances.end())
+                        hi->second.push_back(r.name);
+                    else
+                        host_to_instances.insert({r.srv_name, {r.name}});
                 }
             }
             else if constexpr(std::is_same_v<T, record_txt>)

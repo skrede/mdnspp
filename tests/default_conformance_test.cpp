@@ -131,8 +131,8 @@ TEST_CASE("DefaultContext dispatches data on registered loopback socket", "[nati
     mdnspp::DefaultContext ctx;
 
     // Create a plain UDP socket on loopback
-    int fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    REQUIRE(fd >= 0);
+    auto fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    REQUIRE(fd != mdnspp::detail::invalid_socket);
 
     // Bind to loopback on an ephemeral port
     sockaddr_in addr{};
@@ -142,15 +142,26 @@ TEST_CASE("DefaultContext dispatches data on registered loopback socket", "[nati
     REQUIRE(::bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0);
 
     // Query the assigned port
+#ifdef _WIN32
+    int len = sizeof(addr);
+#else
     socklen_t len = sizeof(addr);
+#endif
     REQUIRE(::getsockname(fd, reinterpret_cast<sockaddr *>(&addr), &len) == 0);
 
     // Make non-blocking
+#ifdef _WIN32
+    {
+        u_long mode = 1;
+        REQUIRE(::ioctlsocket(fd, FIONBIO, &mode) == 0);
+    }
+#else
     {
         int flags = ::fcntl(fd, F_GETFL, 0);
         REQUIRE(flags >= 0);
         REQUIRE(::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0);
     }
+#endif
 
     // Register with context
     bool handler_called = false;
@@ -166,8 +177,13 @@ TEST_CASE("DefaultContext dispatches data on registered loopback socket", "[nati
 
     // Send data to ourselves
     const std::string payload = "hello";
+#ifdef _WIN32
+    REQUIRE(::sendto(fd, payload.data(), static_cast<int>(payload.size()), 0,
+                     reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == static_cast<int>(payload.size()));
+#else
     REQUIRE(::sendto(fd, payload.data(), payload.size(), 0,
                      reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == static_cast<ssize_t>(payload.size()));
+#endif
 
     // Poll until handler fires (bounded attempts)
     for(int attempt = 0; attempt < 50 && !handler_called; ++attempt)
@@ -183,15 +199,15 @@ TEST_CASE("DefaultContext dispatches data on registered loopback socket", "[nati
 
     // Deregister and cleanup
     ctx.deregister_socket(fd);
-    ::close(fd);
+    mdnspp::detail::close_socket(fd);
 }
 
 TEST_CASE("DefaultContext deregister_socket stops dispatch", "[native][context][socket]")
 {
     mdnspp::DefaultContext ctx;
 
-    int fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-    REQUIRE(fd >= 0);
+    auto fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    REQUIRE(fd != mdnspp::detail::invalid_socket);
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -199,13 +215,24 @@ TEST_CASE("DefaultContext deregister_socket stops dispatch", "[native][context][
     addr.sin_port = 0;
     REQUIRE(::bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0);
 
+#ifdef _WIN32
+    int len = sizeof(addr);
+#else
     socklen_t len = sizeof(addr);
+#endif
     REQUIRE(::getsockname(fd, reinterpret_cast<sockaddr *>(&addr), &len) == 0);
 
+#ifdef _WIN32
+    {
+        u_long mode = 1;
+        REQUIRE(::ioctlsocket(fd, FIONBIO, &mode) == 0);
+    }
+#else
     {
         int flags = ::fcntl(fd, F_GETFL, 0);
         REQUIRE(::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0);
     }
+#endif
 
     int call_count = 0;
     ctx.register_socket(fd, [&](std::span<std::byte>, mdnspp::endpoint)
@@ -217,8 +244,13 @@ TEST_CASE("DefaultContext deregister_socket stops dispatch", "[native][context][
     ctx.deregister_socket(fd);
 
     const std::string payload = "nope";
+#ifdef _WIN32
+    (void)::sendto(fd, payload.data(), static_cast<int>(payload.size()), 0,
+                   reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+#else
     (void)::sendto(fd, payload.data(), payload.size(), 0,
                    reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+#endif
 
     ctx.poll_one();
     std::this_thread::sleep_for(5ms);
@@ -226,7 +258,7 @@ TEST_CASE("DefaultContext deregister_socket stops dispatch", "[native][context][
 
     REQUIRE(call_count == 0);
 
-    ::close(fd);
+    mdnspp::detail::close_socket(fd);
 }
 
 TEST_CASE("DefaultContext poll_one returns immediately with no sockets", "[native][context]")

@@ -308,6 +308,17 @@ private:
             throw std::system_error(::WSAGetLastError(), std::system_category(), "connect(wakeup_send)");
         }
 
+        // Set recv socket to non-blocking so drain_wakeup_fd() doesn't hang
+        {
+            u_long mode = 1;
+            if(::ioctlsocket(m_wakeup_recv, FIONBIO, &mode) == SOCKET_ERROR)
+            {
+                ::closesocket(m_wakeup_recv);
+                ::closesocket(m_wakeup_send);
+                throw std::system_error(::WSAGetLastError(), std::system_category(), "ioctlsocket(wakeup_recv)");
+            }
+        }
+
 #else
         // Other POSIX: self-pipe
         if(::pipe(m_pipe) != 0)

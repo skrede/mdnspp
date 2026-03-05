@@ -34,7 +34,7 @@ jobs:
         run: cmake --build build --config Release
 
       - name: Test
-        run: cd build && ctest -C Release --output-on-failure
+        run: cd build && ctest -C Release --output-on-failure --timeout 30
 
   install-test:
     runs-on: windows-2022

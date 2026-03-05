@@ -8,7 +8,6 @@
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/platform.h"
 
-#include <expected>
 #include <span>
 #include <sstream>
 #include <utility>

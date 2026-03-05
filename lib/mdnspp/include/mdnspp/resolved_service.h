@@ -89,7 +89,7 @@ inline std::vector<resolved_service> aggregate(std::span<const mdns_record_varia
                     if(auto hi = host_to_instances.find(r.srv_name); hi != host_to_instances.end())
                         hi->second.push_back(r.name);
                     else
-                        host_to_instances.insert({r.srv_name, {r.name}});
+                        host_to_instances.emplace(r.srv_name, std::vector<std::string>{r.name});
                 }
             }
             else if constexpr(std::is_same_v<T, record_txt>)

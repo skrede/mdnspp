@@ -143,13 +143,15 @@ int main()
 
     mdnspp::service_server srv{ctx, std::move(info)};
 
-    std::jthread shutdown{[&ctx](std::stop_token) {
+    std::thread shutdown{[&ctx] {
         std::this_thread::sleep_for(std::chrono::seconds(30));
         ctx.stop(); // ctx.stop() ends ctx.run()
     }};
 
     srv.async_start();
     ctx.run();
+
+    shutdown.join();
 }
 ```
 

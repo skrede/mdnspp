@@ -11,16 +11,15 @@
 #include <vector>
 #include <string>
 #include <cstddef>
-#include <expected>
 
-// Compile-time check: return type must be std::expected<std::string, mdnspp::mdns_error>
+// Compile-time check: return type must be detail::expected<std::string, mdnspp::mdns_error>
 static_assert(
     std::is_same_v<
         decltype(mdnspp::detail::read_dns_name(
             std::span<const std::byte>{},
             std::size_t{})),
-        std::expected<std::string, mdnspp::mdns_error>>,
-    "read_dns_name must return std::expected<std::string, mdns_error>");
+        mdnspp::detail::expected<std::string, mdnspp::mdns_error>>,
+    "read_dns_name must return detail::expected<std::string, mdns_error>");
 
 // Helper: build a byte vector from initializer list of unsigned chars
 static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
@@ -87,7 +86,7 @@ SCENARIO("read_dns_name returns empty string for the root-only name", "[dns_wire
             THEN("it returns an empty string")
             {
                 REQUIRE(result.has_value());
-                REQUIRE(result->empty());
+                REQUIRE((*result).empty());
             }
         }
     }

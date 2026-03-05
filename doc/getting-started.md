@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- C++23 compiler: GCC 13+, Clang 16+, MSVC 17+, or Xcode 16+
+- C++23 compiler: GCC 13+, Clang 17+, MSVC 17+, or Xcode 15.4+
 - CMake 3.25+
 
 ## Installation
@@ -112,19 +112,21 @@ int main()
 
     mdnspp::service_server srv{ctx, std::move(info)};
 
-    std::jthread shutdown{[&ctx](std::stop_token) {
+    std::thread shutdown{[&ctx] {
         std::this_thread::sleep_for(std::chrono::seconds(30));
         ctx.stop(); // ctx.stop() ends ctx.run()
     }};
 
     srv.async_start();
     ctx.run();
+
+    shutdown.join();
 }
 ```
 
 `service_info` uses designated initializers to describe the service. The
 server begins responding to mDNS queries after `async_start()` is called.
-A `std::jthread` stops the context after 30 seconds; in a real application,
+A background thread stops the context after 30 seconds; in a real application,
 you would tie the stop to your own shutdown signal.
 
 Multiple mdnspp components can share the same context -- for example, two

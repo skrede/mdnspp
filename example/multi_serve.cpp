@@ -47,7 +47,7 @@ int main()
         }
     };
 
-    std::jthread shutdown{[&ctx](std::stop_token) {
+    std::thread shutdown{[&ctx] {
         std::this_thread::sleep_for(std::chrono::seconds(30));
         ctx.stop();
     }};
@@ -56,4 +56,6 @@ int main()
     http_srv.async_start();
     ssh_srv.async_start();
     ctx.run();
+
+    shutdown.join();
 }

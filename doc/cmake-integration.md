@@ -5,9 +5,9 @@
 - CMake 3.25+
 - C++23 compiler:
   - GCC 13+
-  - Clang 16+
+  - Clang 17+
   - MSVC 17+ (Visual Studio 2022) with `/std:c++latest`
-  - Xcode 16+
+  - Xcode 15.4+
 
 ## FetchContent
 

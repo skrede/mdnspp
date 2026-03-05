@@ -1,5 +1,4 @@
-#include "mdnspp/observer.h"
-#include "mdnspp/asio/asio_policy.h"
+#include "mdnspp/asio.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 

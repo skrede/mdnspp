@@ -1,8 +1,7 @@
-#include "mdnspp/service_server.h"
+#include "mdnspp/asio.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/detail/dns_enums.h"
-#include "mdnspp/asio/asio_policy.h"
 
 #include <asio.hpp>
 #include <iostream>

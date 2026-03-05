@@ -1,0 +1,115 @@
+name: Linux
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - '**.md'
+      - 'doc/**'
+      - '.planning/**'
+  pull_request:
+    branches: [master]
+    paths-ignore:
+      - '**.md'
+      - 'doc/**'
+      - '.planning/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: gcc-13
+            cc: gcc-13
+            cxx: g++-13
+            coverage: false
+          - compiler: gcc-14
+            cc: gcc-14
+            cxx: g++-14
+            coverage: true
+            gcov_executable: gcov-14
+          - compiler: clang-17
+            cc: clang-17
+            cxx: clang++-17
+            coverage: false
+          - compiler: clang-18
+            cc: clang-18
+            cxx: clang++-18
+            coverage: true
+            gcov_executable: "llvm-cov-18 gcov"
+
+    runs-on: ubuntu-24.04
+    name: ${{ matrix.compiler }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install gcovr
+        if: matrix.coverage
+        run: pip install gcovr
+
+      - name: Configure
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
+        run: |
+          cmake_args="-DMDNSPP_BUILD_TESTS=ON -DMDNSPP_BUILD_EXAMPLES=ON -DMDNSPP_ENABLE_ASIO_POLICY=ON"
+          if [ "${{ matrix.coverage }}" = "true" ]; then
+            cmake . -B build -DCMAKE_BUILD_TYPE=Debug \
+              -DCMAKE_CXX_FLAGS="--coverage" \
+              -DCMAKE_C_FLAGS="--coverage" \
+              $cmake_args
+          else
+            cmake . -B build -DCMAKE_BUILD_TYPE=Release $cmake_args
+          fi
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: cd build && ctest --output-on-failure
+
+      - name: Generate coverage
+        if: matrix.coverage
+        run: |
+          gcovr build \
+            --root . \
+            --gcov-executable "${{ matrix.gcov_executable }}" \
+            --exclude 'tests/' \
+            --exclude 'example/' \
+            --exclude 'lib/mdnspp-testing/' \
+            --xml coverage.xml
+
+      - name: Upload to Codecov
+        if: matrix.coverage
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false
+
+  install-test:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and install
+        run: |
+          cmake . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install \
+            -DMDNSPP_ENABLE_ASIO_POLICY=ON
+          cmake --build build
+          cmake --install build
+
+      - name: Build consumer project
+        run: |
+          cmake tests/integration -B build-consumer \
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-consumer
+
+      - name: Run consumer test
+        run: ./build-consumer/integration_test

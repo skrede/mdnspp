@@ -55,3 +55,12 @@ cmake-build-*
 *.ilk
 *.pdb
 *.exp
+
+build*/
+build_*/
+.claude/
+.gemini/
+.planning/
+claude.json
+CLAUDE.md
+

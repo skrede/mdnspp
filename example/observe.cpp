@@ -1,8 +1,30 @@
-#include <mdnspp/observer.h>
+// Observe mDNS multicast traffic using DefaultPolicy.
+// Prints each record to stdout, stops after 10 records.
+// Usage: ./mdnspp_example_observe
 
-int main(int, char **)
+#include <mdnspp/defaults.h>
+#include <mdnspp/records.h>
+
+#include <iostream>
+#include <variant>
+
+int main()
 {
-mdnspp::observer s;
-s.set_log_level(mdnspp::log_level::trace);
-s.observe();
+    mdnspp::context ctx;
+    int count = 0;
+
+    mdnspp::observer obs{ctx,
+        [&](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
+        {
+            std::visit([&](const auto &r) {
+                std::cout << sender << " -> " << r << "\n";
+            }, rec);
+
+            if (++count >= 10)
+                obs.stop();
+        }
+    };
+
+    obs.async_observe([&ctx](std::error_code) { ctx.stop(); });
+    ctx.run();
 }

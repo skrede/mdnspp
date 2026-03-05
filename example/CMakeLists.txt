@@ -1,14 +1,20 @@
-add_executable(discover discover.cpp)
-target_link_libraries(discover mdnspp)
+# DefaultPolicy examples (always built when MDNSPP_BUILD_EXAMPLES=ON)
+add_executable(mdnspp_example_observe observe.cpp)
+target_link_libraries(mdnspp_example_observe mdnspp::native)
 
-add_executable(inquire inquire.cpp)
-target_link_libraries(inquire mdnspp)
+add_executable(mdnspp_example_query query.cpp)
+target_link_libraries(mdnspp_example_query mdnspp::native)
 
-add_executable(serve serve.cpp)
-target_link_libraries(serve mdnspp)
+add_executable(mdnspp_example_discover discover.cpp)
+target_link_libraries(mdnspp_example_discover mdnspp::native)
 
-add_executable(observe observe.cpp)
-target_link_libraries(observe mdnspp)
+add_executable(mdnspp_example_serve serve.cpp)
+target_link_libraries(mdnspp_example_serve mdnspp::native)
 
-add_executable(log_sink log_sink.cpp)
-target_link_libraries(log_sink mdnspp)
+add_executable(mdnspp_example_multi_serve multi_serve.cpp)
+target_link_libraries(mdnspp_example_multi_serve mdnspp::native)
+
+# ASIO examples (additionally gated on MDNSPP_ENABLE_ASIO_POLICY)
+if(MDNSPP_ENABLE_ASIO_POLICY)
+    add_subdirectory(asio)
+endif()

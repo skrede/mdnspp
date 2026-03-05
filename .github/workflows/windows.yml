@@ -1,0 +1,63 @@
+name: Windows
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "doc/**"
+      - ".planning/**"
+  pull_request:
+    branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "doc/**"
+      - ".planning/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        shell: bash
+        run: |
+          cmake . -B build -A x64 \
+            -DMDNSPP_BUILD_TESTS=ON \
+            -DMDNSPP_BUILD_EXAMPLES=ON \
+            -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+            -DCMAKE_CXX_FLAGS="/std:c++latest"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        run: cd build && ctest -C Release --output-on-failure
+
+  install-test:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and install
+        shell: bash
+        run: |
+          cmake . -B build -A x64 \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install \
+            -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+            -DCMAKE_CXX_FLAGS="/std:c++latest"
+          cmake --build build --config Release
+          cmake --install build --config Release
+
+      - name: Build consumer
+        shell: bash
+        run: |
+          cmake tests/integration -B build-consumer -A x64 \
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install \
+            -DCMAKE_CXX_FLAGS="/std:c++latest"
+          cmake --build build-consumer --config Release
+
+      - name: Run consumer test
+        run: build-consumer/Release/integration_test.exe

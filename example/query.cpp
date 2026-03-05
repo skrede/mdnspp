@@ -1,4 +1,4 @@
-#include "mdnspp/querent.h"
+#include "mdnspp/querier.h"
 #include "mdnspp/asio/asio_policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
@@ -20,7 +20,7 @@ int main(int argc, char *argv[])
 
     asio::io_context io;
 
-    mdnspp::querent<mdnspp::AsioPolicy> q{
+    mdnspp::querier<mdnspp::AsioPolicy> q{
         io,
         std::chrono::seconds(3),
         [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)

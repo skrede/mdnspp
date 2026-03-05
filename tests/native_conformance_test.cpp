@@ -20,7 +20,7 @@ static_assert(mdnspp::TimerLike<mdnspp::NativeTimer>,
 
 #include "mdnspp/observer.h"
 #include "mdnspp/service_discovery.h"
-#include "mdnspp/querent.h"
+#include "mdnspp/querier.h"
 #include "mdnspp/service_server.h"
 #include "mdnspp/service_info.h"
 
@@ -37,8 +37,8 @@ static_assert(sizeof(mdnspp::observer<mdnspp::NativePolicy>) > 0,
               "observer<NativePolicy> must be a complete type");
 static_assert(sizeof(mdnspp::service_discovery<mdnspp::NativePolicy>) > 0,
               "service_discovery<NativePolicy> must be a complete type");
-static_assert(sizeof(mdnspp::querent<mdnspp::NativePolicy>) > 0,
-              "querent<NativePolicy> must be a complete type");
+static_assert(sizeof(mdnspp::querier<mdnspp::NativePolicy>) > 0,
+              "querier<NativePolicy> must be a complete type");
 static_assert(sizeof(mdnspp::service_server<mdnspp::NativePolicy>) > 0,
               "service_server<NativePolicy> must be a complete type");
 
@@ -170,15 +170,15 @@ TEST_CASE("All four public types instantiate with NativePolicy", "[native][polic
         WARN("service_discovery<NativePolicy> construction failed (no-network CI): " << e.what());
     }
 
-    // querent<NativePolicy>
+    // querier<NativePolicy>
     try
     {
-        mdnspp::querent<mdnspp::NativePolicy> q{ctx, 500ms};
-        SUCCEED("querent<NativePolicy> constructed");
+        mdnspp::querier<mdnspp::NativePolicy> q{ctx, 500ms};
+        SUCCEED("querier<NativePolicy> constructed");
     }
     catch(const std::exception& e)
     {
-        WARN("querent<NativePolicy> construction failed (no-network CI): " << e.what());
+        WARN("querier<NativePolicy> construction failed (no-network CI): " << e.what());
     }
 
     // service_server<NativePolicy>

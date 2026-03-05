@@ -1,8 +1,8 @@
-// tests/querent_test.cpp
-// querent<MockPolicy> unit tests — Phase 7, Plan 07-03
+// tests/querier_test.cpp
+// querier<MockPolicy> unit tests — Phase 7, Plan 07-03
 // Tests the full async_query() flow via MockPolicy.
 
-#include "mdnspp/querent.h"
+#include "mdnspp/querier.h"
 #include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
@@ -202,15 +202,15 @@ static std::vector<std::byte> make_multi_record_response()
 // Tests
 // ---------------------------------------------------------------------------
 
-SCENARIO("querent constructs and is usable", "[querent][create]")
+SCENARIO("querier constructs and is usable", "[querier][create]")
 {
-    GIVEN("a querent instance with MockPolicy")
+    GIVEN("a querier instance with MockPolicy")
     {
         mock_executor ex;
 
         WHEN("constructed with 500ms silence timeout")
         {
-            querent<MockPolicy> q{ex, 500ms};
+            querier<MockPolicy> q{ex, 500ms};
 
             THEN("it is usable (socket is empty, results empty)")
             {
@@ -221,12 +221,12 @@ SCENARIO("querent constructs and is usable", "[querent][create]")
     }
 }
 
-SCENARIO("async_query returns A record from mock socket", "[querent][query][A]")
+SCENARIO("async_query returns A record from mock socket", "[querier][query][A]")
 {
-    GIVEN("a querent instance and an A response for myhost.local. enqueued")
+    GIVEN("a querier instance and an A response for myhost.local. enqueued")
     {
         mock_executor ex;
-        querent<MockPolicy> q{ex, 500ms};
+        querier<MockPolicy> q{ex, 500ms};
         q.socket().enqueue(make_a_response("myhost.local.", 192, 168, 1, 1));
 
         WHEN("async_query() is called for myhost.local. with qtype=1 (A)")
@@ -246,12 +246,12 @@ SCENARIO("async_query returns A record from mock socket", "[querent][query][A]")
     }
 }
 
-SCENARIO("async_query fires completion callback with results", "[querent][async]")
+SCENARIO("async_query fires completion callback with results", "[querier][async]")
 {
-    GIVEN("a querent instance and an A response for myhost.local. enqueued")
+    GIVEN("a querier instance and an A response for myhost.local. enqueued")
     {
         mock_executor ex;
-        querent<MockPolicy> q{ex, 500ms};
+        querier<MockPolicy> q{ex, 500ms};
         q.socket().enqueue(make_a_response("myhost.local.", 10, 0, 0, 1));
 
         WHEN("async_query() is called with a completion callback and the silence timer fires")
@@ -290,12 +290,12 @@ SCENARIO("async_query fires completion callback with results", "[querent][async]
     }
 }
 
-SCENARIO("async_query sends correct DNS query packet", "[querent][query][packet]")
+SCENARIO("async_query sends correct DNS query packet", "[querier][query][packet]")
 {
-    GIVEN("a querent instance with no enqueued responses")
+    GIVEN("a querier instance with no enqueued responses")
     {
         mock_executor ex;
-        querent<MockPolicy> q{ex, 500ms};
+        querier<MockPolicy> q{ex, 500ms};
 
         WHEN("async_query() is called for myhost.local. with qtype=1 (A)")
         {
@@ -343,12 +343,12 @@ SCENARIO("async_query sends correct DNS query packet", "[querent][query][packet]
 }
 
 SCENARIO("async_query accumulates multiple records from a single frame",
-         "[querent][query][multi]")
+         "[querier][query][multi]")
 {
-    GIVEN("a querent instance and a multi-record response enqueued")
+    GIVEN("a querier instance and a multi-record response enqueued")
     {
         mock_executor ex;
-        querent<MockPolicy> q{ex, 500ms};
+        querier<MockPolicy> q{ex, 500ms};
         q.socket().enqueue(make_multi_record_response());
 
         WHEN("async_query() is called")
@@ -365,7 +365,7 @@ SCENARIO("async_query accumulates multiple records from a single frame",
 }
 
 SCENARIO("async_query skips malformed records and returns valid ones",
-         "[querent][query][malformed]")
+         "[querier][query][malformed]")
 {
     GIVEN("a DNS frame with a valid A record and an invalid A record (wrong rdlength)")
     {
@@ -406,7 +406,7 @@ SCENARIO("async_query skips malformed records and returns valid ones",
         pkt.push_back(static_cast<std::byte>(0)); // 5th byte
 
         mock_executor ex;
-        querent<MockPolicy> q{ex, 500ms};
+        querier<MockPolicy> q{ex, 500ms};
         q.socket().enqueue(pkt);
 
         WHEN("async_query() is called")
@@ -426,7 +426,7 @@ SCENARIO("async_query skips malformed records and returns valid ones",
 }
 
 // Note: Testing async_query() with an empty queue (no responses, silence timeout only)
-// is not practical via querent's public API with MockTimer:
+// is not practical via querier's public API with MockTimer:
 // MockTimer does not auto-fire; its fire() method is only accessible via
 // the timer local variable, which is inaccessible from outside async_query().
 // The silence-timeout path is covered by recv_loop_test.cpp directly.

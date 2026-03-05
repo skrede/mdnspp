@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_QUERENT_H
-#define HPP_GUARD_MDNSPP_QUERENT_H
+#ifndef HPP_GUARD_MDNSPP_QUERIER_H
+#define HPP_GUARD_MDNSPP_QUERIER_H
 
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
@@ -33,7 +33,7 @@
 namespace mdnspp {
 
 template <Policy P>
-class querent
+class querier
 {
 public:
     using executor_type = typename P::executor_type;
@@ -48,11 +48,11 @@ public:
     using completion_handler = std::function<void(std::error_code, std::vector<mdns_record_variant>)>;
 
     // Non-copyable (owns recv_loop by unique_ptr)
-    querent(const querent &) = delete;
-    querent &operator=(const querent &) = delete;
+    querier(const querier &) = delete;
+    querier &operator=(const querier &) = delete;
 
     // Movable only before async_query() is called (m_loop must be null).
-    querent(querent &&other) noexcept
+    querier(querier &&other) noexcept
         : m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
         , m_silence_timeout(other.m_silence_timeout)
@@ -64,9 +64,9 @@ public:
         assert(other.m_loop == nullptr); // source must not have been started
     }
 
-    querent &operator=(querent &&) = delete;
+    querier &operator=(querier &&) = delete;
 
-    ~querent()
+    ~querier()
     {
         m_loop.reset(); // destroyed before m_socket/m_timer (reverse declaration order)
     }
@@ -74,7 +74,7 @@ public:
     // Throwing constructor — constructs socket and timer from executor.
     // Silence timeout determines how long to wait after the last relevant packet
     // before stopping the recv_loop.
-    explicit querent(executor_type ex,
+    explicit querier(executor_type ex,
                      std::chrono::milliseconds silence_timeout,
                      record_callback on_record = {})
         : m_socket(ex)
@@ -86,7 +86,7 @@ public:
     }
 
     // Non-throwing constructors — ec is last (ASIO convention).
-    querent(executor_type ex,
+    querier(executor_type ex,
             std::chrono::milliseconds silence_timeout,
             record_callback on_record,
             std::error_code &ec)
@@ -98,7 +98,7 @@ public:
     {
     }
 
-    querent(executor_type ex,
+    querier(executor_type ex,
             std::chrono::milliseconds silence_timeout,
             std::error_code &ec)
         : m_socket(ex, ec)
@@ -108,7 +108,7 @@ public:
     {
     }
 
-    // Accessors — querent owns socket and timer directly.
+    // Accessors — querier owns socket and timer directly.
     const socket_type &socket() const noexcept { return m_socket; }
     socket_type &socket() noexcept { return m_socket; }
     const timer_type &timer() const noexcept { return m_timer; }

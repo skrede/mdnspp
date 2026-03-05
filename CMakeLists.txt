@@ -15,7 +15,7 @@ set(INCLUDE_DIRECTORY include)
 set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/log.h
     ${INCLUDE_DIRECTORY}/mdnspp/logger.h
-    ${INCLUDE_DIRECTORY}/mdnspp/querent.h
+    ${INCLUDE_DIRECTORY}/mdnspp/querier.h
     ${INCLUDE_DIRECTORY}/mdnspp/records.h
     ${INCLUDE_DIRECTORY}/mdnspp/observer.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_server.h

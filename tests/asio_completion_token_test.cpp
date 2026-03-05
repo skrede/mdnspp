@@ -6,7 +6,7 @@
 // matching the pattern established in asio_conformance_test.cpp and service_server_tsan_test.cpp.
 
 #include "mdnspp/service_discovery.h"
-#include "mdnspp/querent.h"
+#include "mdnspp/querier.h"
 #include "mdnspp/observer.h"
 #include "mdnspp/service_server.h"
 #include "mdnspp/service_info.h"
@@ -58,16 +58,16 @@ SCENARIO("async_discover with use_future returns future with results",
 }
 
 // ---------------------------------------------------------------------------
-// Test 2: async_query with use_future (API-11 — querent path)
+// Test 2: async_query with use_future (API-11 — querier path)
 // ---------------------------------------------------------------------------
 
 SCENARIO("async_query with use_future returns future with results",
-         "[completion_token][use_future][querent]")
+         "[completion_token][use_future][querier]")
 {
     asio::io_context io;
     try
     {
-        mdnspp::querent<mdnspp::AsioPolicy> q{io, std::chrono::milliseconds(500)};
+        mdnspp::querier<mdnspp::AsioPolicy> q{io, std::chrono::milliseconds(500)};
 
         auto fut = q.async_query("_nonexistent._tcp.local.", mdnspp::dns_type::ptr, asio::use_future);
 

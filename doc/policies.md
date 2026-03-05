@@ -92,6 +92,22 @@ int main()
 }
 ```
 
+Multiple mdnspp components can share the same `mdnspp::context`. Each
+component creates its own socket, and the context multiplexes all of them:
+
+```cpp
+mdnspp::context ctx;
+
+mdnspp::service_server http_srv{ctx, http_info};
+mdnspp::service_server ssh_srv{ctx, ssh_info};
+mdnspp::observer       obs{ctx, on_record};
+
+http_srv.async_start();
+ssh_srv.async_start();
+obs.async_observe([&ctx](std::error_code) { ctx.stop(); });
+ctx.run(); // drives all three
+```
+
 ## AsioPolicy
 
 **When to use:** ASIO-based applications that need completion tokens

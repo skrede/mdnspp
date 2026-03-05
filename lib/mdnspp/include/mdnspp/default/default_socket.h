@@ -40,7 +40,6 @@ public:
         : m_ctx{ctx}
     {
         open_and_configure();
-        m_ctx.register_socket(m_fd);
     }
 
     // Non-throwing constructor.
@@ -48,8 +47,6 @@ public:
         : m_ctx{ctx}
     {
         open_and_configure(ec);
-        if(!ec)
-            m_ctx.register_socket(m_fd);
     }
 
     ~DefaultSocket()
@@ -62,12 +59,12 @@ public:
     DefaultSocket(DefaultSocket &&) = delete;
     DefaultSocket &operator=(DefaultSocket &&) = delete;
 
-    /// Store the receive handler and register it with DefaultContext.
+    /// Register this socket and its receive handler with DefaultContext.
     /// Called by recv_loop when it wants to arm the next receive.
     void async_receive(std::function<void(std::span<std::byte>, endpoint)> handler)
     {
         m_receive_handler = std::move(handler);
-        m_ctx.register_receive(m_receive_handler);
+        m_ctx.register_socket(m_fd, m_receive_handler);
     }
 
     /// Synchronous sendto(). mDNS sends are tiny and infrequent.
@@ -106,7 +103,7 @@ public:
     {
         if(m_fd != detail::invalid_socket)
         {
-            m_ctx.deregister_socket();
+            m_ctx.deregister_socket(m_fd);
             detail::close_socket(m_fd);
             m_fd = detail::invalid_socket;
         }

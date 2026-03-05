@@ -127,6 +127,11 @@ server begins responding to mDNS queries after `async_start()` is called.
 A `std::jthread` stops the context after 30 seconds; in a real application,
 you would tie the stop to your own shutdown signal.
 
+Multiple mdnspp components can share the same context -- for example, two
+`service_server` instances or a `service_server` and an `observer` on one
+event loop. Each component creates its own socket, and the context
+multiplexes them all. See the `multi_serve` example.
+
 ## What's next
 
 - [Policies](policies.md) -- understand the DefaultPolicy, AsioPolicy, and MockPolicy architecture

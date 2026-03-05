@@ -191,6 +191,26 @@ int main()
 }
 ```
 
+## Multiple Servers on One Context
+
+Multiple `service_server` instances can share the same executor. Each server
+creates its own socket, and the context multiplexes all of them. This works
+with both DefaultPolicy and AsioPolicy.
+
+```cpp
+mdnspp::context ctx;
+
+mdnspp::service_server http_srv{ctx, http_info};
+mdnspp::service_server ssh_srv{ctx, ssh_info};
+
+http_srv.async_start();
+ssh_srv.async_start();
+ctx.run(); // drives both servers
+```
+
+The same applies to mixing types -- an `observer` and a `service_server` can
+share a context, as can any combination of mdnspp components.
+
 ## See Also
 
 - [service_discovery](service_discovery.md) -- discover services announced by servers

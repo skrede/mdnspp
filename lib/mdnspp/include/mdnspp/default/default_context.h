@@ -148,8 +148,8 @@ public:
                 break;
             }
 
-            if(data_readable())
-                dispatch_receive();
+            if(any_socket_readable())
+                dispatch_receives();
 
             fire_expired_timers();
         }
@@ -167,9 +167,9 @@ public:
             return;
         }
 
-        if(data_readable())
+        if(any_socket_readable())
         {
-            dispatch_receive();
+            dispatch_receives();
             return;
         }
 
@@ -194,20 +194,24 @@ public:
     // Internal interface — called by NativeSocket / DefaultTimer
     // -----------------------------------------------------------------------
 
-    void register_socket(detail::native_socket_t fd)
+    void register_socket(detail::native_socket_t fd,
+                          std::function<void(std::span<std::byte>, endpoint)> handler)
     {
-        m_socket_fd = fd;
+        // Replace if already registered (e.g. async_receive re-arms)
+        for(auto &entry : m_sockets)
+        {
+            if(entry.fd == fd)
+            {
+                entry.handler = std::move(handler);
+                return;
+            }
+        }
+        m_sockets.push_back({fd, std::move(handler)});
     }
 
-    void deregister_socket()
+    void deregister_socket(detail::native_socket_t fd)
     {
-        m_socket_fd = detail::invalid_socket;
-    }
-
-    /// Register a callback invoked when data is available on the socket fd.
-    void register_receive(std::function<void(std::span<std::byte>, endpoint)> handler)
-    {
-        m_receive_handler = std::move(handler);
+        std::erase_if(m_sockets, [fd](const auto &e) { return e.fd == fd; });
     }
 
     void register_timer(DefaultTimer *t)
@@ -229,11 +233,16 @@ public:
     void fire_expired_timers();
 
 private:
+    struct socket_entry
+    {
+        detail::native_socket_t fd{detail::invalid_socket};
+        std::function<void(std::span<std::byte>, endpoint)> handler;
+    };
+
     // winsock_guard MUST be the first member — initialised before any sockets.
     winsock_guard m_wsa{};
     std::atomic<bool> m_stopped{false};
-    detail::native_socket_t m_socket_fd{detail::invalid_socket};
-    std::function<void(std::span<std::byte>, endpoint)> m_receive_handler;
+    std::vector<socket_entry> m_sockets;
     std::vector<DefaultTimer*> m_timers;
     std::array<std::byte, 4096> m_recv_buf{};
     sockaddr_in m_sender_addr{};
@@ -248,9 +257,9 @@ private:
     int m_pipe[2]{-1, -1};
 #endif
 
-    // Per-poll-call result flags.
+    // Poll state — rebuilt each do_poll() call.
+    std::vector<pollfd> m_pollfds;
     bool m_wakeup_ready{false};
-    bool m_data_ready{false};
 
     // ------------------------------------------------------------------
     // Platform-specific wakeup fd lifecycle
@@ -384,81 +393,85 @@ private:
     [[nodiscard]] int wakeup_poll_fd() const noexcept { return m_pipe[0]; }
 #endif
 
-    /// Build pollfd array, invoke poll, cache readability flags.
+    /// Build pollfd array, invoke poll, dispatch ready sockets.
     int do_poll(int timeout_ms)
     {
         m_wakeup_ready = false;
-        m_data_ready = false;
 
-        const bool has_socket = (m_socket_fd != detail::invalid_socket);
+        // Build pollfd array: [wakeup_fd, socket_0, socket_1, ...]
+        m_pollfds.clear();
+        m_pollfds.push_back({static_cast<int>(wakeup_poll_fd()), POLLIN, 0});
+        for(const auto &entry : m_sockets)
+            m_pollfds.push_back({static_cast<int>(entry.fd), POLLIN, 0});
 
-        pollfd fds[2]{};
-        fds[0].fd = static_cast<int>(wakeup_poll_fd());
-        fds[0].events = POLLIN;
-
-        if(has_socket)
-        {
-            fds[1].fd = static_cast<int>(m_socket_fd);
-            fds[1].events = POLLIN;
-        }
-
-        const nfds_t nfds = has_socket ? 2u : 1u;
-        const int rc = detail::poll_sockets(fds, nfds, timeout_ms);
+        const auto nfds = static_cast<nfds_t>(m_pollfds.size());
+        const int rc = detail::poll_sockets(m_pollfds.data(), nfds, timeout_ms);
 
         if(rc > 0)
-        {
-            m_wakeup_ready = (fds[0].revents & POLLIN) != 0;
-            m_data_ready = has_socket && ((fds[1].revents & POLLIN) != 0);
-        }
+            m_wakeup_ready = (m_pollfds[0].revents & POLLIN) != 0;
 
         return rc;
     }
 
     [[nodiscard]] bool wakeup_readable() const noexcept { return m_wakeup_ready; }
-    [[nodiscard]] bool data_readable() const noexcept { return m_data_ready; }
 
-    void dispatch_receive()
+    [[nodiscard]] bool any_socket_readable() const noexcept
     {
-        if(!m_receive_handler)
-            return;
+        for(std::size_t i = 1; i < m_pollfds.size(); ++i)
+            if(m_pollfds[i].revents & POLLIN)
+                return true;
+        return false;
+    }
+
+    void dispatch_receives()
+    {
+        for(std::size_t i = 1; i < m_pollfds.size(); ++i)
+        {
+            if(!(m_pollfds[i].revents & POLLIN))
+                continue;
+
+            const auto sock_idx = i - 1;
+            if(sock_idx >= m_sockets.size() || !m_sockets[sock_idx].handler)
+                continue;
 
 #ifdef _WIN32
-        int sender_len = sizeof(m_sender_addr);
-        const int bytes = ::recvfrom(
-            m_socket_fd,
-            reinterpret_cast<char*>(m_recv_buf.data()),
-            static_cast<int>(m_recv_buf.size()),
-            0,
-            reinterpret_cast<sockaddr*>(&m_sender_addr),
-            &sender_len);
+            int sender_len = sizeof(m_sender_addr);
+            const int bytes = ::recvfrom(
+                m_sockets[sock_idx].fd,
+                reinterpret_cast<char*>(m_recv_buf.data()),
+                static_cast<int>(m_recv_buf.size()),
+                0,
+                reinterpret_cast<sockaddr*>(&m_sender_addr),
+                &sender_len);
 
-        if(bytes == SOCKET_ERROR)
-            return; // WSAEWOULDBLOCK or other — ignore silently
+            if(bytes == SOCKET_ERROR)
+                continue;
 #else
-        socklen_t sender_len = sizeof(m_sender_addr);
-        const ssize_t bytes = ::recvfrom(
-            m_socket_fd,
-            m_recv_buf.data(),
-            m_recv_buf.size(),
-            0,
-            reinterpret_cast<sockaddr*>(&m_sender_addr),
-            &sender_len);
+            socklen_t sender_len = sizeof(m_sender_addr);
+            const ssize_t bytes = ::recvfrom(
+                m_sockets[sock_idx].fd,
+                m_recv_buf.data(),
+                m_recv_buf.size(),
+                0,
+                reinterpret_cast<sockaddr*>(&m_sender_addr),
+                &sender_len);
 
-        if(bytes < 0)
-            return; // EAGAIN/EWOULDBLOCK or other — ignore silently
+            if(bytes < 0)
+                continue;
 #endif
 
-        char addr_str[INET_ADDRSTRLEN]{};
-        ::inet_ntop(AF_INET, &m_sender_addr.sin_addr, addr_str, sizeof(addr_str));
+            char addr_str[INET_ADDRSTRLEN]{};
+            ::inet_ntop(AF_INET, &m_sender_addr.sin_addr, addr_str, sizeof(addr_str));
 
-        endpoint ep{
-            .address = addr_str,
-            .port    = ::ntohs(m_sender_addr.sin_port),
-        };
+            endpoint ep{
+                .address = addr_str,
+                .port    = ::ntohs(m_sender_addr.sin_port),
+            };
 
-        m_receive_handler(
-            std::span<std::byte>{m_recv_buf.data(), static_cast<std::size_t>(bytes)},
-            ep);
+            m_sockets[sock_idx].handler(
+                std::span<std::byte>{m_recv_buf.data(), static_cast<std::size_t>(bytes)},
+                ep);
+        }
     }
 };
 

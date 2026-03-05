@@ -1,0 +1,59 @@
+// Announce two mDNS services sharing a single context using DefaultPolicy.
+// Demonstrates that multiple service_servers can coexist on one event loop.
+// Auto-stops after 30 seconds.
+// Usage: ./mdnspp_example_multi_serve
+
+#include <mdnspp/defaults.h>
+#include <mdnspp/service_info.h>
+#include <mdnspp/detail/dns_enums.h>
+
+#include <iostream>
+#include <thread>
+
+int main()
+{
+    mdnspp::context ctx;
+
+    mdnspp::service_info http_info{
+        .service_name = "WebApp._http._tcp.local.",
+        .service_type = "_http._tcp.local.",
+        .hostname     = "myhost.local.",
+        .port         = 8080,
+        .address_ipv4 = "192.168.1.69",
+        .txt_records  = {{"path", "/index.html"}},
+    };
+
+    mdnspp::service_info ssh_info{
+        .service_name = "MyHost._ssh._tcp.local.",
+        .service_type = "_ssh._tcp.local.",
+        .hostname     = "myhost.local.",
+        .port         = 22,
+        .address_ipv4 = "192.168.1.69",
+    };
+
+    mdnspp::service_server http_srv{ctx, std::move(http_info),
+        [](mdnspp::dns_type qtype, mdnspp::endpoint sender, bool unicast)
+        {
+            std::cout << "[http] " << sender << " queried qtype=" << to_string(qtype)
+                << (unicast ? " (unicast)" : " (multicast)") << "\n";
+        }
+    };
+
+    mdnspp::service_server ssh_srv{ctx, std::move(ssh_info),
+        [](mdnspp::dns_type qtype, mdnspp::endpoint sender, bool unicast)
+        {
+            std::cout << "[ssh]  " << sender << " queried qtype=" << to_string(qtype)
+                << (unicast ? " (unicast)" : " (multicast)") << "\n";
+        }
+    };
+
+    std::jthread shutdown{[&ctx](std::stop_token) {
+        std::this_thread::sleep_for(std::chrono::seconds(30));
+        ctx.stop();
+    }};
+
+    std::cout << "Serving HTTP + SSH on shared context (30s then auto-stop)\n";
+    http_srv.async_start();
+    ssh_srv.async_start();
+    ctx.run();
+}

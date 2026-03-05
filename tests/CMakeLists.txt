@@ -1,13 +1,47 @@
-set(UNIT_TEST_RESOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/resources")
-set(UNIT_TEST_INCLUDE ${CMAKE_CURRENT_LIST_DIR}/include)
-set(MDNSPP_SOURCE_DIR ${CMAKE_CURRENT_LIST_DIR}/../src/)
+FetchContent_Declare(
+    Catch2
+    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+    GIT_TAG v3.7.1
+)
+FetchContent_MakeAvailable(Catch2)
+
+add_executable(infra_headers_compile_test compile/infra_headers_compile_test.cpp)
+target_link_libraries(infra_headers_compile_test PRIVATE mdnspp_core)
+add_test(NAME infra_headers_compile_test COMMAND infra_headers_compile_test)
+
+add_executable(defaults_compile_test defaults_compile_test.cpp)
+target_link_libraries(defaults_compile_test PRIVATE mdnspp_core)
+add_test(NAME defaults_compile_test COMMAND defaults_compile_test)
 
 function(make_test TEST_FILE)
     add_executable(${TEST_FILE} "${TEST_FILE}.cpp")
-    target_link_libraries(${TEST_FILE} PRIVATE mdnspp Catch2::Catch2WithMain)
-    target_include_directories(${TEST_FILE} PRIVATE ${MDNSPP_SOURCE_DIR} ${UNIT_TEST_INCLUDE})
+    target_link_libraries(${TEST_FILE} PRIVATE mdnspp_core mdnspp_testing Catch2::Catch2WithMain)
     add_test(NAME ${TEST_FILE} COMMAND ${TEST_FILE})
 endfunction()
 
 make_test(log_test)
+make_test(concept_conformance_test)
+make_test(recv_loop_test)
+make_test(parse_test)
+make_test(service_discovery_test)
+make_test(querier_test)
+make_test(service_info_test)
+make_test(service_server_test)
+make_test(observer_test)
+make_test(dns_wire_test)
+make_test(service_aggregation_test)
+make_test(dns_test)
+make_test(endpoint_test)
+make_test(default_timer_test)
+make_test(default_conformance_test)
 
+if (MDNSPP_ENABLE_ASIO_POLICY)
+    function(make_asio_test TEST_FILE)
+        add_executable(${TEST_FILE} "${TEST_FILE}.cpp")
+        target_link_libraries(${TEST_FILE} PRIVATE mdnspp_core mdnspp_asio Catch2::Catch2WithMain)
+        add_test(NAME ${TEST_FILE} COMMAND ${TEST_FILE})
+    endfunction()
+    make_asio_test(asio_conformance_test)
+    make_asio_test(service_server_tsan_test)
+    make_asio_test(asio_completion_token_test)
+endif ()

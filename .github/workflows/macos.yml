@@ -1,0 +1,66 @@
+name: macOS
+
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "doc/**"
+      - ".planning/**"
+  pull_request:
+    branches: [master]
+    paths-ignore:
+      - "**.md"
+      - "doc/**"
+      - ".planning/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        xcode: ["15.4", "16.2"]
+    runs-on: macos-14
+    name: build (Xcode ${{ matrix.xcode }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode ${{ matrix.xcode }}
+        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
+
+      - name: Configure
+        run: |
+          cmake . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DMDNSPP_BUILD_TESTS=ON \
+            -DMDNSPP_BUILD_EXAMPLES=ON \
+            -DMDNSPP_ENABLE_ASIO_POLICY=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: cd build && ctest --output-on-failure
+
+  install-test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and install
+        run: |
+          cmake . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install \
+            -DMDNSPP_ENABLE_ASIO_POLICY=ON
+          cmake --build build
+          cmake --install build
+
+      - name: Build consumer
+        run: |
+          cmake tests/integration -B build-consumer \
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-consumer
+
+      - name: Run consumer test
+        run: ./build-consumer/integration_test

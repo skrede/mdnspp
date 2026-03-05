@@ -1,145 +1,185 @@
-[![Build](https://github.com/skrede/mdnspp/actions/workflows/config.yaml/badge.svg)](https://github.com/skrede/mdnspp/actions/workflows/config.yaml)
-
 # mdnspp
-Multicast DNS (mDNS) is a zero configuration service for resolving hostnames to IP addresses on (small) networks without a local name server. 
 
-This library is a cross-platform C++20 wrapper for the C library [mjansson/mdns](https://github.com/mjansson/mdns).
-The wrapped library implements mDNS according to [RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762) and [RFC 6763](https://datatracker.ietf.org/doc/html/rfc6763),
-including the networking, serialization and deserialization of packets.
+[![Linux](https://github.com/skrede/mdnspp/actions/workflows/linux.yml/badge.svg?branch=master)](https://github.com/skrede/mdnspp/actions/workflows/linux.yml)
+[![macOS](https://github.com/skrede/mdnspp/actions/workflows/macos.yml/badge.svg?branch=master)](https://github.com/skrede/mdnspp/actions/workflows/macos.yml)
+[![Windows](https://github.com/skrede/mdnspp/actions/workflows/windows.yml/badge.svg?branch=master)](https://github.com/skrede/mdnspp/actions/workflows/windows.yml)
+[![codecov](https://codecov.io/gh/skrede/mdnspp/branch/master/graph/badge.svg)](https://codecov.io/gh/skrede/mdnspp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://en.cppreference.com/w/cpp/23)
 
-Besides creating a C++ wrapper for the original library, simple logger/sink interfaces are provided to redirect or disable printouts.
+A C++23 mDNS/DNS-SD library with a policy-based architecture. mdnspp is fully standalone -- no Boost dependency, no hidden threads, no owned allocations. The policy design lets it compose naturally with any executor or event loop: use the built-in native sockets for standalone applications, or plug in ASIO for completion token support. Cross-platform on Linux, macOS, and Windows.
 
 ## Features
-* **Services** \
-Resolve hostname to ipv4 and ipv6 addresses, and provides text resources. (PTR, A, AAAA, SRV and TXT).
 
-* **Service discovery**\
-Zero configuration service discovery using mDNS.
+- **Standalone native networking** -- no external dependencies for the default policy
+- **Policy-based architecture** -- swap socket/timer/executor implementations at compile time
+- **ASIO completion token support** -- callbacks, futures, coroutines, and deferred operations
+- **Cross-platform** -- Linux, macOS, and Windows
+- **Type-safe DNS enums** -- `dns_type`, `dns_class` as scoped enums
+- **Service discovery with record aggregation** -- raw records or fully resolved services
 
-* **Query**\
-Send queries to resolve hostnames (A and AAAA) or for resources provided by specific services. 
+## Quick Start
 
-* **Observation**\
-Continuous monitoring of mDNS traffic.
+### Observe mDNS Traffic
 
-## Examples
-Check `examples/` for a full description of how to use this wrapper library. To build them, pass `-DMDNSPP_BUILD_EXAMPLES=ON` to CMake.
-
-### Service servers
-Setting up a service requires a hostname (e.g. "audhumbla"), a service name (e.g. "_mdnspp-service._udp.local."), and any text (TXT) resources. TXT records can have a key and value, or just a key.
 ```cpp
-mdnspp::service_server s("unique_service_name", "_mdnspp-service._udp.local.");
-s.serve({
-        {"flag", std::nullopt},
-        {"key", "value"}
-    }
-);
-```
+#include <mdnspp/defaults.h>
+#include <mdnspp/records.h>
 
-### Service discovery
-The following will print the discovered services to stdout,
-```cpp
-mdnspp::service_discovery d;
-d.discover();
-```
-which can produce the following.
-```txt
-[info] Local IPv4 address: 192.168.1.169
-[info] Local IPv6 address: fd9d:94d3:e296:a140:dba3:68ed:6136:7129
-[info] 192.168.1.169:5353: ANSWER PTR _services._dns-sd._udp.local. rclass 0x1 ttl 10 length 18
-[info] [fe80::38ec:d87a:32f:b30c%enp5s0]:5353: ANSWER PTR _services._dns-sd._udp.local. rclass 0x1 ttl 10 length 18
-[info] 192.168.1.107:5353: ANSWER PTR _services._dns-sd._udp.local. rclass 0x1 ttl 10 length 19
-[info] [fe80::a611:62ff:fe9c:166f%enp5s0]:5353: ANSWER PTR _services._dns-sd._udp.local. rclass 0x1 ttl 10 length 19
-[info] 192.168.1.49:5353: ANSWER PTR _services._dns-sd._udp.local. rclass 0x1 ttl 4500 length 13
-[info] 192.168.1.178:5353: ANSWER PTR _services._dns-sd._udp.local. rclass 0x1 ttl 4500 length 13
-```
-The discovery can be called with a list of whitelisting criteria, such that records that do not at least one criteria are discarded. 
-```cpp
-mdnspp::service_discovery d;
-d.discover({
-    [](const std::shared_ptr<mdnspp::record_t> &record)
-    {
-        return record->sender_address.starts_with("192.168.1.169");
-    }
-});
-```
+#include <iostream>
+#include <variant>
 
-### Queries
-Queries can be used to resolve specific hostnames ("audhumbla.local.") to ipv4 or ipv6 addresses without using discovery, or to retrieve service pointers. 
-```cpp
-mdnspp::querent d;
-d.query({
-        "unique_service_name.local.",
-        MDNS_RECORDTYPE_ANY
-});
-```
-The above produces the following output when the service example is running.
-```txt
-[info] Local IPv4 address: 192.168.1.169
-[info] Local IPv6 address: fd9d:94d3:e296:a140:dba3:68ed:6136:7129
-[info] 192.168.1.169:5353: ANSWER A unique_service_name.local. rclass 0x1 ttl 10 length 4
-[info] 192.168.1.169:5353: ADDITIONAL AAAA unique_service_name.local. rclass 0x1 ttl 10 length 16
-[info] 192.168.1.169:5353: ADDITIONAL TXT flag rclass 0x1 ttl 10 length 16
-[info] 192.168.1.169:5353: ADDITIONAL TXT key=value rclass 0x1 ttl 10 length 16
-[info] [fe80::38ec:d87a:32f:b30c%enp5s0]:5353: ANSWER A unique_service_name.local. rclass 0x1 ttl 10 length 4
-[info] [fe80::38ec:d87a:32f:b30c%enp5s0]:5353: ADDITIONAL AAAA unique_service_name.local. rclass 0x1 ttl 10 length 16
-[info] [fe80::38ec:d87a:32f:b30c%enp5s0]:5353: ADDITIONAL TXT flag rclass 0x1 ttl 10 length 16
-[info] [fe80::38ec:d87a:32f:b30c%enp5s0]:5353: ADDITIONAL TXT key=value rclass 0x1 ttl 10 length 16
-```
-
-### Logging
-Implement a custom log sink to handle log messages if prints to stdout is not desired. 
-```cpp
-class example_sink : public mdnspp::log_sink
+int main()
 {
-public:
-    ~example_sink() override = default;
+    mdnspp::context ctx;
 
-    void log(mdnspp::log_level level, const std::string &string) noexcept override
-    {
-        // redirect the printouts e.g., to file, or wrap around another logger implementation.
-    }
-};
+    mdnspp::observer obs{ctx,
+        [&](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
+        {
+            std::visit([&](const auto &r) {
+                std::cout << sender << " -> " << r << "\n";
+            }, rec);
+        }
+    };
 
-mdnspp::querent d(std::make_shared<example_sink>());
-d.query({
-        "unique_service_name.local.",
-        MDNS_RECORDTYPE_ANY
-});
-```
-
-### Sending log messages from custom types
-If deriving a class from `mdns_base`, log messages can be sent with various log levels as shown below. 
-These methods return a logger instance which builds the log message string using streams, and `log_sink::log()` is invoked when the logger instance is destroyed.
-The loggers can be used as an anonymous temporary variable,
-```cpp
-trace() << "This is a trace message";
-```
-or stored to a variable such that a multipart message can be constructed and logged once the logger goes out of scope:
-```
-{
-    auto debug_logger = debug();
-    debug_logger << "This is the first part of the message. ";
-    if(some_condition)
-        debug_logger << "some_condition was true. ";
-    else
-        debug_logger << "some_condition was false. ";
-    debug_logger << "This is the last part of the message. This scope exits now, and the logger is destroyed.";
+    obs.async_observe([&ctx](std::error_code) { ctx.stop(); }); // ctx.stop() ends ctx.run()
+    ctx.run();
 }
 ```
 
-## Limitations
-The following limitations are related to _mdnspp_ and not the original C library.
+### Query for Records
 
-The original C library provides an implementation according to the relevant RFC.
-However, much is left out of the implementation to users of the library in terms creating or handling requests and responses:
-requests must be responded to correctly, and records must be constructed correctly.
+```cpp
+#include <mdnspp/defaults.h>
+#include <mdnspp/records.h>
 
-There could be bugs related to the construction of records and responses performed by this library, which has not been extensively tested against 3rd party implementations.
-For example, there has been no systematic testing against Avahi or Apple's Bonjour beyond discovering known and expected Apple products on the local network.
+#include <iostream>
+#include <variant>
 
-The test coverage of this library is practically NIL.
+int main()
+{
+    mdnspp::context ctx;
 
-* A and AAAA records are only made for the first adapter encountered in each family (ipv4 and ipv6). This might be fixed at some point. 
-* Services automatically serve A and AAAA records on the first network interface in each family; it does not permit to specify individual interfaces to use (or not use).
-* This wrapper library has not been tested extensively in a multithreaded environment.
+    mdnspp::querier q{ctx, std::chrono::seconds(3),
+        [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
+        {
+            std::visit([&](const auto &r) {
+                std::cout << sender << " -> " << r << "\n";
+            }, rec);
+        }
+    };
+
+    q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,
+        [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
+        {
+            if (ec)
+                std::cerr << "query error: " << ec.message() << "\n";
+            else
+                std::cout << results.size() << " record(s)\n";
+            ctx.stop(); // ctx.stop() ends ctx.run()
+        });
+
+    ctx.run();
+}
+```
+
+### Discover Services
+
+```cpp
+#include <mdnspp/defaults.h>
+#include <mdnspp/records.h>
+
+#include <iostream>
+#include <variant>
+
+int main()
+{
+    mdnspp::context ctx;
+
+    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3),
+        [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
+        {
+            std::visit([&](const auto &r) {
+                std::cout << sender << " -> " << r << "\n";
+            }, rec);
+        }
+    };
+
+    sd.async_discover("_http._tcp.local.",
+        [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
+        {
+            if (ec)
+                std::cerr << "discovery error: " << ec.message() << "\n";
+            else
+                std::cout << results.size() << " record(s)\n";
+            ctx.stop(); // ctx.stop() ends ctx.run()
+        });
+
+    ctx.run();
+}
+```
+
+### Announce a Service
+
+```cpp
+#include <mdnspp/defaults.h>
+#include <mdnspp/service_info.h>
+
+#include <iostream>
+#include <thread>
+
+int main()
+{
+    mdnspp::context ctx;
+
+    mdnspp::service_info info{
+        .service_name = "MyApp._http._tcp.local.",
+        .service_type = "_http._tcp.local.",
+        .hostname     = "myhost.local.",
+        .port         = 8080,
+        .address_ipv4 = "192.168.1.69",
+        .txt_records  = {{"path", "/index.html"}},
+    };
+
+    mdnspp::service_server srv{ctx, std::move(info)};
+
+    std::jthread shutdown{[&ctx](std::stop_token) {
+        std::this_thread::sleep_for(std::chrono::seconds(30));
+        ctx.stop(); // ctx.stop() ends ctx.run()
+    }};
+
+    srv.async_start();
+    ctx.run();
+}
+```
+
+## CMake Integration
+
+The quickest way to add mdnspp to your project is with FetchContent:
+
+```cmake
+include(FetchContent)
+FetchContent_Declare(
+    mdnspp
+    GIT_REPOSITORY https://github.com/skrede/mdnspp.git
+    GIT_TAG        master  # pin to a specific commit for reproducibility
+)
+FetchContent_MakeAvailable(mdnspp)
+
+target_link_libraries(my_app PRIVATE mdnspp::native)
+# or: target_link_libraries(my_app PRIVATE mdnspp::asio)
+```
+
+For `find_package`, building from source, and all available CMake targets, see the [CMake Integration](doc/cmake-integration.md) guide.
+
+## Documentation
+
+- [Getting Started](doc/getting-started.md) -- Install mdnspp and run your first query or service announcement
+- [Policies](doc/policies.md) -- Understand DefaultPolicy, AsioPolicy, and MockPolicy
+- [Async Patterns](doc/async-patterns.md) -- ASIO completion tokens: callbacks, futures, coroutines, deferred
+- [CMake Integration](doc/cmake-integration.md) -- FetchContent, find_package, and building from source
+- [API Reference](doc/api/)
+
+## License
+
+MIT License -- see [LICENSE](LICENSE) for details.

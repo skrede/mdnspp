@@ -1,80 +1,27 @@
-cmake_minimum_required(VERSION 3.20)
-project(mdnspp)
+cmake_minimum_required(VERSION 3.25)
+project(mdnspp VERSION 2.1.0)
 
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_VERBOSE_MAKEFILE ON)
-set(Boost_NO_WARN_NEW_VERSIONS ON)
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 option(MDNSPP_BUILD_TESTS OFF)
 option(MDNSPP_BUILD_EXAMPLES OFF)
+
+option(MDNSPP_ENABLE_ASIO_POLICY "Build AsioPolicy (AsioSocket, AsioTimer) backed by asio::io_context" OFF)
+option(MDNSPP_ENABLE_DEFAULT_POLICY "Build DefaultPolicy (DefaultSocket, DefaultTimer, DefaultContext)" ON)
 
 include(FetchContent)
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
 
-find_path(MDNS_INCLUDE_DIRS "mdns.h")
-if(NOT MDNS_INCLUDE_DIRS_FOUND)
-    FetchContent_Declare(mdns
-        GIT_REPOSITORY https://github.com/skrede/mdns.git
-        GIT_TAG        2e0deec08c5e1cb97f5baf4e6f47f4fc1be4be49)
-    FetchContent_MakeAvailable(mdns)
-endif()
+add_subdirectory(lib)
 
-set(SOURCE_DIRECTORY src)
-set(INCLUDE_DIRECTORY include)
-
-set(PUBLIC_HEADERS
-    ${INCLUDE_DIRECTORY}/mdnspp/log.h
-    ${INCLUDE_DIRECTORY}/mdnspp/logger.h
-    ${INCLUDE_DIRECTORY}/mdnspp/querent.h
-    ${INCLUDE_DIRECTORY}/mdnspp/records.h
-    ${INCLUDE_DIRECTORY}/mdnspp/observer.h
-    ${INCLUDE_DIRECTORY}/mdnspp/mdns_util.h
-    ${INCLUDE_DIRECTORY}/mdnspp/mdns_base.h
-    ${INCLUDE_DIRECTORY}/mdnspp/record_buffer.h
-    ${INCLUDE_DIRECTORY}/mdnspp/record_parser.h
-    ${INCLUDE_DIRECTORY}/mdnspp/service_server.h
-    ${INCLUDE_DIRECTORY}/mdnspp/service_discovery.h
-)
-
-set(CORE_SOURCES
-    ${SOURCE_DIRECTORY}/mdnspp/querent.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/observer.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/mdns_util.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/mdns_base.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/record_buffer.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/record_parser.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/record_builder.h
-    ${SOURCE_DIRECTORY}/mdnspp/record_builder.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/service_server.cpp
-    ${SOURCE_DIRECTORY}/mdnspp/service_discovery.cpp
-)
-
-add_library(mdnspp STATIC
-    ${PUBLIC_HEADERS}
-    ${CORE_SOURCES}
-)
-
-add_library(mdnspp::mdnspp ALIAS mdnspp)
-
-target_include_directories(mdnspp
-    PUBLIC ${INCLUDE_DIRECTORY}
-    PRIVATE ${SOURCE_DIRECTORY}
-)
-
-target_link_libraries(mdnspp PUBLIC mdns)
-
-if(${MDNSPP_BUILD_EXAMPLES})
+if (${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(example)
-endif()
+endif ()
 
-if(${MDNSPP_BUILD_TESTS})
-    FetchContent_Declare(
-        Catch2
-        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-        GIT_TAG v3.3.2
-    )
-    FetchContent_MakeAvailable(Catch2)
+if (${MDNSPP_BUILD_TESTS})
     enable_testing()
     add_subdirectory(tests)
-endif()
+endif ()

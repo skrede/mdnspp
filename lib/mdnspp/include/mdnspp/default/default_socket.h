@@ -71,7 +71,7 @@ public:
     {
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
-        addr.sin_port = ::htons(dest.port);
+        addr.sin_port = htons(dest.port);
 #ifdef _WIN32
         addr.sin_addr.s_addr = ::inet_addr(dest.address.c_str());
 #else
@@ -167,8 +167,8 @@ private:
         {
             sockaddr_in addr{};
             addr.sin_family = AF_INET;
-            addr.sin_addr.s_addr = ::htonl(INADDR_ANY);
-            addr.sin_port = ::htons(5353);
+            addr.sin_addr.s_addr = htonl(INADDR_ANY);
+            addr.sin_port = htons(5353);
 
 #ifdef _WIN32
             if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
@@ -252,8 +252,8 @@ private:
         {
             sockaddr_in addr{};
             addr.sin_family = AF_INET;
-            addr.sin_addr.s_addr = ::htonl(INADDR_ANY);
-            addr.sin_port = ::htons(5353);
+            addr.sin_addr.s_addr = htonl(INADDR_ANY);
+            addr.sin_port = htons(5353);
 
 #ifdef _WIN32
             if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
@@ -332,7 +332,7 @@ private:
     {
         ip_mreq mreq{};
         mreq.imr_multiaddr.s_addr = ::inet_addr("224.0.0.251");
-        mreq.imr_interface.s_addr = ::htonl(INADDR_ANY);
+        mreq.imr_interface.s_addr = htonl(INADDR_ANY);
 
 #ifdef _WIN32
         if(::setsockopt(m_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
@@ -357,7 +357,7 @@ private:
     {
         ip_mreq mreq{};
         mreq.imr_multiaddr.s_addr = ::inet_addr("224.0.0.251");
-        mreq.imr_interface.s_addr = ::htonl(INADDR_ANY);
+        mreq.imr_interface.s_addr = htonl(INADDR_ANY);
 
 #ifdef _WIN32
         if(::setsockopt(m_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,

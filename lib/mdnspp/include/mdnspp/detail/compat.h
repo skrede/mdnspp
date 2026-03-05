@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DETAIL_COMPAT_H
 
 #include <functional>
+#include <type_traits>
 #include <variant>
 #include <version>
 
@@ -28,7 +29,7 @@ template <typename T, typename E>
 using expected = std::expected<T, E>;
 
 template <typename E>
-using unexpected = std::unexpected<E>;
+auto make_unexpected(E e) { return std::unexpected<E>(std::move(e)); }
 #else
 
 template <typename E>
@@ -52,6 +53,14 @@ public:
     {
     }
 
+    template <typename U,
+              std::enable_if_t<std::is_constructible_v<T, U> &&
+                               !std::is_same_v<std::remove_cvref_t<U>, expected>, int> = 0>
+    // NOLINTNEXTLINE(google-explicit-constructor)
+    constexpr expected(U &&val) : m_storage(T(std::forward<U>(val)))
+    {
+    }
+
     // NOLINTNEXTLINE(google-explicit-constructor)
     constexpr expected(unexpected<E> err) : m_storage(std::move(err))
     {
@@ -69,6 +78,9 @@ public:
 
     constexpr const E &error() const & { return std::get<1>(m_storage).value; }
 };
+
+template <typename E>
+constexpr auto make_unexpected(E e) { return unexpected<E>(std::move(e)); }
 
 #endif
 

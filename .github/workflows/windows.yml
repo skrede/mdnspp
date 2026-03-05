@@ -52,11 +52,10 @@ jobs:
           cmake --install build --config Release
 
       - name: Build consumer
-        shell: bash
         run: |
-          cmake tests/integration -B build-consumer -A x64 \
-            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install \
-            -DCMAKE_CXX_FLAGS="/std:c++latest"
+          cmake tests/integration -B build-consumer -A x64 `
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install" `
+            '-DCMAKE_CXX_FLAGS=/std:c++latest'
           cmake --build build-consumer --config Release
 
       - name: Run consumer test

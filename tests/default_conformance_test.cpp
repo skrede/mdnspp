@@ -137,7 +137,7 @@ TEST_CASE("DefaultContext dispatches data on registered loopback socket", "[nati
     // Bind to loopback on an ephemeral port
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addr.sin_port = 0; // OS picks a port
     REQUIRE(::bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0);
 
@@ -195,7 +195,7 @@ TEST_CASE("DefaultContext deregister_socket stops dispatch", "[native][context][
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
-    addr.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addr.sin_port = 0;
     REQUIRE(::bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0);
 

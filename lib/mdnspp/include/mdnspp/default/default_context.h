@@ -278,7 +278,7 @@ private:
 
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         addr.sin_port = 0;
 
         if(::bind(m_wakeup_recv, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
@@ -463,9 +463,10 @@ private:
             char addr_str[INET_ADDRSTRLEN]{};
             ::inet_ntop(AF_INET, &m_sender_addr.sin_addr, addr_str, sizeof(addr_str));
 
+            auto port = ntohs(m_sender_addr.sin_port);
             endpoint ep{
                 .address = addr_str,
-                .port    = ::ntohs(m_sender_addr.sin_port),
+                .port    = port,
             };
 
             m_sockets[sock_idx].handler(

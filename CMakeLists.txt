@@ -24,6 +24,7 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
     ${INCLUDE_DIRECTORY}/mdnspp/dns.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
+    ${INCLUDE_DIRECTORY}/mdnspp/resolved_service.h
     ${INCLUDE_DIRECTORY}/mdnspp/policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/parse.h
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_policy.h

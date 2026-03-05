@@ -111,7 +111,7 @@ SCENARIO("async_observe with callback fires when stop() is called",
     try
     {
         auto obs = std::make_shared<mdnspp::observer<mdnspp::AsioPolicy>>(
-            io, [](mdnspp::mdns_record_variant, mdnspp::endpoint) {});
+            io, [](const mdnspp::mdns_record_variant &, mdnspp::endpoint) {});
 
         bool handler_fired = false;
         obs->async_observe([&handler_fired](std::error_code ec) {
@@ -240,7 +240,7 @@ SCENARIO("async_observe completion handler dispatched on correct executor — TS
     try
     {
         auto obs = std::make_shared<mdnspp::observer<mdnspp::AsioPolicy>>(
-            io, [](mdnspp::mdns_record_variant, mdnspp::endpoint) {});
+            io, [](const mdnspp::mdns_record_variant &, mdnspp::endpoint) {});
 
         bool handler_fired = false;
         obs->async_observe([&handler_fired](std::error_code ec) {
@@ -277,7 +277,7 @@ SCENARIO("async_observe with use_awaitable suspends until stop",
     try
     {
         auto obs = std::make_shared<mdnspp::observer<mdnspp::AsioPolicy>>(
-            io, [](mdnspp::mdns_record_variant, mdnspp::endpoint) {});
+            io, [](const mdnspp::mdns_record_variant &, mdnspp::endpoint) {});
 
         // Schedule stop() after 100ms.
         asio::steady_timer stop_timer{io, std::chrono::milliseconds(100)};

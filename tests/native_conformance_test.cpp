@@ -151,7 +151,7 @@ TEST_CASE("All four public types instantiate with NativePolicy", "[native][polic
     {
         mdnspp::observer<mdnspp::NativePolicy> obs{
             ctx,
-            [](mdnspp::mdns_record_variant, mdnspp::endpoint) {}};
+            [](const mdnspp::mdns_record_variant &, mdnspp::endpoint) {}};
         SUCCEED("observer<NativePolicy> constructed");
     }
     catch(const std::exception& e)

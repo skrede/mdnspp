@@ -93,7 +93,7 @@ TEST_CASE("observer error_code constructor path", "[observer][error_code]")
     std::error_code ec;
     mdnspp::observer<mdnspp::testing::MockPolicy> obs{
         mock_executor{},
-        [](mdnspp::mdns_record_variant, mdnspp::endpoint) {},
+        [](const mdnspp::mdns_record_variant &, mdnspp::endpoint) {},
         ec};
     REQUIRE(ec);
     MockSocket::set_fail_on_construct(false);

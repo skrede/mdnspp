@@ -90,7 +90,17 @@ if (MDNSPP_ENABLE_ASIO_POLICY)
         ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_policy.h
         ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_socket.h
         ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_timer.h
+        ${INCLUDE_DIRECTORY}/mdnspp/asio/asio_completion.h
+        ${INCLUDE_DIRECTORY}/mdnspp/asio/async_query.h
+        ${INCLUDE_DIRECTORY}/mdnspp/asio/async_observe.h
+        ${INCLUDE_DIRECTORY}/mdnspp/asio/async_discover.h
+        ${INCLUDE_DIRECTORY}/mdnspp/asio/async_start.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/asio
+    )
+
+    install(FILES
+        ${INCLUDE_DIRECTORY}/mdnspp/asio.h
+        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp
     )
 endif ()
 

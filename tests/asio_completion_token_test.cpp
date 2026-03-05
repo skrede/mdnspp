@@ -5,12 +5,8 @@
 // All tests wrap socket construction in try/catch and WARN+skip if network is unavailable,
 // matching the pattern established in asio_conformance_test.cpp and service_server_tsan_test.cpp.
 
-#include "mdnspp/service_discovery.h"
-#include "mdnspp/querier.h"
-#include "mdnspp/observer.h"
-#include "mdnspp/service_server.h"
+#include "mdnspp/asio.h"
 #include "mdnspp/service_info.h"
-#include "mdnspp/asio/asio_policy.h"
 #include "mdnspp/detail/dns_enums.h"
 
 #include <asio.hpp>
@@ -43,7 +39,7 @@ SCENARIO("async_discover with use_future returns future with results",
         mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(500)};
 
         // use_future returns std::future<std::vector<mdns_record_variant>>
-        auto fut = sd.async_discover("_nonexistent._tcp.local.", asio::use_future);
+        auto fut = mdnspp::async_discover(sd, "_nonexistent._tcp.local.", asio::use_future);
 
         io.run();
 
@@ -68,7 +64,7 @@ SCENARIO("async_browse with use_future returns future with services",
     try
     {
         mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(500)};
-        auto fut = sd.async_browse("_nonexistent._tcp.local.", asio::use_future);
+        auto fut = mdnspp::async_browse(sd, "_nonexistent._tcp.local.", asio::use_future);
         io.run();
         auto services = fut.get();
         REQUIRE(services.empty());
@@ -91,7 +87,7 @@ SCENARIO("async_query with use_future returns future with results",
     {
         mdnspp::querier<mdnspp::AsioPolicy> q{io, std::chrono::milliseconds(500)};
 
-        auto fut = q.async_query("_nonexistent._tcp.local.", mdnspp::dns_type::ptr, asio::use_future);
+        auto fut = mdnspp::async_query(q, "_nonexistent._tcp.local.", mdnspp::dns_type::ptr, asio::use_future);
 
         io.run();
 
@@ -189,7 +185,7 @@ SCENARIO("async_discover with deferred does not initiate I/O until launched",
         mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(300)};
 
         // Create deferred operation — must NOT send any packets or arm any async ops yet
-        auto op = sd.async_discover("_deferred._tcp.local.", asio::deferred);
+        auto op = mdnspp::async_discover(sd, "_deferred._tcp.local.", asio::deferred);
 
         // Launch the operation with a plain callback — this is when I/O initiates
         bool callback_fired = false;
@@ -218,7 +214,7 @@ SCENARIO("async_browse with deferred does not initiate I/O until launched",
     try
     {
         mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(300)};
-        auto op = sd.async_browse("_deferred._tcp.local.", asio::deferred);
+        auto op = mdnspp::async_browse(sd, "_deferred._tcp.local.", asio::deferred);
         bool callback_fired = false;
         std::move(op)([&callback_fired](std::error_code ec,
                                          std::vector<mdnspp::resolved_service> services) {
@@ -294,7 +290,7 @@ SCENARIO("async_observe with use_awaitable suspends until stop",
             io,
             [obs, &completed, &io]() -> asio::awaitable<void>
             {
-                co_await obs->async_observe(asio::use_awaitable);
+                co_await mdnspp::async_observe(*obs, asio::use_awaitable);
                 completed = true;
                 io.stop(); // allow io.run_for() to return
             },
@@ -326,8 +322,8 @@ SCENARIO("async_browse with use_awaitable returns services when complete",
             io,
             [&sd, &completed]() -> asio::awaitable<void>
             {
-                auto services = co_await sd.async_browse(
-                    "_nonexistent._tcp.local.", asio::use_awaitable);
+                auto services = co_await mdnspp::async_browse(
+                    sd, "_nonexistent._tcp.local.", asio::use_awaitable);
                 REQUIRE(services.empty());
                 completed = true;
             },

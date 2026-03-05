@@ -400,9 +400,9 @@ private:
 
         // Build pollfd array: [wakeup_fd, socket_0, socket_1, ...]
         m_pollfds.clear();
-        m_pollfds.push_back({static_cast<int>(wakeup_poll_fd()), POLLIN, 0});
+        m_pollfds.push_back({wakeup_poll_fd(), POLLIN, 0});
         for(const auto &entry : m_sockets)
-            m_pollfds.push_back({static_cast<int>(entry.fd), POLLIN, 0});
+            m_pollfds.push_back({entry.fd, POLLIN, 0});
 
         const auto nfds = static_cast<nfds_t>(m_pollfds.size());
         const int rc = detail::poll_sockets(m_pollfds.data(), nfds, timeout_ms);

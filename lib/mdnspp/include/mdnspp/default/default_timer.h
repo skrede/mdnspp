@@ -11,9 +11,9 @@
 #include "mdnspp/default/default_context.h"
 
 #include <chrono>
+#include <utility>
 #include <functional>
 #include <system_error>
-#include <utility>
 
 namespace mdnspp {
 

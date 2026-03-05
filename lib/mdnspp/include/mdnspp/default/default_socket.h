@@ -11,10 +11,9 @@
 
 #include "mdnspp/default/default_context.h"
 
+#include <span>
 #include <cstddef>
 #include <functional>
-#include <span>
-#include <stdexcept>
 #include <system_error>
 
 #ifdef _WIN32

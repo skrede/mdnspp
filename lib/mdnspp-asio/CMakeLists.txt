@@ -36,4 +36,8 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp
 )
 
+install(DIRECTORY ${asio_SOURCE_DIR}/asio/include/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
+)
+
 install(TARGETS mdnspp_asio EXPORT mdnsppTargets)

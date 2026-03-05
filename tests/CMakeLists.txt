@@ -19,7 +19,7 @@ function(make_test TEST_FILE)
     add_test(NAME ${TEST_FILE} COMMAND ${TEST_FILE})
 endfunction()
 
-make_test(log_test)
+make_test(records_test)
 make_test(concept_conformance_test)
 make_test(recv_loop_test)
 make_test(parse_test)

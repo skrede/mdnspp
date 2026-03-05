@@ -6,10 +6,10 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/detail/recv_loop.h"
 #include "mdnspp/detail/dns_wire.h"
+#include "mdnspp/detail/compat.h"
 
 #include <memory>
 #include <atomic>
-#include <functional>
 #include <span>
 #include <chrono>
 #include <cassert>
@@ -48,11 +48,11 @@ public:
     using executor_type = typename P::executor_type;
     using socket_type = typename P::socket_type;
     using timer_type = typename P::timer_type;
-    using record_callback = std::move_only_function<void(const mdns_record_variant &, endpoint)>;
+    using record_callback = detail::move_only_function<void(const mdns_record_variant &, endpoint)>;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
-    using completion_handler = std::move_only_function<void(std::error_code)>;
+    using completion_handler = detail::move_only_function<void(std::error_code)>;
 
     // Non-copyable
     basic_observer(const basic_observer &) = delete;

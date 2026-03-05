@@ -2,9 +2,7 @@ set(INCLUDE_DIRECTORY include)
 
 set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/dns.h
-    ${INCLUDE_DIRECTORY}/mdnspp/log.h
     ${INCLUDE_DIRECTORY}/mdnspp/parse.h
-    ${INCLUDE_DIRECTORY}/mdnspp/logger.h
     ${INCLUDE_DIRECTORY}/mdnspp/policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_querier.h
     ${INCLUDE_DIRECTORY}/mdnspp/records.h
@@ -27,6 +25,10 @@ target_include_directories(mdnspp_core
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
+
+if(WIN32)
+    target_link_libraries(mdnspp_core INTERFACE ws2_32)
+endif()
 
 install(TARGETS mdnspp_core
     EXPORT mdnsppTargets
@@ -53,10 +55,6 @@ if(MDNSPP_ENABLE_DEFAULT_POLICY)
         $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     )
     target_link_libraries(mdnspp_native INTERFACE mdnspp_core)
-
-    if(WIN32)
-        target_link_libraries(mdnspp_native INTERFACE ws2_32)
-    endif()
 
     install(FILES
         ${INCLUDE_DIRECTORY}/mdnspp/native.h

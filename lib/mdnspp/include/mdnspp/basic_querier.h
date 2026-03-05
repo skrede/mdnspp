@@ -7,7 +7,6 @@
 #include "mdnspp/detail/dns_enums.h"
 
 #include <algorithm>
-#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
@@ -20,6 +19,7 @@
 
 #include "mdnspp/detail/recv_loop.h"
 #include "mdnspp/detail/dns_wire.h"
+#include "mdnspp/detail/compat.h"
 
 namespace mdnspp {
 
@@ -32,11 +32,11 @@ public:
     using timer_type = typename P::timer_type;
 
     /// Optional callback invoked per record as results arrive during a query.
-    using record_callback = std::move_only_function<void(const mdns_record_variant &, endpoint)>;
+    using record_callback = detail::move_only_function<void(const mdns_record_variant &, endpoint)>;
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.
-    using completion_handler = std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
+    using completion_handler = detail::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
 
     // Non-copyable (owns recv_loop by unique_ptr)
     basic_querier(const basic_querier &) = delete;

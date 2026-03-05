@@ -58,6 +58,28 @@ SCENARIO("async_discover with use_future returns future with results",
 }
 
 // ---------------------------------------------------------------------------
+// Test 8: async_browse with use_future (API-11)
+// ---------------------------------------------------------------------------
+
+SCENARIO("async_browse with use_future returns future with services",
+         "[completion_token][use_future][service_discovery][browse]")
+{
+    asio::io_context io;
+    try
+    {
+        mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(500)};
+        auto fut = sd.async_browse("_nonexistent._tcp.local.", asio::use_future);
+        io.run();
+        auto services = fut.get();
+        REQUIRE(services.empty());
+    }
+    catch (const std::exception &e)
+    {
+        WARN("Skipping — socket construction failed (no network): " << e.what());
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Test 2: async_query with use_future (API-11 — querier path)
 // ---------------------------------------------------------------------------
 
@@ -186,6 +208,32 @@ SCENARIO("async_discover with deferred does not initiate I/O until launched",
 }
 
 // ---------------------------------------------------------------------------
+// Test 9: async_browse with deferred — does not initiate I/O until launched (API-13)
+// ---------------------------------------------------------------------------
+
+SCENARIO("async_browse with deferred does not initiate I/O until launched",
+         "[completion_token][deferred][service_discovery][browse]")
+{
+    asio::io_context io;
+    try
+    {
+        mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(300)};
+        auto op = sd.async_browse("_deferred._tcp.local.", asio::deferred);
+        bool callback_fired = false;
+        std::move(op)([&callback_fired](std::error_code ec,
+                                         std::vector<mdnspp::resolved_service> services) {
+            callback_fired = true;
+        });
+        io.run();
+        REQUIRE(callback_fired);
+    }
+    catch (const std::exception &e)
+    {
+        WARN("Skipping — socket construction failed (no network): " << e.what());
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Test 6: TSan test — async_observe + stop from separate thread (Success criterion 3)
 // ---------------------------------------------------------------------------
 
@@ -254,6 +302,37 @@ SCENARIO("async_observe with use_awaitable suspends until stop",
 
         // run_for provides an upper bound; normal completion is ~150ms
         io.run_for(std::chrono::seconds(5));
+        REQUIRE(completed);
+    }
+    catch (const std::exception &e)
+    {
+        WARN("Skipping — socket construction failed (no network): " << e.what());
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Test 10: async_browse with use_awaitable — co_await suspends until browse completes (API-12)
+// ---------------------------------------------------------------------------
+
+SCENARIO("async_browse with use_awaitable returns services when complete",
+         "[completion_token][use_awaitable][service_discovery][browse]")
+{
+    asio::io_context io;
+    try
+    {
+        mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(300)};
+        bool completed = false;
+        asio::co_spawn(
+            io,
+            [&sd, &completed]() -> asio::awaitable<void>
+            {
+                auto services = co_await sd.async_browse(
+                    "_nonexistent._tcp.local.", asio::use_awaitable);
+                REQUIRE(services.empty());
+                completed = true;
+            },
+            asio::detached);
+        io.run();
         REQUIRE(completed);
     }
     catch (const std::exception &e)

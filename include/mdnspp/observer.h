@@ -16,10 +16,6 @@
 #include <system_error>
 #include <utility>
 
-#ifdef ASIO_STANDALONE
-#include "mdnspp/asio/asio_completion.h"
-#endif
-
 namespace mdnspp {
 
 // observer<P> — mDNS multicast listener
@@ -56,7 +52,7 @@ public:
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
-    using completion_handler = std::function<void(std::error_code)>;
+    using completion_handler = std::move_only_function<void(std::error_code)>;
 
     // Non-copyable
     observer(const observer &) = delete;
@@ -106,8 +102,7 @@ public:
     {
     }
 
-#ifndef ASIO_STANDALONE
-    // Non-template callback overload — used by NativePolicy and MockPolicy users.
+    // Plain callback overload — used by NativePolicy, MockPolicy, and ASIO adapter users.
     // async_observe() — arms the recv_loop and returns immediately.
     // on_done fires with error_code{} when stop() is called (or empty if omitted).
     // Incoming multicast packets are parsed and each record delivered to the callback.
@@ -115,46 +110,10 @@ public:
     void async_observe(completion_handler on_done = {})
     {
         assert(m_loop == nullptr); // can only start once
-        // Only store if non-empty — prevents wrapping an empty std::function in
-        // move_only_function (which would evaluate as truthy but throw on call).
         if(on_done)
             m_on_completion = std::move(on_done);
         do_observe();
     }
-#endif
-
-#ifdef ASIO_STANDALONE
-    /// Zero-argument fire-and-forget overload for ASIO users — equivalent to async_observe(asio::detached).
-    void async_observe()
-    {
-        async_observe(asio::detached);
-    }
-
-    /// ASIO completion token overload — accepts use_future, use_awaitable, deferred, or any callable.
-    /// Fires when stop() is called with signature void(std::error_code).
-    /// NativePolicy users (no ASIO_STANDALONE) use the non-template overload above instead.
-    template <asio::completion_token_for<void(std::error_code)> CompletionToken>
-    auto async_observe(CompletionToken &&token)
-    {
-        return asio::async_initiate<CompletionToken, void(std::error_code)>(
-            [this](auto handler)
-            {
-                auto work = asio::make_work_guard(handler);
-
-                // Type-erase into completion_handler, dispatching via the handler's executor.
-                // The work guard is moved into the final dispatch lambda so it is released
-                // only AFTER the handler executes, preventing premature io_context::run() return.
-                m_on_completion = [h = std::move(handler), w = std::move(work)](
-                    std::error_code ec) mutable
-                    {
-                        mdnspp::dispatch_completion(std::move(h), std::move(w), ec);
-                    };
-
-                do_observe();
-            },
-            token);
-    }
-#endif
 
     // stop() — idempotent; fires the completion handler, then sets the stop flag.
     //
@@ -218,10 +177,8 @@ private:
     socket_type m_socket;       // socket used for receiving multicast packets
     timer_type m_timer;         // passed to recv_loop for silence-timeout tracking
     record_callback m_callback; // called once per successfully parsed record
-    // Move-only function: supports both copyable std::function handlers (NativePolicy)
-    // and move-only ASIO coroutine handlers (use_awaitable via ASIO_STANDALONE path).
-    std::move_only_function<void(std::error_code)>
-    m_on_completion;                      // fires once when stop() is called
+    // Move-only completion handler — called once at stop() or error.
+    completion_handler m_on_completion;
     std::unique_ptr<recv_loop<P>> m_loop; // continuous listener (null until async_observe())
     std::atomic<bool> m_stopped;          // idempotent stop flag
 };

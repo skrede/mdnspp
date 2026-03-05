@@ -20,10 +20,6 @@
 #include "mdnspp/detail/recv_loop.h"
 #include "mdnspp/detail/dns_wire.h"
 
-#ifdef ASIO_STANDALONE
-#include "mdnspp/asio/asio_completion.h"
-#endif
-
 namespace mdnspp {
 
 template <Policy P>
@@ -39,10 +35,10 @@ public:
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.
-    using completion_handler = std::function<void(std::error_code, std::vector<mdns_record_variant>)>;
+    using completion_handler = std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
 
     /// Completion callback for async_browse — delivers aggregated resolved_service values.
-    using browse_completion_handler = std::function<void(std::error_code, std::vector<resolved_service>)>;
+    using browse_completion_handler = std::move_only_function<void(std::error_code, std::vector<resolved_service>)>;
 
     // Non-copyable (owns recv_loop by unique_ptr)
     service_discovery(const service_discovery &) = delete;
@@ -116,15 +112,10 @@ public:
     const timer_type &timer() const noexcept { return m_timer; }
     timer_type &timer() noexcept { return m_timer; }
 
-#ifndef ASIO_STANDALONE
-    // Non-template callback overload — used by NativePolicy and MockPolicy users.
-    // Not compiled when ASIO_STANDALONE is defined to avoid ambiguity with the
-    // template overload below (which also accepts plain std::function callbacks).
+    // Plain callback overloads — used by NativePolicy, MockPolicy, and ASIO adapter users.
     void async_discover(std::string_view service_type, completion_handler on_done)
     {
         assert(m_loop == nullptr); // one discover per lifetime
-        // Only store if non-empty — prevents wrapping an empty std::function in
-        // move_only_function (which would evaluate as truthy but throw on call).
         if(on_done)
             m_on_completion = std::move(on_done);
         do_discover(std::string(service_type));
@@ -140,63 +131,6 @@ public:
             m_on_browse_completion = std::move(on_done);
         do_browse(std::string(service_type));
     }
-#endif
-
-#ifdef ASIO_STANDALONE
-    /// ASIO completion token overload — accepts use_future, use_awaitable, deferred, or any callable.
-    /// NativePolicy users (no ASIO_STANDALONE) use the non-template overload above instead.
-    template <asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>
-        CompletionToken>
-    auto async_discover(std::string_view service_type, CompletionToken &&token)
-    {
-        return asio::async_initiate<
-            CompletionToken,
-            void(std::error_code, std::vector<mdns_record_variant>)>(
-            [this](auto handler, std::string svc_type)
-            {
-                auto work = asio::make_work_guard(handler);
-
-                // Type-erase into completion_handler, dispatching via the handler's executor.
-                // The work guard is moved into the final dispatch lambda so it is released
-                // only AFTER the handler executes, preventing premature io_context::run() return.
-                m_on_completion = [h = std::move(handler), w = std::move(work)](
-                    std::error_code ec, std::vector<mdns_record_variant> results) mutable
-                    {
-                        mdnspp::dispatch_completion(std::move(h), std::move(w), ec, std::move(results));
-                    };
-
-                do_discover(std::move(svc_type));
-            },
-            token,
-            std::string(service_type)); // decay-copy string_view for deferred safety
-    }
-
-    /// ASIO completion token overload for async_browse.
-    /// Aggregates mDNS records into resolved_service values at the silence timeout.
-    /// Completion signature: void(std::error_code, std::vector<resolved_service>).
-    template <asio::completion_token_for<void(std::error_code, std::vector<resolved_service>)>
-        CompletionToken>
-    auto async_browse(std::string_view service_type, CompletionToken &&token)
-    {
-        return asio::async_initiate<
-            CompletionToken,
-            void(std::error_code, std::vector<resolved_service>)>(
-            [this](auto handler, std::string svc_type)
-            {
-                auto work = asio::make_work_guard(handler);
-
-                m_on_browse_completion = [h = std::move(handler), w = std::move(work)](
-                    std::error_code ec, std::vector<resolved_service> services) mutable
-                    {
-                        mdnspp::dispatch_completion(std::move(h), std::move(w), ec, std::move(services));
-                    };
-
-                do_browse(std::move(svc_type));
-            },
-            token,
-            std::string(service_type));
-    }
-#endif
 
     // Access accumulated raw record results (populated during io.run()).
     // Remains valid after completion — the completion handler receives a copy.
@@ -371,12 +305,9 @@ private:
     timer_type m_timer;
     std::chrono::milliseconds m_silence_timeout;
     record_callback m_on_record; // optional per-record callback
-    // Move-only function: supports both copyable std::function handlers (NativePolicy)
-    // and move-only ASIO coroutine handlers (use_awaitable via ASIO_STANDALONE path).
-    std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>
-    m_on_completion; // fires once at silence timeout or stop()
-    std::move_only_function<void(std::error_code, std::vector<resolved_service>)>
-    m_on_browse_completion;                      // fires once at silence timeout or stop()
+    // Move-only completion handlers — called once at silence timeout, stop(), or error.
+    completion_handler m_on_completion;
+    browse_completion_handler m_on_browse_completion;
     std::string m_service_type;                  // set in do_discover()/do_browse(), used for filtering
     std::unique_ptr<recv_loop<P>> m_loop;        // null until async_discover()
     std::unique_ptr<recv_loop<P>> m_browse_loop; // null until async_browse()

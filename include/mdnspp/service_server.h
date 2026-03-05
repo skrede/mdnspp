@@ -21,10 +21,6 @@
 #include <system_error>
 #include <utility>
 
-#ifdef ASIO_STANDALONE
-#include "mdnspp/asio/asio_completion.h"
-#endif
-
 namespace mdnspp {
 
 // service_server<P> — mDNS service responder
@@ -58,7 +54,7 @@ public:
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
-    using completion_handler = std::function<void(std::error_code)>;
+    using completion_handler = std::move_only_function<void(std::error_code)>;
 
     // Non-copyable
     service_server(const service_server &) = delete;
@@ -146,8 +142,7 @@ public:
     {
     }
 
-#ifndef ASIO_STANDALONE
-    // Non-template callback overload — used by NativePolicy and MockPolicy users.
+    // Plain callback overload — used by NativePolicy, MockPolicy, and ASIO adapter users.
     // async_start() — arms the recv_loop and returns immediately.
     // on_done fires with error_code{} when stop() is called (or empty if omitted).
     // Incoming queries trigger RFC 6762-delayed responses.
@@ -155,46 +150,10 @@ public:
     void async_start(completion_handler on_done = {})
     {
         assert(m_loop == nullptr); // can only start once
-        // Only store if non-empty — prevents wrapping an empty std::function in
-        // move_only_function (which would evaluate as truthy but throw on call).
         if(on_done)
             m_on_completion = std::move(on_done);
         do_start();
     }
-#endif
-
-#ifdef ASIO_STANDALONE
-    /// Zero-argument fire-and-forget overload for ASIO users — equivalent to async_start(asio::detached).
-    void async_start()
-    {
-        async_start(asio::detached);
-    }
-
-    /// ASIO completion token overload — accepts use_future, use_awaitable, deferred, or any callable.
-    /// Fires when stop() is called with signature void(std::error_code).
-    /// NativePolicy users (no ASIO_STANDALONE) use the non-template overload above instead.
-    template <asio::completion_token_for<void(std::error_code)> CompletionToken>
-    auto async_start(CompletionToken &&token)
-    {
-        return asio::async_initiate<CompletionToken, void(std::error_code)>(
-            [this](auto handler)
-            {
-                auto work = asio::make_work_guard(handler);
-
-                // Type-erase into completion_handler, dispatching via the handler's executor.
-                // The work guard is moved into the final dispatch lambda so it is released
-                // only AFTER the handler executes, preventing premature io_context::run() return.
-                m_on_completion = [h = std::move(handler), w = std::move(work)](
-                    std::error_code ec) mutable
-                    {
-                        mdnspp::dispatch_completion(std::move(h), std::move(w), ec);
-                    };
-
-                do_start();
-            },
-            token);
-    }
-#endif
 
     // stop() — idempotent; fires the completion handler, cancels response timer,
     // destroys recv_loop.
@@ -341,9 +300,8 @@ private:
     timer_type m_recv_timer;     // passed to recv_loop for silence tracking
     service_info m_info;         // service description for DNS responses
     query_callback m_on_query;   // optional per-query callback
-    // Move-only function: supports both copyable std::function handlers (NativePolicy)
-    // and move-only ASIO coroutine handlers (use_awaitable via ASIO_STANDALONE path).
-    std::move_only_function<void(std::error_code)> m_on_completion; // fires once when stop() is called
+    // Move-only completion handler — called once at stop() or error.
+    completion_handler m_on_completion;
     std::mt19937 m_rng;                                             // PRNG for random delay generation
     std::unique_ptr<recv_loop<P>> m_loop;                           // continuous query listener (null until async_start())
     std::atomic<bool> m_stopped;                                    // idempotent stop flag

@@ -21,10 +21,6 @@
 #include "mdnspp/detail/recv_loop.h"
 #include "mdnspp/detail/dns_wire.h"
 
-#ifdef ASIO_STANDALONE
-#include "mdnspp/asio/asio_completion.h"
-#endif
-
 namespace mdnspp {
 
 template <Policy P>
@@ -40,7 +36,7 @@ public:
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.
-    using completion_handler = std::function<void(std::error_code, std::vector<mdns_record_variant>)>;
+    using completion_handler = std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
 
     // Non-copyable (owns recv_loop by unique_ptr)
     querier(const querier &) = delete;
@@ -109,51 +105,14 @@ public:
     const timer_type &timer() const noexcept { return m_timer; }
     timer_type &timer() noexcept { return m_timer; }
 
-#ifndef ASIO_STANDALONE
-    // Non-template callback overload — used by NativePolicy and MockPolicy users.
-    // Not compiled when ASIO_STANDALONE is defined to avoid ambiguity with the
-    // template overload below (which also accepts plain std::function callbacks).
+    // Plain callback overload — used by NativePolicy, MockPolicy, and ASIO adapter users.
     void async_query(std::string_view name, dns_type qtype, completion_handler on_done)
     {
         assert(m_loop == nullptr); // one query per lifetime
-        // Only store if non-empty — prevents wrapping an empty std::function in
-        // move_only_function (which would evaluate as truthy but throw on call).
         if(on_done)
             m_on_completion = std::move(on_done);
         do_query(std::string(name), qtype);
     }
-#endif
-
-#ifdef ASIO_STANDALONE
-    /// ASIO completion token overload — accepts use_future, use_awaitable, deferred, or any callable.
-    /// NativePolicy users (no ASIO_STANDALONE) use the non-template overload above instead.
-    template <asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>
-        CompletionToken>
-    auto async_query(std::string_view name, dns_type qtype, CompletionToken &&token)
-    {
-        return asio::async_initiate<
-            CompletionToken,
-            void(std::error_code, std::vector<mdns_record_variant>)>(
-            [this](auto handler, std::string qname, dns_type qt)
-            {
-                auto work = asio::make_work_guard(handler);
-
-                // Type-erase into completion_handler, dispatching via the handler's executor.
-                // The work guard is moved into the final dispatch lambda so it is released
-                // only AFTER the handler executes, preventing premature io_context::run() return.
-                m_on_completion = [h = std::move(handler), w = std::move(work)](
-                    std::error_code ec, std::vector<mdns_record_variant> results) mutable
-                    {
-                        mdnspp::dispatch_completion(std::move(h), std::move(w), ec, std::move(results));
-                    };
-
-                do_query(std::move(qname), qt);
-            },
-            token,
-            std::string(name), // decay-copy string_view for deferred safety
-            qtype);            // trivial copy
-    }
-#endif
 
     // Access accumulated results (populated during io.run()).
     // Remains valid after completion — the completion handler receives a copy.
@@ -246,10 +205,8 @@ private:
     timer_type m_timer;
     std::chrono::milliseconds m_silence_timeout;
     record_callback m_on_record; // optional per-record callback
-    // Move-only function: supports both copyable std::function handlers (NativePolicy)
-    // and move-only ASIO coroutine handlers (use_awaitable via ASIO_STANDALONE path).
-    std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>
-    m_on_completion;                      // fires once at silence timeout or stop()
+    // Move-only completion handler — called once at silence timeout, stop(), or error.
+    completion_handler m_on_completion;
     std::string m_query_name;             // set in do_query(), used for filtering
     std::unique_ptr<recv_loop<P>> m_loop; // null until async_query()
     std::vector<mdns_record_variant> m_results;

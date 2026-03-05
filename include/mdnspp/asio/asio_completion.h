@@ -8,11 +8,12 @@
 #ifdef ASIO_STANDALONE
 
 #include <asio/async_result.hpp>
+#include <asio/associated_allocator.hpp>
+#include <asio/bind_allocator.hpp>
+#include <asio/detached.hpp>
 #include <asio/dispatch.hpp>
 #include <asio/executor_work_guard.hpp>
-#include <asio/bind_allocator.hpp>
 #include <asio/recycling_allocator.hpp>
-#include <asio/associated_allocator.hpp>
 
 namespace mdnspp {
 

@@ -22,12 +22,7 @@
 #include "mdnspp/detail/dns_wire.h"
 
 #ifdef ASIO_STANDALONE
-#include <asio/async_result.hpp>
-#include <asio/dispatch.hpp>
-#include <asio/executor_work_guard.hpp>
-#include <asio/bind_allocator.hpp>
-#include <asio/recycling_allocator.hpp>
-#include <asio/associated_allocator.hpp>
+#include "mdnspp/asio/asio_completion.h"
 #endif
 
 namespace mdnspp {
@@ -149,17 +144,7 @@ public:
                 m_on_completion = [h = std::move(handler), w = std::move(work)](
                     std::error_code ec, std::vector<mdns_record_variant> results) mutable
                     {
-                        auto ex = w.get_executor();
-                        auto alloc = asio::get_associated_allocator(
-                            h, asio::recycling_allocator<void>());
-                        asio::dispatch(ex,
-                                       asio::bind_allocator(alloc,
-                                                            [h2 = std::move(h), w2 = std::move(w), ec, r = std::move(results)]() mutable
-                                                            {
-                                                                // w2 keeps io_context alive until this lambda executes.
-                                                                (void)w2;
-                                                                std::move(h2)(ec, std::move(r));
-                                                            }));
+                        mdnspp::dispatch_completion(std::move(h), std::move(w), ec, std::move(results));
                     };
 
                 do_query(std::move(qname), qt);

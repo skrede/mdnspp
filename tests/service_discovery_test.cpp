@@ -1,35 +1,28 @@
 // tests/service_discovery_test.cpp
-// service_discovery<MockPolicy> unit tests — Phase 7, Plan 07-03
-// Tests the full async_discover() flow via MockPolicy.
-// Phase 11, Plan 11-02 adds async_browse tests.
 
-#include "mdnspp/service_discovery.h"
-#include "mdnspp/resolved_service.h"
-#include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/resolved_service.h"
+#include "mdnspp/service_discovery.h"
+
+#include "mdnspp/testing/mock_policy.h"
 
 #include <catch2/catch_test_macros.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <vector>
-#include <span>
+
 #include <chrono>
 #include <string>
+#include <vector>
+#include <cstddef>
 
 using namespace mdnspp;
 using namespace mdnspp::testing;
 using namespace std::chrono_literals;
 
-// ---------------------------------------------------------------------------
-// Byte-building helpers
-// ---------------------------------------------------------------------------
-
 static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
 {
     std::vector<std::byte> v;
     v.reserve(vals.size());
-    for (auto b : vals)
+    for(auto b : vals)
         v.push_back(static_cast<std::byte>(b));
     return v;
 }
@@ -44,26 +37,26 @@ static void push_u32_be(std::vector<std::byte> &buf, uint32_t v)
 {
     buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 24) & 0xFF)));
     buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 16) & 0xFF)));
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >>  8) & 0xFF)));
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>( v        & 0xFF)));
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 8) & 0xFF)));
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>(v & 0xFF)));
 }
 
 // Encode a DNS name to wire label format (no compression).
 static std::vector<std::byte> encode_name(std::string_view name)
 {
     std::vector<std::byte> result;
-    if (!name.empty() && name.back() == '.')
+    if(!name.empty() && name.back() == '.')
         name.remove_suffix(1);
 
     size_t pos = 0;
-    while (pos < name.size())
+    while(pos < name.size())
     {
         size_t dot = name.find('.', pos);
-        if (dot == std::string_view::npos)
+        if(dot == std::string_view::npos)
             dot = name.size();
         size_t len = dot - pos;
         result.push_back(static_cast<std::byte>(static_cast<uint8_t>(len)));
-        for (size_t i = pos; i < dot; ++i)
+        for(size_t i = pos; i < dot; ++i)
             result.push_back(static_cast<std::byte>(static_cast<uint8_t>(name[i])));
         pos = (dot < name.size()) ? dot + 1 : name.size();
     }
@@ -75,7 +68,7 @@ static std::vector<std::byte> encode_name(std::string_view name)
 //   owner  — DNS name of the question (e.g. "_http._tcp.local.")
 //   target — PTR rdata target name (e.g. "My Service._http._tcp.local.")
 static std::vector<std::byte> make_ptr_response(std::string_view owner,
-                                                 std::string_view target)
+                                                std::string_view target)
 {
     std::vector<std::byte> pkt;
 
@@ -89,13 +82,13 @@ static std::vector<std::byte> make_ptr_response(std::string_view owner,
     push_u16_be(pkt, 0x0000); // arcount
 
     // Answer RR: name + type(PTR=12) + class(IN=1) + ttl + rdlength + rdata
-    auto owner_enc  = encode_name(owner);
+    auto owner_enc = encode_name(owner);
     auto target_enc = encode_name(target);
 
     pkt.insert(pkt.end(), owner_enc.begin(), owner_enc.end());
-    push_u16_be(pkt, 12);     // type PTR
-    push_u16_be(pkt, 0x0001); // class IN
-    push_u32_be(pkt, 4500);   // ttl
+    push_u16_be(pkt, 12);                                       // type PTR
+    push_u16_be(pkt, 0x0001);                                   // class IN
+    push_u32_be(pkt, 4500);                                     // ttl
     push_u16_be(pkt, static_cast<uint16_t>(target_enc.size())); // rdlength
     pkt.insert(pkt.end(), target_enc.begin(), target_enc.end());
 
@@ -104,8 +97,8 @@ static std::vector<std::byte> make_ptr_response(std::string_view owner,
 
 // Builds a mDNS response packet with one A record.
 static std::vector<std::byte> make_a_response(std::string_view owner,
-                                               uint8_t a, uint8_t b,
-                                               uint8_t c, uint8_t d)
+                                              uint8_t a, uint8_t b,
+                                              uint8_t c, uint8_t d)
 {
     std::vector<std::byte> pkt;
 
@@ -143,7 +136,7 @@ static std::vector<std::byte> make_multi_record_response()
     push_u16_be(pkt, 0x0000); // arcount
 
     // First RR: PTR
-    auto owner_enc  = encode_name("_http._tcp.local.");
+    auto owner_enc = encode_name("_http._tcp.local.");
     auto target_enc = encode_name("MyService._http._tcp.local.");
 
     pkt.insert(pkt.end(), owner_enc.begin(), owner_enc.end());
@@ -202,7 +195,9 @@ SCENARIO("async_discover returns PTR record from mock socket", "[service_discove
         WHEN("async_discover() is called for _http._tcp.local.")
         {
             sd.async_discover("_http._tcp.local.",
-                [](std::error_code, std::vector<mdns_record_variant>) {});
+                              [](std::error_code, std::vector<mdns_record_variant>)
+                              {
+                              });
 
             THEN("results() contains one record_ptr")
             {
@@ -231,12 +226,12 @@ SCENARIO("async_discover fires completion callback with results", "[service_disc
             bool callback_fired = false;
 
             sd.async_discover("_http._tcp.local.",
-                [&](std::error_code ec, std::vector<mdns_record_variant> results)
-                {
-                    callback_fired = true;
-                    received_ec = ec;
-                    received_results = std::move(results);
-                });
+                              [&](std::error_code ec, std::vector<mdns_record_variant> results)
+                              {
+                                  callback_fired = true;
+                                  received_ec = ec;
+                                  received_results = std::move(results);
+                              });
 
             // MockSocket drains the queue synchronously during async_discover(),
             // but the silence timer must be fired manually to trigger the completion callback.
@@ -260,8 +255,7 @@ SCENARIO("async_discover fires completion callback with results", "[service_disc
     }
 }
 
-SCENARIO("async_discover accumulates multiple records from a single frame",
-         "[service_discovery][discover][multi]")
+SCENARIO("async_discover accumulates multiple records from a single frame", "[service_discovery][discover][multi]")
 {
     GIVEN("a service_discovery instance and a multi-record response enqueued")
     {
@@ -272,7 +266,9 @@ SCENARIO("async_discover accumulates multiple records from a single frame",
         WHEN("async_discover() is called")
         {
             sd.async_discover("_http._tcp.local.",
-                [](std::error_code, std::vector<mdns_record_variant>) {});
+                              [](std::error_code, std::vector<mdns_record_variant>)
+                              {
+                              });
 
             THEN("results() contains both records")
             {
@@ -282,8 +278,7 @@ SCENARIO("async_discover accumulates multiple records from a single frame",
     }
 }
 
-SCENARIO("async_discover sends DNS PTR query to multicast address",
-         "[service_discovery][discover][query]")
+SCENARIO("async_discover sends DNS PTR query to multicast address", "[service_discovery][discover][query]")
 {
     GIVEN("a service_discovery instance with no enqueued responses")
     {
@@ -293,7 +288,9 @@ SCENARIO("async_discover sends DNS PTR query to multicast address",
         WHEN("async_discover() is called for _http._tcp.local.")
         {
             sd.async_discover("_http._tcp.local.",
-                [](std::error_code, std::vector<mdns_record_variant>) {});
+                              [](std::error_code, std::vector<mdns_record_variant>)
+                              {
+                              });
 
             THEN("a DNS query was sent to 224.0.0.251:5353")
             {
@@ -323,8 +320,7 @@ SCENARIO("async_discover sends DNS PTR query to multicast address",
     }
 }
 
-SCENARIO("async_discover skips malformed records and returns valid ones",
-         "[service_discovery][discover][malformed]")
+SCENARIO("async_discover skips malformed records and returns valid ones", "[service_discovery][discover][malformed]")
 {
     GIVEN("a DNS frame with a valid PTR and a truncated A record")
     {
@@ -340,7 +336,7 @@ SCENARIO("async_discover skips malformed records and returns valid ones",
         push_u16_be(pkt, 0x0000); // arcount
 
         // RR 1: valid PTR record
-        auto owner_enc  = encode_name("_http._tcp.local.");
+        auto owner_enc = encode_name("_http._tcp.local.");
         auto target_enc = encode_name("Good._http._tcp.local.");
         pkt.insert(pkt.end(), owner_enc.begin(), owner_enc.end());
         push_u16_be(pkt, 12);
@@ -352,10 +348,10 @@ SCENARIO("async_discover skips malformed records and returns valid ones",
         // RR 2: A record with rdlength=5 (invalid for type A)
         auto host_enc = encode_name("bad.local.");
         pkt.insert(pkt.end(), host_enc.begin(), host_enc.end());
-        push_u16_be(pkt, 1);      // type A
+        push_u16_be(pkt, 1); // type A
         push_u16_be(pkt, 0x0001);
         push_u32_be(pkt, 120);
-        push_u16_be(pkt, 5);      // rdlength=5 (invalid for type A — parse::a checks length==4)
+        push_u16_be(pkt, 5); // rdlength=5 (invalid for type A — parse::a checks length==4)
         pkt.push_back(static_cast<std::byte>(192));
         pkt.push_back(static_cast<std::byte>(168));
         pkt.push_back(static_cast<std::byte>(0));
@@ -369,7 +365,9 @@ SCENARIO("async_discover skips malformed records and returns valid ones",
         WHEN("async_discover() is called")
         {
             sd.async_discover("_http._tcp.local.",
-                [](std::error_code, std::vector<mdns_record_variant>) {});
+                              [](std::error_code, std::vector<mdns_record_variant>)
+                              {
+                              });
 
             THEN("results() contains only the valid PTR record")
             {
@@ -398,8 +396,8 @@ SCENARIO("async_discover skips malformed records and returns valid ones",
 //   target_hostname — SRV target (e.g. "myhost.local.")
 //   port            — service port
 static std::vector<std::byte> make_srv_response(std::string_view owner,
-                                                 std::string_view target_hostname,
-                                                 uint16_t port)
+                                                std::string_view target_hostname,
+                                                uint16_t port)
 {
     std::vector<std::byte> pkt;
 
@@ -410,19 +408,19 @@ static std::vector<std::byte> make_srv_response(std::string_view owner,
     push_u16_be(pkt, 0x0000); // nscount
     push_u16_be(pkt, 0x0000); // arcount
 
-    auto owner_enc  = encode_name(owner);
+    auto owner_enc = encode_name(owner);
     auto target_enc = encode_name(target_hostname);
 
     pkt.insert(pkt.end(), owner_enc.begin(), owner_enc.end());
-    push_u16_be(pkt, 33);      // type SRV
+    push_u16_be(pkt, 33);     // type SRV
     push_u16_be(pkt, 0x0001); // class IN
     push_u32_be(pkt, 120);    // ttl
 
     // SRV rdata: priority(2) + weight(2) + port(2) + target
     auto rdlength = static_cast<uint16_t>(2 + 2 + 2 + target_enc.size());
     push_u16_be(pkt, rdlength);
-    push_u16_be(pkt, 0);      // priority
-    push_u16_be(pkt, 0);      // weight
+    push_u16_be(pkt, 0); // priority
+    push_u16_be(pkt, 0); // weight
     push_u16_be(pkt, port);
     pkt.insert(pkt.end(), target_enc.begin(), target_enc.end());
 
@@ -439,7 +437,7 @@ static std::vector<std::byte> make_full_service_response(
     std::string_view instance_name,
     std::string_view service_type,
     std::string_view hostname,
-    uint16_t         port,
+    uint16_t port,
     uint8_t a, uint8_t b, uint8_t c, uint8_t d)
 {
     std::vector<std::byte> pkt;
@@ -452,10 +450,10 @@ static std::vector<std::byte> make_full_service_response(
     push_u16_be(pkt, 0x0000); // arcount
 
     // RR 1: PTR  service_type -> instance_name
-    auto svc_enc      = encode_name(service_type);
+    auto svc_enc = encode_name(service_type);
     auto instance_enc = encode_name(instance_name);
     pkt.insert(pkt.end(), svc_enc.begin(), svc_enc.end());
-    push_u16_be(pkt, 12);     // type PTR
+    push_u16_be(pkt, 12); // type PTR
     push_u16_be(pkt, 0x0001);
     push_u32_be(pkt, 4500);
     push_u16_be(pkt, static_cast<uint16_t>(instance_enc.size()));
@@ -464,18 +462,18 @@ static std::vector<std::byte> make_full_service_response(
     // RR 2: SRV  instance_name -> hostname + port
     auto host_enc = encode_name(hostname);
     pkt.insert(pkt.end(), instance_enc.begin(), instance_enc.end());
-    push_u16_be(pkt, 33);     // type SRV
+    push_u16_be(pkt, 33); // type SRV
     push_u16_be(pkt, 0x0001);
     push_u32_be(pkt, 120);
     push_u16_be(pkt, static_cast<uint16_t>(2 + 2 + 2 + host_enc.size()));
-    push_u16_be(pkt, 0);      // priority
-    push_u16_be(pkt, 0);      // weight
+    push_u16_be(pkt, 0); // priority
+    push_u16_be(pkt, 0); // weight
     push_u16_be(pkt, port);
     pkt.insert(pkt.end(), host_enc.begin(), host_enc.end());
 
     // RR 3: A  hostname -> IPv4
     pkt.insert(pkt.end(), host_enc.begin(), host_enc.end());
-    push_u16_be(pkt, 1);      // type A
+    push_u16_be(pkt, 1); // type A
     push_u16_be(pkt, 0x0001);
     push_u32_be(pkt, 120);
     push_u16_be(pkt, 4);
@@ -491,8 +489,7 @@ static std::vector<std::byte> make_full_service_response(
 // async_browse tests
 // ---------------------------------------------------------------------------
 
-SCENARIO("async_browse delivers fully resolved service after PTR+SRV+A response",
-         "[service_discovery][browse]")
+SCENARIO("async_browse delivers fully resolved service after PTR+SRV+A response", "[service_discovery][browse]")
 {
     GIVEN("a service_discovery and a full-service response (PTR+SRV+A)")
     {
@@ -508,17 +505,17 @@ SCENARIO("async_browse delivers fully resolved service after PTR+SRV+A response"
 
         WHEN("async_browse() is called and the silence timer fires")
         {
-            std::error_code            received_ec;
+            std::error_code received_ec;
             std::vector<resolved_service> received_services;
             bool callback_fired = false;
 
             sd.async_browse("_http._tcp.local.",
-                [&](std::error_code ec, std::vector<resolved_service> svcs)
-                {
-                    callback_fired    = true;
-                    received_ec       = ec;
-                    received_services = std::move(svcs);
-                });
+                            [&](std::error_code ec, std::vector<resolved_service> svcs)
+                            {
+                                callback_fired = true;
+                                received_ec = ec;
+                                received_services = std::move(svcs);
+                            });
 
             sd.timer().fire();
 
@@ -553,8 +550,7 @@ SCENARIO("async_browse delivers fully resolved service after PTR+SRV+A response"
     }
 }
 
-SCENARIO("async_browse delivers partial service when only PTR record arrives",
-         "[service_discovery][browse][partial]")
+SCENARIO("async_browse delivers partial service when only PTR record arrives", "[service_discovery][browse][partial]")
 {
     GIVEN("a service_discovery and a PTR-only response")
     {
@@ -571,11 +567,11 @@ SCENARIO("async_browse delivers partial service when only PTR record arrives",
             bool callback_fired = false;
 
             sd.async_browse("_http._tcp.local.",
-                [&](std::error_code, std::vector<resolved_service> svcs)
-                {
-                    callback_fired    = true;
-                    received_services = std::move(svcs);
-                });
+                            [&](std::error_code, std::vector<resolved_service> svcs)
+                            {
+                                callback_fired = true;
+                                received_services = std::move(svcs);
+                            });
 
             sd.timer().fire();
 
@@ -596,8 +592,7 @@ SCENARIO("async_browse delivers partial service when only PTR record arrives",
     }
 }
 
-SCENARIO("async_browse delivers multiple resolved services",
-         "[service_discovery][browse][multi]")
+SCENARIO("async_browse delivers multiple resolved services", "[service_discovery][browse][multi]")
 {
     GIVEN("a service_discovery and two separate full-service response packets")
     {
@@ -623,10 +618,10 @@ SCENARIO("async_browse delivers multiple resolved services",
             std::vector<resolved_service> received_services;
 
             sd.async_browse("_http._tcp.local.",
-                [&](std::error_code, std::vector<resolved_service> svcs)
-                {
-                    received_services = std::move(svcs);
-                });
+                            [&](std::error_code, std::vector<resolved_service> svcs)
+                            {
+                                received_services = std::move(svcs);
+                            });
 
             sd.timer().fire();
 
@@ -636,22 +631,21 @@ SCENARIO("async_browse delivers multiple resolved services",
 
                 // Find Alpha and Beta (order not guaranteed due to unordered_map)
                 auto alpha_it = std::find_if(received_services.begin(), received_services.end(),
-                    [](const resolved_service &s){ return s.instance_name.find("Alpha") != std::string::npos; });
-                auto beta_it  = std::find_if(received_services.begin(), received_services.end(),
-                    [](const resolved_service &s){ return s.instance_name.find("Beta") != std::string::npos; });
+                                             [](const resolved_service &s) { return s.instance_name.find("Alpha") != std::string::npos; });
+                auto beta_it = std::find_if(received_services.begin(), received_services.end(),
+                                            [](const resolved_service &s) { return s.instance_name.find("Beta") != std::string::npos; });
 
                 REQUIRE(alpha_it != received_services.end());
-                REQUIRE(beta_it  != received_services.end());
+                REQUIRE(beta_it != received_services.end());
 
                 REQUIRE(alpha_it->port == 80);
-                REQUIRE(beta_it->port  == 443);
+                REQUIRE(beta_it->port == 443);
             }
         }
     }
 }
 
-SCENARIO("stop() during async_browse fires completion with partial aggregated results",
-         "[service_discovery][browse][stop]")
+SCENARIO("stop() during async_browse fires completion with partial aggregated results", "[service_discovery][browse][stop]")
 {
     GIVEN("a service_discovery with a PTR-only response and no silence timeout fired")
     {
@@ -666,11 +660,11 @@ SCENARIO("stop() during async_browse fires completion with partial aggregated re
         bool callback_fired = false;
 
         sd.async_browse("_http._tcp.local.",
-            [&](std::error_code, std::vector<resolved_service> svcs)
-            {
-                callback_fired    = true;
-                received_services = std::move(svcs);
-            });
+                        [&](std::error_code, std::vector<resolved_service> svcs)
+                        {
+                            callback_fired = true;
+                            received_services = std::move(svcs);
+                        });
 
         WHEN("stop() is called before the silence timeout")
         {
@@ -687,19 +681,21 @@ SCENARIO("stop() during async_browse fires completion with partial aggregated re
     }
 }
 
-SCENARIO("on_record callback fires during async_browse (same as async_discover)",
-         "[service_discovery][browse][on_record]")
+SCENARIO("on_record callback fires during async_browse (same as async_discover)", "[service_discovery][browse][on_record]")
 {
     GIVEN("a service_discovery with an on_record callback and a PTR response")
     {
         mock_executor ex;
         std::vector<mdns_record_variant> captured_records;
 
-        service_discovery<MockPolicy> sd{ex, 500ms,
+        service_discovery<MockPolicy> sd{
+            ex,
+            500ms,
             [&](const mdns_record_variant &rec, endpoint)
             {
                 captured_records.push_back(rec);
-            }};
+            }
+        };
 
         sd.socket().enqueue(make_ptr_response(
             "_http._tcp.local.",
@@ -708,7 +704,9 @@ SCENARIO("on_record callback fires during async_browse (same as async_discover)"
         WHEN("async_browse() is called and silence timer fires")
         {
             sd.async_browse("_http._tcp.local.",
-                [](std::error_code, std::vector<resolved_service>) {});
+                            [](std::error_code, std::vector<resolved_service>)
+                            {
+                            });
 
             sd.timer().fire();
 

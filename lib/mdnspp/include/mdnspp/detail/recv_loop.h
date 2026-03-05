@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DETAIL_RECV_LOOP_H
-#define HPP_GUARD_MDNSPP_DETAIL_RECV_LOOP_H
+#ifndef HPP_GUARD_MDNSPP_RECV_LOOP_H
+#define HPP_GUARD_MDNSPP_RECV_LOOP_H
 
 #include "mdnspp/policy.h"
 #include <atomic>

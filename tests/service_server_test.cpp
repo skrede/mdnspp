@@ -4,18 +4,20 @@
 // for PTR, SRV, A, AAAA, and TXT query types, parseable by walk_dns_frame().
 // Also verifies service_server<MockPolicy> constructor/async_start/stop lifecycle and RFC 6762 timing.
 
-#include "mdnspp/service_info.h"
-#include "mdnspp/service_server.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/service_info.h"
+#include "mdnspp/service_server.h"
+
 #include "mdnspp/detail/dns_wire.h"
+
 #include "mdnspp/testing/mock_policy.h"
 
 #include <catch2/catch_test_macros.hpp>
-#include <cstddef>
-#include <cstdint>
+
 #include <vector>
 #include <string>
+#include <cstddef>
 #include <variant>
 #include <optional>
 
@@ -24,53 +26,42 @@ using namespace mdnspp::detail;
 using namespace mdnspp::testing;
 using mdnspp::dns_type;
 
-// ---------------------------------------------------------------------------
-// Test fixture: a fully populated service_info
-// ---------------------------------------------------------------------------
-
 static service_info make_test_service()
 {
     service_info info;
-    info.service_name   = "MyService._http._tcp.local.";
-    info.service_type   = "_http._tcp.local.";
-    info.hostname       = "myhost.local.";
-    info.port           = 8080;
-    info.priority       = 0;
-    info.weight         = 0;
-    info.address_ipv4   = "192.168.1.10";
-    info.address_ipv6   = std::nullopt;
-    info.txt_records    = {service_txt{"path", "/api"}, service_txt{"ver", std::nullopt}};
+    info.service_name = "MyService._http._tcp.local.";
+    info.service_type = "_http._tcp.local.";
+    info.hostname = "myhost.local.";
+    info.port = 8080;
+    info.priority = 0;
+    info.weight = 0;
+    info.address_ipv4 = "192.168.1.10";
+    info.address_ipv6 = std::nullopt;
+    info.txt_records = {service_txt{"path", "/api"}, service_txt{"ver", std::nullopt}};
     return info;
 }
-
-// ---------------------------------------------------------------------------
-// Helper: parse all records from a build_dns_response() packet
-// ---------------------------------------------------------------------------
 
 static std::vector<mdns_record_variant> parse_response(const std::vector<std::byte> &pkt)
 {
     std::vector<mdns_record_variant> records;
-    walk_dns_frame(std::span<const std::byte>(pkt), endpoint{}, [&](mdns_record_variant rv) {
+    walk_dns_frame(std::span<const std::byte>(pkt), endpoint{}, [&](mdns_record_variant rv)
+    {
         records.push_back(std::move(rv));
     });
     return records;
 }
-
-// ---------------------------------------------------------------------------
-// Helpers for service_server tests
-// ---------------------------------------------------------------------------
 
 static service_info make_test_info()
 {
     service_info info;
     info.service_name = "MyService._http._tcp.local.";
     info.service_type = "_http._tcp.local.";
-    info.hostname     = "myhost.local.";
-    info.port         = 8080;
-    info.priority     = 0;
-    info.weight       = 0;
+    info.hostname = "myhost.local.";
+    info.port = 8080;
+    info.priority = 0;
+    info.weight = 0;
     info.address_ipv4 = "192.168.1.10";
-    info.txt_records  = {service_txt{"path", "/api"}};
+    info.txt_records = {service_txt{"path", "/api"}};
     return info;
 }
 
@@ -95,10 +86,6 @@ static std::vector<std::byte> make_qu_query(std::string_view name, dns_type qtyp
     return pkt;
 }
 
-// ---------------------------------------------------------------------------
-// SCENARIO: PTR response (qtype=12)
-// ---------------------------------------------------------------------------
-
 SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response][PTR]")
 {
     GIVEN("a fully populated service_info")
@@ -118,7 +105,7 @@ SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response]
             {
                 REQUIRE(pkt.size() >= 12);
                 uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[2])) << 8) |
-                                  static_cast<uint16_t>(static_cast<uint8_t>(pkt[3]));
+                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[3]));
                 REQUIRE(flags == 0x8400);
             }
 
@@ -126,9 +113,9 @@ SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response]
             {
                 REQUIRE(pkt.size() >= 12);
                 uint16_t ancount = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[6])) << 8) |
-                                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[7]));
+                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[7]));
                 uint16_t arcount = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[10])) << 8) |
-                                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[11]));
+                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[11]));
                 REQUIRE(ancount >= 1);
                 REQUIRE(arcount >= 1);
             }
@@ -137,12 +124,12 @@ SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response]
             {
                 auto records = parse_response(pkt);
                 bool found_ptr = false;
-                for (const auto &rv : records)
+                for(const auto &rv : records)
                 {
-                    if (std::holds_alternative<record_ptr>(rv))
+                    if(std::holds_alternative<record_ptr>(rv))
                     {
                         const auto &ptr = std::get<record_ptr>(rv);
-                        if (ptr.ptr_name.find("MyService") != std::string::npos)
+                        if(ptr.ptr_name.find("MyService") != std::string::npos)
                             found_ptr = true;
                     }
                 }
@@ -152,12 +139,7 @@ SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response]
     }
 }
 
-// ---------------------------------------------------------------------------
-// SCENARIO: PTR response includes additional SRV and A records
-// ---------------------------------------------------------------------------
-
-SCENARIO("build_dns_response PTR response includes additional SRV and A records",
-         "[build_dns_response][PTR][additional]")
+SCENARIO("build_dns_response PTR response includes additional SRV and A records", "[build_dns_response][PTR][additional]")
 {
     GIVEN("a service_info with both IPv4 address and TXT records")
     {
@@ -172,11 +154,11 @@ SCENARIO("build_dns_response PTR response includes additional SRV and A records"
                 auto records = parse_response(pkt);
 
                 bool has_ptr = false, has_srv = false, has_a = false;
-                for (const auto &rv : records)
+                for(const auto &rv : records)
                 {
-                    if (std::holds_alternative<record_ptr>(rv))  has_ptr = true;
-                    if (std::holds_alternative<record_srv>(rv))  has_srv = true;
-                    if (std::holds_alternative<record_a>(rv))    has_a   = true;
+                    if(std::holds_alternative<record_ptr>(rv)) has_ptr = true;
+                    if(std::holds_alternative<record_srv>(rv)) has_srv = true;
+                    if(std::holds_alternative<record_a>(rv)) has_a = true;
                 }
                 REQUIRE(has_ptr);
                 REQUIRE(has_srv);
@@ -185,10 +167,6 @@ SCENARIO("build_dns_response PTR response includes additional SRV and A records"
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// SCENARIO: A response (qtype=1)
-// ---------------------------------------------------------------------------
 
 SCENARIO("build_dns_response produces valid A response", "[build_dns_response][A]")
 {
@@ -204,12 +182,12 @@ SCENARIO("build_dns_response produces valid A response", "[build_dns_response][A
             {
                 auto records = parse_response(pkt);
                 bool found = false;
-                for (const auto &rv : records)
+                for(const auto &rv : records)
                 {
-                    if (std::holds_alternative<record_a>(rv))
+                    if(std::holds_alternative<record_a>(rv))
                     {
                         const auto &a = std::get<record_a>(rv);
-                        if (a.address_string == "192.168.1.10")
+                        if(a.address_string == "192.168.1.10")
                             found = true;
                     }
                 }
@@ -219,12 +197,7 @@ SCENARIO("build_dns_response produces valid A response", "[build_dns_response][A
     }
 }
 
-// ---------------------------------------------------------------------------
-// SCENARIO: A response returns empty when no IPv4
-// ---------------------------------------------------------------------------
-
-SCENARIO("build_dns_response returns empty for A when no IPv4 address",
-         "[build_dns_response][A][no-ipv4]")
+SCENARIO("build_dns_response returns empty for A when no IPv4 address", "[build_dns_response][A][no-ipv4]")
 {
     GIVEN("a service_info without address_ipv4")
     {
@@ -243,10 +216,6 @@ SCENARIO("build_dns_response returns empty for A when no IPv4 address",
     }
 }
 
-// ---------------------------------------------------------------------------
-// SCENARIO: SRV response (qtype=33)
-// ---------------------------------------------------------------------------
-
 SCENARIO("build_dns_response produces valid SRV response", "[build_dns_response][SRV]")
 {
     GIVEN("a service_info with port=8080")
@@ -261,12 +230,12 @@ SCENARIO("build_dns_response produces valid SRV response", "[build_dns_response]
             {
                 auto records = parse_response(pkt);
                 bool found = false;
-                for (const auto &rv : records)
+                for(const auto &rv : records)
                 {
-                    if (std::holds_alternative<record_srv>(rv))
+                    if(std::holds_alternative<record_srv>(rv))
                     {
                         const auto &srv = std::get<record_srv>(rv);
-                        if (srv.port == 8080)
+                        if(srv.port == 8080)
                             found = true;
                     }
                 }
@@ -276,12 +245,7 @@ SCENARIO("build_dns_response produces valid SRV response", "[build_dns_response]
     }
 }
 
-// ---------------------------------------------------------------------------
-// SCENARIO: Unknown qtype returns empty
-// ---------------------------------------------------------------------------
-
-SCENARIO("build_dns_response returns empty for unknown qtype",
-         "[build_dns_response][unknown]")
+SCENARIO("build_dns_response returns empty for unknown qtype", "[build_dns_response][unknown]")
 {
     GIVEN("a service_info")
     {
@@ -299,10 +263,6 @@ SCENARIO("build_dns_response returns empty for unknown qtype",
         }
     }
 }
-
-// ---------------------------------------------------------------------------
-// SCENARIO: TXT response (qtype=16)
-// ---------------------------------------------------------------------------
 
 SCENARIO("build_dns_response produces valid TXT response", "[build_dns_response][TXT]")
 {
@@ -323,12 +283,12 @@ SCENARIO("build_dns_response produces valid TXT response", "[build_dns_response]
             {
                 auto records = parse_response(pkt);
                 bool found = false;
-                for (const auto &rv : records)
+                for(const auto &rv : records)
                 {
-                    if (std::holds_alternative<record_txt>(rv))
+                    if(std::holds_alternative<record_txt>(rv))
                     {
                         const auto &txt = std::get<record_txt>(rv);
-                        if (!txt.entries.empty())
+                        if(!txt.entries.empty())
                             found = true;
                     }
                 }
@@ -337,10 +297,6 @@ SCENARIO("build_dns_response produces valid TXT response", "[build_dns_response]
         }
     }
 }
-
-// ===========================================================================
-// service_server<MockPolicy> BDD scenarios — Phase 07, Plan 07-03
-// ===========================================================================
 
 SCENARIO("service_server constructs with direct constructor", "[service_server][create]")
 {
@@ -416,8 +372,7 @@ SCENARIO("async_start fires completion callback on stop", "[service_server][asyn
     }
 }
 
-SCENARIO("async_start completion handler fires exactly once on double stop",
-         "[service_server][stop-idempotent][completion]")
+SCENARIO("async_start completion handler fires exactly once on double stop", "[service_server][stop-idempotent][completion]")
 {
     GIVEN("a started service_server with a completion callback")
     {
@@ -440,8 +395,7 @@ SCENARIO("async_start completion handler fires exactly once on double stop",
     }
 }
 
-SCENARIO("service_server responds to PTR query after timer fires",
-         "[service_server][ptr][response]")
+SCENARIO("service_server responds to PTR query after timer fires", "[service_server][ptr][response]")
 {
     GIVEN("a service_server with a PTR query for _http._tcp.local. enqueued with sender endpoint")
     {
@@ -474,7 +428,7 @@ SCENARIO("service_server responds to PTR query after timer fires",
                         REQUIRE(pkt.size() >= 4);
                         uint16_t flags =
                             (static_cast<uint16_t>(static_cast<uint8_t>(pkt[2])) << 8) |
-                             static_cast<uint16_t>(static_cast<uint8_t>(pkt[3]));
+                            static_cast<uint16_t>(static_cast<uint8_t>(pkt[3]));
                         REQUIRE(flags == 0x8400);
                     }
                 }
@@ -483,8 +437,7 @@ SCENARIO("service_server responds to PTR query after timer fires",
     }
 }
 
-SCENARIO("response delay timer armed after query receipt",
-         "[service_server][timer]")
+SCENARIO("response delay timer armed after query receipt", "[service_server][timer]")
 {
     GIVEN("a service_server with a PTR query enqueued")
     {
@@ -509,8 +462,7 @@ SCENARIO("response delay timer armed after query receipt",
     }
 }
 
-SCENARIO("no response sent before timer fires",
-         "[service_server][rfc6762][timing]")
+SCENARIO("no response sent before timer fires", "[service_server][rfc6762][timing]")
 {
     GIVEN("a service_server with a PTR query enqueued")
     {
@@ -530,8 +482,7 @@ SCENARIO("no response sent before timer fires",
     }
 }
 
-SCENARIO("stop before timer fires prevents response",
-         "[service_server][stop][cancel]")
+SCENARIO("stop before timer fires prevents response", "[service_server][stop][cancel]")
 {
     GIVEN("a service_server with a PTR query enqueued")
     {
@@ -557,8 +508,7 @@ SCENARIO("stop before timer fires prevents response",
     }
 }
 
-SCENARIO("response to A query contains valid A record",
-         "[service_server][A][response]")
+SCENARIO("response to A query contains valid A record", "[service_server][A][response]")
 {
     GIVEN("a service_server with an A query for myhost.local. enqueued")
     {
@@ -580,12 +530,12 @@ SCENARIO("response to A query contains valid A record",
                     const auto &pkt = server.socket().sent_packets()[0].data;
                     auto records = parse_response(pkt);
                     bool found = false;
-                    for (const auto &rv : records)
+                    for(const auto &rv : records)
                     {
-                        if (std::holds_alternative<record_a>(rv))
+                        if(std::holds_alternative<record_a>(rv))
                         {
                             const auto &a = std::get<record_a>(rv);
-                            if (a.address_string == "192.168.1.10")
+                            if(a.address_string == "192.168.1.10")
                                 found = true;
                         }
                     }
@@ -596,8 +546,7 @@ SCENARIO("response to A query contains valid A record",
     }
 }
 
-SCENARIO("response sent to multicast by default, unicast when QU bit set",
-         "[service_server][endpoint][rfc6762]")
+SCENARIO("response sent to multicast by default, unicast when QU bit set", "[service_server][endpoint][rfc6762]")
 {
     GIVEN("a service_server with a standard PTR query (no QU bit) from {10.0.0.1, 5353}")
     {

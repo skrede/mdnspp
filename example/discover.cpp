@@ -1,6 +1,6 @@
 #include "mdnspp/asio.h"
 #include "mdnspp/records.h"
-#include "mdnspp/endpoint.h"
+#include "mdnspp/service_discovery.h"
 
 #include <asio.hpp>
 #include <iostream>

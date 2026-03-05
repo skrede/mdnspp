@@ -1,11 +1,15 @@
-#pragma once
+#ifndef HPP_GUARD_MDNSPP_ASIO_SOCKET_H
+#define HPP_GUARD_MDNSPP_ASIO_SOCKET_H
+
+#include <mdnspp/policy.h>
+#include <mdnspp/endpoint.h>
+
 #include <asio.hpp>
-#include "mdnspp/policy.h"
-#include "mdnspp/endpoint.h"
-#include <functional>
+
 #include <span>
-#include <system_error>
 #include <vector>
+#include <functional>
+#include <system_error>
 
 namespace mdnspp {
 
@@ -66,8 +70,7 @@ public:
 
     void send(mdnspp::endpoint dest, std::span<const std::byte> data)
     {
-        asio::ip::udp::endpoint ep(
-            asio::ip::make_address(dest.address), dest.port);
+        asio::ip::udp::endpoint ep(asio::ip::make_address(dest.address), dest.port);
         m_socket.send_to(asio::buffer(data.data(), data.size()), ep);
     }
 
@@ -91,3 +94,5 @@ private:
 
 static_assert(mdnspp::SocketLike<mdnspp::AsioSocket>, "AsioSocket must satisfy SocketLike — check async_receive/send/close signatures"
 );
+
+#endif

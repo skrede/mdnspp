@@ -1,5 +1,4 @@
 // tests/endpoint_test.cpp
-// Tests for endpoint three-way comparison operators (ERG-03).
 
 #include "mdnspp/endpoint.h"
 

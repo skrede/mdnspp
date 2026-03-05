@@ -3,23 +3,22 @@
 // Tests the full async_query() flow via MockPolicy.
 
 #include "mdnspp/querier.h"
-#include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 
+#include "mdnspp/testing/mock_policy.h"
+
 #include <catch2/catch_test_macros.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <vector>
-#include <span>
+
+#include <array>
 #include <chrono>
 #include <string>
-#include <array>
+#include <vector>
+#include <cstddef>
 
 using namespace mdnspp;
 using namespace mdnspp::testing;
 using namespace std::chrono_literals;
-using mdnspp::dns_type;
 
 // ---------------------------------------------------------------------------
 // Byte-building helpers
@@ -29,7 +28,7 @@ static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
 {
     std::vector<std::byte> v;
     v.reserve(vals.size());
-    for (auto b : vals)
+    for(auto b : vals)
         v.push_back(static_cast<std::byte>(b));
     return v;
 }
@@ -44,26 +43,26 @@ static void push_u32_be(std::vector<std::byte> &buf, uint32_t v)
 {
     buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 24) & 0xFF)));
     buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 16) & 0xFF)));
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >>  8) & 0xFF)));
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>( v        & 0xFF)));
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 8) & 0xFF)));
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>(v & 0xFF)));
 }
 
 // Encode a DNS name to wire label format (no compression).
 static std::vector<std::byte> encode_name(std::string_view name)
 {
     std::vector<std::byte> result;
-    if (!name.empty() && name.back() == '.')
+    if(!name.empty() && name.back() == '.')
         name.remove_suffix(1);
 
     size_t pos = 0;
-    while (pos < name.size())
+    while(pos < name.size())
     {
         size_t dot = name.find('.', pos);
-        if (dot == std::string_view::npos)
+        if(dot == std::string_view::npos)
             dot = name.size();
         size_t len = dot - pos;
         result.push_back(static_cast<std::byte>(static_cast<uint8_t>(len)));
-        for (size_t i = pos; i < dot; ++i)
+        for(size_t i = pos; i < dot; ++i)
             result.push_back(static_cast<std::byte>(static_cast<uint8_t>(name[i])));
         pos = (dot < name.size()) ? dot + 1 : name.size();
     }
@@ -73,8 +72,8 @@ static std::vector<std::byte> encode_name(std::string_view name)
 
 // Builds a mDNS response with one A record (type=1).
 static std::vector<std::byte> make_a_response(std::string_view name,
-                                               uint8_t a, uint8_t b,
-                                               uint8_t c, uint8_t d)
+                                              uint8_t a, uint8_t b,
+                                              uint8_t c, uint8_t d)
 {
     std::vector<std::byte> pkt;
 
@@ -101,8 +100,8 @@ static std::vector<std::byte> make_a_response(std::string_view name,
 
 // Builds a mDNS response with one SRV record (type=33).
 static std::vector<std::byte> make_srv_response(std::string_view name,
-                                                 std::string_view target,
-                                                 uint16_t port)
+                                                std::string_view target,
+                                                uint16_t port)
 {
     std::vector<std::byte> pkt;
 
@@ -113,7 +112,7 @@ static std::vector<std::byte> make_srv_response(std::string_view name,
     push_u16_be(pkt, 0x0000); // nscount
     push_u16_be(pkt, 0x0000); // arcount
 
-    auto owner_enc  = encode_name(name);
+    auto owner_enc = encode_name(name);
     auto target_enc = encode_name(target);
 
     pkt.insert(pkt.end(), owner_enc.begin(), owner_enc.end());
@@ -124,9 +123,9 @@ static std::vector<std::byte> make_srv_response(std::string_view name,
     // SRV rdata: priority(2) + weight(2) + port(2) + target name
     uint16_t rdlength = static_cast<uint16_t>(6 + target_enc.size());
     push_u16_be(pkt, rdlength);
-    push_u16_be(pkt, 0);      // priority
-    push_u16_be(pkt, 0);      // weight
-    push_u16_be(pkt, port);   // port
+    push_u16_be(pkt, 0);    // priority
+    push_u16_be(pkt, 0);    // weight
+    push_u16_be(pkt, port); // port
     pkt.insert(pkt.end(), target_enc.begin(), target_enc.end());
 
     return pkt;
@@ -134,7 +133,7 @@ static std::vector<std::byte> make_srv_response(std::string_view name,
 
 // Builds a mDNS response with one AAAA record (type=28).
 static std::vector<std::byte> make_aaaa_response(std::string_view name,
-                                                   std::array<uint8_t, 16> addr)
+                                                 std::array<uint8_t, 16> addr)
 {
     std::vector<std::byte> pkt;
 
@@ -152,7 +151,7 @@ static std::vector<std::byte> make_aaaa_response(std::string_view name,
     push_u32_be(pkt, 120);    // ttl
     push_u16_be(pkt, 16);     // rdlength = 16
 
-    for (uint8_t b : addr)
+    for(uint8_t b : addr)
         pkt.push_back(static_cast<std::byte>(b));
 
     return pkt;
@@ -183,24 +182,20 @@ static std::vector<std::byte> make_multi_record_response()
     pkt.push_back(static_cast<std::byte>(1));
 
     // Second RR: SRV record for "myservice._tcp.local." port 8080
-    auto srv_name_enc   = encode_name("myservice._tcp.local.");
+    auto srv_name_enc = encode_name("myservice._tcp.local.");
     auto srv_target_enc = encode_name("myhost.local.");
     pkt.insert(pkt.end(), srv_name_enc.begin(), srv_name_enc.end());
     push_u16_be(pkt, 33);
     push_u16_be(pkt, 0x0001);
     push_u32_be(pkt, 4500);
     push_u16_be(pkt, static_cast<uint16_t>(6 + srv_target_enc.size()));
-    push_u16_be(pkt, 0);   // priority
-    push_u16_be(pkt, 0);   // weight
+    push_u16_be(pkt, 0);    // priority
+    push_u16_be(pkt, 0);    // weight
     push_u16_be(pkt, 8080); // port
     pkt.insert(pkt.end(), srv_target_enc.begin(), srv_target_enc.end());
 
     return pkt;
 }
-
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
 
 SCENARIO("querier constructs and is usable", "[querier][create]")
 {
@@ -232,7 +227,9 @@ SCENARIO("async_query returns A record from mock socket", "[querier][query][A]")
         WHEN("async_query() is called for myhost.local. with qtype=1 (A)")
         {
             q.async_query("myhost.local.", dns_type::a,
-                [](std::error_code, std::vector<mdns_record_variant>) {});
+                          [](std::error_code, std::vector<mdns_record_variant>)
+                          {
+                          });
 
             THEN("results() contains one record_a")
             {
@@ -261,12 +258,12 @@ SCENARIO("async_query fires completion callback with results", "[querier][async]
             bool callback_fired = false;
 
             q.async_query("myhost.local.", dns_type::a,
-                [&](std::error_code ec, std::vector<mdns_record_variant> results)
-                {
-                    callback_fired = true;
-                    received_ec = ec;
-                    received_results = std::move(results);
-                });
+                          [&](std::error_code ec, std::vector<mdns_record_variant> results)
+                          {
+                              callback_fired = true;
+                              received_ec = ec;
+                              received_results = std::move(results);
+                          });
 
             // MockSocket drains the queue synchronously during async_query(),
             // but the silence timer must be fired manually to trigger the completion callback.
@@ -300,7 +297,9 @@ SCENARIO("async_query sends correct DNS query packet", "[querier][query][packet]
         WHEN("async_query() is called for myhost.local. with qtype=1 (A)")
         {
             q.async_query("myhost.local.", dns_type::a,
-                [](std::error_code, std::vector<mdns_record_variant>) {});
+                          [](std::error_code, std::vector<mdns_record_variant>)
+                          {
+                          });
 
             THEN("a DNS query was sent to 224.0.0.251:5353")
             {
@@ -335,15 +334,14 @@ SCENARIO("async_query sends correct DNS query packet", "[querier][query][packet]
                 // QTYPE starts at offset 12 + 14 = 26
                 REQUIRE(data.size() >= 28);
                 size_t qtype_offset = data.size() - 4; // qtype(2) + qclass(2)
-                REQUIRE(static_cast<uint8_t>(data[qtype_offset])     == 0x00);
+                REQUIRE(static_cast<uint8_t>(data[qtype_offset]) == 0x00);
                 REQUIRE(static_cast<uint8_t>(data[qtype_offset + 1]) == 0x01); // A = 1
             }
         }
     }
 }
 
-SCENARIO("async_query accumulates multiple records from a single frame",
-         "[querier][query][multi]")
+SCENARIO("async_query accumulates multiple records from a single frame", "[querier][query][multi]")
 {
     GIVEN("a querier instance and a multi-record response enqueued")
     {
@@ -354,7 +352,9 @@ SCENARIO("async_query accumulates multiple records from a single frame",
         WHEN("async_query() is called")
         {
             q.async_query("myhost.local.", dns_type::a,
-                [](std::error_code, std::vector<mdns_record_variant>) {});
+                          [](std::error_code, std::vector<mdns_record_variant>)
+                          {
+                          });
 
             THEN("results() contains all records from the frame")
             {
@@ -364,8 +364,7 @@ SCENARIO("async_query accumulates multiple records from a single frame",
     }
 }
 
-SCENARIO("async_query skips malformed records and returns valid ones",
-         "[querier][query][malformed]")
+SCENARIO("async_query skips malformed records and returns valid ones", "[querier][query][malformed]")
 {
     GIVEN("a DNS frame with a valid A record and an invalid A record (wrong rdlength)")
     {
@@ -395,10 +394,10 @@ SCENARIO("async_query skips malformed records and returns valid ones",
         // RR 2: A record with rdlength=5 (invalid — parse::a checks rdlength==4)
         auto bad_enc = encode_name("bad.local.");
         pkt.insert(pkt.end(), bad_enc.begin(), bad_enc.end());
-        push_u16_be(pkt, 1);      // type A
+        push_u16_be(pkt, 1); // type A
         push_u16_be(pkt, 0x0001);
         push_u32_be(pkt, 120);
-        push_u16_be(pkt, 5);      // rdlength=5 (invalid for type A)
+        push_u16_be(pkt, 5); // rdlength=5 (invalid for type A)
         pkt.push_back(static_cast<std::byte>(5));
         pkt.push_back(static_cast<std::byte>(6));
         pkt.push_back(static_cast<std::byte>(7));
@@ -412,7 +411,9 @@ SCENARIO("async_query skips malformed records and returns valid ones",
         WHEN("async_query() is called")
         {
             q.async_query("good.local.", dns_type::a,
-                [](std::error_code, std::vector<mdns_record_variant>) {});
+                          [](std::error_code, std::vector<mdns_record_variant>)
+                          {
+                          });
 
             THEN("results() contains only the valid A record")
             {

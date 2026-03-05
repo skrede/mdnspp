@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DETAIL_PLATFORM_H
-#define HPP_GUARD_MDNSPP_DETAIL_PLATFORM_H
+#ifndef HPP_GUARD_MDNSPP_PLATFORM_H
+#define HPP_GUARD_MDNSPP_PLATFORM_H
 
 // platform.h — cross-platform socket includes.
 // Provides the minimal set of headers required for BSD-socket and poll APIs.
@@ -16,4 +16,4 @@ using nfds_t = unsigned long;
 #  include <poll.h>
 #endif
 
-#endif // HPP_GUARD_MDNSPP_DETAIL_PLATFORM_H
+#endif // HPP_GUARD_MDNSPP_PLATFORM_H

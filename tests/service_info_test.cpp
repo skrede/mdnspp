@@ -1,17 +1,17 @@
 // tests/service_info_test.cpp
-// Tests: service_info struct, MockSocket endpoint enqueue,
-// push_u16_be / push_u32_be helpers in dns_wire.h
 
 #include "mdnspp/service_info.h"
-#include "mdnspp/testing/mock_policy.h"
+
 #include "mdnspp/detail/dns_wire.h"
 
+#include "mdnspp/testing/mock_policy.h"
+
 #include <catch2/catch_test_macros.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <vector>
-#include <optional>
+
 #include <string>
+#include <vector>
+#include <cstddef>
+#include <optional>
 
 using namespace mdnspp;
 using namespace mdnspp::testing;
@@ -20,15 +20,15 @@ using namespace mdnspp::detail;
 TEST_CASE("service_info struct has all required fields", "[service_info]")
 {
     service_info info;
-    info.service_name   = "MyService._http._tcp.local.";
-    info.service_type   = "_http._tcp.local.";
-    info.hostname       = "myhost.local.";
-    info.port           = 8080;
-    info.priority       = 0;
-    info.weight         = 0;
-    info.address_ipv4   = "192.168.1.10";
-    info.address_ipv6   = std::nullopt;
-    info.txt_records    = {service_txt{"path", "/api"}};
+    info.service_name = "MyService._http._tcp.local.";
+    info.service_type = "_http._tcp.local.";
+    info.hostname = "myhost.local.";
+    info.port = 8080;
+    info.priority = 0;
+    info.weight = 0;
+    info.address_ipv4 = "192.168.1.10";
+    info.address_ipv6 = std::nullopt;
+    info.txt_records = {service_txt{"path", "/api"}};
 
     REQUIRE(info.service_name == "MyService._http._tcp.local.");
     REQUIRE(info.service_type == "_http._tcp.local.");
@@ -45,8 +45,7 @@ TEST_CASE("service_info struct has all required fields", "[service_info]")
     REQUIRE(*info.txt_records[0].value == "/api");
 }
 
-TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to handler",
-          "[mock_socket][enqueue_with_endpoint]")
+TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to handler", "[mock_socket][enqueue_with_endpoint]")
 {
     MockSocket sock{mock_executor{}};
 
@@ -58,7 +57,8 @@ TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to h
     endpoint received_from;
     std::vector<std::byte> received_data;
 
-    sock.async_receive([&](std::span<std::byte> data, endpoint from) {
+    sock.async_receive([&](std::span<std::byte> data, endpoint from)
+    {
         received_from = from;
         received_data.assign(data.begin(), data.end());
     });
@@ -70,8 +70,7 @@ TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to h
     REQUIRE(received_data[1] == std::byte{0xCD});
 }
 
-TEST_CASE("MockSocket::enqueue(packet) delivers endpoint{}",
-          "[mock_socket][enqueue_default_endpoint]")
+TEST_CASE("MockSocket::enqueue(packet) delivers endpoint{}", "[mock_socket][enqueue_default_endpoint]")
 {
     MockSocket sock{mock_executor{}};
 
@@ -79,7 +78,8 @@ TEST_CASE("MockSocket::enqueue(packet) delivers endpoint{}",
     sock.enqueue(pkt);
 
     endpoint received_from{"nonzero", 9999}; // will be overwritten
-    sock.async_receive([&](std::span<std::byte>, endpoint from) {
+    sock.async_receive([&](std::span<std::byte>, endpoint from)
+    {
         received_from = from;
     });
 

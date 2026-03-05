@@ -1,11 +1,13 @@
 #include "mdnspp/detail/recv_loop.h"
+
 #include "mdnspp/testing/mock_policy.h"
 
 #include <catch2/catch_test_macros.hpp>
-#include <chrono>
-#include <cstddef>
+
 #include <span>
+#include <chrono>
 #include <vector>
+#include <cstddef>
 
 using namespace mdnspp;
 using namespace mdnspp::testing;
@@ -38,7 +40,10 @@ TEST_CASE("recv_loop delivers injected packets")
             received.emplace_back(data.begin(), data.end());
             return true;
         },
-        [] {}};
+        []
+        {
+        }
+    };
 
     loop.start();
 
@@ -57,7 +62,8 @@ TEST_CASE("recv_loop silence callback fires on timer fire")
         timer,
         SILENCE_TIMEOUT,
         [](std::span<std::byte>, endpoint) -> bool { return true; },
-        [&] { silence_called = true; }};
+        [&] { silence_called = true; }
+    };
 
     loop.start();
 
@@ -77,7 +83,10 @@ TEST_CASE("recv_loop stop is idempotent")
         timer,
         SILENCE_TIMEOUT,
         [](std::span<std::byte>, endpoint) -> bool { return true; },
-        [] {}};
+        []
+        {
+        }
+    };
 
     loop.start();
 
@@ -99,8 +108,15 @@ TEST_CASE("recv_loop stop prevents on_packet after stop")
         sock,
         timer,
         SILENCE_TIMEOUT,
-        [&](std::span<std::byte>, endpoint) -> bool { ++packet_calls; return true; },
-        [] {}};
+        [&](std::span<std::byte>, endpoint) -> bool
+        {
+            ++packet_calls;
+            return true;
+        },
+        []
+        {
+        }
+    };
 
     loop.stop();
     loop.start(); // arm_receive() checks m_stopped first — should be a no-op
@@ -122,7 +138,10 @@ TEST_CASE("recv_loop resets silence timer on each packet")
         timer,
         SILENCE_TIMEOUT,
         [](std::span<std::byte>, endpoint) -> bool { return true; },
-        [] {}};
+        []
+        {
+        }
+    };
 
     loop.start();
 

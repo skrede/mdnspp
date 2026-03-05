@@ -1,13 +1,13 @@
-#pragma once
+#ifndef HPP_GUARD_MDNSPP_ASYNC_START_H
+#define HPP_GUARD_MDNSPP_ASYNC_START_H
 
-#ifdef ASIO_STANDALONE
-#include "mdnspp/service_server.h"
 #include "mdnspp/asio/asio_completion.h"
+
+#include <mdnspp/service_server.h>
 
 namespace mdnspp {
 
-template <Policy P,
-          asio::completion_token_for<void(std::error_code)> CompletionToken>
+template <Policy P, asio::completion_token_for<void(std::error_code)> CompletionToken>
 auto async_start(service_server<P> &srv, CompletionToken &&token)
 {
     return asio::async_initiate<CompletionToken, void(std::error_code)>(
@@ -23,6 +23,6 @@ auto async_start(service_server<P> &srv, CompletionToken &&token)
         token);
 }
 
-} // namespace mdnspp
+}
 
-#endif // ASIO_STANDALONE
+#endif

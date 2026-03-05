@@ -1,4 +1,6 @@
-#pragma once
+#ifndef HPP_GUARD_MDNSPP_ASIO_POLICY_H
+#define HPP_GUARD_MDNSPP_ASIO_POLICY_H
+
 #include "mdnspp/policy.h"
 #include "mdnspp/asio/asio_socket.h"
 #include "mdnspp/asio/asio_timer.h"
@@ -21,3 +23,5 @@ struct AsioPolicy
 }
 
 static_assert(mdnspp::Policy<mdnspp::AsioPolicy>, "AsioPolicy must satisfy Policy concept");
+
+#endif

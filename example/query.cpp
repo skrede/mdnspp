@@ -2,7 +2,6 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 
-#include <asio.hpp>
 #include <iostream>
 #include <string>
 #include <variant>

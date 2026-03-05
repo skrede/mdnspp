@@ -1,14 +1,13 @@
 // tests/parse_test.cpp
-// TEST-02: record_parser free functions unit tests (Phase 3, Plan 01-02)
-// No socket, no network, no record_buffer required.
 
 #include "mdnspp/parse.h"
 #include "mdnspp/records.h"
 
 #include <catch2/catch_test_macros.hpp>
-#include <cstddef>
-#include <vector>
+
 #include <span>
+#include <vector>
+#include <cstddef>
 
 using namespace mdnspp;
 using mdnspp::dns_type;

@@ -1,20 +1,17 @@
 // tests/observer_test.cpp
-// observer<MockPolicy> unit tests — Phase 7, Plan 07-03
-// Tests the full observer lifecycle via MockPolicy.
 
-#include "mdnspp/observer.h"
-#include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/records.h"
+#include "mdnspp/observer.h"
 #include "mdnspp/endpoint.h"
 
+#include "mdnspp/testing/mock_policy.h"
+
 #include <catch2/catch_test_macros.hpp>
-#include <cstddef>
-#include <cstdint>
-#include <vector>
-#include <span>
+
 #include <chrono>
 #include <string>
-#include <atomic>
+#include <vector>
+#include <cstddef>
 
 using namespace mdnspp;
 using namespace mdnspp::testing;
@@ -28,7 +25,7 @@ static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
 {
     std::vector<std::byte> v;
     v.reserve(vals.size());
-    for (auto b : vals)
+    for(auto b : vals)
         v.push_back(static_cast<std::byte>(b));
     return v;
 }
@@ -43,26 +40,26 @@ static void push_u32_be(std::vector<std::byte> &buf, uint32_t v)
 {
     buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 24) & 0xFF)));
     buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 16) & 0xFF)));
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >>  8) & 0xFF)));
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>( v        & 0xFF)));
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 8) & 0xFF)));
+    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>(v & 0xFF)));
 }
 
 // Encode a DNS name to wire label format (no compression).
 static std::vector<std::byte> encode_name(std::string_view name)
 {
     std::vector<std::byte> result;
-    if (!name.empty() && name.back() == '.')
+    if(!name.empty() && name.back() == '.')
         name.remove_suffix(1);
 
     size_t pos = 0;
-    while (pos < name.size())
+    while(pos < name.size())
     {
         size_t dot = name.find('.', pos);
-        if (dot == std::string_view::npos)
+        if(dot == std::string_view::npos)
             dot = name.size();
         size_t len = dot - pos;
         result.push_back(static_cast<std::byte>(static_cast<uint8_t>(len)));
-        for (size_t i = pos; i < dot; ++i)
+        for(size_t i = pos; i < dot; ++i)
             result.push_back(static_cast<std::byte>(static_cast<uint8_t>(name[i])));
         pos = (dot < name.size()) ? dot + 1 : name.size();
     }
@@ -74,7 +71,7 @@ static std::vector<std::byte> encode_name(std::string_view name)
 //   owner  — DNS name of the question (e.g. "_http._tcp.local.")
 //   target — PTR rdata target name (e.g. "My Service._http._tcp.local.")
 static std::vector<std::byte> make_ptr_response(std::string_view owner,
-                                                 std::string_view target)
+                                                std::string_view target)
 {
     std::vector<std::byte> pkt;
 
@@ -87,13 +84,13 @@ static std::vector<std::byte> make_ptr_response(std::string_view owner,
     push_u16_be(pkt, 0x0000); // nscount
     push_u16_be(pkt, 0x0000); // arcount
 
-    auto owner_enc  = encode_name(owner);
+    auto owner_enc = encode_name(owner);
     auto target_enc = encode_name(target);
 
     pkt.insert(pkt.end(), owner_enc.begin(), owner_enc.end());
-    push_u16_be(pkt, 12);     // type PTR
-    push_u16_be(pkt, 0x0001); // class IN
-    push_u32_be(pkt, 4500);   // ttl
+    push_u16_be(pkt, 12);                                       // type PTR
+    push_u16_be(pkt, 0x0001);                                   // class IN
+    push_u32_be(pkt, 4500);                                     // ttl
     push_u16_be(pkt, static_cast<uint16_t>(target_enc.size())); // rdlength
     pkt.insert(pkt.end(), target_enc.begin(), target_enc.end());
 
@@ -102,8 +99,8 @@ static std::vector<std::byte> make_ptr_response(std::string_view owner,
 
 // Builds a mDNS response packet with one A record.
 static std::vector<std::byte> make_a_response(std::string_view owner,
-                                               uint8_t a, uint8_t b,
-                                               uint8_t c, uint8_t d)
+                                              uint8_t a, uint8_t b,
+                                              uint8_t c, uint8_t d)
 {
     std::vector<std::byte> pkt;
 
@@ -132,8 +129,7 @@ static std::vector<std::byte> make_a_response(std::string_view owner,
 // Tests
 // ---------------------------------------------------------------------------
 
-SCENARIO("observer delivers DNS records from a single packet to the callback",
-         "[observer][packet-delivery]")
+SCENARIO("observer delivers DNS records from a single packet to the callback", "[observer][packet-delivery]")
 {
     GIVEN("an observer with one PTR packet enqueued")
     {
@@ -141,14 +137,16 @@ SCENARIO("observer delivers DNS records from a single packet to the callback",
         endpoint sender{"192.168.1.10", 5353};
 
         std::vector<mdns_record_variant> received_records;
-        std::vector<endpoint>            received_senders;
+        std::vector<endpoint> received_senders;
 
-        observer<MockPolicy> obs{ex,
+        observer<MockPolicy> obs{
+            ex,
             [&](const mdns_record_variant &rec, endpoint ep)
             {
                 received_records.push_back(rec);
                 received_senders.push_back(ep);
-            }};
+            }
+        };
 
         obs.socket().enqueue(
             make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."), sender);
@@ -174,8 +172,7 @@ SCENARIO("observer delivers DNS records from a single packet to the callback",
     }
 }
 
-SCENARIO("observer delivers records from multiple packets",
-         "[observer][multiple-packets]")
+SCENARIO("observer delivers records from multiple packets", "[observer][multiple-packets]")
 {
     GIVEN("an observer with two packets enqueued")
     {
@@ -183,11 +180,13 @@ SCENARIO("observer delivers records from multiple packets",
 
         std::vector<mdns_record_variant> received_records;
 
-        observer<MockPolicy> obs{ex,
+        observer<MockPolicy> obs{
+            ex,
             [&](const mdns_record_variant &rec, endpoint)
             {
                 received_records.push_back(rec);
-            }};
+            }
+        };
 
         obs.socket().enqueue(make_ptr_response("_http._tcp.local.", "First._http._tcp.local."));
         obs.socket().enqueue(make_a_response("myhost.local.", 192, 168, 0, 1));
@@ -212,7 +211,12 @@ SCENARIO("async_observe fires completion callback on stop", "[observer][async]")
     {
         mock_executor ex;
 
-        observer<MockPolicy> obs{ex, [](const mdns_record_variant &, endpoint) {}};
+        observer<MockPolicy> obs{
+            ex,
+            [](const mdns_record_variant &, endpoint)
+            {
+            }
+        };
 
         WHEN("async_observe() is called with a completion callback")
         {
@@ -239,14 +243,18 @@ SCENARIO("async_observe fires completion callback on stop", "[observer][async]")
     }
 }
 
-SCENARIO("stop() is idempotent — second call is a no-op",
-         "[observer][stop-idempotent]")
+SCENARIO("stop() is idempotent — second call is a no-op", "[observer][stop-idempotent]")
 {
     GIVEN("a started observer with no packets enqueued")
     {
         mock_executor ex;
 
-        observer<MockPolicy> obs{ex, [](const mdns_record_variant &, endpoint) {}};
+        observer<MockPolicy> obs{
+            ex,
+            [](const mdns_record_variant &, endpoint)
+            {
+            }
+        };
 
         WHEN("async_observe() and then stop() are called twice")
         {
@@ -261,15 +269,19 @@ SCENARIO("stop() is idempotent — second call is a no-op",
     }
 }
 
-SCENARIO("async_observe completion handler fires exactly once on double stop",
-         "[observer][stop-idempotent][completion]")
+SCENARIO("async_observe completion handler fires exactly once on double stop", "[observer][stop-idempotent][completion]")
 {
     GIVEN("an observer with a completion callback")
     {
         mock_executor ex;
         int completion_count = 0;
 
-        observer<MockPolicy> obs{ex, [](const mdns_record_variant &, endpoint) {}};
+        observer<MockPolicy> obs{
+            ex,
+            [](const mdns_record_variant &, endpoint)
+            {
+            }
+        };
         obs.async_observe([&](std::error_code) { ++completion_count; });
 
         WHEN("stop() is called twice")
@@ -285,16 +297,17 @@ SCENARIO("async_observe completion handler fires exactly once on double stop",
     }
 }
 
-SCENARIO("observer can be created, started, and stopped without any packet delivery",
-         "[observer][lifecycle]")
+SCENARIO("observer can be created, started, and stopped without any packet delivery", "[observer][lifecycle]")
 {
     GIVEN("a fresh observer with no packets enqueued")
     {
         mock_executor ex;
         int callback_count = 0;
 
-        observer<MockPolicy> obs{ex,
-            [&](const mdns_record_variant &, endpoint) { ++callback_count; }};
+        observer<MockPolicy> obs{
+            ex,
+            [&](const mdns_record_variant &, endpoint) { ++callback_count; }
+        };
 
         WHEN("async_observe() and stop() are called on the empty observer")
         {
@@ -309,8 +322,7 @@ SCENARIO("observer can be created, started, and stopped without any packet deliv
     }
 }
 
-SCENARIO("stop() called from within the record callback does not deadlock",
-         "[observer][callback-safe-stop]")
+SCENARIO("stop() called from within the record callback does not deadlock", "[observer][callback-safe-stop]")
 {
     GIVEN("an observer with one packet enqueued")
     {
@@ -319,14 +331,16 @@ SCENARIO("stop() called from within the record callback does not deadlock",
         observer<MockPolicy> *obs_ptr = nullptr;
         int callback_count = 0;
 
-        observer<MockPolicy> obs{ex,
+        observer<MockPolicy> obs{
+            ex,
             [&](const mdns_record_variant &, endpoint)
             {
                 ++callback_count;
                 // Call stop() from within the callback — must not deadlock
-                if (obs_ptr)
+                if(obs_ptr)
                     obs_ptr->stop();
-            }};
+            }
+        };
         obs_ptr = &obs;
 
         obs.socket().enqueue(
@@ -343,8 +357,7 @@ SCENARIO("stop() called from within the record callback does not deadlock",
     }
 }
 
-SCENARIO("observer skips malformed packets without crashing",
-         "[observer][malformed-packet]")
+SCENARIO("observer skips malformed packets without crashing", "[observer][malformed-packet]")
 {
     GIVEN("an observer with a truncated (malformed) packet enqueued")
     {
@@ -355,8 +368,10 @@ SCENARIO("observer skips malformed packets without crashing",
 
         int callback_count = 0;
 
-        observer<MockPolicy> obs{ex,
-            [&](const mdns_record_variant &, endpoint) { ++callback_count; }};
+        observer<MockPolicy> obs{
+            ex,
+            [&](const mdns_record_variant &, endpoint) { ++callback_count; }
+        };
         obs.socket().enqueue(malformed);
 
         WHEN("async_observe() is called with the malformed packet")

@@ -8,4 +8,4 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 find_package(mdnspp CONFIG REQUIRED)
 
 add_executable(integration_test main.cpp)
-target_link_libraries(integration_test PRIVATE mdnspp::mdnspp)
+target_link_libraries(integration_test PRIVATE mdnspp::core)

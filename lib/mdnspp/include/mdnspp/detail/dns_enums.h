@@ -1,9 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_ENUMS_H
-#define HPP_GUARD_MDNSPP_DETAIL_DNS_ENUMS_H
-
-// dns_enums.h — DNS vocabulary types for mdnspp.
-// dns_type and dns_class are exposed in namespace mdnspp (not mdnspp::detail)
-// because they appear directly in public API signatures.
+#ifndef HPP_GUARD_MDNSPP_DNS_ENUMS_H
+#define HPP_GUARD_MDNSPP_DNS_ENUMS_H
 
 #include <cstdint>
 #include <string_view>
@@ -52,6 +48,6 @@ constexpr std::string_view to_string(dns_class c) noexcept
     return "unknown";
 }
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_DETAIL_DNS_ENUMS_H
+#endif

@@ -1,30 +1,27 @@
-#ifndef HPP_GUARD_MDNSPP_NATIVE_NATIVE_CONTEXT_H
-#define HPP_GUARD_MDNSPP_NATIVE_NATIVE_CONTEXT_H
+#ifndef HPP_GUARD_MDNSPP_DEFAULT_CONTEXT_H
+#define HPP_GUARD_MDNSPP_DEFAULT_CONTEXT_H
 
-// NativeContext — standalone poll-based event loop for NativePolicy.
+// DefaultContext — standalone poll-based event loop for NativePolicy.
 // No ASIO includes. POSIX/Linux primary, Windows via #ifdef guards.
 //
 // NOTE: compute_next_timeout_ms() and fire_expired_timers() are declared here
-// but defined in native_timer.h (after NativeTimer is fully defined), because
-// they dereference NativeTimer*. Include native_timer.h to get the full
+// but defined in native_timer.h (after DefaultTimer is fully defined), because
+// they dereference DefaultTimer*. Include native_timer.h to get the full
 // implementation — that header includes this one first.
 
 #include "mdnspp/endpoint.h"
 
+#include "mdnspp/detail/platform.h"
+
+#include <span>
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <vector>
 #include <cstddef>
 #include <functional>
-#include <span>
-#include <stdexcept>
 #include <system_error>
-#include <vector>
 
-// ---------------------------------------------------------------------------
-// Platform includes
-// ---------------------------------------------------------------------------
-#include "mdnspp/detail/platform.h"
 #ifdef _WIN32
 #  include <winsock2.h>
 #  include <ws2tcpip.h>
@@ -41,10 +38,6 @@
 #endif
 
 namespace mdnspp {
-
-// ---------------------------------------------------------------------------
-// Platform type aliases and helpers
-// ---------------------------------------------------------------------------
 namespace detail {
 
 #ifdef _WIN32
@@ -75,10 +68,9 @@ inline int poll_sockets(pollfd *fds, nfds_t nfds, int timeout_ms)
 }
 #endif
 
-} // namespace detail
+}
 
-// Forward-declare NativeTimer so NativeContext can hold a vector of pointers.
-class NativeTimer;
+class DefaultTimer;
 
 // ---------------------------------------------------------------------------
 // winsock_guard — RAII Winsock initializer. No-op on POSIX.
@@ -109,31 +101,27 @@ public:
 };
 
 // ---------------------------------------------------------------------------
-// NativeContext — the event loop executor
+// DefaultContext — the event loop executor
 // ---------------------------------------------------------------------------
-class NativeContext
+class DefaultContext
 {
 public:
     /// Constructor — creates the stop-wakeup fd.
     /// Throws std::system_error on platform failure.
-    NativeContext()
+    DefaultContext()
     {
         create_wakeup_fd();
     }
 
-    ~NativeContext()
+    ~DefaultContext()
     {
         close_wakeup_fd();
     }
 
-    NativeContext(const NativeContext &) = delete;
-    NativeContext &operator=(const NativeContext &) = delete;
-    NativeContext(NativeContext &&) = delete;
-    NativeContext &operator=(NativeContext &&) = delete;
-
-    // -----------------------------------------------------------------------
-    // Public event-loop interface
-    // -----------------------------------------------------------------------
+    DefaultContext(const DefaultContext &) = delete;
+    DefaultContext &operator=(const DefaultContext &) = delete;
+    DefaultContext(DefaultContext &&) = delete;
+    DefaultContext &operator=(DefaultContext &&) = delete;
 
     /// Block until stop() is called, processing I/O and expired timers.
     void run()
@@ -167,7 +155,6 @@ public:
         }
     }
 
-    /// Process at most one event (receive or expired timer), then return.
     void poll_one()
     {
         const int rc = do_poll(0);
@@ -204,7 +191,7 @@ public:
     }
 
     // -----------------------------------------------------------------------
-    // Internal interface — called by NativeSocket / NativeTimer
+    // Internal interface — called by NativeSocket / DefaultTimer
     // -----------------------------------------------------------------------
 
     void register_socket(detail::native_socket_t fd)
@@ -223,20 +210,20 @@ public:
         m_receive_handler = std::move(handler);
     }
 
-    void register_timer(NativeTimer *t)
+    void register_timer(DefaultTimer *t)
     {
         if(std::find(m_timers.begin(), m_timers.end(), t) == m_timers.end())
             m_timers.push_back(t);
     }
 
-    void deregister_timer(NativeTimer *t)
+    void deregister_timer(DefaultTimer *t)
     {
         std::erase(m_timers, t);
     }
 
     // -----------------------------------------------------------------------
     // Private helpers (declared here; timer-dependent ones defined in
-    // native_timer.h after NativeTimer is fully defined)
+    // native_timer.h after DefaultTimer is fully defined)
     // -----------------------------------------------------------------------
     int compute_next_timeout_ms(std::chrono::steady_clock::time_point now) const;
     void fire_expired_timers();
@@ -247,7 +234,7 @@ private:
     std::atomic<bool> m_stopped{false};
     detail::native_socket_t m_socket_fd{detail::invalid_socket};
     std::function<void(std::span<std::byte>, endpoint)> m_receive_handler;
-    std::vector<NativeTimer*> m_timers;
+    std::vector<DefaultTimer*> m_timers;
     std::array<std::byte, 4096> m_recv_buf{};
     sockaddr_in m_sender_addr{};
 
@@ -389,7 +376,6 @@ private:
 #endif
     }
 
-    // The fd to poll for wakeup signals.
 #if defined(__linux__)
     [[nodiscard]] int wakeup_poll_fd() const noexcept { return m_wakeup_fd; }
 #elif defined(_WIN32)
@@ -397,10 +383,6 @@ private:
 #else
     [[nodiscard]] int wakeup_poll_fd() const noexcept { return m_pipe[0]; }
 #endif
-
-    // ------------------------------------------------------------------
-    // Poll helpers
-    // ------------------------------------------------------------------
 
     /// Build pollfd array, invoke poll, cache readability flags.
     int do_poll(int timeout_ms)
@@ -434,10 +416,6 @@ private:
 
     [[nodiscard]] bool wakeup_readable() const noexcept { return m_wakeup_ready; }
     [[nodiscard]] bool data_readable() const noexcept { return m_data_ready; }
-
-    // ------------------------------------------------------------------
-    // Receive dispatch
-    // ------------------------------------------------------------------
 
     void dispatch_receive()
     {

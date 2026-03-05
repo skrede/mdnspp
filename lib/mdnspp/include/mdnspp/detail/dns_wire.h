@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_WIRE_H
-#define HPP_GUARD_MDNSPP_DETAIL_DNS_WIRE_H
+#ifndef HPP_GUARD_MDNSPP_DNS_WIRE_H
+#define HPP_GUARD_MDNSPP_DNS_WIRE_H
 
 #include "mdnspp/parse.h"
 #include "mdnspp/endpoint.h"

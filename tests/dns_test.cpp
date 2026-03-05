@@ -1,9 +1,9 @@
 // tests/dns_test.cpp
-// Tests for dns_type and dns_class stream operators (ERG-01, ERG-02).
 
 #include "mdnspp/dns.h"
 
 #include <catch2/catch_test_macros.hpp>
+
 #include <sstream>
 
 using mdnspp::dns_type;

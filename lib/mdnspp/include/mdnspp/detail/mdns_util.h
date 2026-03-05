@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DETAIL_MDNS_UTIL_H
-#define HPP_GUARD_MDNSPP_DETAIL_MDNS_UTIL_H
+#ifndef HPP_GUARD_MDNSPP_MDNS_UTIL_H
+#define HPP_GUARD_MDNSPP_MDNS_UTIL_H
 
 #include "mdnspp/detail/platform.h"
 #ifndef _WIN32

@@ -6,10 +6,11 @@
 #include "mdnspp/mdns_error.h"
 
 #include <catch2/catch_test_macros.hpp>
-#include <cstddef>
-#include <vector>
+
 #include <span>
+#include <vector>
 #include <string>
+#include <cstddef>
 #include <expected>
 
 // Compile-time check: return type must be std::expected<std::string, mdnspp::mdns_error>
@@ -26,7 +27,7 @@ static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
 {
     std::vector<std::byte> v;
     v.reserve(vals.size());
-    for (auto b : vals)
+    for(auto b : vals)
         v.push_back(static_cast<std::byte>(b));
     return v;
 }
@@ -34,19 +35,29 @@ static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
 using mdnspp::mdns_error;
 using mdnspp::detail::read_dns_name;
 
-// ---------------------------------------------------------------------------
-// Happy-path tests
-// ---------------------------------------------------------------------------
-
 SCENARIO("read_dns_name decodes a simple uncompressed DNS name", "[dns_wire][read_dns_name]")
 {
     GIVEN("a buffer containing _http._tcp.local in DNS wire label format")
     {
         // \x05_http \x04_tcp \x05local \x00
         auto buf = bytes({
-            0x05, '_','h','t','t','p',
-            0x04, '_','t','c','p',
-            0x05, 'l','o','c','a','l',
+            0x05,
+            '_',
+            'h',
+            't',
+            't',
+            'p',
+            0x04,
+            '_',
+            't',
+            'c',
+            'p',
+            0x05,
+            'l',
+            'o',
+            'c',
+            'a',
+            'l',
             0x00
         });
 
@@ -87,7 +98,7 @@ SCENARIO("read_dns_name decodes a single-label name", "[dns_wire][read_dns_name]
     GIVEN("a buffer containing the label 'host' followed by root")
     {
         // \x04host \x00
-        auto buf = bytes({0x04, 'h','o','s','t', 0x00});
+        auto buf = bytes({0x04, 'h', 'o', 's', 't', 0x00});
 
         WHEN("read_dns_name is called at offset 0")
         {
@@ -110,10 +121,21 @@ SCENARIO("read_dns_name follows a backward compression pointer", "[dns_wire][rea
         // offset 7: \x04host + pointer 0xC0 0x00  -> "host.local"
         auto buf = bytes({
             // offset 0: "local\0"
-            0x05, 'l','o','c','a','l', 0x00,
+            0x05,
+            'l',
+            'o',
+            'c',
+            'a',
+            'l',
+            0x00,
             // offset 7: "host" label + pointer back to offset 0
-            0x04, 'h','o','s','t',
-            0xC0, 0x00
+            0x04,
+            'h',
+            'o',
+            's',
+            't',
+            0xC0,
+            0x00
         });
 
         WHEN("read_dns_name is called at offset 7")
@@ -136,8 +158,15 @@ SCENARIO("read_dns_name starts directly at a compression pointer", "[dns_wire][r
         // offset 0: \x05local\x00  (7 bytes)
         // offset 7: pointer 0xC0 0x00 -> "local"
         auto buf = bytes({
-            0x05, 'l','o','c','a','l', 0x00,
-            0xC0, 0x00
+            0x05,
+            'l',
+            'o',
+            'c',
+            'a',
+            'l',
+            0x00,
+            0xC0,
+            0x00
         });
 
         WHEN("read_dns_name is called at the pointer offset 7")
@@ -165,11 +194,21 @@ SCENARIO("read_dns_name rejects a self-referential pointer", "[dns_wire][read_dn
         // This is the canonical Phase 8 success criterion #2 test.
         auto buf = bytes({
             // 12-byte DNS header placeholder
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
+            0x00,
             // offset 12: pointer to offset 12 — self-referential
-            0xC0, 0x0C
+            0xC0,
+            0x0C
         });
 
         WHEN("read_dns_name is called at offset 12")
@@ -191,10 +230,26 @@ SCENARIO("read_dns_name rejects a forward pointer", "[dns_wire][read_dns_name][s
     {
         // offset 5: pointer to offset 10 — forward pointer
         auto buf = bytes({
-            0x04, 'h','o','s','t',  // offset 0-4
-            0xC0, 0x0A,             // offset 5: pointer to 10 (forward)
-            0x00, 0x00, 0x00,       // offset 7-9: padding
-            0x05, 'l','o','c','a','l', 0x00  // offset 10: "local"
+            0x04,
+            'h',
+            'o',
+            's',
+            't',
+            // offset 0-4
+            0xC0,
+            0x0A,
+            // offset 5: pointer to 10 (forward)
+            0x00,
+            0x00,
+            0x00,
+            // offset 7-9: padding
+            0x05,
+            'l',
+            'o',
+            'c',
+            'a',
+            'l',
+            0x00 // offset 10: "local"
         });
 
         WHEN("read_dns_name is called at offset 5")
@@ -228,17 +283,28 @@ SCENARIO("read_dns_name rejects a pointer chain exceeding 4 hops", "[dns_wire][r
         //   offset 15: pointer -> 13   (hop 5 — should fail)
         auto buf = bytes({
             // offset 0: "local\0"
-            0x05, 'l','o','c','a','l', 0x00,
+            0x05,
+            'l',
+            'o',
+            'c',
+            'a',
+            'l',
+            0x00,
             // offset 7: pointer -> 0
-            0xC0, 0x00,
+            0xC0,
+            0x00,
             // offset 9: pointer -> 7
-            0xC0, 0x07,
+            0xC0,
+            0x07,
             // offset 11: pointer -> 9
-            0xC0, 0x09,
+            0xC0,
+            0x09,
             // offset 13: pointer -> 11
-            0xC0, 0x0B,
+            0xC0,
+            0x0B,
             // offset 15: pointer -> 13 (5th hop — exceeds limit of 4)
-            0xC0, 0x0D
+            0xC0,
+            0x0D
         });
 
         WHEN("read_dns_name is called at offset 15 (5-hop chain)")
@@ -265,11 +331,21 @@ SCENARIO("read_dns_name accepts a pointer chain of exactly 4 hops", "[dns_wire][
         //   offset 11: pointer -> 9    (hop 3)
         //   offset 13: pointer -> 11   (hop 4 — allowed)
         auto buf = bytes({
-            0x05, 'l','o','c','a','l', 0x00,
-            0xC0, 0x00,
-            0xC0, 0x07,
-            0xC0, 0x09,
-            0xC0, 0x0B
+            0x05,
+            'l',
+            'o',
+            'c',
+            'a',
+            'l',
+            0x00,
+            0xC0,
+            0x00,
+            0xC0,
+            0x07,
+            0xC0,
+            0x09,
+            0xC0,
+            0x0B
         });
 
         WHEN("read_dns_name is called at offset 13 (4-hop chain)")
@@ -293,10 +369,10 @@ SCENARIO("read_dns_name rejects a name exceeding 255 bytes", "[dns_wire][read_dn
         // + 9 dots between labels = 8 dots => total assembled = 252 + 8 = 260 > 255
         // Wire format: each label is [0x1C][28 chars], terminated by [0x00]
         std::vector<std::byte> buf;
-        for (int i = 0; i < 9; ++i)
+        for(int i = 0; i < 9; ++i)
         {
             buf.push_back(static_cast<std::byte>(0x1C)); // label length = 28
-            for (int j = 0; j < 28; ++j)
+            for(int j = 0; j < 28; ++j)
                 buf.push_back(static_cast<std::byte>('a'));
         }
         buf.push_back(static_cast<std::byte>(0x00)); // root label
@@ -319,7 +395,7 @@ SCENARIO("read_dns_name rejects a truncated buffer mid-label", "[dns_wire][read_
     GIVEN("a buffer where the label length byte claims more bytes than are available")
     {
         // Label claims 10 bytes but buffer only has 5 after the length byte
-        auto buf = bytes({0x0A, 'a','b','c','d','e'});
+        auto buf = bytes({0x0A, 'a', 'b', 'c', 'd', 'e'});
 
         WHEN("read_dns_name is called")
         {
@@ -358,7 +434,7 @@ SCENARIO("read_dns_name rejects an offset beyond the buffer size", "[dns_wire][r
 {
     GIVEN("a valid buffer and an offset past the end")
     {
-        auto buf = bytes({0x04, 'h','o','s','t', 0x00});
+        auto buf = bytes({0x04, 'h', 'o', 's', 't', 0x00});
 
         WHEN("read_dns_name is called with offset = buffer size")
         {

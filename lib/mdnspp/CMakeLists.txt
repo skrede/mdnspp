@@ -15,6 +15,11 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/service_server.h
     ${INCLUDE_DIRECTORY}/mdnspp/resolved_service.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_discovery.h
+
+    ${INCLUDE_DIRECTORY}/mdnspp/default/default_timer.h
+    ${INCLUDE_DIRECTORY}/mdnspp/default/default_policy.h
+    ${INCLUDE_DIRECTORY}/mdnspp/default/default_socket.h
+    ${INCLUDE_DIRECTORY}/mdnspp/default/default_context.h
 )
 
 add_library(mdnspp_core INTERFACE ${PUBLIC_HEADERS})

@@ -1,6 +1,10 @@
-#pragma once
+#ifndef HPP_GUARD_MDNSPP_ASIO_TIMER_H
+#define HPP_GUARD_MDNSPP_ASIO_TIMER_H
+
+#include <mdnspp/policy.h>
+
 #include <asio.hpp>
-#include "mdnspp/policy.h"
+
 #include <chrono>
 #include <functional>
 #include <system_error>
@@ -18,7 +22,6 @@ public:
     explicit AsioTimer(asio::io_context &io, std::error_code &)
         : m_timer(io)
     {
-        // Timer construction is infallible; error_code left unchanged.
     }
 
     void expires_after(std::chrono::milliseconds dur)
@@ -42,5 +45,6 @@ private:
 
 }
 
-static_assert(mdnspp::TimerLike<mdnspp::AsioTimer>, "AsioTimer must satisfy TimerLike — check expires_after/async_wait/cancel signatures"
-);
+static_assert(mdnspp::TimerLike<mdnspp::AsioTimer>, "AsioTimer must satisfy TimerLike — check expires_after/async_wait/cancel signatures");
+
+#endif

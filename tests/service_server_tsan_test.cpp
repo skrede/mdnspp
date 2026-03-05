@@ -1,36 +1,28 @@
 // tests/service_server_tsan_test.cpp
 // ThreadSanitizer hard-gate test for service_server<AsioPolicy>.
-//
-// Purpose: BEHAV-03 requires "mutex removed only after ThreadSanitizer clean run in a
-// dedicated isolated commit." This test exercises the concurrent stop() path that would
-// expose any data race in the strand-based architecture.
-//
-// Compiled only when MDNSPP_ENABLE_ASIO_POLICY=ON (linked against mdnspp_asio).
-// When built with -fsanitize=thread, any TSan-detected race causes a non-zero exit,
-// failing the test. The REQUIRE(true) at the end documents the absence of TSan errors.
 
 #include "mdnspp/service_server.h"
-#include "mdnspp/asio/asio_policy.h"
 #include "mdnspp/service_info.h"
+
+#include "mdnspp/asio/asio_policy.h"
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <thread>
 #include <chrono>
+#include <thread>
 
 static mdnspp::service_info make_test_info()
 {
     mdnspp::service_info info;
-    info.service_name  = "TSanTest._http._tcp.local.";
-    info.service_type  = "_http._tcp.local.";
-    info.hostname      = "tsanhost.local.";
-    info.port          = 8080;
-    info.address_ipv4  = "192.168.1.10";
+    info.service_name = "TSanTest._http._tcp.local.";
+    info.service_type = "_http._tcp.local.";
+    info.hostname = "tsanhost.local.";
+    info.port = 8080;
+    info.address_ipv4 = "192.168.1.10";
     return info;
 }
 
-SCENARIO("service_server stop() from separate thread is data-race-free",
-         "[service_server][tsan][asio]")
+SCENARIO("service_server stop() from separate thread is data-race-free", "[service_server][tsan][asio]")
 {
     GIVEN("an asio::io_context and service_server<AsioPolicy>")
     {
@@ -44,7 +36,7 @@ SCENARIO("service_server stop() from separate thread is data-race-free",
         {
             server.emplace(io, make_test_info());
         }
-        catch (const std::exception &e)
+        catch(const std::exception &e)
         {
             WARN("Skipping TSan test — socket construction failed (no network): " << e.what());
             return;
@@ -73,8 +65,7 @@ SCENARIO("service_server stop() from separate thread is data-race-free",
     }
 }
 
-SCENARIO("service_server double stop is safe under concurrency",
-         "[service_server][tsan][asio]")
+SCENARIO("service_server double stop is safe under concurrency", "[service_server][tsan][asio]")
 {
     GIVEN("an asio::io_context and a started service_server<AsioPolicy>")
     {
@@ -86,7 +77,7 @@ SCENARIO("service_server double stop is safe under concurrency",
         {
             server.emplace(io, make_test_info());
         }
-        catch (const std::exception &e)
+        catch(const std::exception &e)
         {
             WARN("Skipping TSan test — socket construction failed (no network): " << e.what());
             return;

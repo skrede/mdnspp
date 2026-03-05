@@ -1,27 +1,11 @@
 // tests/asio_conformance_test.cpp
-// Policy concept conformance — AsioPolicy (Phase 7, Plan 07-03)
-// Compiled only when MDNSPP_ENABLE_ASIO_POLICY=ON.
-// This TU links against ASIO (via mdnspp_asio target).
 
 #include "mdnspp/asio/asio_policy.h"
 #include "mdnspp/policy.h"
 
-// If this static_assert fails, AsioPolicy does not satisfy Policy.
-// Check: executor_type, socket_type, timer_type, constructor signatures.
-static_assert(
-    mdnspp::Policy<mdnspp::AsioPolicy>,
-    "AsioPolicy must satisfy Policy — check AsioSocket/AsioTimer constructor signatures"
-);
-
-// Individual sub-concept checks for fine-grained diagnostics.
-static_assert(
-    mdnspp::SocketLike<mdnspp::AsioSocket>,
-    "AsioSocket must satisfy SocketLike — check async_receive/send/close signatures"
-);
-static_assert(
-    mdnspp::TimerLike<mdnspp::AsioTimer>,
-    "AsioTimer must satisfy TimerLike — check expires_after/async_wait/cancel signatures"
-);
+static_assert(mdnspp::Policy<mdnspp::AsioPolicy>, "AsioPolicy must satisfy Policy — check AsioSocket/AsioTimer constructor signatures");
+static_assert(mdnspp::SocketLike<mdnspp::AsioSocket>, "AsioSocket must satisfy SocketLike — check async_receive/send/close signatures");
+static_assert(mdnspp::TimerLike<mdnspp::AsioTimer>, "AsioTimer must satisfy TimerLike — check expires_after/async_wait/cancel signatures");
 
 #include <catch2/catch_test_macros.hpp>
 

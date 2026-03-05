@@ -6,11 +6,11 @@
 #include <asio.hpp>
 
 #include "mdnspp/asio/asio_policy.h"
-#include "mdnspp/asio/asio_completion.h"
 #include "mdnspp/asio/async_query.h"
+#include "mdnspp/asio/async_start.h"
 #include "mdnspp/asio/async_observe.h"
 #include "mdnspp/asio/async_discover.h"
-#include "mdnspp/asio/async_start.h"
+#include "mdnspp/asio/asio_completion.h"
 
 #endif
 #endif

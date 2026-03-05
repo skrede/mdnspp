@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.25)
-project(mdnspp)
+project(mdnspp VERSION 2.1.0)
 
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,6 +8,10 @@ set(Boost_NO_WARN_NEW_VERSIONS ON)
 
 option(MDNSPP_BUILD_TESTS OFF)
 option(MDNSPP_BUILD_EXAMPLES OFF)
+
+include(FetchContent)
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
 
 set(SOURCE_DIRECTORY src)
 set(INCLUDE_DIRECTORY include)
@@ -43,12 +47,15 @@ add_library(mdnspp STATIC
 add_library(mdnspp::mdnspp ALIAS mdnspp)
 
 target_include_directories(mdnspp
-    PUBLIC  ${INCLUDE_DIRECTORY}
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     PRIVATE ${SOURCE_DIRECTORY}
 )
 
 
 install(TARGETS mdnspp
+    EXPORT mdnsppTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
@@ -64,10 +71,6 @@ install(FILES
 # Optional ASIO policy — fetched only when MDNSPP_ENABLE_ASIO_POLICY=ON
 option(MDNSPP_ENABLE_ASIO_POLICY "Build AsioPolicy (AsioSocket, AsioTimer) backed by asio::io_context" OFF)
 
-include(FetchContent)
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
-
 if (MDNSPP_ENABLE_ASIO_POLICY)
 
     FetchContent_Declare(
@@ -80,8 +83,9 @@ if (MDNSPP_ENABLE_ASIO_POLICY)
     add_library(mdnspp_asio INTERFACE)
     add_library(mdnspp::asio ALIAS mdnspp_asio)
     target_include_directories(mdnspp_asio INTERFACE
-        ${asio_SOURCE_DIR}/asio/include
-        ${INCLUDE_DIRECTORY}
+        $<BUILD_INTERFACE:${asio_SOURCE_DIR}/asio/include>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
     )
     target_compile_definitions(mdnspp_asio INTERFACE
         ASIO_STANDALONE
@@ -104,6 +108,8 @@ if (MDNSPP_ENABLE_ASIO_POLICY)
         ${INCLUDE_DIRECTORY}/mdnspp/asio.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp
     )
+
+    install(TARGETS mdnspp_asio EXPORT mdnsppTargets)
 endif ()
 
 # Optional NativePolicy — raw UDP multicast, no ASIO dependency
@@ -112,7 +118,10 @@ option(MDNSPP_ENABLE_NATIVE_POLICY "Build NativePolicy (NativeSocket, NativeTime
 if (MDNSPP_ENABLE_NATIVE_POLICY)
     add_library(mdnspp_native INTERFACE)
     add_library(mdnspp::native ALIAS mdnspp_native)
-    target_include_directories(mdnspp_native INTERFACE ${INCLUDE_DIRECTORY})
+    target_include_directories(mdnspp_native INTERFACE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
+        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
+    )
     target_link_libraries(mdnspp_native INTERFACE mdnspp)
 
     if (WIN32)
@@ -126,10 +135,38 @@ if (MDNSPP_ENABLE_NATIVE_POLICY)
     install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/native/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/native
     )
+
+    install(TARGETS mdnspp_native EXPORT mdnsppTargets)
 endif ()
 
 install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/detail/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/detail
+)
+
+# --- CMake package config ---
+set(mdnspp_INSTALL_CMAKEDIR ${CMAKE_INSTALL_LIBDIR}/cmake/mdnspp)
+
+install(EXPORT mdnsppTargets
+    FILE mdnsppTargets.cmake
+    NAMESPACE mdnspp::
+    DESTINATION ${mdnspp_INSTALL_CMAKEDIR}
+)
+
+configure_package_config_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/cmake/mdnsppConfig.cmake.in
+    "${CMAKE_CURRENT_BINARY_DIR}/mdnsppConfig.cmake"
+    INSTALL_DESTINATION ${mdnspp_INSTALL_CMAKEDIR}
+)
+
+write_basic_package_version_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/mdnsppConfigVersion.cmake"
+    COMPATIBILITY SameMajorVersion
+)
+
+install(FILES
+    "${CMAKE_CURRENT_BINARY_DIR}/mdnsppConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/mdnsppConfigVersion.cmake"
+    DESTINATION ${mdnspp_INSTALL_CMAKEDIR}
 )
 
 if (${MDNSPP_BUILD_EXAMPLES})

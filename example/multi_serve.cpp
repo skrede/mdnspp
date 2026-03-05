@@ -47,10 +47,10 @@ int main()
         }
     };
 
-    std::thread shutdown{[&ctx] {
+    std::thread shutdown([&ctx] {
         std::this_thread::sleep_for(std::chrono::seconds(30));
         ctx.stop();
-    }};
+    });
 
     std::cout << "Serving HTTP + SSH on shared context (30s then auto-stop)\n";
     http_srv.async_start();

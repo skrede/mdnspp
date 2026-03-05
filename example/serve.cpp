@@ -30,10 +30,10 @@ int main()
         }
     };
 
-    std::thread shutdown{[&ctx] {
+    std::thread shutdown([&ctx] {
         std::this_thread::sleep_for(std::chrono::seconds(30));
         ctx.stop();
-    }};
+    });
 
     std::cout << "Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)\n";
     srv.async_start();

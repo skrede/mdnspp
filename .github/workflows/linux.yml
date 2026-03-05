@@ -80,6 +80,8 @@ jobs:
             --exclude 'tests/' \
             --exclude 'example/' \
             --exclude 'lib/mdnspp-testing/' \
+            --exclude 'build/_deps/' \
+            --gcov-ignore-errors=source_not_found \
             --xml coverage.xml
 
       - name: Upload to Codecov

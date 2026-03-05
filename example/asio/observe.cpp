@@ -1,8 +1,11 @@
-#include "mdnspp/asio.h"
-#include "mdnspp/records.h"
-#include "mdnspp/basic_observer.h"
+// Observe mDNS multicast traffic using AsioPolicy.
+// Prints each record to stdout, runs until io_context work drains.
+// Usage: ./mdnspp_example_asio_observe
 
-#include <asio.hpp>
+#include <mdnspp/asio.h>
+#include <mdnspp/basic_observer.h>
+#include <mdnspp/records.h>
+
 #include <iostream>
 #include <variant>
 
@@ -12,16 +15,15 @@ int main()
 
     mdnspp::basic_observer<mdnspp::AsioPolicy> obs{
         io,
-        [](mdnspp::mdns_record_variant rec, mdnspp::endpoint sender)
+        [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
         {
-            std::visit([&sender](const auto &r)
-            {
+            std::visit([&sender](const auto &r) {
                 std::cout << sender.address << ":" << sender.port
                     << " -> " << r << "\n";
             }, rec);
         }
     };
 
-    obs.async_observe(); // fire-and-forget (no completion callback needed)
+    mdnspp::async_observe(obs, [](std::error_code) {});
     io.run();
 }

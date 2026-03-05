@@ -1,24 +1,26 @@
-#include "mdnspp/asio.h"
-#include "mdnspp/service_info.h"
-#include "mdnspp/endpoint.h"
-#include "mdnspp/detail/dns_enums.h"
+// Serve an mDNS service using AsioPolicy.
+// Responds to queries until Ctrl-C.
+// Usage: ./mdnspp_example_asio_serve
 
-#include <asio.hpp>
+#include <mdnspp/asio.h>
+#include <mdnspp/basic_service_server.h>
+#include <mdnspp/service_info.h>
+#include <mdnspp/detail/dns_enums.h>
+
 #include <iostream>
 
 int main()
 {
     asio::io_context io;
 
-    mdnspp::service_info info;
-    info.service_name = "MyApp._http._tcp.local.";
-    info.service_type = "_http._tcp.local.";
-    info.hostname = "myhost.local.";
-    info.port = 8080;
-    info.priority = 0;
-    info.weight = 0;
-    info.address_ipv4 = "192.168.1.69";
-    info.txt_records = {{"path", "/index.html"}};
+    mdnspp::service_info info{
+        .service_name = "MyApp._http._tcp.local.",
+        .service_type = "_http._tcp.local.",
+        .hostname     = "myhost.local.",
+        .port         = 8080,
+        .address_ipv4 = "192.168.1.69",
+        .txt_records  = {{"path", "/index.html"}},
+    };
 
     mdnspp::basic_service_server<mdnspp::AsioPolicy> srv{
         io,
@@ -27,7 +29,7 @@ int main()
         {
             std::cout << sender.address << ":" << sender.port
                 << " queried qtype=" << to_string(qtype)
-                << (unicast ? " (unicast)" : " (multicast)") << std::endl;
+                << (unicast ? " (unicast)" : " (multicast)") << "\n";
         }
     };
 
@@ -38,6 +40,6 @@ int main()
     });
 
     std::cout << "Serving MyApp._http._tcp.local. on port 8080 (Ctrl-C to stop)\n";
-    srv.async_start(); // fire-and-forget (no completion callback needed)
+    mdnspp::async_start(srv, [](std::error_code) {});
     io.run();
 }

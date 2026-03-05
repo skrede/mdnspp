@@ -32,7 +32,7 @@ public:
     using timer_type = typename P::timer_type;
 
     /// Optional callback invoked per record as results arrive during a query.
-    using record_callback = std::function<void(const mdns_record_variant &, endpoint)>;
+    using record_callback = std::move_only_function<void(const mdns_record_variant &, endpoint)>;
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.

@@ -24,8 +24,8 @@ namespace mdnspp {
 //   P — Policy: provides executor_type, socket_type, timer_type
 //
 // Lifecycle:
-//   1. observer(ex, callback)        — direct constructor (throwing)
-//      observer(ex, callback, ec)    — non-throwing overload (ec set on failure)
+//   1. observer(ex, on_record)       — direct constructor (throwing)
+//      observer(ex, on_record, ec)   — non-throwing overload (ec set on failure)
 //   2. async_observe([on_done])      — arms recv_loop; returns immediately
 //                                      on_done fires with error_code{} when stop() is called
 //   3. stop()                        — idempotent; sets stop flag, fires completion handler
@@ -48,7 +48,7 @@ public:
     using executor_type = typename P::executor_type;
     using socket_type = typename P::socket_type;
     using timer_type = typename P::timer_type;
-    using record_callback = std::function<void(mdns_record_variant, endpoint)>;
+    using record_callback = std::move_only_function<void(const mdns_record_variant &, endpoint)>;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
@@ -63,7 +63,7 @@ public:
     observer(observer &&other) noexcept
         : m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
-        , m_callback(std::move(other.m_callback))
+        , m_on_record(std::move(other.m_on_record))
         , m_on_completion(std::move(other.m_on_completion))
         , m_loop(std::move(other.m_loop))
         , m_stopped(other.m_stopped.load(std::memory_order_acquire))
@@ -82,10 +82,10 @@ public:
 
     // Throwing constructor — constructs socket and timer from executor.
     // Throws on construction failure (e.g. socket bind error).
-    explicit observer(executor_type ex, record_callback callback)
+    explicit observer(executor_type ex, record_callback on_record = {})
         : m_socket(ex)
         , m_timer(ex)
-        , m_callback(std::move(callback))
+        , m_on_record(std::move(on_record))
         , m_loop(nullptr)
         , m_stopped(false)
     {
@@ -93,10 +93,10 @@ public:
 
     // Non-throwing constructor — sets ec on failure instead of throwing.
     // ec is the last parameter, matching ASIO convention.
-    observer(executor_type ex, record_callback callback, std::error_code &ec)
+    observer(executor_type ex, record_callback on_record, std::error_code &ec)
         : m_socket(ex, ec)
         , m_timer(ex)
-        , m_callback(std::move(callback))
+        , m_on_record(std::move(on_record))
         , m_loop(nullptr)
         , m_stopped(false)
     {
@@ -169,14 +169,14 @@ private:
             sender,
             [this, sender](mdns_record_variant rec)
             {
-                if(!m_stopped.load(std::memory_order_acquire))
-                    m_callback(std::move(rec), sender);
+                if(!m_stopped.load(std::memory_order_acquire) && m_on_record)
+                    m_on_record(rec, sender);
             });
     }
 
     socket_type m_socket;       // socket used for receiving multicast packets
     timer_type m_timer;         // passed to recv_loop for silence-timeout tracking
-    record_callback m_callback; // called once per successfully parsed record
+    record_callback m_on_record; // called once per successfully parsed record
     // Move-only completion handler — called once at stop() or error.
     completion_handler m_on_completion;
     std::unique_ptr<recv_loop<P>> m_loop; // continuous listener (null until async_observe())

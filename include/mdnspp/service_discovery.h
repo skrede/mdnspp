@@ -31,14 +31,11 @@ public:
     using timer_type = typename P::timer_type;
 
     /// Optional callback invoked per record as results arrive during discovery.
-    using record_callback = std::function<void(const mdns_record_variant &, endpoint)>;
+    using record_callback = std::move_only_function<void(const mdns_record_variant &, endpoint)>;
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.
     using completion_handler = std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
-
-    /// Completion callback for async_browse — delivers aggregated resolved_service values.
-    using browse_completion_handler = std::move_only_function<void(std::error_code, std::vector<resolved_service>)>;
 
     // Non-copyable (owns recv_loop by unique_ptr)
     service_discovery(const service_discovery &) = delete;
@@ -124,7 +121,7 @@ public:
     /// Aggregating browse — delivers resolved_service values via RFC 6763 name-chain
     /// correlation (PTR -> SRV -> TXT -> A/AAAA) at the silence timeout.
     /// Completion signature: void(std::error_code, std::vector<resolved_service>).
-    void async_browse(std::string_view service_type, browse_completion_handler on_done)
+    void async_browse(std::string_view service_type, std::move_only_function<void(std::error_code, std::vector<resolved_service>)> on_done)
     {
         assert(m_browse_loop == nullptr); // one browse per lifetime
         if(on_done)
@@ -307,7 +304,7 @@ private:
     record_callback m_on_record; // optional per-record callback
     // Move-only completion handlers — called once at silence timeout, stop(), or error.
     completion_handler m_on_completion;
-    browse_completion_handler m_on_browse_completion;
+    std::move_only_function<void(std::error_code, std::vector<resolved_service>)> m_on_browse_completion;
     std::string m_service_type;                  // set in do_discover()/do_browse(), used for filtering
     std::unique_ptr<recv_loop<P>> m_loop;        // null until async_discover()
     std::unique_ptr<recv_loop<P>> m_browse_loop; // null until async_browse()

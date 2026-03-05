@@ -49,8 +49,8 @@ public:
     using timer_type = typename P::timer_type;
 
     /// Optional callback invoked when an incoming query is received and parsed.
-    /// Parameters: sender endpoint, qtype requested, whether unicast was requested.
-    using query_callback = std::function<void(endpoint, dns_type, bool)>;
+    /// Parameters: qtype requested, sender endpoint, whether unicast was requested.
+    using query_callback = std::move_only_function<void(dns_type, endpoint, bool)>;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
@@ -259,7 +259,7 @@ private:
         bool unicast_response = (qclass & 0x8000) != 0;
 
         if(m_on_query)
-            m_on_query(sender, qtype, unicast_response);
+            m_on_query(qtype, sender, unicast_response);
 
         // RFC 6762 section 6: random delay 20-500ms before responding via multicast.
         // Unicast responses may be sent immediately, but we apply the delay uniformly.

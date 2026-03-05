@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_SERVICE_DISCOVERY_H
-#define HPP_GUARD_MDNSPP_SERVICE_DISCOVERY_H
+#ifndef HPP_GUARD_MDNSPP_BASIC_SERVICE_DISCOVERY_H
+#define HPP_GUARD_MDNSPP_BASIC_SERVICE_DISCOVERY_H
 
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
@@ -23,7 +23,7 @@
 namespace mdnspp {
 
 template <Policy P>
-class service_discovery
+class basic_service_discovery
 {
 public:
     using executor_type = typename P::executor_type;
@@ -38,11 +38,11 @@ public:
     using completion_handler = std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
 
     // Non-copyable (owns recv_loop by unique_ptr)
-    service_discovery(const service_discovery &) = delete;
-    service_discovery &operator=(const service_discovery &) = delete;
+    basic_service_discovery(const basic_service_discovery &) = delete;
+    basic_service_discovery &operator=(const basic_service_discovery &) = delete;
 
     // Movable only before async_discover()/async_browse() is called (loops must be null).
-    service_discovery(service_discovery &&other) noexcept
+    basic_service_discovery(basic_service_discovery &&other) noexcept
         : m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
         , m_silence_timeout(other.m_silence_timeout)
@@ -58,9 +58,9 @@ public:
         assert(other.m_browse_loop == nullptr); // source must not have been started
     }
 
-    service_discovery &operator=(service_discovery &&) = delete;
+    basic_service_discovery &operator=(basic_service_discovery &&) = delete;
 
-    ~service_discovery()
+    ~basic_service_discovery()
     {
         m_loop.reset();
         m_browse_loop.reset();
@@ -69,9 +69,9 @@ public:
     // Throwing constructor — constructs socket and timer from executor.
     // Silence timeout determines how long to wait after the last relevant packet
     // before stopping the recv_loop.
-    explicit service_discovery(executor_type ex,
-                               std::chrono::milliseconds silence_timeout,
-                               record_callback on_record = {})
+    explicit basic_service_discovery(executor_type ex,
+                                     std::chrono::milliseconds silence_timeout,
+                                     record_callback on_record = {})
         : m_socket(ex)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -81,10 +81,10 @@ public:
     }
 
     // Non-throwing constructors — ec is last (ASIO convention).
-    service_discovery(executor_type ex,
-                      std::chrono::milliseconds silence_timeout,
-                      record_callback on_record,
-                      std::error_code &ec)
+    basic_service_discovery(executor_type ex,
+                            std::chrono::milliseconds silence_timeout,
+                            record_callback on_record,
+                            std::error_code &ec)
         : m_socket(ex, ec)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -93,9 +93,9 @@ public:
     {
     }
 
-    service_discovery(executor_type ex,
-                      std::chrono::milliseconds silence_timeout,
-                      std::error_code &ec)
+    basic_service_discovery(executor_type ex,
+                            std::chrono::milliseconds silence_timeout,
+                            std::error_code &ec)
         : m_socket(ex, ec)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -103,7 +103,7 @@ public:
     {
     }
 
-    // Accessors — service_discovery owns socket and timer directly.
+    // Accessors — basic_service_discovery owns socket and timer directly.
     const socket_type &socket() const noexcept { return m_socket; }
     socket_type &socket() noexcept { return m_socket; }
     const timer_type &timer() const noexcept { return m_timer; }
@@ -311,6 +311,6 @@ private:
     std::vector<resolved_service> m_services; // populated by do_browse() at silence timeout
 };
 
-}
+} // namespace mdnspp
 
-#endif
+#endif // HPP_GUARD_MDNSPP_BASIC_SERVICE_DISCOVERY_H

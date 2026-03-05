@@ -9,6 +9,10 @@ add_executable(infra_headers_compile_test compile/infra_headers_compile_test.cpp
 target_link_libraries(infra_headers_compile_test PRIVATE mdnspp_core)
 add_test(NAME infra_headers_compile_test COMMAND infra_headers_compile_test)
 
+add_executable(defaults_compile_test defaults_compile_test.cpp)
+target_link_libraries(defaults_compile_test PRIVATE mdnspp_core)
+add_test(NAME defaults_compile_test COMMAND defaults_compile_test)
+
 function(make_test TEST_FILE)
     add_executable(${TEST_FILE} "${TEST_FILE}.cpp")
     target_link_libraries(${TEST_FILE} PRIVATE mdnspp_core mdnspp_testing Catch2::Catch2WithMain)

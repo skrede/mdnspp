@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_QUERIER_H
-#define HPP_GUARD_MDNSPP_QUERIER_H
+#ifndef HPP_GUARD_MDNSPP_BASIC_QUERIER_H
+#define HPP_GUARD_MDNSPP_BASIC_QUERIER_H
 
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
@@ -24,7 +24,7 @@
 namespace mdnspp {
 
 template <Policy P>
-class querier
+class basic_querier
 {
 public:
     using executor_type = typename P::executor_type;
@@ -39,11 +39,11 @@ public:
     using completion_handler = std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
 
     // Non-copyable (owns recv_loop by unique_ptr)
-    querier(const querier &) = delete;
-    querier &operator=(const querier &) = delete;
+    basic_querier(const basic_querier &) = delete;
+    basic_querier &operator=(const basic_querier &) = delete;
 
     // Movable only before async_query() is called (m_loop must be null).
-    querier(querier &&other) noexcept
+    basic_querier(basic_querier &&other) noexcept
         : m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
         , m_silence_timeout(other.m_silence_timeout)
@@ -55,9 +55,9 @@ public:
         assert(other.m_loop == nullptr); // source must not have been started
     }
 
-    querier &operator=(querier &&) = delete;
+    basic_querier &operator=(basic_querier &&) = delete;
 
-    ~querier()
+    ~basic_querier()
     {
         m_loop.reset(); // destroyed before m_socket/m_timer (reverse declaration order)
     }
@@ -65,9 +65,9 @@ public:
     // Throwing constructor — constructs socket and timer from executor.
     // Silence timeout determines how long to wait after the last relevant packet
     // before stopping the recv_loop.
-    explicit querier(executor_type ex,
-                     std::chrono::milliseconds silence_timeout,
-                     record_callback on_record = {})
+    explicit basic_querier(executor_type ex,
+                           std::chrono::milliseconds silence_timeout,
+                           record_callback on_record = {})
         : m_socket(ex)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -77,10 +77,10 @@ public:
     }
 
     // Non-throwing constructors — ec is last (ASIO convention).
-    querier(executor_type ex,
-            std::chrono::milliseconds silence_timeout,
-            record_callback on_record,
-            std::error_code &ec)
+    basic_querier(executor_type ex,
+                  std::chrono::milliseconds silence_timeout,
+                  record_callback on_record,
+                  std::error_code &ec)
         : m_socket(ex, ec)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -89,9 +89,9 @@ public:
     {
     }
 
-    querier(executor_type ex,
-            std::chrono::milliseconds silence_timeout,
-            std::error_code &ec)
+    basic_querier(executor_type ex,
+                  std::chrono::milliseconds silence_timeout,
+                  std::error_code &ec)
         : m_socket(ex, ec)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -99,7 +99,7 @@ public:
     {
     }
 
-    // Accessors — querier owns socket and timer directly.
+    // Accessors — basic_querier owns socket and timer directly.
     const socket_type &socket() const noexcept { return m_socket; }
     socket_type &socket() noexcept { return m_socket; }
     const timer_type &timer() const noexcept { return m_timer; }
@@ -212,6 +212,6 @@ private:
     std::vector<mdns_record_variant> m_results;
 };
 
-}
+} // namespace mdnspp
 
-#endif
+#endif // HPP_GUARD_MDNSPP_BASIC_QUERIER_H

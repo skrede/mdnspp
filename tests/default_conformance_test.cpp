@@ -7,11 +7,11 @@ static_assert(mdnspp::Policy<mdnspp::DefaultPolicy>, "DefaultPolicy must satisfy
 static_assert(mdnspp::SocketLike<mdnspp::DefaultSocket>, "DefaultSocket must satisfy SocketLike");
 static_assert(mdnspp::TimerLike<mdnspp::DefaultTimer>, "DefaultTimer must satisfy TimerLike");
 
-#include "mdnspp/querier.h"
-#include "mdnspp/observer.h"
+#include "mdnspp/basic_querier.h"
+#include "mdnspp/basic_observer.h"
 #include "mdnspp/service_info.h"
-#include "mdnspp/service_server.h"
-#include "mdnspp/service_discovery.h"
+#include "mdnspp/basic_service_server.h"
+#include "mdnspp/basic_service_discovery.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -24,10 +24,10 @@ using namespace std::chrono_literals;
 // Compile-time instantiation checks — all four public types must be
 // well-formed (complete types) with DefaultPolicy.
 // ---------------------------------------------------------------------------
-static_assert(sizeof(mdnspp::observer<mdnspp::DefaultPolicy>) > 0, "observer<DefaultPolicy> must be a complete type");
-static_assert(sizeof(mdnspp::service_discovery<mdnspp::DefaultPolicy>) > 0, "service_discovery<DefaultPolicy> must be a complete type");
-static_assert(sizeof(mdnspp::querier<mdnspp::DefaultPolicy>) > 0, "querier<DefaultPolicy> must be a complete type");
-static_assert(sizeof(mdnspp::service_server<mdnspp::DefaultPolicy>) > 0, "service_server<DefaultPolicy> must be a complete type");
+static_assert(sizeof(mdnspp::basic_observer<mdnspp::DefaultPolicy>) > 0, "basic_observer<DefaultPolicy> must be a complete type");
+static_assert(sizeof(mdnspp::basic_service_discovery<mdnspp::DefaultPolicy>) > 0, "basic_service_discovery<DefaultPolicy> must be a complete type");
+static_assert(sizeof(mdnspp::basic_querier<mdnspp::DefaultPolicy>) > 0, "basic_querier<DefaultPolicy> must be a complete type");
+static_assert(sizeof(mdnspp::basic_service_server<mdnspp::DefaultPolicy>) > 0, "basic_service_server<DefaultPolicy> must be a complete type");
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -137,7 +137,7 @@ TEST_CASE("All four public types instantiate with DefaultPolicy", "[native][poli
 
     try
     {
-        mdnspp::observer<mdnspp::DefaultPolicy> obs{
+        mdnspp::basic_observer<mdnspp::DefaultPolicy> obs{
             ctx,
             [](const mdnspp::mdns_record_variant &, mdnspp::endpoint)
             {
@@ -152,7 +152,7 @@ TEST_CASE("All four public types instantiate with DefaultPolicy", "[native][poli
 
     try
     {
-        mdnspp::service_discovery<mdnspp::DefaultPolicy> sd{ctx, 500ms};
+        mdnspp::basic_service_discovery<mdnspp::DefaultPolicy> sd{ctx, 500ms};
         SUCCEED("service_discovery<DefaultPolicy> constructed");
     }
     catch(const std::exception &e)
@@ -162,7 +162,7 @@ TEST_CASE("All four public types instantiate with DefaultPolicy", "[native][poli
 
     try
     {
-        mdnspp::querier<mdnspp::DefaultPolicy> q{ctx, 500ms};
+        mdnspp::basic_querier<mdnspp::DefaultPolicy> q{ctx, 500ms};
         SUCCEED("querier<DefaultPolicy> constructed");
     }
     catch(const std::exception &e)
@@ -178,7 +178,7 @@ TEST_CASE("All four public types instantiate with DefaultPolicy", "[native][poli
         info.hostname = "testhost.local.";
         info.port = 8080;
 
-        mdnspp::service_server<mdnspp::DefaultPolicy> srv{ctx, info};
+        mdnspp::basic_service_server<mdnspp::DefaultPolicy> srv{ctx, info};
         SUCCEED("service_server<DefaultPolicy> constructed");
     }
     catch(const std::exception &e)

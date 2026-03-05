@@ -3,14 +3,14 @@
 
 #include "mdnspp/asio/asio_completion.h"
 
-#include <mdnspp/querier.h>
+#include <mdnspp/basic_querier.h>
 
 namespace mdnspp {
 
 template <Policy P,
     asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>
     CompletionToken>
-auto async_query(querier<P> &q, std::string_view name, dns_type qtype, CompletionToken &&token)
+auto async_query(basic_querier<P> &q, std::string_view name, dns_type qtype, CompletionToken &&token)
 {
     return asio::async_initiate<
         CompletionToken,

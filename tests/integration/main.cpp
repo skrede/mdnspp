@@ -1,19 +1,29 @@
-#include <mdnspp/querier.h>
+#include <mdnspp/basic_querier.h>
+#include <mdnspp/defaults.h>
 #include <mdnspp/dns.h>
 #include <mdnspp/endpoint.h>
 #include <mdnspp/resolved_service.h>
 #include <mdnspp/testing/mock_policy.h>
 
+#include <type_traits>
 #include <iostream>
 #include <chrono>
+
+// Validate ERG-02/BUILD-02: the type aliases in defaults.h name valid class types
+// without requiring template arguments.
+static_assert(std::is_class_v<mdnspp::querier>);
+static_assert(std::is_class_v<mdnspp::observer>);
+static_assert(std::is_class_v<mdnspp::service_discovery>);
+static_assert(std::is_class_v<mdnspp::service_server>);
+static_assert(std::is_class_v<mdnspp::context>);
 
 int main()
 {
     // Prove the installed headers compile and the template instantiates correctly.
     // No network calls — this is a compile-and-link verification.
 
-    // Instantiate querier<MockPolicy> to prove the template compiles against installed headers.
-    mdnspp::querier<mdnspp::testing::MockPolicy> q{
+    // Instantiate basic_querier<MockPolicy> to prove the template compiles against installed headers.
+    mdnspp::basic_querier<mdnspp::testing::MockPolicy> q{
         mdnspp::testing::mock_executor{},
         std::chrono::milliseconds{300}
     };

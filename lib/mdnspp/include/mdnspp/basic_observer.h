@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_OBSERVER_H
-#define HPP_GUARD_MDNSPP_OBSERVER_H
+#ifndef HPP_GUARD_MDNSPP_BASIC_OBSERVER_H
+#define HPP_GUARD_MDNSPP_BASIC_OBSERVER_H
 
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
@@ -18,31 +18,31 @@
 
 namespace mdnspp {
 
-// observer<P> — mDNS multicast listener
+// basic_observer<P> — mDNS multicast listener
 //
 // Policy-based class template parameterized on:
 //   P — Policy: provides executor_type, socket_type, timer_type
 //
 // Lifecycle:
-//   1. observer(ex, on_record)       — direct constructor (throwing)
-//      observer(ex, on_record, ec)   — non-throwing overload (ec set on failure)
-//   2. async_observe([on_done])      — arms recv_loop; returns immediately
-//                                      on_done fires with error_code{} when stop() is called
-//   3. stop()                        — idempotent; sets stop flag, fires completion handler
-//   4. ~observer()                   — destroys recv_loop for RAII safety
+//   1. basic_observer(ex, on_record)       — direct constructor (throwing)
+//      basic_observer(ex, on_record, ec)   — non-throwing overload (ec set on failure)
+//   2. async_observe([on_done])            — arms recv_loop; returns immediately
+//                                            on_done fires with error_code{} when stop() is called
+//   3. stop()                              — idempotent; sets stop flag, fires completion handler
+//   4. ~basic_observer()                   — destroys recv_loop for RAII safety
 //
-// Observer is a pure listener — no queries sent, no responses built.
+// basic_observer is a pure listener — no queries sent, no responses built.
 // All parsed records are delivered to the callback with the sender endpoint.
 // Malformed packets are silently skipped.
 //
 // stop() is callback-safe: it sets the atomic stop flag but does NOT destroy
-// the recv_loop. The recv_loop is cleaned up in ~observer(), which is never
+// the recv_loop. The recv_loop is cleaned up in ~basic_observer(), which is never
 // called from within the recv_loop callback chain.
 //
-// No inheritance. No std::mutex. Single timer (unlike service_server).
+// No inheritance. No std::mutex. Single timer (unlike basic_service_server).
 
 template <Policy P>
-class observer
+class basic_observer
 {
 public:
     using executor_type = typename P::executor_type;
@@ -55,12 +55,12 @@ public:
     using completion_handler = std::move_only_function<void(std::error_code)>;
 
     // Non-copyable
-    observer(const observer &) = delete;
-    observer &operator=(const observer &) = delete;
+    basic_observer(const basic_observer &) = delete;
+    basic_observer &operator=(const basic_observer &) = delete;
 
     // Movable only before async_observe() is called (m_loop must be null).
-    // Moving a started observer is a logic error (recv_loop callbacks capture this).
-    observer(observer &&other) noexcept
+    // Moving a started basic_observer is a logic error (recv_loop callbacks capture this).
+    basic_observer(basic_observer &&other) noexcept
         : m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
         , m_on_record(std::move(other.m_on_record))
@@ -72,9 +72,9 @@ public:
         other.m_stopped.store(true, std::memory_order_release);
     }
 
-    observer &operator=(observer &&) = delete; // move-assign not needed; omit for simplicity
+    basic_observer &operator=(basic_observer &&) = delete; // move-assign not needed; omit for simplicity
 
-    ~observer()
+    ~basic_observer()
     {
         m_stopped.store(true, std::memory_order_release);
         m_loop.reset(); // safe — destructor is never called from within callback chain
@@ -82,7 +82,7 @@ public:
 
     // Throwing constructor — constructs socket and timer from executor.
     // Throws on construction failure (e.g. socket bind error).
-    explicit observer(executor_type ex, record_callback on_record = {})
+    explicit basic_observer(executor_type ex, record_callback on_record = {})
         : m_socket(ex)
         , m_timer(ex)
         , m_on_record(std::move(on_record))
@@ -93,7 +93,7 @@ public:
 
     // Non-throwing constructor — sets ec on failure instead of throwing.
     // ec is the last parameter, matching ASIO convention.
-    observer(executor_type ex, record_callback on_record, std::error_code &ec)
+    basic_observer(executor_type ex, record_callback on_record, std::error_code &ec)
         : m_socket(ex, ec)
         , m_timer(ex)
         , m_on_record(std::move(on_record))
@@ -118,7 +118,7 @@ public:
     // stop() — idempotent; fires the completion handler, then sets the stop flag.
     //
     // Does NOT call m_loop.reset() here — this is critical for callback-safe stop.
-    // The recv_loop remains alive until ~observer() destroys it, ensuring that
+    // The recv_loop remains alive until ~basic_observer() destroys it, ensuring that
     // any in-progress callback chain can complete without accessing a dangling loop.
     void stop()
     {
@@ -129,7 +129,7 @@ public:
             h(std::error_code{});
     }
 
-    // Accessors — observer owns socket and timer directly.
+    // Accessors — basic_observer owns socket and timer directly.
     const socket_type &socket() const noexcept { return m_socket; }
     socket_type &socket() noexcept { return m_socket; }
     const timer_type &timer() const noexcept { return m_timer; }
@@ -147,7 +147,7 @@ private:
             [this](std::span<std::byte> data, endpoint sender) -> bool
             {
                 on_packet(data, sender);
-                return true; // observer wants all traffic; always reset timer
+                return true; // basic_observer wants all traffic; always reset timer
             },
             []()
             {
@@ -185,4 +185,4 @@ private:
 
 } // namespace mdnspp
 
-#endif // HPP_GUARD_MDNSPP_OBSERVER_H
+#endif // HPP_GUARD_MDNSPP_BASIC_OBSERVER_H

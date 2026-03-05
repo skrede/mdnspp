@@ -31,7 +31,7 @@ SCENARIO("async_discover with use_future returns future with results", "[complet
     asio::io_context io;
     try
     {
-        mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(500)};
+        mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(500)};
 
         auto fut = mdnspp::async_discover(sd, "_nonexistent._tcp.local.", asio::use_future);
 
@@ -51,7 +51,7 @@ SCENARIO("async_browse with use_future returns future with services", "[completi
     asio::io_context io;
     try
     {
-        mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(500)};
+        mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(500)};
         auto fut = mdnspp::async_browse(sd, "_nonexistent._tcp.local.", asio::use_future);
         io.run();
         auto services = fut.get();
@@ -68,7 +68,7 @@ SCENARIO("async_query with use_future returns future with results", "[completion
     asio::io_context io;
     try
     {
-        mdnspp::querier<mdnspp::AsioPolicy> q{io, std::chrono::milliseconds(500)};
+        mdnspp::basic_querier<mdnspp::AsioPolicy> q{io, std::chrono::milliseconds(500)};
 
         auto fut = mdnspp::async_query(q, "_nonexistent._tcp.local.", mdnspp::dns_type::ptr, asio::use_future);
 
@@ -88,7 +88,7 @@ SCENARIO("async_observe with callback fires when stop() is called", "[completion
     asio::io_context io;
     try
     {
-        auto obs = std::make_shared<mdnspp::observer<mdnspp::AsioPolicy>>(
+        auto obs = std::make_shared<mdnspp::basic_observer<mdnspp::AsioPolicy>>(
             io, [](const mdnspp::mdns_record_variant &, mdnspp::endpoint)
             {
             });
@@ -126,7 +126,7 @@ SCENARIO("async_start with callback fires when stop() is called", "[completion_t
         info.port = 8080;
         info.address_ipv4 = "192.168.1.10";
 
-        auto server = std::make_shared<mdnspp::service_server<mdnspp::AsioPolicy>>(
+        auto server = std::make_shared<mdnspp::basic_service_server<mdnspp::AsioPolicy>>(
             io, std::move(info));
 
         bool handler_fired = false;
@@ -153,7 +153,7 @@ SCENARIO("async_discover with deferred does not initiate I/O until launched", "[
     asio::io_context io;
     try
     {
-        mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(300)};
+        mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(300)};
 
         // Create deferred operation — must NOT send any packets or arm any async ops yet
         auto op = mdnspp::async_discover(sd, "_deferred._tcp.local.", asio::deferred);
@@ -180,7 +180,7 @@ SCENARIO("async_browse with deferred does not initiate I/O until launched", "[co
     asio::io_context io;
     try
     {
-        mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(300)};
+        mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(300)};
         auto op = mdnspp::async_browse(sd, "_deferred._tcp.local.", asio::deferred);
         bool callback_fired = false;
         std::move(op)([&callback_fired](std::error_code ec,
@@ -202,7 +202,7 @@ SCENARIO("async_observe completion handler dispatched on correct executor — TS
     asio::io_context io;
     try
     {
-        auto obs = std::make_shared<mdnspp::observer<mdnspp::AsioPolicy>>(
+        auto obs = std::make_shared<mdnspp::basic_observer<mdnspp::AsioPolicy>>(
             io, [](const mdnspp::mdns_record_variant &, mdnspp::endpoint)
             {
             });
@@ -237,7 +237,7 @@ SCENARIO("async_observe with use_awaitable suspends until stop", "[completion_to
     asio::io_context io;
     try
     {
-        auto obs = std::make_shared<mdnspp::observer<mdnspp::AsioPolicy>>(
+        auto obs = std::make_shared<mdnspp::basic_observer<mdnspp::AsioPolicy>>(
             io, [](const mdnspp::mdns_record_variant &, mdnspp::endpoint)
             {
             });
@@ -273,7 +273,7 @@ SCENARIO("async_browse with use_awaitable returns services when complete", "[com
     asio::io_context io;
     try
     {
-        mdnspp::service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(300)};
+        mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(300)};
         bool completed = false;
         asio::co_spawn(
             io,

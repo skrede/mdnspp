@@ -1,7 +1,7 @@
 // tests/service_server_tsan_test.cpp
 // ThreadSanitizer hard-gate test for service_server<AsioPolicy>.
 
-#include "mdnspp/service_server.h"
+#include "mdnspp/basic_service_server.h"
 #include "mdnspp/service_info.h"
 
 #include "mdnspp/asio/asio_policy.h"
@@ -30,7 +30,7 @@ SCENARIO("service_server stop() from separate thread is data-race-free", "[servi
 
         // AsioSocket construction joins a multicast group — may fail in sandboxed CI
         // with no network interface. Warn and skip gracefully.
-        std::optional<mdnspp::service_server<mdnspp::AsioPolicy>> server;
+        std::optional<mdnspp::basic_service_server<mdnspp::AsioPolicy>> server;
 
         try
         {
@@ -71,7 +71,7 @@ SCENARIO("service_server double stop is safe under concurrency", "[service_serve
     {
         asio::io_context io;
 
-        std::optional<mdnspp::service_server<mdnspp::AsioPolicy>> server;
+        std::optional<mdnspp::basic_service_server<mdnspp::AsioPolicy>> server;
 
         try
         {

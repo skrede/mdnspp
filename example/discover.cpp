@@ -1,6 +1,6 @@
 #include "mdnspp/asio.h"
 #include "mdnspp/records.h"
-#include "mdnspp/service_discovery.h"
+#include "mdnspp/basic_service_discovery.h"
 
 #include <asio.hpp>
 #include <iostream>
@@ -10,7 +10,7 @@ int main()
 {
     asio::io_context io;
 
-    mdnspp::service_discovery<mdnspp::AsioPolicy> sd{
+    mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{
         io,
         std::chrono::seconds(3),
         [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)

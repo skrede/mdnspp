@@ -20,7 +20,7 @@ int main()
     info.address_ipv4 = "192.168.1.69";
     info.txt_records = {{"path", "/index.html"}};
 
-    mdnspp::service_server<mdnspp::AsioPolicy> srv{
+    mdnspp::basic_service_server<mdnspp::AsioPolicy> srv{
         io,
         std::move(info),
         [](mdnspp::dns_type qtype, mdnspp::endpoint sender, bool unicast)

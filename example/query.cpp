@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
 
     asio::io_context io;
 
-    mdnspp::querier<mdnspp::AsioPolicy> q{
+    mdnspp::basic_querier<mdnspp::AsioPolicy> q{
         io,
         std::chrono::seconds(3),
         [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)

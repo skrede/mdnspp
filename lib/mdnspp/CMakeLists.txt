@@ -6,20 +6,16 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/parse.h
     ${INCLUDE_DIRECTORY}/mdnspp/logger.h
     ${INCLUDE_DIRECTORY}/mdnspp/policy.h
-    ${INCLUDE_DIRECTORY}/mdnspp/querier.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_querier.h
     ${INCLUDE_DIRECTORY}/mdnspp/records.h
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
-    ${INCLUDE_DIRECTORY}/mdnspp/observer.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_observer.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_info.h
-    ${INCLUDE_DIRECTORY}/mdnspp/service_server.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_service_server.h
     ${INCLUDE_DIRECTORY}/mdnspp/resolved_service.h
-    ${INCLUDE_DIRECTORY}/mdnspp/service_discovery.h
-
-    ${INCLUDE_DIRECTORY}/mdnspp/default/default_timer.h
-    ${INCLUDE_DIRECTORY}/mdnspp/default/default_policy.h
-    ${INCLUDE_DIRECTORY}/mdnspp/default/default_socket.h
-    ${INCLUDE_DIRECTORY}/mdnspp/default/default_context.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_service_discovery.h
+    ${INCLUDE_DIRECTORY}/mdnspp/defaults.h
 )
 
 add_library(mdnspp_core INTERFACE ${PUBLIC_HEADERS})
@@ -39,6 +35,10 @@ install(TARGETS mdnspp_core
 
 install(FILES ${PUBLIC_HEADERS}
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp
+)
+
+install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/default/
+    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/default
 )
 
 install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/detail/

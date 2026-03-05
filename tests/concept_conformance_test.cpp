@@ -2,7 +2,7 @@
 
 #include "mdnspp/policy.h"
 #include "mdnspp/testing/mock_policy.h"
-#include "mdnspp/observer.h"
+#include "mdnspp/basic_observer.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 
@@ -75,7 +75,7 @@ TEST_CASE("observer error_code constructor path", "[observer][error_code]")
 {
     MockSocket::set_fail_on_construct(true);
     std::error_code ec;
-    mdnspp::observer<mdnspp::testing::MockPolicy> obs{
+    mdnspp::basic_observer<mdnspp::testing::MockPolicy> obs{
         mock_executor{},
         [](const mdnspp::mdns_record_variant &, mdnspp::endpoint)
         {

@@ -1,7 +1,7 @@
 // tests/observer_test.cpp
 
 #include "mdnspp/records.h"
-#include "mdnspp/observer.h"
+#include "mdnspp/basic_observer.h"
 #include "mdnspp/endpoint.h"
 
 #include "mdnspp/testing/mock_policy.h"
@@ -139,7 +139,7 @@ SCENARIO("observer delivers DNS records from a single packet to the callback", "
         std::vector<mdns_record_variant> received_records;
         std::vector<endpoint> received_senders;
 
-        observer<MockPolicy> obs{
+        basic_observer<MockPolicy> obs{
             ex,
             [&](const mdns_record_variant &rec, endpoint ep)
             {
@@ -180,7 +180,7 @@ SCENARIO("observer delivers records from multiple packets", "[observer][multiple
 
         std::vector<mdns_record_variant> received_records;
 
-        observer<MockPolicy> obs{
+        basic_observer<MockPolicy> obs{
             ex,
             [&](const mdns_record_variant &rec, endpoint)
             {
@@ -211,7 +211,7 @@ SCENARIO("async_observe fires completion callback on stop", "[observer][async]")
     {
         mock_executor ex;
 
-        observer<MockPolicy> obs{
+        basic_observer<MockPolicy> obs{
             ex,
             [](const mdns_record_variant &, endpoint)
             {
@@ -249,7 +249,7 @@ SCENARIO("stop() is idempotent — second call is a no-op", "[observer][stop-ide
     {
         mock_executor ex;
 
-        observer<MockPolicy> obs{
+        basic_observer<MockPolicy> obs{
             ex,
             [](const mdns_record_variant &, endpoint)
             {
@@ -276,7 +276,7 @@ SCENARIO("async_observe completion handler fires exactly once on double stop", "
         mock_executor ex;
         int completion_count = 0;
 
-        observer<MockPolicy> obs{
+        basic_observer<MockPolicy> obs{
             ex,
             [](const mdns_record_variant &, endpoint)
             {
@@ -304,7 +304,7 @@ SCENARIO("observer can be created, started, and stopped without any packet deliv
         mock_executor ex;
         int callback_count = 0;
 
-        observer<MockPolicy> obs{
+        basic_observer<MockPolicy> obs{
             ex,
             [&](const mdns_record_variant &, endpoint) { ++callback_count; }
         };
@@ -328,10 +328,10 @@ SCENARIO("stop() called from within the record callback does not deadlock", "[ob
     {
         mock_executor ex;
 
-        observer<MockPolicy> *obs_ptr = nullptr;
+        basic_observer<MockPolicy> *obs_ptr = nullptr;
         int callback_count = 0;
 
-        observer<MockPolicy> obs{
+        basic_observer<MockPolicy> obs{
             ex,
             [&](const mdns_record_variant &, endpoint)
             {
@@ -368,7 +368,7 @@ SCENARIO("observer skips malformed packets without crashing", "[observer][malfor
 
         int callback_count = 0;
 
-        observer<MockPolicy> obs{
+        basic_observer<MockPolicy> obs{
             ex,
             [&](const mdns_record_variant &, endpoint) { ++callback_count; }
         };

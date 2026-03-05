@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_SERVICE_SERVER_H
-#define HPP_GUARD_MDNSPP_SERVICE_SERVER_H
+#ifndef HPP_GUARD_MDNSPP_BASIC_SERVICE_SERVER_H
+#define HPP_GUARD_MDNSPP_BASIC_SERVICE_SERVER_H
 
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
@@ -23,23 +23,23 @@
 
 namespace mdnspp {
 
-// service_server<P> — mDNS service responder
+// basic_service_server<P> — mDNS service responder
 //
 // Policy-based class template parameterized on:
 //   P — Policy: provides executor_type, socket_type, timer_type
 //
 // Lifecycle:
-//   1. service_server(ex, info)          — direct constructor (throwing)
-//      service_server(ex, info, ec)      — non-throwing overload (ec set on failure)
-//   2. async_start([on_done])            — arms recv_loop; returns immediately
-//                                          on_done fires with error_code{} when stop() is called
-//   3. stop()                            — idempotent; fires completion handler, cancels timer,
-//                                          destroys loop
-//   4. ~service_server()                 — calls stop() for RAII safety
+//   1. basic_service_server(ex, info)          — direct constructor (throwing)
+//      basic_service_server(ex, info, ec)      — non-throwing overload (ec set on failure)
+//   2. async_start([on_done])                  — arms recv_loop; returns immediately
+//                                                on_done fires with error_code{} when stop() is called
+//   3. stop()                                  — idempotent; fires completion handler, cancels timer,
+//                                                destroys loop
+//   4. ~basic_service_server()                 — calls stop() for RAII safety
 
 
 template <Policy P>
-class service_server
+class basic_service_server
 {
 public:
     using executor_type = typename P::executor_type;
@@ -55,12 +55,12 @@ public:
     using completion_handler = std::move_only_function<void(std::error_code)>;
 
     // Non-copyable
-    service_server(const service_server &) = delete;
-    service_server &operator=(const service_server &) = delete;
+    basic_service_server(const basic_service_server &) = delete;
+    basic_service_server &operator=(const basic_service_server &) = delete;
 
     // Movable only before async_start() is called (m_loop must be null).
     // Moving a started server is a logic error.
-    service_server(service_server &&other) noexcept
+    basic_service_server(basic_service_server &&other) noexcept
         : m_socket(std::move(other.m_socket))
         , m_response_timer(std::move(other.m_response_timer))
         , m_recv_timer(std::move(other.m_recv_timer))
@@ -76,7 +76,7 @@ public:
         other.m_stopped.store(true, std::memory_order_release);
     }
 
-    service_server &operator=(service_server &&other) noexcept
+    basic_service_server &operator=(basic_service_server &&other) noexcept
     {
         if(this == &other)
             return *this;
@@ -96,14 +96,14 @@ public:
         return *this;
     }
 
-    ~service_server()
+    ~basic_service_server()
     {
         stop();
     }
 
     // Throwing constructor — constructs socket and both timers from executor.
-    explicit service_server(executor_type ex, service_info info,
-                            query_callback on_query = {})
+    explicit basic_service_server(executor_type ex, service_info info,
+                                  query_callback on_query = {})
         : m_socket(ex)
         , m_response_timer(ex)
         , m_recv_timer(ex)
@@ -116,8 +116,8 @@ public:
     }
 
     // Non-throwing constructors
-    service_server(executor_type ex, service_info info,
-                   query_callback on_query, std::error_code &ec)
+    basic_service_server(executor_type ex, service_info info,
+                         query_callback on_query, std::error_code &ec)
         : m_socket(ex, ec)
         , m_response_timer(ex)
         , m_recv_timer(ex)
@@ -129,7 +129,7 @@ public:
     {
     }
 
-    service_server(executor_type ex, service_info info, std::error_code &ec)
+    basic_service_server(executor_type ex, service_info info, std::error_code &ec)
         : m_socket(ex, ec)
         , m_response_timer(ex)
         , m_recv_timer(ex)
@@ -280,7 +280,7 @@ private:
 
     // Builds and sends a DNS response to dest for the given qtype.
     // dest is either the multicast group (default) or the querier's unicast address
-    // (when QU bit was set in the question). Uses m_socket directly — service_server
+    // (when QU bit was set in the question). Uses m_socket directly — basic_service_server
     // owns the socket, not recv_loop.
     void send_response(endpoint dest, dns_type qtype)
     {
@@ -302,6 +302,6 @@ private:
     std::atomic<bool> m_stopped;          // idempotent stop flag
 };
 
-}
+} // namespace mdnspp
 
-#endif
+#endif // HPP_GUARD_MDNSPP_BASIC_SERVICE_SERVER_H

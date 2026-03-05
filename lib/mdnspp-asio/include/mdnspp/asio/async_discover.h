@@ -3,12 +3,12 @@
 
 #include "mdnspp/asio/asio_completion.h"
 
-#include <mdnspp/service_discovery.h>
+#include <mdnspp/basic_service_discovery.h>
 
 namespace mdnspp {
 
 template <Policy P, asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>CompletionToken>
-auto async_discover(service_discovery<P> &sd, std::string_view service_type, CompletionToken &&token)
+auto async_discover(basic_service_discovery<P> &sd, std::string_view service_type, CompletionToken &&token)
 {
     return asio::async_initiate<
         CompletionToken,
@@ -28,7 +28,7 @@ auto async_discover(service_discovery<P> &sd, std::string_view service_type, Com
 }
 
 template <Policy P, asio::completion_token_for<void(std::error_code, std::vector<resolved_service>)>CompletionToken>
-auto async_browse(service_discovery<P> &sd, std::string_view service_type, CompletionToken &&token)
+auto async_browse(basic_service_discovery<P> &sd, std::string_view service_type, CompletionToken &&token)
 {
     return asio::async_initiate<
         CompletionToken,

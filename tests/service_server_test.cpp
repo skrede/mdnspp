@@ -1,13 +1,13 @@
 // tests/service_server_test.cpp
-// service_server<MockPolicy> unit tests — Phase 7, Plan 07-03
+// basic_service_server<MockPolicy> unit tests — Phase 7, Plan 07-03
 // Verifies that build_dns_response() produces valid DNS wire-format responses
 // for PTR, SRV, A, AAAA, and TXT query types, parseable by walk_dns_frame().
-// Also verifies service_server<MockPolicy> constructor/async_start/stop lifecycle and RFC 6762 timing.
+// Also verifies basic_service_server<MockPolicy> constructor/async_start/stop lifecycle and RFC 6762 timing.
 
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
-#include "mdnspp/service_server.h"
+#include "mdnspp/basic_service_server.h"
 
 #include "mdnspp/detail/dns_wire.h"
 
@@ -304,9 +304,9 @@ SCENARIO("service_server constructs with direct constructor", "[service_server][
     {
         mock_executor ex;
 
-        WHEN("service_server<MockPolicy> is constructed with a test service_info")
+        WHEN("basic_service_server<MockPolicy> is constructed with a test service_info")
         {
-            service_server<MockPolicy> server{ex, make_test_info()};
+            basic_service_server<MockPolicy> server{ex, make_test_info()};
 
             THEN("the server is constructed successfully (socket is accessible)")
             {
@@ -321,7 +321,7 @@ SCENARIO("async_start and stop lifecycle", "[service_server][lifecycle]")
     GIVEN("a service_server with no enqueued queries")
     {
         mock_executor ex;
-        service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
 
         WHEN("async_start() is called")
         {
@@ -345,7 +345,7 @@ SCENARIO("async_start fires completion callback on stop", "[service_server][asyn
     GIVEN("a service_server with no enqueued queries")
     {
         mock_executor ex;
-        service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
 
         WHEN("async_start() is called with a completion callback")
         {
@@ -379,7 +379,7 @@ SCENARIO("async_start completion handler fires exactly once on double stop", "[s
         mock_executor ex;
         int completion_count = 0;
 
-        service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
         server.async_start([&](std::error_code) { ++completion_count; });
 
         WHEN("stop() is called twice")
@@ -402,7 +402,7 @@ SCENARIO("service_server responds to PTR query after timer fires", "[service_ser
         mock_executor ex;
         endpoint sender{"192.168.1.50", 5353};
 
-        service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_ptr_query("_http._tcp.local."), sender);
 
         WHEN("async_start() is called (MockSocket drains queue, fires on_query)")
@@ -442,7 +442,7 @@ SCENARIO("response delay timer armed after query receipt", "[service_server][tim
     GIVEN("a service_server with a PTR query enqueued")
     {
         mock_executor ex;
-        service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_ptr_query("_http._tcp.local."));
 
         WHEN("async_start() is called")
@@ -467,7 +467,7 @@ SCENARIO("no response sent before timer fires", "[service_server][rfc6762][timin
     GIVEN("a service_server with a PTR query enqueued")
     {
         mock_executor ex;
-        service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_ptr_query("_http._tcp.local."));
 
         WHEN("async_start() is called but the timer is NOT fired")
@@ -487,7 +487,7 @@ SCENARIO("stop before timer fires prevents response", "[service_server][stop][ca
     GIVEN("a service_server with a PTR query enqueued")
     {
         mock_executor ex;
-        service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_ptr_query("_http._tcp.local."));
 
         WHEN("async_start() is called then stop() is called before firing the timer")
@@ -513,7 +513,7 @@ SCENARIO("response to A query contains valid A record", "[service_server][A][res
     GIVEN("a service_server with an A query for myhost.local. enqueued")
     {
         mock_executor ex;
-        service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_a_query("myhost.local."));
 
         WHEN("async_start() is called and the response timer fires")
@@ -553,7 +553,7 @@ SCENARIO("response sent to multicast by default, unicast when QU bit set", "[ser
         mock_executor ex;
         endpoint sender{"10.0.0.1", 5353};
 
-        service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_ptr_query("_http._tcp.local."), sender);
 
         WHEN("async_start() is called and the response timer fires")
@@ -574,7 +574,7 @@ SCENARIO("response sent to multicast by default, unicast when QU bit set", "[ser
         mock_executor ex;
         endpoint sender{"10.0.0.1", 5353};
 
-        service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
         server.socket().enqueue(make_qu_query("_http._tcp.local.", dns_type::ptr), sender);
 
         WHEN("async_start() is called and the response timer fires")

@@ -3,12 +3,12 @@
 
 #include "mdnspp/asio/asio_completion.h"
 
-#include <mdnspp/service_server.h>
+#include <mdnspp/basic_service_server.h>
 
 namespace mdnspp {
 
 template <Policy P, asio::completion_token_for<void(std::error_code)> CompletionToken>
-auto async_start(service_server<P> &srv, CompletionToken &&token)
+auto async_start(basic_service_server<P> &srv, CompletionToken &&token)
 {
     return asio::async_initiate<CompletionToken, void(std::error_code)>(
         [&srv](auto handler)

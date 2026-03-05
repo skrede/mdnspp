@@ -1,6 +1,6 @@
 #include "mdnspp/asio.h"
 #include "mdnspp/records.h"
-#include "mdnspp/observer.h"
+#include "mdnspp/basic_observer.h"
 
 #include <asio.hpp>
 #include <iostream>
@@ -10,7 +10,7 @@ int main()
 {
     asio::io_context io;
 
-    mdnspp::observer<mdnspp::AsioPolicy> obs{
+    mdnspp::basic_observer<mdnspp::AsioPolicy> obs{
         io,
         [](mdnspp::mdns_record_variant rec, mdnspp::endpoint sender)
         {

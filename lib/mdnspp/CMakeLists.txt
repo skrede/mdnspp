@@ -62,9 +62,6 @@ if(MDNSPP_ENABLE_DEFAULT_POLICY)
         ${INCLUDE_DIRECTORY}/mdnspp/native.h
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp
     )
-    install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/native/
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/native
-    )
 
     install(TARGETS mdnspp_native EXPORT mdnsppTargets)
 endif()

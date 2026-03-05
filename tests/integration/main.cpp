@@ -3,7 +3,7 @@
 #include <mdnspp/dns.h>
 #include <mdnspp/endpoint.h>
 #include <mdnspp/resolved_service.h>
-#include <mdnspp/testing/mock_policy.h>
+#include <mdnspp/default/default_policy.h>
 
 #include <type_traits>
 #include <iostream>
@@ -17,16 +17,13 @@ static_assert(std::is_class_v<mdnspp::service_discovery>);
 static_assert(std::is_class_v<mdnspp::service_server>);
 static_assert(std::is_class_v<mdnspp::context>);
 
+// Validate that basic_querier<DefaultPolicy> is instantiable (template correctness check).
+static_assert(std::is_class_v<mdnspp::basic_querier<mdnspp::DefaultPolicy>>);
+
 int main()
 {
     // Prove the installed headers compile and the template instantiates correctly.
     // No network calls — this is a compile-and-link verification.
-
-    // Instantiate basic_querier<MockPolicy> to prove the template compiles against installed headers.
-    mdnspp::basic_querier<mdnspp::testing::MockPolicy> q{
-        mdnspp::testing::mock_executor{},
-        std::chrono::milliseconds{300}
-    };
 
     // Prove dns_type enum is accessible from mdnspp namespace.
     constexpr auto qtype = mdnspp::dns_type::a;

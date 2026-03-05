@@ -3,12 +3,12 @@
 
 #include "mdnspp/detail/dns_enums.h"
 
-#include <variant>
 #include <string>
 #include <vector>
 #include <cstdint>
-#include <optional>
 #include <ostream>
+#include <variant>
+#include <optional>
 
 namespace mdnspp {
 

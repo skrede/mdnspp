@@ -8,6 +8,7 @@
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/recv_loop.h"
 #include "mdnspp/detail/dns_wire.h"
+#include "mdnspp/detail/compat.h"
 
 #include <algorithm>
 #include <memory>
@@ -16,7 +17,6 @@
 #include <atomic>
 #include <span>
 #include <cstdint>
-#include <functional>
 #include <cassert>
 #include <system_error>
 #include <utility>
@@ -48,11 +48,11 @@ public:
 
     /// Optional callback invoked when an incoming query is received and parsed.
     /// Parameters: qtype requested, sender endpoint, whether unicast was requested.
-    using query_callback = std::move_only_function<void(dns_type, endpoint, bool)>;
+    using query_callback = detail::move_only_function<void(dns_type, endpoint, bool)>;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
-    using completion_handler = std::move_only_function<void(std::error_code)>;
+    using completion_handler = detail::move_only_function<void(std::error_code)>;
 
     // Non-copyable
     basic_service_server(const basic_service_server &) = delete;

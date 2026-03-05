@@ -25,6 +25,7 @@ namespace mdnspp {
 //   txt_entries     — TXT key/value pairs (reuses service_txt from records.h)
 //   ipv4_addresses  — correlated IPv4 address strings from A records
 //   ipv6_addresses  — correlated IPv6 address strings from AAAA records
+
 struct resolved_service
 {
     std::string instance_name;
@@ -54,6 +55,7 @@ struct resolved_service
 //
 // Partial services (missing SRV, TXT, or address records) are included with
 // empty fields — they are never dropped.
+
 inline std::vector<resolved_service> aggregate(std::span<const mdns_record_variant> records)
 {
     // Working state per service instance
@@ -84,7 +86,10 @@ inline std::vector<resolved_service> aggregate(std::span<const mdns_record_varia
                     it->second.svc.hostname = r.srv_name;
                     it->second.svc.port = r.port;
                     // Record the host -> instance mapping for address correlation
-                    host_to_instances[r.srv_name].push_back(r.name);
+                    if(auto hi = host_to_instances.find(r.srv_name); hi != host_to_instances.end())
+                        hi->second.push_back(r.name);
+                    else
+                        host_to_instances.insert({r.srv_name, {r.name}});
                 }
             }
             else if constexpr(std::is_same_v<T, record_txt>)

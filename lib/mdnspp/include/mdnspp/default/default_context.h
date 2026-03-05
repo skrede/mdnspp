@@ -278,7 +278,7 @@ private:
 
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = ::htonl(INADDR_LOOPBACK);
+        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
         addr.sin_port = 0;
 
         if(::bind(m_wakeup_recv, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
@@ -306,6 +306,17 @@ private:
             ::closesocket(m_wakeup_recv);
             ::closesocket(m_wakeup_send);
             throw std::system_error(::WSAGetLastError(), std::system_category(), "connect(wakeup_send)");
+        }
+
+        // Set recv socket to non-blocking so drain_wakeup_fd() doesn't hang
+        {
+            u_long mode = 1;
+            if(::ioctlsocket(m_wakeup_recv, FIONBIO, &mode) == SOCKET_ERROR)
+            {
+                ::closesocket(m_wakeup_recv);
+                ::closesocket(m_wakeup_send);
+                throw std::system_error(::WSAGetLastError(), std::system_category(), "ioctlsocket(wakeup_recv)");
+            }
         }
 
 #else
@@ -400,9 +411,9 @@ private:
 
         // Build pollfd array: [wakeup_fd, socket_0, socket_1, ...]
         m_pollfds.clear();
-        m_pollfds.push_back({static_cast<int>(wakeup_poll_fd()), POLLIN, 0});
+        m_pollfds.push_back({wakeup_poll_fd(), POLLIN, 0});
         for(const auto &entry : m_sockets)
-            m_pollfds.push_back({static_cast<int>(entry.fd), POLLIN, 0});
+            m_pollfds.push_back({entry.fd, POLLIN, 0});
 
         const auto nfds = static_cast<nfds_t>(m_pollfds.size());
         const int rc = detail::poll_sockets(m_pollfds.data(), nfds, timeout_ms);
@@ -463,9 +474,10 @@ private:
             char addr_str[INET_ADDRSTRLEN]{};
             ::inet_ntop(AF_INET, &m_sender_addr.sin_addr, addr_str, sizeof(addr_str));
 
+            auto port = ntohs(m_sender_addr.sin_port);
             endpoint ep{
                 .address = addr_str,
-                .port    = ::ntohs(m_sender_addr.sin_port),
+                .port    = port,
             };
 
             m_sockets[sock_idx].handler(

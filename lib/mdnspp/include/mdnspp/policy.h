@@ -1,13 +1,14 @@
 #ifndef HPP_GUARD_MDNSPP_POLICY_H
 #define HPP_GUARD_MDNSPP_POLICY_H
 
-#include <chrono>
-#include <concepts>
-#include <cstddef>
-#include <functional>
-#include <span>
-#include <system_error>
 #include "mdnspp/endpoint.h"
+
+#include <span>
+#include <chrono>
+#include <cstddef>
+#include <concepts>
+#include <functional>
+#include <system_error>
 
 namespace mdnspp {
 

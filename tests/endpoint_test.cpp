@@ -4,6 +4,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <sstream>
+
 using mdnspp::endpoint;
 
 SCENARIO("endpoint equality comparison", "[endpoint][operator==]")
@@ -123,6 +125,25 @@ SCENARIO("endpoint self-comparison with <=, >=", "[endpoint][operator<=>]")
             THEN("it is >= itself")
             {
                 REQUIRE(ep >= ep);
+            }
+        }
+    }
+}
+
+SCENARIO("endpoint streams as address:port", "[endpoint][operator<<]")
+{
+    GIVEN("an endpoint with address and port")
+    {
+        const endpoint ep{"192.168.1.1", 5353};
+
+        WHEN("streamed to an ostream")
+        {
+            std::ostringstream os;
+            os << ep;
+
+            THEN("the output is address:port")
+            {
+                REQUIRE(os.str() == "192.168.1.1:5353");
             }
         }
     }

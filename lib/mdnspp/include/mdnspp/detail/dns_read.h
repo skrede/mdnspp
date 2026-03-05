@@ -2,10 +2,10 @@
 #define HPP_GUARD_MDNSPP_DNS_READ_H
 
 #include "mdnspp/mdns_error.h"
+#include "mdnspp/detail/compat.h"
 
 #include <cstddef>
 #include <cstdint>
-#include <expected>
 #include <span>
 #include <string>
 #include <vector>
@@ -96,9 +96,9 @@ inline bool skip_dns_name(std::span<const std::byte> buf, size_t &offset)
 // The result string uses dotted-label notation without a trailing dot
 // (e.g. "_http._tcp.local"). The root name (\x00) returns an empty string.
 //
-// Returns std::unexpected(mdns_error::parse_error) on any bounds violation,
+// Returns detail::make_unexpected(mdns_error::parse_error) on any bounds violation,
 // pointer safety violation, or name-length overflow.
-inline std::expected<std::string, mdns_error>
+inline detail::expected<std::string, mdns_error>
 read_dns_name(std::span<const std::byte> buf, size_t offset)
 {
     std::string result;
@@ -111,7 +111,7 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
     while(true)
     {
         if(offset >= buf.size())
-            return std::unexpected(mdns_error::parse_error);
+            return detail::make_unexpected(mdns_error::parse_error);
 
         uint8_t label_len = static_cast<uint8_t>(buf[offset]);
 
@@ -120,7 +120,7 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
         {
             // Pointer requires 2 bytes
             if(offset + 1 >= buf.size())
-                return std::unexpected(mdns_error::parse_error);
+                return detail::make_unexpected(mdns_error::parse_error);
 
             size_t ptr_target =
                 ((static_cast<size_t>(label_len) & 0x3FU) << 8) |
@@ -129,10 +129,10 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
             // RFC 9267: pointer must be strictly backward — prevents self-referential
             // and forward pointers; cycles are impossible by construction.
             if(ptr_target >= offset)
-                return std::unexpected(mdns_error::parse_error);
+                return detail::make_unexpected(mdns_error::parse_error);
 
             if(++hops > max_hops)
-                return std::unexpected(mdns_error::parse_error);
+                return detail::make_unexpected(mdns_error::parse_error);
 
             offset = ptr_target;
             continue;
@@ -147,7 +147,7 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
         size_t label_end = label_start + static_cast<size_t>(label_len);
 
         if(label_end > buf.size())
-            return std::unexpected(mdns_error::parse_error);
+            return detail::make_unexpected(mdns_error::parse_error);
 
         if(!result.empty())
             result += '.';
@@ -156,7 +156,7 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
             result += static_cast<char>(static_cast<uint8_t>(buf[i]));
 
         if(result.size() > max_name_len)
-            return std::unexpected(mdns_error::parse_error);
+            return detail::make_unexpected(mdns_error::parse_error);
 
         offset = label_end;
     }

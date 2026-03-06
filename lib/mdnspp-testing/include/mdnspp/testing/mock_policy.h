@@ -3,7 +3,9 @@
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/detail/compat.h"
 
+#include <deque>
 #include <span>
 #include <queue>
 #include <chrono>
@@ -17,6 +19,17 @@ namespace mdnspp::testing {
 
 struct mock_executor
 {
+    std::deque<detail::move_only_function<void()>> m_posted;
+
+    void drain_posted()
+    {
+        while (!m_posted.empty())
+        {
+            auto fn = std::move(m_posted.front());
+            m_posted.pop_front();
+            fn();
+        }
+    }
 };
 
 struct sent_packet
@@ -31,12 +44,12 @@ public:
     // Default constructor — backward compatibility during transition (removed in Plan 03).
     MockSocket() = default;
 
-    // Concept-satisfying constructors — take mock_executor (no-op).
-    explicit MockSocket(mock_executor)
+    // Concept-satisfying constructors — take mock_executor& (no-op).
+    explicit MockSocket(mock_executor &)
     {
     }
 
-    explicit MockSocket(mock_executor, std::error_code &ec)
+    explicit MockSocket(mock_executor &, std::error_code &ec)
     {
         if(s_fail_on_construct)
             ec = std::make_error_code(std::errc::address_not_available);
@@ -97,12 +110,12 @@ public:
     // Default constructor — backward compatibility during transition (removed in Plan 03).
     MockTimer() = default;
 
-    // Concept-satisfying constructors — take mock_executor (no-op).
-    explicit MockTimer(mock_executor)
+    // Concept-satisfying constructors — take mock_executor& (no-op).
+    explicit MockTimer(mock_executor &)
     {
     }
 
-    explicit MockTimer(mock_executor, std::error_code &)
+    explicit MockTimer(mock_executor &, std::error_code &)
     {
     }
 
@@ -147,7 +160,7 @@ private:
 
 struct MockPolicy
 {
-    using executor_type = mock_executor;
+    using executor_type = mock_executor &;
     using socket_type = MockSocket;
     using timer_type = MockTimer;
 };

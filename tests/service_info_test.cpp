@@ -47,7 +47,8 @@ TEST_CASE("service_info struct has all required fields", "[service_info]")
 
 TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to handler", "[mock_socket][enqueue_with_endpoint]")
 {
-    MockSocket sock{mock_executor{}};
+    mock_executor ex;
+    MockSocket sock{ex};
 
     std::vector<std::byte> pkt = {std::byte{0xAB}, std::byte{0xCD}};
     endpoint sender{"192.168.1.5", 5353};
@@ -72,7 +73,8 @@ TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to h
 
 TEST_CASE("MockSocket::enqueue(packet) delivers endpoint{}", "[mock_socket][enqueue_default_endpoint]")
 {
-    MockSocket sock{mock_executor{}};
+    mock_executor ex;
+    MockSocket sock{ex};
 
     std::vector<std::byte> pkt = {std::byte{0x01}};
     sock.enqueue(pkt);

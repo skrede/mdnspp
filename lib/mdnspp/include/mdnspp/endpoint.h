@@ -1,10 +1,9 @@
 #ifndef HPP_GUARD_MDNSPP_ENDPOINT_H
 #define HPP_GUARD_MDNSPP_ENDPOINT_H
 
-#include <compare>
-#include <cstdint>
-#include <ostream>
+#include <iosfwd>
 #include <string>
+#include <cstdint>
 
 namespace mdnspp {
 
@@ -16,7 +15,8 @@ struct endpoint
     auto operator<=>(const endpoint &) const = default;
 };
 
-inline std::ostream &operator<<(std::ostream &str, const endpoint &ep)
+template<typename CharT, typename Traits>
+std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> &str, const endpoint &ep)
 {
     str << ep.address << ":" << ep.port;
     return str;

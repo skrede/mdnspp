@@ -19,28 +19,29 @@
 // a shared TU that must remain free of platform headers (e.g. an ASIO
 // completion token adapter), include basic_*.h directly instead.
 
-#include "mdnspp/basic_observer.h"
 #include "mdnspp/basic_querier.h"
-#include "mdnspp/basic_service_discovery.h"
+#include "mdnspp/basic_observer.h"
 #include "mdnspp/basic_service_server.h"
+#include "mdnspp/basic_service_discovery.h"
+
 #include "mdnspp/default/default_policy.h"
 
 namespace mdnspp {
 
 /// Convenience alias — mDNS multicast listener with the default platform policy.
-using observer        = basic_observer<DefaultPolicy>;
+using observer = basic_observer<DefaultPolicy>;
 
 /// Convenience alias — mDNS query client with the default platform policy.
-using querier         = basic_querier<DefaultPolicy>;
+using querier = basic_querier<DefaultPolicy>;
 
 /// Convenience alias — mDNS service browser/discoverer with the default platform policy.
 using service_discovery = basic_service_discovery<DefaultPolicy>;
 
 /// Convenience alias — mDNS service responder with the default platform policy.
-using service_server  = basic_service_server<DefaultPolicy>;
+using service_server = basic_service_server<DefaultPolicy>;
 
 /// Convenience alias — the default event-loop context (run(), stop(), restart()).
-using context         = DefaultContext;
+using context = DefaultContext;
 
 } // namespace mdnspp
 

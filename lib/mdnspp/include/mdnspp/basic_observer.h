@@ -4,17 +4,18 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
-#include "mdnspp/detail/recv_loop.h"
-#include "mdnspp/detail/dns_wire.h"
-#include "mdnspp/detail/compat.h"
 
-#include <memory>
-#include <atomic>
+#include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/dns_wire.h"
+#include "mdnspp/detail/recv_loop.h"
+
 #include <span>
+#include <atomic>
+#include <memory>
 #include <chrono>
 #include <cassert>
-#include <system_error>
 #include <utility>
+#include <system_error>
 
 namespace mdnspp {
 

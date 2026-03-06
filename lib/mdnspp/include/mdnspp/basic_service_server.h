@@ -188,6 +188,7 @@ public:
         P::post(m_executor, [this, guard, info = std::move(new_info)]() mutable
         {
             if (!guard.lock()) return;  // server destroyed, skip
+            if (m_stopped.load(std::memory_order_acquire)) return;  // server stopped, skip
             m_info = std::move(info);
             send_announcement();
         });

@@ -65,6 +65,54 @@ SCENARIO("service_server stop() from separate thread is data-race-free", "[servi
     }
 }
 
+SCENARIO("concurrent update_service_info is TSan-clean", "[service_server][tsan][asio][update]")
+{
+    GIVEN("an asio::io_context and service_server<AsioPolicy>")
+    {
+        asio::io_context io;
+
+        std::optional<mdnspp::basic_service_server<mdnspp::AsioPolicy>> server;
+
+        try
+        {
+            server.emplace(io, make_test_info());
+        }
+        catch(const std::exception &e)
+        {
+            WARN("Skipping TSan test — socket construction failed (no network): " << e.what());
+            return;
+        }
+
+        WHEN("async_start() is called and update_service_info() is posted from a background thread")
+        {
+            server->async_start();
+
+            // Background thread posts update_service_info() in a loop
+            std::thread update_thread([&server]
+            {
+                for (int i = 0; i < 10; ++i)
+                {
+                    auto info = make_test_info();
+                    info.port = static_cast<uint16_t>(9000 + i);
+                    server->update_service_info(std::move(info));
+                }
+            });
+
+            // Run io_context on main thread with a deadline timer to stop after 200ms
+            asio::steady_timer deadline(io, std::chrono::milliseconds(200));
+            deadline.async_wait([&server](std::error_code) { server->stop(); });
+            io.run();
+
+            THEN("the background thread joins cleanly with no data race")
+            {
+                update_thread.join();
+                // Reaching here without TSan error = pass.
+                REQUIRE(true);
+            }
+        }
+    }
+}
+
 SCENARIO("service_server double stop is safe under concurrency", "[service_server][tsan][asio]")
 {
     GIVEN("an asio::io_context and a started service_server<AsioPolicy>")

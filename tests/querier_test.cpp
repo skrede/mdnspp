@@ -2,9 +2,10 @@
 // basic_querier<MockPolicy> unit tests — Phase 7, Plan 07-03
 // Tests the full async_query() flow via MockPolicy.
 
-#include "mdnspp/basic_querier.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/basic_querier.h"
+#include "mdnspp/socket_options.h"
 
 #include "mdnspp/testing/mock_policy.h"
 
@@ -489,3 +490,24 @@ SCENARIO("querier stop without starting does not crash", "[querier][stop][no-sta
 // MockTimer does not auto-fire; its fire() method is only accessible via
 // the timer local variable, which is inaccessible from outside async_query().
 // The silence-timeout path is covered by recv_loop_test.cpp directly.
+
+SCENARIO("basic_querier with socket_options", "[querier][socket_options]")
+{
+    GIVEN("a socket_options with multicast_ttl = 100")
+    {
+        mock_executor ex;
+        socket_options opts{.multicast_ttl = 100};
+
+        WHEN("basic_querier<MockPolicy> is constructed with socket_options")
+        {
+            basic_querier<MockPolicy> q{ex, opts, 500ms};
+
+            THEN("the socket stores the options with ttl = 100")
+            {
+                REQUIRE(q.socket().options().multicast_ttl == 100);
+                REQUIRE(q.socket().queue_empty());
+                REQUIRE(q.results().empty());
+            }
+        }
+    }
+}

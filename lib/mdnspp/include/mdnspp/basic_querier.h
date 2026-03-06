@@ -4,6 +4,7 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
@@ -93,6 +94,40 @@ public:
                   std::chrono::milliseconds silence_timeout,
                   std::error_code &ec)
         : m_socket(ex, ec)
+        , m_timer(ex)
+        , m_silence_timeout(silence_timeout)
+        , m_loop(nullptr)
+    {
+    }
+
+    // Throwing constructor with socket_options.
+    explicit basic_querier(executor_type ex, const socket_options &opts,
+                           std::chrono::milliseconds silence_timeout,
+                           record_callback on_record = {})
+        : m_socket(ex, opts)
+        , m_timer(ex)
+        , m_silence_timeout(silence_timeout)
+        , m_on_record(std::move(on_record))
+        , m_loop(nullptr)
+    {
+    }
+
+    // Non-throwing constructors with socket_options.
+    basic_querier(executor_type ex, const socket_options &opts,
+                  std::chrono::milliseconds silence_timeout,
+                  record_callback on_record, std::error_code &ec)
+        : m_socket(ex, opts, ec)
+        , m_timer(ex)
+        , m_silence_timeout(silence_timeout)
+        , m_on_record(std::move(on_record))
+        , m_loop(nullptr)
+    {
+    }
+
+    basic_querier(executor_type ex, const socket_options &opts,
+                  std::chrono::milliseconds silence_timeout,
+                  std::error_code &ec)
+        : m_socket(ex, opts, ec)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
         , m_loop(nullptr)

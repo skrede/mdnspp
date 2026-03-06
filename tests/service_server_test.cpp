@@ -7,6 +7,7 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
+#include "mdnspp/socket_options.h"
 #include "mdnspp/basic_service_server.h"
 
 #include "mdnspp/detail/dns_wire.h"
@@ -757,6 +758,26 @@ SCENARIO("response sent to multicast by default, unicast when QU bit set", "[ser
             {
                 REQUIRE_FALSE(server.socket().sent_packets().empty());
                 REQUIRE(server.socket().sent_packets()[0].dest == sender);
+            }
+        }
+    }
+}
+
+SCENARIO("basic_service_server with socket_options", "[service_server][socket_options]")
+{
+    GIVEN("a socket_options with a specific interface address")
+    {
+        mock_executor ex;
+        socket_options opts{.interface_address = "192.168.2.1"};
+
+        WHEN("basic_service_server<MockPolicy> is constructed with socket_options")
+        {
+            basic_service_server<MockPolicy> server{ex, opts, make_test_info()};
+
+            THEN("the socket stores the options")
+            {
+                REQUIRE(server.socket().options().interface_address == "192.168.2.1");
+                REQUIRE(server.socket().queue_empty());
             }
         }
     }

@@ -2,6 +2,7 @@
 
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/socket_options.h"
 #include "mdnspp/resolved_service.h"
 #include "mdnspp/basic_service_discovery.h"
 
@@ -789,6 +790,27 @@ SCENARIO("on_record callback fires during async_browse (same as async_discover)"
             {
                 REQUIRE(captured_records.size() == 1);
                 REQUIRE(std::holds_alternative<record_ptr>(captured_records[0]));
+            }
+        }
+    }
+}
+
+SCENARIO("basic_service_discovery with socket_options", "[service_discovery][socket_options]")
+{
+    GIVEN("a socket_options with a specific interface address")
+    {
+        mock_executor ex;
+        socket_options opts{.interface_address = "172.16.0.1"};
+
+        WHEN("basic_service_discovery<MockPolicy> is constructed with socket_options")
+        {
+            basic_service_discovery<MockPolicy> sd{ex, opts, 500ms};
+
+            THEN("the socket stores the options")
+            {
+                REQUIRE(sd.socket().options().interface_address == "172.16.0.1");
+                REQUIRE(sd.socket().queue_empty());
+                REQUIRE(sd.results().empty());
             }
         }
     }

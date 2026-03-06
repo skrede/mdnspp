@@ -5,6 +5,7 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
+#include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
@@ -32,6 +33,8 @@ namespace mdnspp {
 // Lifecycle:
 //   1. basic_service_server(ex, info)          — direct constructor (throwing)
 //      basic_service_server(ex, info, ec)      — non-throwing overload (ec set on failure)
+//      basic_service_server(ex, opts, info)    — socket_options constructor (throwing)
+//      basic_service_server(ex, opts, info, ec) — socket_options non-throwing overload
 //   2. async_start([on_done])                  — arms recv_loop; returns immediately
 //                                                on_done fires with error_code{} when stop() is called
 //   3. stop()                                  — idempotent; fires completion handler, cancels timer,
@@ -139,6 +142,50 @@ public:
     basic_service_server(executor_type ex, service_info info, std::error_code &ec)
         : m_executor(ex)
         , m_socket(ex, ec)
+        , m_response_timer(ex)
+        , m_recv_timer(ex)
+        , m_info(std::move(info))
+        , m_rng(std::random_device{}())
+        , m_loop(nullptr)
+        , m_stopped(false)
+    {
+    }
+
+    // Throwing constructor with socket_options.
+    explicit basic_service_server(executor_type ex, const socket_options &opts,
+                                  service_info info, query_callback on_query = {})
+        : m_executor(ex)
+        , m_socket(ex, opts)
+        , m_response_timer(ex)
+        , m_recv_timer(ex)
+        , m_info(std::move(info))
+        , m_on_query(std::move(on_query))
+        , m_rng(std::random_device{}())
+        , m_loop(nullptr)
+        , m_stopped(false)
+    {
+    }
+
+    // Non-throwing constructors with socket_options.
+    basic_service_server(executor_type ex, const socket_options &opts,
+                         service_info info, query_callback on_query,
+                         std::error_code &ec)
+        : m_executor(ex)
+        , m_socket(ex, opts, ec)
+        , m_response_timer(ex)
+        , m_recv_timer(ex)
+        , m_info(std::move(info))
+        , m_on_query(std::move(on_query))
+        , m_rng(std::random_device{}())
+        , m_loop(nullptr)
+        , m_stopped(false)
+    {
+    }
+
+    basic_service_server(executor_type ex, const socket_options &opts,
+                         service_info info, std::error_code &ec)
+        : m_executor(ex)
+        , m_socket(ex, opts, ec)
         , m_response_timer(ex)
         , m_recv_timer(ex)
         , m_info(std::move(info))

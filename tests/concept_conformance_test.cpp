@@ -77,6 +77,45 @@ TEST_CASE("MockSocket error_code constructor path", "[concept][error_code]")
     MockSocket::set_fail_on_construct(false); // reset
 }
 
+TEST_CASE("MockPolicy::post pushes to executor queue", "[concept][conformance][post]")
+{
+    mock_executor ex;
+    bool called = false;
+    MockPolicy::post(ex, [&] { called = true; });
+    REQUIRE(ex.m_posted.size() == 1);
+    REQUIRE_FALSE(called);
+}
+
+TEST_CASE("mock_executor::drain_posted executes queued work", "[concept][conformance][post]")
+{
+    mock_executor ex;
+    bool called = false;
+    MockPolicy::post(ex, [&] { called = true; });
+    ex.drain_posted();
+    REQUIRE(called);
+    REQUIRE(ex.m_posted.empty());
+}
+
+TEST_CASE("drain_posted executes in FIFO order", "[concept][conformance][post]")
+{
+    mock_executor ex;
+    std::vector<int> order;
+    MockPolicy::post(ex, [&] { order.push_back(1); });
+    MockPolicy::post(ex, [&] { order.push_back(2); });
+    ex.drain_posted();
+    REQUIRE(order == std::vector<int>{1, 2});
+}
+
+TEST_CASE("post accepts move-only callable", "[concept][conformance][post]")
+{
+    mock_executor ex;
+    auto ptr = std::make_unique<int>(42);
+    int result = 0;
+    MockPolicy::post(ex, [p = std::move(ptr), &result] { result = *p; });
+    ex.drain_posted();
+    REQUIRE(result == 42);
+}
+
 TEST_CASE("observer error_code constructor path", "[observer][error_code]")
 {
     MockSocket::set_fail_on_construct(true);

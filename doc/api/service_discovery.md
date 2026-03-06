@@ -61,6 +61,24 @@ basic_service_discovery(executor_type ex,
 
 Same as the throwing constructor, but sets `ec` instead of throwing on failure.
 
+### With socket_options
+
+```cpp
+explicit basic_service_discovery(executor_type ex, const socket_options& opts,
+                                 std::chrono::milliseconds silence_timeout,
+                                 record_callback on_record = {});
+
+basic_service_discovery(executor_type ex, const socket_options& opts,
+                        std::chrono::milliseconds silence_timeout,
+                        record_callback on_record, std::error_code& ec);
+
+basic_service_discovery(executor_type ex, const socket_options& opts,
+                        std::chrono::milliseconds silence_timeout,
+                        std::error_code& ec);
+```
+
+Same as the corresponding constructors above, but passes `opts` to the underlying socket for network interface selection, multicast TTL, and loopback control. The `opts` parameter is always second, before `silence_timeout`. See [Socket Options](../socket-options.md).
+
 ## Methods
 
 ### async_discover
@@ -215,3 +233,4 @@ int main()
 - [querier](querier.md) -- lower-level query for any record type
 - [observer](observer.md) -- passively listen to all mDNS traffic
 - [service_server](service_server.md) -- announce a service
+- [Socket Options](../socket-options.md) -- network interface selection, multicast TTL, loopback control

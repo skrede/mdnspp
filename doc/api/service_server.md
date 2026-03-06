@@ -56,6 +56,22 @@ basic_service_server(executor_type ex, service_info info, std::error_code& ec);
 
 Same as the throwing constructor, but sets `ec` instead of throwing on failure.
 
+### With socket_options
+
+```cpp
+explicit basic_service_server(executor_type ex, const socket_options& opts,
+                              service_info info, query_callback on_query = {});
+
+basic_service_server(executor_type ex, const socket_options& opts,
+                     service_info info, query_callback on_query,
+                     std::error_code& ec);
+
+basic_service_server(executor_type ex, const socket_options& opts,
+                     service_info info, std::error_code& ec);
+```
+
+Same as the corresponding constructors above, but passes `opts` to the underlying socket for network interface selection, multicast TTL, and loopback control. The `opts` parameter is always second, after executor and before `service_info`. See [Socket Options](../socket-options.md).
+
 ## Methods
 
 ### async_start
@@ -77,6 +93,37 @@ void stop();
 ```
 
 Idempotent. Fires the completion handler, cancels the response timer, and destroys the receive loop. The destructor calls `stop()` automatically for RAII safety.
+
+### update_service_info
+
+```cpp
+void update_service_info(service_info new_info);
+```
+
+Replaces the service's metadata at runtime and multicasts an unsolicited announcement with all records (PTR, SRV, TXT, A/AAAA) per RFC 6762 section 8.4.
+
+**Thread-safety:** May be called from any thread. Internally uses `P::post()` to schedule the update on the server's event loop, ensuring no data races with the receive loop.
+
+**Liveness guard:** The posted work captures a `std::weak_ptr` to the server's internal liveness sentinel. If the server is destroyed or stopped before the posted work executes, the update is silently discarded -- no dangling pointer access.
+
+**Precondition:** Must only be called on a running server (after `async_start()`, before `stop()`).
+
+**Example:**
+
+```cpp
+mdnspp::service_server srv{ctx, std::move(info)};
+srv.async_start();
+
+// From another thread:
+srv.update_service_info(mdnspp::service_info{
+    .service_name = "MyApp._http._tcp.local.",
+    .service_type = "_http._tcp.local.",
+    .hostname     = "myhost.local.",
+    .port         = 9090,  // port changed
+    .address_ipv4 = "192.168.1.69",
+});
+// Announcement is multicast automatically after the update executes on the event loop.
+```
 
 ### Accessors
 
@@ -218,3 +265,4 @@ share a context, as can any combination of mdnspp components.
 - [service_discovery](service_discovery.md) -- discover services announced by servers
 - [resolved_service](resolved_service.md) -- the aggregated service type
 - [observer](observer.md) -- passively listen to all mDNS traffic
+- [Socket Options](../socket-options.md) -- network interface selection, multicast TTL, loopback control

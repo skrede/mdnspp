@@ -41,7 +41,13 @@ concept Policy = requires
     && std::constructible_from<typename P::socket_type, typename P::executor_type>
     && std::constructible_from<typename P::timer_type, typename P::executor_type>
     && std::constructible_from<typename P::socket_type, typename P::executor_type, std::error_code&>
-    && std::constructible_from<typename P::timer_type, typename P::executor_type, std::error_code&>;
+    && std::constructible_from<typename P::timer_type, typename P::executor_type, std::error_code&>
+    && std::constructible_from<typename P::socket_type, typename P::executor_type, const socket_options&>
+    && std::constructible_from<typename P::socket_type, typename P::executor_type, const socket_options&, std::error_code&>
+    && requires(typename P::executor_type ex, detail::move_only_function<void()> fn)
+    {
+        P::post(ex, std::move(fn));
+    };
 ```
 
 `SocketLike` requires `async_receive`, `send`, and `close`. `TimerLike`
@@ -53,7 +59,7 @@ requires `expires_after`, `async_wait`, and `cancel`.
 prototyping.
 
 - Include: `#include <mdnspp/defaults.h>`
-- CMake target: `mdnspp::core`
+- CMake target: `mdnspp::mdnspp`
 - Type aliases: `mdnspp::observer`, `mdnspp::querier`,
   `mdnspp::service_discovery`, `mdnspp::service_server`
 - Executor: `mdnspp::context` (wraps native sockets and a poll loop)
@@ -181,13 +187,60 @@ mdnspp::testing::mock_executor ex;
 mdnspp::basic_observer<mdnspp::testing::MockPolicy> obs{ex};
 ```
 
+## Thread-safe work scheduling: post()
+
+Every Policy provides a static `post(executor_type, move_only_function<void()>)`
+for thread-safe work scheduling. This is how mdnspp dispatches work onto the
+correct event loop from any thread.
+
+### DefaultPolicy
+
+```cpp
+static void post(executor_type ex, detail::move_only_function<void()> fn)
+{
+    ex.post(std::move(fn));
+}
+```
+
+Queues the function onto the `DefaultContext` poll loop. The work executes on
+the thread calling `ctx.run()`.
+
+### AsioPolicy
+
+```cpp
+static void post(executor_type ex, detail::move_only_function<void()> fn)
+{
+    asio::post(ex, std::move(fn));
+}
+```
+
+Uses ASIO's strand-safe posting mechanism.
+
+### MockPolicy
+
+```cpp
+static void post(executor_type ex, detail::move_only_function<void()> fn)
+{
+    ex.m_posted.push_back(std::move(fn));
+}
+```
+
+Appends to a deque for deterministic testing. Drain posted work with
+`ex.drain_posted()`.
+
+### Usage
+
+`post()` is used internally by `update_service_info()` to safely modify a
+running service server from any thread. Application code can also use it
+directly for custom thread-safe operations on the executor.
+
 ## Choosing a policy
 
 | Need | Use | CMake target |
 |------|-----|--------------|
-| Standalone, no dependencies | DefaultPolicy | `mdnspp::core` |
+| Standalone, no dependencies | DefaultPolicy | `mdnspp::mdnspp` |
 | ASIO integration | AsioPolicy | `mdnspp::asio` |
-| Unit testing | MockPolicy | (test-only, link `mdnspp::core`) |
+| Unit testing | MockPolicy | `mdnspp::testing` |
 
 ## Next steps
 

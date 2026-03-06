@@ -61,6 +61,24 @@ basic_querier(executor_type ex,
 
 Same as the throwing constructor, but sets `ec` instead of throwing on failure.
 
+### With socket_options
+
+```cpp
+explicit basic_querier(executor_type ex, const socket_options& opts,
+                       std::chrono::milliseconds silence_timeout,
+                       record_callback on_record = {});
+
+basic_querier(executor_type ex, const socket_options& opts,
+              std::chrono::milliseconds silence_timeout,
+              record_callback on_record, std::error_code& ec);
+
+basic_querier(executor_type ex, const socket_options& opts,
+              std::chrono::milliseconds silence_timeout,
+              std::error_code& ec);
+```
+
+Same as the corresponding constructors above, but passes `opts` to the underlying socket for network interface selection, multicast TTL, and loopback control. The `opts` parameter is always second, before `silence_timeout`. See [Socket Options](../socket-options.md).
+
 ## Methods
 
 ### async_query
@@ -171,3 +189,4 @@ int main()
 - [observer](observer.md) -- passively listen to all mDNS traffic
 - [service_discovery](service_discovery.md) -- higher-level service browsing
 - [resolved_service](resolved_service.md) -- aggregated service view
+- [Socket Options](../socket-options.md) -- network interface selection, multicast TTL, loopback control

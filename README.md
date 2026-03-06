@@ -15,6 +15,8 @@
 - **Optional ASIO support** -- networking and completion token support (callbacks, futures, coroutines, and deferred operations).
 - **Policy-based architecture** -- swap socket/timer/executor implementations at compile time.
 - **Cross-platform** -- Linux, macOS, and Windows.
+- **Network interface selection** -- bind mDNS to a specific NIC via `socket_options`, enumerate interfaces with `enumerate_interfaces()`.
+- **Thread-safe updates** -- `update_service_info()` safely modifies a running service server from any thread via `post()`.
 
 ## Quick Start
 
@@ -265,7 +267,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(mdnspp)
 
-target_link_libraries(my_app PRIVATE mdnspp::core)
+target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 # or: target_link_libraries(my_app PRIVATE mdnspp::asio)
 ```
 
@@ -275,6 +277,7 @@ For `find_package`, building from source, and all available CMake targets, see t
 
 - [Getting Started](doc/getting-started.md) -- Install mdnspp and run your first query or service announcement
 - [Policies](doc/policies.md) -- Understand DefaultPolicy, AsioPolicy, and MockPolicy
+- [Socket Options](doc/socket-options.md) -- Network interface selection, multicast TTL, and loopback control
 - [Async Patterns](doc/async-patterns.md) -- ASIO completion tokens: callbacks, futures, coroutines, deferred
 - [CMake Integration](doc/cmake-integration.md) -- FetchContent, find_package, and building from source
 - [API Reference](doc/api/)

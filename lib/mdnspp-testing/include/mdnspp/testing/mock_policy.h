@@ -163,6 +163,11 @@ struct MockPolicy
     using executor_type = mock_executor &;
     using socket_type = MockSocket;
     using timer_type = MockTimer;
+
+    static void post(executor_type ex, detail::move_only_function<void()> fn)
+    {
+        ex.m_posted.push_back(std::move(fn));
+    }
 };
 
 }

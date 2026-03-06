@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_POLICY_H
 
 #include "mdnspp/endpoint.h"
+#include "mdnspp/detail/compat.h"
 
 #include <span>
 #include <chrono>
@@ -54,7 +55,11 @@ concept Policy = requires
     && std::constructible_from<typename P::socket_type, typename P::executor_type>
     && std::constructible_from<typename P::timer_type, typename P::executor_type>
     && std::constructible_from<typename P::socket_type, typename P::executor_type, std::error_code&>
-    && std::constructible_from<typename P::timer_type, typename P::executor_type, std::error_code&>;
+    && std::constructible_from<typename P::timer_type, typename P::executor_type, std::error_code&>
+    && requires(typename P::executor_type ex, detail::move_only_function<void()> fn)
+    {
+        P::post(ex, std::move(fn));
+    };
 
 }
 

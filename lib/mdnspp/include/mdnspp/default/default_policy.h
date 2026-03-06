@@ -6,6 +6,7 @@
 // the required constructors (throwing and error_code overloads).
 
 #include "mdnspp/policy.h"
+#include "mdnspp/detail/compat.h"
 
 #include "mdnspp/default/default_timer.h"
 #include "mdnspp/default/default_socket.h"
@@ -18,6 +19,11 @@ struct DefaultPolicy
     using executor_type = DefaultContext&;
     using socket_type = DefaultSocket;
     using timer_type = DefaultTimer;
+
+    static void post(executor_type ex, detail::move_only_function<void()> fn)
+    {
+        ex.post(std::move(fn));
+    }
 };
 
 }

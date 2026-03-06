@@ -338,3 +338,31 @@ TEST_CASE("aggregate() span overload produces identical result", "[aggregate]")
     REQUIRE(r1[0].port == r2[0].port);
     REQUIRE(r1[0].ipv4_addresses == r2[0].ipv4_addresses);
 }
+
+TEST_CASE("aggregate() const vector& convenience overload works", "[aggregate]")
+{
+    const std::vector<mdns_record_variant> records = {
+        make_ptr("Svc._http._tcp.local"),
+        make_srv("Svc._http._tcp.local", "host.local", 80),
+        make_a("host.local", "1.2.3.4"),
+    };
+    // Call the const vector& overload (not span)
+    auto result = aggregate(records);
+    REQUIRE(result.size() == 1);
+    REQUIRE(result[0].instance_name == "Svc._http._tcp.local");
+    REQUIRE(result[0].ipv4_addresses.size() == 1);
+}
+
+TEST_CASE("aggregate() duplicate PTR records for same instance yield single entry", "[aggregate]")
+{
+    std::vector<mdns_record_variant> records = {
+        make_ptr("DupService._http._tcp.local"),
+        make_ptr("DupService._http._tcp.local"),  // duplicate PTR
+        make_srv("DupService._http._tcp.local", "duphost.local", 9090),
+        make_a("duphost.local", "10.0.0.5"),
+    };
+    auto result = aggregate(records);
+    REQUIRE(result.size() == 1);
+    REQUIRE(result[0].instance_name == "DupService._http._tcp.local");
+    REQUIRE(result[0].port == 9090);
+}

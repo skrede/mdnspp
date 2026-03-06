@@ -702,3 +702,77 @@ SCENARIO("encode_txt_records handles entry with value, entry without value, and 
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// encode_dns_name edge cases
+// ---------------------------------------------------------------------------
+
+SCENARIO("encode_dns_name with empty string returns single null byte", "[dns_read][encode_dns_name]")
+{
+    GIVEN("an empty DNS name string")
+    {
+        auto result = encode_dns_name("");
+
+        THEN("it returns a single \\x00 root label byte")
+        {
+            REQUIRE(result.size() == 1);
+            REQUIRE(result[0] == std::byte{0});
+        }
+    }
+}
+
+SCENARIO("encode_dns_name with trailing dot produces same encoding as without", "[dns_read][encode_dns_name]")
+{
+    GIVEN("the name 'local.' with trailing dot")
+    {
+        auto with_dot = encode_dns_name("local.");
+        auto without_dot = encode_dns_name("local");
+
+        THEN("both produce identical wire encodings")
+        {
+            REQUIRE(with_dot == without_dot);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// skip_dns_name edge cases
+// ---------------------------------------------------------------------------
+
+SCENARIO("skip_dns_name with pointer where second byte is at end of buffer", "[dns_read][skip_dns_name]")
+{
+    GIVEN("a 1-byte buffer containing only the pointer tag 0xC0")
+    {
+        auto buf = bytes({0xC0});
+        size_t offset = 0;
+
+        WHEN("skip_dns_name is called")
+        {
+            bool ok = skip_dns_name(std::span<const std::byte>(buf), offset);
+
+            THEN("it returns false because pointer needs 2 bytes")
+            {
+                REQUIRE_FALSE(ok);
+            }
+        }
+    }
+}
+
+SCENARIO("skip_dns_name where label extends past end of buffer", "[dns_read][skip_dns_name]")
+{
+    GIVEN("a buffer where a label claims 10 bytes but only 3 follow")
+    {
+        auto buf = bytes({0x0A, 'a', 'b', 'c'});
+        size_t offset = 0;
+
+        WHEN("skip_dns_name is called")
+        {
+            bool ok = skip_dns_name(std::span<const std::byte>(buf), offset);
+
+            THEN("it returns false because label overflows buffer")
+            {
+                REQUIRE_FALSE(ok);
+            }
+        }
+    }
+}

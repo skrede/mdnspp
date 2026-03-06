@@ -681,6 +681,81 @@ SCENARIO("stop() during async_browse fires completion with partial aggregated re
     }
 }
 
+SCENARIO("service_discovery non-throwing constructor sets ec on success", "[service_discovery][create][non-throwing]")
+{
+    GIVEN("a mock_executor and an error_code")
+    {
+        mock_executor ex;
+        std::error_code ec;
+
+        WHEN("basic_service_discovery<MockPolicy> is constructed with the ec overload")
+        {
+            basic_service_discovery<MockPolicy> sd{ex, 500ms, ec};
+
+            THEN("ec is clear and the service_discovery is usable")
+            {
+                REQUIRE_FALSE(ec);
+                REQUIRE(sd.socket().queue_empty());
+                REQUIRE(sd.results().empty());
+            }
+        }
+    }
+}
+
+SCENARIO("service_discovery is move-constructible before async_discover", "[service_discovery][move]")
+{
+    GIVEN("a service_discovery constructed but not started")
+    {
+        mock_executor ex;
+        basic_service_discovery<MockPolicy> sd{ex, 500ms};
+
+        WHEN("move-constructed into a new instance")
+        {
+            basic_service_discovery<MockPolicy> moved{std::move(sd)};
+
+            THEN("the moved-to instance is usable")
+            {
+                REQUIRE(moved.socket().queue_empty());
+                REQUIRE(moved.results().empty());
+            }
+        }
+    }
+}
+
+SCENARIO("service_discovery stop with both discover and browse loops", "[service_discovery][stop][browse]")
+{
+    GIVEN("a service_discovery with browse started and a PTR response queued")
+    {
+        mock_executor ex;
+        basic_service_discovery<MockPolicy> sd{ex, 500ms};
+
+        sd.socket().enqueue(make_ptr_response(
+            "_http._tcp.local.",
+            "Svc._http._tcp.local."));
+
+        std::vector<resolved_service> received_services;
+        bool browse_fired = false;
+
+        sd.async_browse("_http._tcp.local.",
+                        [&](std::error_code, std::vector<resolved_service> svcs)
+                        {
+                            browse_fired = true;
+                            received_services = std::move(svcs);
+                        });
+
+        WHEN("stop() is called")
+        {
+            sd.stop();
+
+            THEN("the browse completion fires with aggregated results")
+            {
+                REQUIRE(browse_fired);
+                REQUIRE(received_services.size() == 1);
+            }
+        }
+    }
+}
+
 SCENARIO("on_record callback fires during async_browse (same as async_discover)", "[service_discovery][browse][on_record]")
 {
     GIVEN("a service_discovery with an on_record callback and a PTR response")

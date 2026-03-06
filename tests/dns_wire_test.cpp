@@ -1,8 +1,13 @@
 // tests/dns_wire_test.cpp
 // Unit tests for detail::read_dns_name — RFC 1035 §4.1.4 name decompression
 // with RFC 9267 safety guarantees (backward-only pointers, hop limit, name length limit).
+// Also covers build_dns_response, encode_ipv4/ipv6, encode_txt_records,
+// encode_dns_name, and skip_dns_name edge cases.
 
 #include "mdnspp/detail/dns_wire.h"
+#include "mdnspp/records.h"
+#include "mdnspp/endpoint.h"
+#include "mdnspp/service_info.h"
 #include "mdnspp/mdns_error.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -10,6 +15,8 @@
 #include <span>
 #include <vector>
 #include <string>
+#include <variant>
+#include <optional>
 #include <cstddef>
 
 // Compile-time check: return type must be detail::expected<std::string, mdnspp::mdns_error>
@@ -443,6 +450,328 @@ SCENARIO("read_dns_name rejects an offset beyond the buffer size", "[dns_wire][r
             {
                 REQUIRE_FALSE(result.has_value());
                 REQUIRE(result.error() == mdns_error::parse_error);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// build_dns_response tests — round-trip via walk_dns_frame
+// ---------------------------------------------------------------------------
+
+using mdnspp::detail::build_dns_response;
+using mdnspp::detail::walk_dns_frame;
+using mdnspp::detail::encode_dns_name;
+using mdnspp::detail::skip_dns_name;
+
+static mdnspp::service_info make_test_service_v46()
+{
+    mdnspp::service_info info;
+    info.service_name = "MyService._http._tcp.local.";
+    info.service_type = "_http._tcp.local.";
+    info.hostname = "myhost.local.";
+    info.port = 8080;
+    info.priority = 0;
+    info.weight = 0;
+    info.address_ipv4 = "192.168.1.10";
+    info.address_ipv6 = "::1";
+    info.txt_records = {mdnspp::service_txt{"path", "/api"}, mdnspp::service_txt{"ver", std::nullopt}};
+    return info;
+}
+
+static std::vector<mdnspp::mdns_record_variant> parse_wire(const std::vector<std::byte> &pkt)
+{
+    std::vector<mdnspp::mdns_record_variant> records;
+    walk_dns_frame(std::span<const std::byte>(pkt), mdnspp::endpoint{}, [&](mdnspp::mdns_record_variant rv)
+    {
+        records.push_back(std::move(rv));
+    });
+    return records;
+}
+
+SCENARIO("build_dns_response produces valid AAAA response", "[build_dns_response][AAAA]")
+{
+    GIVEN("a service_info with address_ipv6 = \"::1\"")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_dns_response is called with qtype=28 (AAAA)")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::aaaa);
+
+            THEN("walk_dns_frame parses a record_aaaa")
+            {
+                auto records = parse_wire(pkt);
+                bool found = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<mdnspp::record_aaaa>(rv))
+                        found = true;
+                }
+                REQUIRE(found);
+            }
+        }
+    }
+}
+
+SCENARIO("build_dns_response returns empty for AAAA when no IPv6 address", "[build_dns_response][AAAA][no-ipv6]")
+{
+    GIVEN("a service_info without address_ipv6")
+    {
+        auto info = make_test_service_v46();
+        info.address_ipv6 = std::nullopt;
+
+        WHEN("build_dns_response is called with qtype=28 (AAAA)")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::aaaa);
+
+            THEN("the returned vector is empty")
+            {
+                REQUIRE(pkt.empty());
+            }
+        }
+    }
+}
+
+SCENARIO("build_dns_response ANY produces all records as answers (no additional)", "[build_dns_response][ANY]")
+{
+    GIVEN("a service_info with both IPv4 and IPv6")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_dns_response is called with qtype=255 (ANY)")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::any);
+
+            THEN("the packet is non-empty and arcount is 0")
+            {
+                REQUIRE(pkt.size() >= 12);
+                uint16_t arcount = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[10])) << 8) |
+                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[11]));
+                REQUIRE(arcount == 0);
+            }
+
+            THEN("walk_dns_frame parses PTR, SRV, A, AAAA, and TXT records")
+            {
+                auto records = parse_wire(pkt);
+                bool has_ptr = false, has_srv = false, has_a = false, has_aaaa = false, has_txt = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<mdnspp::record_ptr>(rv)) has_ptr = true;
+                    if(std::holds_alternative<mdnspp::record_srv>(rv)) has_srv = true;
+                    if(std::holds_alternative<mdnspp::record_a>(rv)) has_a = true;
+                    if(std::holds_alternative<mdnspp::record_aaaa>(rv)) has_aaaa = true;
+                    if(std::holds_alternative<mdnspp::record_txt>(rv)) has_txt = true;
+                }
+                REQUIRE(has_ptr);
+                REQUIRE(has_srv);
+                REQUIRE(has_a);
+                REQUIRE(has_aaaa);
+                REQUIRE(has_txt);
+            }
+        }
+    }
+}
+
+SCENARIO("build_dns_response TXT with empty txt_records produces valid zero-length TXT", "[build_dns_response][TXT][empty]")
+{
+    GIVEN("a service_info with empty txt_records")
+    {
+        auto info = make_test_service_v46();
+        info.txt_records.clear();
+
+        WHEN("build_dns_response is called with qtype=16 (TXT)")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::txt);
+
+            THEN("the packet is non-empty (valid TXT with empty rdata)")
+            {
+                REQUIRE_FALSE(pkt.empty());
+            }
+        }
+    }
+}
+
+SCENARIO("build_dns_response PTR includes AAAA additional when service has IPv6", "[build_dns_response][PTR][AAAA]")
+{
+    GIVEN("a service_info with both IPv4 and IPv6 addresses")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_dns_response is called with qtype=12 (PTR)")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::ptr);
+
+            THEN("walk_dns_frame yields PTR, SRV, A, and AAAA records")
+            {
+                auto records = parse_wire(pkt);
+                bool has_aaaa = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<mdnspp::record_aaaa>(rv))
+                        has_aaaa = true;
+                }
+                REQUIRE(has_aaaa);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// response_detail helper tests
+// ---------------------------------------------------------------------------
+
+SCENARIO("encode_ipv6 encodes valid IPv6 addresses", "[response_detail][encode_ipv6]")
+{
+    GIVEN("the loopback address ::1")
+    {
+        auto result = mdnspp::detail::response_detail::encode_ipv6("::1");
+        THEN("it returns 16 bytes")
+        {
+            REQUIRE(result.size() == 16);
+        }
+    }
+
+    GIVEN("a link-local address fe80::1")
+    {
+        auto result = mdnspp::detail::response_detail::encode_ipv6("fe80::1");
+        THEN("it returns 16 bytes")
+        {
+            REQUIRE(result.size() == 16);
+        }
+    }
+}
+
+SCENARIO("encode_ipv4 returns empty for bad octet", "[response_detail][encode_ipv4]")
+{
+    GIVEN("an IPv4 address with an octet > 255")
+    {
+        auto result = mdnspp::detail::response_detail::encode_ipv4("999.0.0.1");
+        THEN("it returns an empty vector")
+        {
+            REQUIRE(result.empty());
+        }
+    }
+}
+
+SCENARIO("encode_ipv4 returns empty for wrong number of octets", "[response_detail][encode_ipv4]")
+{
+    GIVEN("an IPv4 address with only 3 octets")
+    {
+        auto result = mdnspp::detail::response_detail::encode_ipv4("1.2.3");
+        THEN("it returns an empty vector")
+        {
+            REQUIRE(result.empty());
+        }
+    }
+}
+
+SCENARIO("encode_txt_records handles entry with value, entry without value, and clamped entry", "[response_detail][encode_txt_records]")
+{
+    GIVEN("a set of TXT entries including one >255 chars")
+    {
+        std::string long_value(300, 'x');
+        std::vector<mdnspp::service_txt> entries = {
+            mdnspp::service_txt{"key", "val"},
+            mdnspp::service_txt{"flag", std::nullopt},
+            mdnspp::service_txt{"big", long_value},
+        };
+
+        auto result = mdnspp::detail::response_detail::encode_txt_records(entries);
+
+        THEN("the result is non-empty")
+        {
+            REQUIRE_FALSE(result.empty());
+        }
+
+        THEN("the first entry is encoded as 'key=val' with length prefix 7")
+        {
+            REQUIRE(static_cast<uint8_t>(result[0]) == 7); // "key=val" = 7 chars
+        }
+
+        THEN("the second entry is 'flag' with length prefix 4")
+        {
+            // Offset after first entry: 1 + 7 = 8
+            REQUIRE(static_cast<uint8_t>(result[8]) == 4); // "flag" = 4 chars
+        }
+
+        THEN("the third entry is clamped to 255 bytes")
+        {
+            // Offset after second entry: 8 + 1 + 4 = 13
+            REQUIRE(static_cast<uint8_t>(result[13]) == 255);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// encode_dns_name edge cases
+// ---------------------------------------------------------------------------
+
+SCENARIO("encode_dns_name with empty string returns single null byte", "[dns_read][encode_dns_name]")
+{
+    GIVEN("an empty DNS name string")
+    {
+        auto result = encode_dns_name("");
+
+        THEN("it returns a single \\x00 root label byte")
+        {
+            REQUIRE(result.size() == 1);
+            REQUIRE(result[0] == std::byte{0});
+        }
+    }
+}
+
+SCENARIO("encode_dns_name with trailing dot produces same encoding as without", "[dns_read][encode_dns_name]")
+{
+    GIVEN("the name 'local.' with trailing dot")
+    {
+        auto with_dot = encode_dns_name("local.");
+        auto without_dot = encode_dns_name("local");
+
+        THEN("both produce identical wire encodings")
+        {
+            REQUIRE(with_dot == without_dot);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// skip_dns_name edge cases
+// ---------------------------------------------------------------------------
+
+SCENARIO("skip_dns_name with pointer where second byte is at end of buffer", "[dns_read][skip_dns_name]")
+{
+    GIVEN("a 1-byte buffer containing only the pointer tag 0xC0")
+    {
+        auto buf = bytes({0xC0});
+        size_t offset = 0;
+
+        WHEN("skip_dns_name is called")
+        {
+            bool ok = skip_dns_name(std::span<const std::byte>(buf), offset);
+
+            THEN("it returns false because pointer needs 2 bytes")
+            {
+                REQUIRE_FALSE(ok);
+            }
+        }
+    }
+}
+
+SCENARIO("skip_dns_name where label extends past end of buffer", "[dns_read][skip_dns_name]")
+{
+    GIVEN("a buffer where a label claims 10 bytes but only 3 follow")
+    {
+        auto buf = bytes({0x0A, 'a', 'b', 'c'});
+        size_t offset = 0;
+
+        WHEN("skip_dns_name is called")
+        {
+            bool ok = skip_dns_name(std::span<const std::byte>(buf), offset);
+
+            THEN("it returns false because label overflows buffer")
+            {
+                REQUIRE_FALSE(ok);
             }
         }
     }

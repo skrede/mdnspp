@@ -542,6 +542,67 @@ SCENARIO("response to A query contains valid A record", "[service_server][A][res
     }
 }
 
+SCENARIO("service_server non-throwing constructor sets ec on success", "[service_server][create][non-throwing]")
+{
+    GIVEN("a mock_executor and an error_code")
+    {
+        mock_executor ex;
+        std::error_code ec;
+
+        WHEN("basic_service_server<MockPolicy> is constructed with the ec overload")
+        {
+            basic_service_server<MockPolicy> server{ex, make_test_info(), ec};
+
+            THEN("ec is clear and the server is usable")
+            {
+                REQUIRE_FALSE(ec);
+                REQUIRE(server.socket().queue_empty());
+            }
+        }
+    }
+}
+
+SCENARIO("service_server is move-constructible before async_start", "[service_server][move]")
+{
+    GIVEN("a service_server constructed but not started")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
+
+        WHEN("move-constructed into a new server")
+        {
+            basic_service_server<MockPolicy> moved{std::move(server)};
+
+            THEN("the moved-to server is usable")
+            {
+                REQUIRE(moved.socket().queue_empty());
+            }
+        }
+    }
+}
+
+SCENARIO("service_server ignores non-matching query", "[service_server][query][no-match]")
+{
+    GIVEN("a service_server with a PTR query for _wrong._tcp.local. enqueued")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        server.socket().enqueue(build_dns_query("_wrong._tcp.local.", dns_type::ptr));
+
+        WHEN("async_start() is called and the timer fires")
+        {
+            server.async_start();
+            // Timer should NOT be armed because query doesn't match
+            server.timer().fire();
+
+            THEN("no response is sent")
+            {
+                REQUIRE(server.socket().sent_packets().empty());
+            }
+        }
+    }
+}
+
 SCENARIO("response sent to multicast by default, unicast when QU bit set", "[service_server][endpoint][rfc6762]")
 {
     GIVEN("a service_server with a standard PTR query (no QU bit) from {10.0.0.1, 5353}")

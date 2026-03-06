@@ -357,6 +357,52 @@ SCENARIO("stop() called from within the record callback does not deadlock", "[ob
     }
 }
 
+SCENARIO("observer non-throwing constructor sets ec on success", "[observer][create][non-throwing]")
+{
+    GIVEN("a mock_executor and an error_code")
+    {
+        mock_executor ex;
+        std::error_code ec;
+
+        WHEN("basic_observer<MockPolicy> is constructed with the ec overload")
+        {
+            basic_observer<MockPolicy> obs{
+                ex,
+                [](const mdns_record_variant &, endpoint) {},
+                ec
+            };
+
+            THEN("ec is clear and the observer is usable")
+            {
+                REQUIRE_FALSE(ec);
+                REQUIRE(obs.socket().queue_empty());
+            }
+        }
+    }
+}
+
+SCENARIO("observer is move-constructible before async_observe", "[observer][move]")
+{
+    GIVEN("an observer constructed but not started")
+    {
+        mock_executor ex;
+        basic_observer<MockPolicy> obs{
+            ex,
+            [](const mdns_record_variant &, endpoint) {}
+        };
+
+        WHEN("move-constructed into a new observer")
+        {
+            basic_observer<MockPolicy> moved{std::move(obs)};
+
+            THEN("the moved-to observer is usable")
+            {
+                REQUIRE(moved.socket().queue_empty());
+            }
+        }
+    }
+}
+
 SCENARIO("observer skips malformed packets without crashing", "[observer][malformed-packet]")
 {
     GIVEN("an observer with a truncated (malformed) packet enqueued")

@@ -426,6 +426,64 @@ SCENARIO("async_query skips malformed records and returns valid ones", "[querier
     }
 }
 
+SCENARIO("querier non-throwing constructor sets ec on success", "[querier][create][non-throwing]")
+{
+    GIVEN("a mock_executor and an error_code")
+    {
+        mock_executor ex;
+        std::error_code ec;
+
+        WHEN("basic_querier<MockPolicy> is constructed with the ec overload")
+        {
+            basic_querier<MockPolicy> q{ex, 500ms, ec};
+
+            THEN("ec is clear and the querier is usable")
+            {
+                REQUIRE_FALSE(ec);
+                REQUIRE(q.socket().queue_empty());
+                REQUIRE(q.results().empty());
+            }
+        }
+    }
+}
+
+SCENARIO("querier is move-constructible before async_query", "[querier][move]")
+{
+    GIVEN("a querier constructed but not started")
+    {
+        mock_executor ex;
+        basic_querier<MockPolicy> q{ex, 500ms};
+
+        WHEN("move-constructed into a new querier")
+        {
+            basic_querier<MockPolicy> moved{std::move(q)};
+
+            THEN("the moved-to querier is usable")
+            {
+                REQUIRE(moved.socket().queue_empty());
+                REQUIRE(moved.results().empty());
+            }
+        }
+    }
+}
+
+SCENARIO("querier stop without starting does not crash", "[querier][stop][no-start]")
+{
+    GIVEN("a querier constructed but never started")
+    {
+        mock_executor ex;
+        basic_querier<MockPolicy> q{ex, 500ms};
+
+        WHEN("stop() is called")
+        {
+            THEN("no crash or handler fire occurs")
+            {
+                REQUIRE_NOTHROW(q.stop());
+            }
+        }
+    }
+}
+
 // Note: Testing async_query() with an empty queue (no responses, silence timeout only)
 // is not practical via querier's public API with MockTimer:
 // MockTimer does not auto-fire; its fire() method is only accessible via

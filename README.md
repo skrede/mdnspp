@@ -11,14 +11,14 @@ A C++23 mDNS/DNS-SD library with a policy-based architecture. mdnspp is fully st
 
 ## Features
 
-- **Standalone native networking** -- no external dependencies for the default policy
-- **Policy-based architecture** -- swap socket/timer/executor implementations at compile time
-- **ASIO completion token support** -- callbacks, futures, coroutines, and deferred operations
-- **Cross-platform** -- Linux, macOS, and Windows
+- **Standalone native networking** -- no external dependencies for the default policy.
+- **Optional ASIO support** -- networking and completion token support (callbacks, futures, coroutines, and deferred operations).
+- **Policy-based architecture** -- swap socket/timer/executor implementations at compile time.
+- **Cross-platform** -- Linux, macOS, and Windows.
 
 ## Quick Start
 
-This section presents a short mDNS primer and short examples on how to use mdnspp. The examples show how to announce a service, discover the service, how to query for the service, and the observer that observes all traffic.
+This section presents a short mDNS primer and short examples on how to use mdnspp. The examples show how to announce a service, discover the service, how to query for the service, and the observer that observes all this traffic.
 
 ### mDNS primer
 
@@ -265,7 +265,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(mdnspp)
 
-target_link_libraries(my_app PRIVATE mdnspp::native)
+target_link_libraries(my_app PRIVATE mdnspp::core)
 # or: target_link_libraries(my_app PRIVATE mdnspp::asio)
 ```
 

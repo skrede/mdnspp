@@ -16,21 +16,21 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/defaults.h
 )
 
-add_library(mdnspp_core INTERFACE ${PUBLIC_HEADERS})
+add_library(core INTERFACE ${PUBLIC_HEADERS})
 
-add_library(mdnspp::core ALIAS mdnspp_core)
+add_library(mdnspp::core ALIAS core)
 
-target_include_directories(mdnspp_core
+target_include_directories(core
     INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
 if(WIN32)
-    target_link_libraries(mdnspp_core INTERFACE ws2_32)
+    target_link_libraries(core INTERFACE ws2_32)
 endif()
 
-install(TARGETS mdnspp_core
+install(TARGETS core
     EXPORT mdnsppTargets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
@@ -46,23 +46,6 @@ install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/default/
 install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/detail/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/detail
 )
-
-if(MDNSPP_ENABLE_DEFAULT_POLICY)
-    add_library(mdnspp_native INTERFACE)
-    add_library(mdnspp::native ALIAS mdnspp_native)
-    target_include_directories(mdnspp_native INTERFACE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
-        $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-    )
-    target_link_libraries(mdnspp_native INTERFACE mdnspp_core)
-
-    install(FILES
-        ${INCLUDE_DIRECTORY}/mdnspp/native.h
-        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp
-    )
-
-    install(TARGETS mdnspp_native EXPORT mdnsppTargets)
-endif()
 
 # --- CMake package config ---
 set(mdnspp_INSTALL_CMAKEDIR ${CMAKE_INSTALL_LIBDIR}/cmake/mdnspp)

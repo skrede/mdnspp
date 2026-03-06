@@ -3,14 +3,15 @@
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
-#include <chrono>
-#include <cstddef>
-#include <functional>
-#include <queue>
+
 #include <span>
-#include <system_error>
-#include <utility>
+#include <queue>
+#include <chrono>
 #include <vector>
+#include <cstddef>
+#include <utility>
+#include <functional>
+#include <system_error>
 
 namespace mdnspp::testing {
 

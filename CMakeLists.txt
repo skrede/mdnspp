@@ -9,7 +9,6 @@ option(MDNSPP_BUILD_TESTS OFF)
 option(MDNSPP_BUILD_EXAMPLES OFF)
 
 option(MDNSPP_ENABLE_ASIO_POLICY "Build AsioPolicy (AsioSocket, AsioTimer) backed by asio::io_context" OFF)
-option(MDNSPP_ENABLE_DEFAULT_POLICY "Build DefaultPolicy (DefaultSocket, DefaultTimer, DefaultContext)" ON)
 
 include(FetchContent)
 include(GNUInstallDirs)

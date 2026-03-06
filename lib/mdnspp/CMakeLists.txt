@@ -4,16 +4,17 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/dns.h
     ${INCLUDE_DIRECTORY}/mdnspp/parse.h
     ${INCLUDE_DIRECTORY}/mdnspp/policy.h
-    ${INCLUDE_DIRECTORY}/mdnspp/basic_querier.h
+    ${INCLUDE_DIRECTORY}/mdnspp/defaults.h
     ${INCLUDE_DIRECTORY}/mdnspp/records.h
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
-    ${INCLUDE_DIRECTORY}/mdnspp/basic_observer.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_info.h
-    ${INCLUDE_DIRECTORY}/mdnspp/basic_service_server.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_querier.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_observer.h
     ${INCLUDE_DIRECTORY}/mdnspp/resolved_service.h
+    ${INCLUDE_DIRECTORY}/mdnspp/resolved_service.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_service_server.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_service_discovery.h
-    ${INCLUDE_DIRECTORY}/mdnspp/defaults.h
 )
 
 add_library(core INTERFACE ${PUBLIC_HEADERS})

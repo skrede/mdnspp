@@ -2,10 +2,15 @@
 
 #include "mdnspp/default/default_policy.h"
 #include "mdnspp/policy.h"
+#include "mdnspp/socket_options.h"
 
 static_assert(mdnspp::Policy<mdnspp::DefaultPolicy>, "DefaultPolicy must satisfy Policy");
 static_assert(mdnspp::SocketLike<mdnspp::DefaultSocket>, "DefaultSocket must satisfy SocketLike");
 static_assert(mdnspp::TimerLike<mdnspp::DefaultTimer>, "DefaultTimer must satisfy TimerLike");
+static_assert(std::constructible_from<mdnspp::DefaultSocket, mdnspp::DefaultContext&, const mdnspp::socket_options&>,
+              "DefaultSocket must be constructible from (context, socket_options)");
+static_assert(std::constructible_from<mdnspp::DefaultSocket, mdnspp::DefaultContext&, const mdnspp::socket_options&, std::error_code&>,
+              "DefaultSocket must be constructible from (context, socket_options, error_code)");
 
 #include "mdnspp/basic_querier.h"
 #include "mdnspp/basic_observer.h"
@@ -381,6 +386,33 @@ TEST_CASE("DefaultContext deregister_socket for unregistered fd is a no-op", "[n
     // Deregistering a fd that was never registered should not crash or throw.
     REQUIRE_NOTHROW(ctx.deregister_socket(42));
     REQUIRE_NOTHROW(ctx.deregister_socket(mdnspp::detail::invalid_socket));
+}
+
+TEST_CASE("DefaultSocket with default socket_options", "[native][socket][socket_options]")
+{
+    mdnspp::DefaultContext ctx;
+    try
+    {
+        mdnspp::socket_options opts{};
+        mdnspp::DefaultSocket sock{ctx, opts};
+        SUCCEED("DefaultSocket constructed with default socket_options (INADDR_ANY, TTL=255)");
+    }
+    catch(const std::exception &e)
+    {
+        WARN("DefaultSocket construction with socket_options failed (expected in no-network CI): " << e.what());
+    }
+}
+
+TEST_CASE("DefaultSocket with socket_options and error_code", "[native][socket][socket_options]")
+{
+    mdnspp::DefaultContext ctx;
+    mdnspp::socket_options opts{};
+    std::error_code ec;
+    mdnspp::DefaultSocket sock{ctx, opts, ec};
+    if(ec)
+        WARN("DefaultSocket non-throwing construction with socket_options failed (expected in no-network CI): " << ec.message());
+    else
+        SUCCEED("DefaultSocket constructed with default socket_options via error_code overload");
 }
 
 TEST_CASE("DefaultContext stop from another thread wakes run", "[native][context]")

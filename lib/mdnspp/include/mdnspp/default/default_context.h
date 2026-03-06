@@ -222,7 +222,7 @@ public:
     // -----------------------------------------------------------------------
 
     void register_socket(detail::native_socket_t fd,
-                          std::function<void(std::span<std::byte>, endpoint)> handler)
+                          std::function<void(std::span<std::byte>, const endpoint &)> handler)
     {
         // Replace if already registered (e.g. async_receive re-arms)
         for(auto &entry : m_sockets)
@@ -263,7 +263,7 @@ private:
     struct socket_entry
     {
         detail::native_socket_t fd{detail::invalid_socket};
-        std::function<void(std::span<std::byte>, endpoint)> handler;
+        std::function<void(std::span<std::byte>, const endpoint &)> handler;
     };
 
     // winsock_guard MUST be the first member — initialised before any sockets.

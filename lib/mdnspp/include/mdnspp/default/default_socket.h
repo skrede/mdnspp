@@ -60,14 +60,14 @@ public:
 
     /// Register this socket and its receive handler with DefaultContext.
     /// Called by recv_loop when it wants to arm the next receive.
-    void async_receive(std::function<void(std::span<std::byte>, endpoint)> handler)
+    void async_receive(std::function<void(std::span<std::byte>, const endpoint &)> handler)
     {
         m_receive_handler = std::move(handler);
         m_ctx.register_socket(m_fd, m_receive_handler);
     }
 
     /// Synchronous sendto(). mDNS sends are tiny and infrequent.
-    void send(endpoint dest, std::span<const std::byte> data)
+    void send(const endpoint &dest, std::span<const std::byte> data)
     {
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
@@ -111,7 +111,7 @@ public:
 private:
     DefaultContext &m_ctx;
     detail::native_socket_t m_fd{detail::invalid_socket};
-    std::function<void(std::span<std::byte>, endpoint)> m_receive_handler;
+    std::function<void(std::span<std::byte>, const endpoint &)> m_receive_handler;
 
     /// Throwing
     void open_and_configure()

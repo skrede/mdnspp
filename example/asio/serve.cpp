@@ -25,7 +25,7 @@ int main()
     mdnspp::basic_service_server<mdnspp::AsioPolicy> srv{
         io,
         std::move(info),
-        [](mdnspp::dns_type qtype, mdnspp::endpoint sender, bool unicast)
+        [](mdnspp::dns_type qtype, const mdnspp::endpoint &sender, bool unicast)
         {
             std::cout << sender.address << ":" << sender.port
                 << " queried qtype=" << to_string(qtype)

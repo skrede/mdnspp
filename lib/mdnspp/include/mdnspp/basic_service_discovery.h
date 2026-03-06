@@ -31,7 +31,7 @@ public:
     using timer_type = typename P::timer_type;
 
     /// Optional callback invoked per record as results arrive during discovery.
-    using record_callback = detail::move_only_function<void(const mdns_record_variant &, endpoint)>;
+    using record_callback = detail::move_only_function<void(const mdns_record_variant &, const endpoint &)>;
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.
@@ -191,7 +191,7 @@ private:
             m_silence_timeout,
             // on_packet: identical to do_discover() — accumulates into m_results,
             // fires m_on_record per relevant record.
-            [this](std::span<std::byte> data, endpoint sender) -> bool
+            [this](std::span<std::byte> data, const endpoint &sender) -> bool
             {
                 std::vector<mdns_record_variant> batch;
                 detail::walk_dns_frame(
@@ -259,7 +259,7 @@ private:
             // on_packet: walk frame into temp, keep all records from packets
             // that contain at least one record matching the queried service type.
             // Returns true (reset timer) only for relevant packets.
-            [this](std::span<std::byte> data, endpoint sender) -> bool
+            [this](std::span<std::byte> data, const endpoint &sender) -> bool
             {
                 std::vector<mdns_record_variant> batch;
                 detail::walk_dns_frame(

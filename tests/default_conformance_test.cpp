@@ -168,7 +168,7 @@ TEST_CASE("DefaultContext dispatches data on registered loopback socket", "[nati
     std::string received_data;
     mdnspp::endpoint received_ep;
 
-    ctx.register_socket(fd, [&](std::span<std::byte> data, mdnspp::endpoint ep)
+    ctx.register_socket(fd, [&](std::span<std::byte> data, const mdnspp::endpoint &ep)
     {
         handler_called = true;
         received_data.assign(reinterpret_cast<const char *>(data.data()), data.size());

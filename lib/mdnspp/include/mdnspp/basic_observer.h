@@ -49,7 +49,7 @@ public:
     using executor_type = typename P::executor_type;
     using socket_type = typename P::socket_type;
     using timer_type = typename P::timer_type;
-    using record_callback = detail::move_only_function<void(const mdns_record_variant &, endpoint)>;
+    using record_callback = detail::move_only_function<void(const endpoint &, const mdns_record_variant &)>;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
@@ -145,7 +145,7 @@ private:
             m_socket,
             m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](std::span<std::byte> data, endpoint sender) -> bool
+            [this](std::span<std::byte> data, const endpoint &sender) -> bool
             {
                 on_packet(data, sender);
                 return true; // basic_observer wants all traffic; always reset timer
@@ -160,7 +160,7 @@ private:
 
     // Called by recv_loop for every incoming packet.
     // Checks the stop flag, then walks the DNS frame and delivers each record.
-    void on_packet(std::span<std::byte> data, endpoint sender)
+    void on_packet(std::span<std::byte> data, const endpoint &sender)
     {
         if(m_stopped.load(std::memory_order_acquire))
             return;

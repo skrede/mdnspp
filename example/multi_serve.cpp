@@ -32,7 +32,7 @@ int main()
     };
 
     mdnspp::service_server http_srv{ctx, std::move(http_info),
-        [](mdnspp::dns_type qtype, mdnspp::endpoint sender, bool unicast)
+        [](mdnspp::dns_type qtype, const mdnspp::endpoint &sender, bool unicast)
         {
             std::cout << "[http] " << sender << " queried qtype=" << to_string(qtype)
                 << (unicast ? " (unicast)" : " (multicast)") << "\n";
@@ -40,7 +40,7 @@ int main()
     };
 
     mdnspp::service_server ssh_srv{ctx, std::move(ssh_info),
-        [](mdnspp::dns_type qtype, mdnspp::endpoint sender, bool unicast)
+        [](mdnspp::dns_type qtype, const mdnspp::endpoint &sender, bool unicast)
         {
             std::cout << "[ssh]  " << sender << " queried qtype=" << to_string(qtype)
                 << (unicast ? " (unicast)" : " (multicast)") << "\n";

@@ -71,7 +71,7 @@ public:
         enqueue(std::move(packet), endpoint{});
     }
 
-    void async_receive(std::function<void(std::span<std::byte>, endpoint)> handler)
+    void async_receive(std::function<void(std::span<std::byte>, const endpoint &)> handler)
     {
         if(!m_receive_queue.empty())
         {
@@ -81,7 +81,7 @@ public:
         }
     }
 
-    void send(endpoint dest, std::span<const std::byte> data)
+    void send(const endpoint &dest, std::span<const std::byte> data)
     {
         m_sent_packets.push_back(sent_packet{
             dest,

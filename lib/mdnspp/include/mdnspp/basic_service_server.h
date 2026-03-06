@@ -48,7 +48,7 @@ public:
 
     /// Optional callback invoked when an incoming query is received and parsed.
     /// Parameters: qtype requested, sender endpoint, whether unicast was requested.
-    using query_callback = detail::move_only_function<void(dns_type, endpoint, bool)>;
+    using query_callback = detail::move_only_function<void(dns_type, const endpoint &, bool)>;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
@@ -210,7 +210,7 @@ private:
             m_socket,
             m_recv_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](std::span<std::byte> data, endpoint sender) -> bool
+            [this](std::span<std::byte> data, const endpoint &sender) -> bool
             {
                 on_query(data, sender);
                 return true; // server needs to see all queries; always reset timer
@@ -239,7 +239,7 @@ private:
     }
 
     // Called by recv_loop on every incoming packet.
-    void on_query(std::span<std::byte> data, endpoint sender)
+    void on_query(std::span<std::byte> data, const endpoint &sender)
     {
         if(m_stopped.load(std::memory_order_acquire))
             return;
@@ -308,7 +308,7 @@ private:
     // dest is either the multicast group (default) or the querier's unicast address
     // (when QU bit was set in the question). Uses m_socket directly — basic_service_server
     // owns the socket, not recv_loop.
-    void send_response(endpoint dest, dns_type qtype)
+    void send_response(const endpoint &dest, dns_type qtype)
     {
         auto response = detail::build_dns_response(m_info, qtype);
         if(response.empty())

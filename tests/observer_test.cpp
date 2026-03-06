@@ -141,7 +141,7 @@ SCENARIO("observer delivers DNS records from a single packet to the callback", "
 
         basic_observer<MockPolicy> obs{
             ex,
-            [&](const mdns_record_variant &rec, endpoint ep)
+            [&](const mdns_record_variant &rec, const endpoint &ep)
             {
                 received_records.push_back(rec);
                 received_senders.push_back(ep);

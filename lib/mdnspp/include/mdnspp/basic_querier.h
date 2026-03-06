@@ -4,22 +4,22 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+
+#include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/dns_wire.h"
+#include "mdnspp/detail/recv_loop.h"
 #include "mdnspp/detail/dns_enums.h"
 
-#include <algorithm>
 #include <memory>
 #include <string>
 #include <vector>
 #include <chrono>
-#include <string_view>
 #include <cstdint>
 #include <cassert>
-#include <system_error>
 #include <utility>
-
-#include "mdnspp/detail/recv_loop.h"
-#include "mdnspp/detail/dns_wire.h"
-#include "mdnspp/detail/compat.h"
+#include <algorithm>
+#include <string_view>
+#include <system_error>
 
 namespace mdnspp {
 
@@ -32,7 +32,7 @@ public:
     using timer_type = typename P::timer_type;
 
     /// Optional callback invoked per record as results arrive during a query.
-    using record_callback = detail::move_only_function<void(const mdns_record_variant &, endpoint)>;
+    using record_callback = detail::move_only_function<void(const mdns_record_variant &, const endpoint &)>;
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.
@@ -160,7 +160,7 @@ private:
             // on_packet: walk frame into temp, keep all records from packets
             // that contain at least one record matching the queried name.
             // Returns true (reset timer) only for relevant packets.
-            [this](std::span<std::byte> data, endpoint sender) -> bool
+            [this](std::span<std::byte> data, const endpoint &sender) -> bool
             {
                 std::vector<mdns_record_variant> batch;
                 detail::walk_dns_frame(

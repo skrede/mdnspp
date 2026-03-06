@@ -317,15 +317,26 @@ TEST_CASE("DefaultContext register_socket twice replaces handler", "[native][con
     addr.sin_port = 0;
     REQUIRE(::bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0);
 
+#ifdef _WIN32
+    int len = sizeof(addr);
+#else
     socklen_t len = sizeof(addr);
+#endif
     REQUIRE(::getsockname(fd, reinterpret_cast<sockaddr *>(&addr), &len) == 0);
 
     // Make non-blocking
+#ifdef _WIN32
+    {
+        u_long mode = 1;
+        REQUIRE(::ioctlsocket(fd, FIONBIO, &mode) == 0);
+    }
+#else
     {
         int flags = ::fcntl(fd, F_GETFL, 0);
         REQUIRE(flags >= 0);
         REQUIRE(::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0);
     }
+#endif
 
     int first_count = 0;
     int second_count = 0;
@@ -338,8 +349,13 @@ TEST_CASE("DefaultContext register_socket twice replaces handler", "[native][con
 
     // Send data to ourselves
     const std::string payload = "test";
+#ifdef _WIN32
+    (void)::sendto(fd, payload.data(), static_cast<int>(payload.size()), 0,
+                   reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+#else
     (void)::sendto(fd, payload.data(), payload.size(), 0,
                    reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+#endif
 
     for(int attempt = 0; attempt < 50 && second_count == 0; ++attempt)
     {

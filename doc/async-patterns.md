@@ -146,7 +146,7 @@ int main()
 
 Completion signature: `void(std::error_code, std::vector<mdns_record_variant>)`.
 With `use_awaitable`, errors throw `std::system_error` from the `co_await`
-expression. Requires compiler coroutine support (GCC 13+, Clang 17+, MSVC 17+).
+expression. Requires compiler coroutine support (GCC 13+, Clang 18+, MSVC 17+).
 
 ## deferred
 

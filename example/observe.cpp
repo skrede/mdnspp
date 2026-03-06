@@ -20,7 +20,7 @@ int main()
                 std::cout << sender << " -> " << r << "\n";
             }, rec);
 
-            if (++count >= 10)
+            if (++count >= 100)
                 obs.stop();
         }
     };

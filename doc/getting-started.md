@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- C++23 compiler: GCC 13+, Clang 17+, MSVC 17+, or Xcode 15.4+
+- C++23 compiler: GCC 13+, Clang 18+, MSVC 17+, or Xcode 15.4+
 - CMake 3.25+
 
 ## Installation

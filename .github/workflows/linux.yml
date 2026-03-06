@@ -30,10 +30,6 @@ jobs:
             cxx: g++-14
             coverage: true
             gcov_executable: gcov-14
-          - compiler: clang-17
-            cc: clang-17
-            cxx: clang++-17
-            coverage: false
           - compiler: clang-18
             cc: clang-18
             cxx: clang++-18
@@ -80,6 +76,8 @@ jobs:
             --exclude 'tests/' \
             --exclude 'example/' \
             --exclude 'lib/mdnspp-testing/' \
+            --exclude 'build/_deps/' \
+            --gcov-ignore-errors=source_not_found \
             --xml coverage.xml
 
       - name: Upload to Codecov

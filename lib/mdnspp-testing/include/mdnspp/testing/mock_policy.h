@@ -3,33 +3,19 @@
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
-#include "mdnspp/detail/compat.h"
-
-#include <deque>
-#include <span>
-#include <queue>
 #include <chrono>
-#include <vector>
 #include <cstddef>
-#include <utility>
 #include <functional>
+#include <queue>
+#include <span>
 #include <system_error>
+#include <utility>
+#include <vector>
 
 namespace mdnspp::testing {
 
 struct mock_executor
 {
-    std::deque<detail::move_only_function<void()>> m_posted;
-
-    void drain_posted()
-    {
-        while (!m_posted.empty())
-        {
-            auto fn = std::move(m_posted.front());
-            m_posted.pop_front();
-            fn();
-        }
-    }
 };
 
 struct sent_packet

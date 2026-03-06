@@ -71,13 +71,13 @@ public:
         enqueue(std::move(packet), endpoint{});
     }
 
-    void async_receive(std::function<void(std::span<std::byte>, const endpoint &)> handler)
+    void async_receive(std::function<void(const endpoint &, std::span<std::byte>)> handler)
     {
         if(!m_receive_queue.empty())
         {
             auto [packet, sender] = std::move(m_receive_queue.front());
             m_receive_queue.pop();
-            handler(std::span<std::byte>(packet), std::move(sender));
+            handler(std::move(sender), std::span<std::byte>(packet));
         }
     }
 

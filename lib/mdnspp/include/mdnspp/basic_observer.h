@@ -145,9 +145,9 @@ private:
             m_socket,
             m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](std::span<std::byte> data, const endpoint &sender) -> bool
+            [this](const endpoint &sender, std::span<std::byte> data) -> bool
             {
-                on_packet(data, sender);
+                on_packet(sender, data);
                 return true; // basic_observer wants all traffic; always reset timer
             },
             []()
@@ -160,7 +160,7 @@ private:
 
     // Called by recv_loop for every incoming packet.
     // Checks the stop flag, then walks the DNS frame and delivers each record.
-    void on_packet(std::span<std::byte> data, const endpoint &sender)
+    void on_packet(const endpoint &sender, std::span<std::byte> data)
     {
         if(m_stopped.load(std::memory_order_acquire))
             return;

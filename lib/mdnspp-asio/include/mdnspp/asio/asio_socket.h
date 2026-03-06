@@ -50,7 +50,7 @@ public:
         m_buffer.resize(4096);
     }
 
-    void async_receive(std::function<void(std::span<std::byte>, const mdnspp::endpoint &)> handler)
+    void async_receive(std::function<void(const mdnspp::endpoint &, std::span<std::byte>)> handler)
     {
         m_socket.async_receive_from(
             asio::buffer(m_buffer),
@@ -63,7 +63,7 @@ public:
                         m_sender_endpoint.address().to_string(),
                         m_sender_endpoint.port()
                     };
-                    handler(std::span<std::byte>(m_buffer.data(), bytes), ep);
+                    handler(ep, std::span<std::byte>(m_buffer.data(), bytes));
                 }
             });
     }

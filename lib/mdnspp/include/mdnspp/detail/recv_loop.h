@@ -19,7 +19,7 @@ public:
 
     // Returns true if the packet was relevant (resets silence timer),
     // false to ignore (timer continues counting down).
-    using packet_handler = std::function<bool(std::span<std::byte>, const endpoint &)>;
+    using packet_handler = std::function<bool(const endpoint &, std::span<std::byte>)>;
 
     recv_loop(
         socket_type &socket,
@@ -72,13 +72,13 @@ private:
         }
         m_buffer.resize(4096);
         m_socket.async_receive(
-            [this](std::span<std::byte> data, const endpoint &ep)
+            [this](const endpoint &ep, std::span<std::byte> data)
             {
                 if(m_stopped.load(std::memory_order_acquire))
                 {
                     return;
                 }
-                bool relevant = m_on_packet(data, ep);
+                bool relevant = m_on_packet(ep, data);
                 if(relevant)
                     arm_silence_timer();
                 arm_receive();

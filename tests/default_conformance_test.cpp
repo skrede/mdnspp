@@ -168,7 +168,7 @@ TEST_CASE("DefaultContext dispatches data on registered loopback socket", "[nati
     std::string received_data;
     mdnspp::endpoint received_ep;
 
-    ctx.register_socket(fd, [&](std::span<std::byte> data, const mdnspp::endpoint &ep)
+    ctx.register_socket(fd, [&](const mdnspp::endpoint &ep, std::span<std::byte> data)
     {
         handler_called = true;
         received_data.assign(reinterpret_cast<const char*>(data.data()), data.size());
@@ -235,7 +235,7 @@ TEST_CASE("DefaultContext deregister_socket stops dispatch", "[native][context][
 #endif
 
     int call_count = 0;
-    ctx.register_socket(fd, [&](std::span<std::byte>, mdnspp::endpoint)
+    ctx.register_socket(fd, [&](mdnspp::endpoint, std::span<std::byte>)
     {
         ++call_count;
     });
@@ -346,10 +346,10 @@ TEST_CASE("DefaultContext register_socket twice replaces handler", "[native][con
     int second_count = 0;
 
     // Register first handler
-    ctx.register_socket(fd, [&](std::span<std::byte>, mdnspp::endpoint) { ++first_count; });
+    ctx.register_socket(fd, [&](mdnspp::endpoint, std::span<std::byte>) { ++first_count; });
 
     // Register second handler for the same fd — must replace, not duplicate.
-    ctx.register_socket(fd, [&](std::span<std::byte>, mdnspp::endpoint) { ++second_count; });
+    ctx.register_socket(fd, [&](mdnspp::endpoint, std::span<std::byte>) { ++second_count; });
 
     // Send data to ourselves
     const std::string payload = "test";

@@ -36,7 +36,7 @@ TEST_CASE("recv_loop delivers injected packets")
         sock,
         timer,
         SILENCE_TIMEOUT,
-        [&](std::span<std::byte> data, endpoint /*ep*/) -> bool
+        [&](endpoint, std::span<std::byte> data /*ep*/) -> bool
         {
             received.emplace_back(data.begin(), data.end());
             return true;
@@ -63,7 +63,7 @@ TEST_CASE("recv_loop silence callback fires on timer fire")
         sock,
         timer,
         SILENCE_TIMEOUT,
-        [](std::span<std::byte>, endpoint) -> bool { return true; },
+        [](endpoint, std::span<std::byte>) -> bool { return true; },
         [&] { silence_called = true; }
     };
 
@@ -85,7 +85,7 @@ TEST_CASE("recv_loop stop is idempotent")
         sock,
         timer,
         SILENCE_TIMEOUT,
-        [](std::span<std::byte>, endpoint) -> bool { return true; },
+        [](endpoint, std::span<std::byte>) -> bool { return true; },
         []
         {
         }
@@ -112,7 +112,7 @@ TEST_CASE("recv_loop stop prevents on_packet after stop")
         sock,
         timer,
         SILENCE_TIMEOUT,
-        [&](std::span<std::byte>, endpoint) -> bool
+        [&](endpoint, std::span<std::byte>) -> bool
         {
             ++packet_calls;
             return true;
@@ -142,7 +142,7 @@ TEST_CASE("recv_loop resets silence timer on each packet")
         sock,
         timer,
         SILENCE_TIMEOUT,
-        [](std::span<std::byte>, endpoint) -> bool { return true; },
+        [](endpoint, std::span<std::byte>) -> bool { return true; },
         []
         {
         }

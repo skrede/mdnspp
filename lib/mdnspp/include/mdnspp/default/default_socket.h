@@ -60,7 +60,7 @@ public:
 
     /// Register this socket and its receive handler with DefaultContext.
     /// Called by recv_loop when it wants to arm the next receive.
-    void async_receive(std::function<void(std::span<std::byte>, const endpoint &)> handler)
+    void async_receive(std::function<void(const endpoint &, std::span<std::byte>)> handler)
     {
         m_receive_handler = std::move(handler);
         m_ctx.register_socket(m_fd, m_receive_handler);
@@ -111,7 +111,7 @@ public:
 private:
     DefaultContext &m_ctx;
     detail::native_socket_t m_fd{detail::invalid_socket};
-    std::function<void(std::span<std::byte>, const endpoint &)> m_receive_handler;
+    std::function<void(const endpoint &, std::span<std::byte>)> m_receive_handler;
 
     /// Throwing
     void open_and_configure()

@@ -30,7 +30,7 @@ using observer = basic_observer<DefaultPolicy>;
 using executor_type      = typename P::executor_type;
 using socket_type        = typename P::socket_type;
 using timer_type         = typename P::timer_type;
-using record_callback    = std::move_only_function<void(const mdns_record_variant&, endpoint)>;
+using record_callback    = std::move_only_function<void(const endpoint&, const mdns_record_variant&)>;
 using completion_handler = std::move_only_function<void(std::error_code)>;
 ```
 
@@ -125,7 +125,7 @@ int main()
     int count = 0;
 
     mdnspp::observer obs{ctx,
-        [&](const mdnspp::mdns_record_variant& rec, mdnspp::endpoint sender)
+        [&](const mdnspp::endpoint& sender, const mdnspp::mdns_record_variant& rec)
         {
             std::visit([&](const auto& r) {
                 std::cout << sender << " -> " << r << "\n";

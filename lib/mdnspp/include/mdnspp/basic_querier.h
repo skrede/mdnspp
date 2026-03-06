@@ -160,7 +160,7 @@ private:
             // on_packet: walk frame into temp, keep all records from packets
             // that contain at least one record matching the queried name.
             // Returns true (reset timer) only for relevant packets.
-            [this](std::span<std::byte> data, const endpoint &sender) -> bool
+            [this](const endpoint &sender, std::span<std::byte> data) -> bool
             {
                 std::vector<mdns_record_variant> batch;
                 detail::walk_dns_frame(

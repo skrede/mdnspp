@@ -210,9 +210,9 @@ private:
             m_socket,
             m_recv_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](std::span<std::byte> data, const endpoint &sender) -> bool
+            [this](const endpoint &sender, std::span<std::byte> data) -> bool
             {
-                on_query(data, sender);
+                on_query(sender, data);
                 return true; // server needs to see all queries; always reset timer
             },
             []()
@@ -239,7 +239,7 @@ private:
     }
 
     // Called by recv_loop on every incoming packet.
-    void on_query(std::span<std::byte> data, const endpoint &sender)
+    void on_query(const endpoint &sender, std::span<std::byte> data)
     {
         if(m_stopped.load(std::memory_order_acquire))
             return;

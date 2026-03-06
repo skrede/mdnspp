@@ -7,16 +7,22 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(asio)
 
-add_library(asio INTERFACE)
-add_library(mdnspp::asio ALIAS asio)
+add_library(mdnspp_asio INTERFACE)
+add_library(mdnspp::asio ALIAS mdnspp_asio)
 
-target_include_directories(asio INTERFACE
+target_include_directories(mdnspp_asio INTERFACE
     $<BUILD_INTERFACE:${asio_SOURCE_DIR}/asio/include>
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-target_link_libraries(asio INTERFACE core)
-target_compile_definitions(asio INTERFACE MDNSPP_ENABLE_ASIO_POLICY)
+
+target_compile_options(mdnspp_asio INTERFACE
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /utf-8>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-fPIC -Wall -Wextra>
+)
+
+target_link_libraries(mdnspp_asio INTERFACE mdnspp::mdnspp)
+target_compile_definitions(mdnspp_asio INTERFACE MDNSPP_ENABLE_ASIO_POLICY)
 
 install(FILES
     ${INCLUDE_DIRECTORY}/mdnspp/asio.h
@@ -40,4 +46,4 @@ install(DIRECTORY ${asio_SOURCE_DIR}/asio/include/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
 )
 
-install(TARGETS asio EXPORT mdnsppTargets)
+install(TARGETS mdnspp_asio EXPORT mdnsppTargets)

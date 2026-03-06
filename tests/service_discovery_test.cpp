@@ -19,7 +19,7 @@ using namespace mdnspp;
 using namespace mdnspp::testing;
 using namespace std::chrono_literals;
 
-static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
+[[maybe_unused]] static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
 {
     std::vector<std::byte> v;
     v.reserve(vals.size());
@@ -97,7 +97,7 @@ static std::vector<std::byte> make_ptr_response(std::string_view owner,
 }
 
 // Builds a mDNS response packet with one A record.
-static std::vector<std::byte> make_a_response(std::string_view owner,
+[[maybe_unused]] static std::vector<std::byte> make_a_response(std::string_view owner,
                                               uint8_t a, uint8_t b,
                                               uint8_t c, uint8_t d)
 {
@@ -396,7 +396,7 @@ SCENARIO("async_discover skips malformed records and returns valid ones", "[serv
 //   owner           — fully-qualified service instance name (e.g. "My Service._http._tcp.local.")
 //   target_hostname — SRV target (e.g. "myhost.local.")
 //   port            — service port
-static std::vector<std::byte> make_srv_response(std::string_view owner,
+[[maybe_unused]] static std::vector<std::byte> make_srv_response(std::string_view owner,
                                                 std::string_view target_hostname,
                                                 uint16_t port)
 {

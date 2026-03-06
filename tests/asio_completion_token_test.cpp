@@ -94,7 +94,7 @@ SCENARIO("async_observe with callback fires when stop() is called", "[completion
             });
 
         bool handler_fired = false;
-        obs->async_observe([&handler_fired](std::error_code ec)
+        obs->async_observe([&handler_fired](std::error_code)
         {
             handler_fired = true;
         });
@@ -130,7 +130,7 @@ SCENARIO("async_start with callback fires when stop() is called", "[completion_t
             io, std::move(info));
 
         bool handler_fired = false;
-        server->async_start([&handler_fired](std::error_code ec)
+        server->async_start([&handler_fired](std::error_code)
         {
             handler_fired = true;
         });
@@ -160,8 +160,8 @@ SCENARIO("async_discover with deferred does not initiate I/O until launched", "[
 
         // Launch the operation with a plain callback — this is when I/O initiates
         bool callback_fired = false;
-        std::move(op)([&callback_fired](std::error_code ec,
-                                        std::vector<mdnspp::mdns_record_variant> results)
+        std::move(op)([&callback_fired](std::error_code,
+                                        std::vector<mdnspp::mdns_record_variant>)
         {
             callback_fired = true;
         });
@@ -183,8 +183,8 @@ SCENARIO("async_browse with deferred does not initiate I/O until launched", "[co
         mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{io, std::chrono::milliseconds(300)};
         auto op = mdnspp::async_browse(sd, "_deferred._tcp.local.", asio::deferred);
         bool callback_fired = false;
-        std::move(op)([&callback_fired](std::error_code ec,
-                                        std::vector<mdnspp::resolved_service> services)
+        std::move(op)([&callback_fired](std::error_code,
+                                        std::vector<mdnspp::resolved_service>)
         {
             callback_fired = true;
         });
@@ -208,7 +208,7 @@ SCENARIO("async_observe completion handler dispatched on correct executor — TS
             });
 
         bool handler_fired = false;
-        obs->async_observe([&handler_fired](std::error_code ec)
+        obs->async_observe([&handler_fired](std::error_code)
         {
             handler_fired = true;
         });

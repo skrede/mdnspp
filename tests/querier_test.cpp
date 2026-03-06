@@ -25,7 +25,7 @@ using namespace std::chrono_literals;
 // Byte-building helpers
 // ---------------------------------------------------------------------------
 
-static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
+[[maybe_unused]] static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
 {
     std::vector<std::byte> v;
     v.reserve(vals.size());
@@ -100,7 +100,7 @@ static std::vector<std::byte> make_a_response(std::string_view name,
 }
 
 // Builds a mDNS response with one SRV record (type=33).
-static std::vector<std::byte> make_srv_response(std::string_view name,
+[[maybe_unused]] static std::vector<std::byte> make_srv_response(std::string_view name,
                                                 std::string_view target,
                                                 uint16_t port)
 {
@@ -133,7 +133,7 @@ static std::vector<std::byte> make_srv_response(std::string_view name,
 }
 
 // Builds a mDNS response with one AAAA record (type=28).
-static std::vector<std::byte> make_aaaa_response(std::string_view name,
+[[maybe_unused]] static std::vector<std::byte> make_aaaa_response(std::string_view name,
                                                  std::array<uint8_t, 16> addr)
 {
     std::vector<std::byte> pkt;

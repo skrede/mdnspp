@@ -20,6 +20,7 @@ int main()
         .hostname     = "myhost.local.",
         .port         = 8080,
         .address_ipv4 = "192.168.1.69",
+        .address_ipv6 = {},
         .txt_records  = {{"path", "/index.html"}},
     };
 
@@ -29,6 +30,8 @@ int main()
         .hostname     = "myhost.local.",
         .port         = 22,
         .address_ipv4 = "192.168.1.69",
+        .address_ipv6 = {},
+        .txt_records  = {},
     };
 
     mdnspp::service_server http_srv{

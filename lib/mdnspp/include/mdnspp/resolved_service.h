@@ -77,7 +77,11 @@ inline std::vector<resolved_service> aggregate(std::span<const mdns_record_varia
             {
                 // PTR seeds a new entry (insert_or_assign keeps existing if already seeded)
                 if(!svc_map.contains(r.ptr_name))
-                    svc_map.emplace(r.ptr_name, svc_entry{resolved_service{.instance_name = r.ptr_name}});
+                {
+                    resolved_service svc;
+                    svc.instance_name = r.ptr_name;
+                    svc_map.emplace(r.ptr_name, svc_entry{std::move(svc)});
+                }
             }
             else if constexpr(std::is_same_v<T, record_srv>)
             {

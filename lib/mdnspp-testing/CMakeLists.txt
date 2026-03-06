@@ -1,17 +1,17 @@
 set(INCLUDE_DIRECTORY include)
 
-add_library(testing INTERFACE)
-add_library(mdnspp::testing ALIAS testing)
+add_library(mdnspp_testing INTERFACE)
+add_library(mdnspp::testing ALIAS mdnspp_testing)
 
-target_include_directories(testing INTERFACE
+target_include_directories(mdnspp_testing INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-target_link_libraries(testing INTERFACE core)
+target_link_libraries(mdnspp_testing INTERFACE mdnspp)
 
 install(FILES
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_policy.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/testing
 )
 
-install(TARGETS testing EXPORT mdnsppTargets)
+install(TARGETS mdnspp_testing EXPORT mdnsppTargets)

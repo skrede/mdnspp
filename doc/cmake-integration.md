@@ -5,7 +5,7 @@
 - CMake 3.25+
 - C++23 compiler:
   - GCC 13+
-  - Clang 17+
+  - Clang 18+
   - MSVC 17+ (Visual Studio 2022) with `/std:c++latest`
   - Xcode 15.4+
 

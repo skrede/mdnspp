@@ -273,6 +273,118 @@ TEST_CASE("DefaultContext poll_one returns immediately with no sockets", "[nativ
     REQUIRE(elapsed < 50ms);
 }
 
+TEST_CASE("DefaultContext restart then run works after stop", "[native][context]")
+{
+    mdnspp::DefaultContext ctx;
+
+    // First cycle: stop then run returns immediately.
+    ctx.stop();
+    ctx.run();
+
+    // Restart resets the stopped flag — run() should block until stop().
+    ctx.restart();
+    std::thread stopper{[&ctx]
+    {
+        std::this_thread::sleep_for(30ms);
+        ctx.stop();
+    }};
+    ctx.run();
+    stopper.join();
+
+    // Second restart cycle — prove it is reusable more than once.
+    ctx.restart();
+    std::thread stopper2{[&ctx]
+    {
+        std::this_thread::sleep_for(30ms);
+        ctx.stop();
+    }};
+    ctx.run();
+    stopper2.join();
+
+    SUCCEED("restart/run/stop works across multiple cycles");
+}
+
+TEST_CASE("DefaultContext register_socket twice replaces handler", "[native][context][socket]")
+{
+    mdnspp::DefaultContext ctx;
+
+    auto fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    REQUIRE(fd != mdnspp::detail::invalid_socket);
+
+    sockaddr_in addr{};
+    addr.sin_family = AF_INET;
+    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    addr.sin_port = 0;
+    REQUIRE(::bind(fd, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == 0);
+
+    socklen_t len = sizeof(addr);
+    REQUIRE(::getsockname(fd, reinterpret_cast<sockaddr *>(&addr), &len) == 0);
+
+    // Make non-blocking
+    {
+        int flags = ::fcntl(fd, F_GETFL, 0);
+        REQUIRE(flags >= 0);
+        REQUIRE(::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0);
+    }
+
+    int first_count = 0;
+    int second_count = 0;
+
+    // Register first handler
+    ctx.register_socket(fd, [&](std::span<std::byte>, mdnspp::endpoint) { ++first_count; });
+
+    // Register second handler for the same fd — must replace, not duplicate.
+    ctx.register_socket(fd, [&](std::span<std::byte>, mdnspp::endpoint) { ++second_count; });
+
+    // Send data to ourselves
+    const std::string payload = "test";
+    (void)::sendto(fd, payload.data(), payload.size(), 0,
+                   reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+
+    for(int attempt = 0; attempt < 50 && second_count == 0; ++attempt)
+    {
+        ctx.poll_one();
+        std::this_thread::sleep_for(1ms);
+    }
+
+    REQUIRE(first_count == 0);  // first handler was replaced
+    REQUIRE(second_count == 1); // only second handler fires
+
+    ctx.deregister_socket(fd);
+    mdnspp::detail::close_socket(fd);
+}
+
+TEST_CASE("DefaultContext deregister_socket for unregistered fd is a no-op", "[native][context]")
+{
+    mdnspp::DefaultContext ctx;
+
+    // Deregistering a fd that was never registered should not crash or throw.
+    REQUIRE_NOTHROW(ctx.deregister_socket(42));
+    REQUIRE_NOTHROW(ctx.deregister_socket(mdnspp::detail::invalid_socket));
+}
+
+TEST_CASE("DefaultContext stop from another thread wakes run", "[native][context]")
+{
+    mdnspp::DefaultContext ctx;
+
+    std::atomic<bool> run_returned{false};
+
+    std::thread runner{[&]
+    {
+        ctx.run();
+        run_returned.store(true, std::memory_order_release);
+    }};
+
+    // Give run() a moment to enter the poll loop.
+    std::this_thread::sleep_for(30ms);
+    REQUIRE_FALSE(run_returned.load(std::memory_order_acquire));
+
+    ctx.stop();
+    runner.join();
+
+    REQUIRE(run_returned.load(std::memory_order_acquire));
+}
+
 TEST_CASE("DefaultSocket construction joins multicast group", "[native][socket]")
 {
     mdnspp::DefaultContext ctx;

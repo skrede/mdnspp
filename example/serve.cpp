@@ -6,6 +6,7 @@
 #include <mdnspp/service_info.h>
 #include <mdnspp/detail/dns_enums.h>
 
+#include <functional>
 #include <iostream>
 #include <thread>
 
@@ -30,11 +31,10 @@ int main()
         }
     };
 
-    auto shutdown_task = [&ctx] {
+    std::thread shutdown(std::function<void()>{[&ctx] {
         std::this_thread::sleep_for(std::chrono::seconds(30));
         ctx.stop();
-    };
-    std::thread shutdown(std::move(shutdown_task));
+    }});
 
     std::cout << "Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)\n";
     srv.async_start();

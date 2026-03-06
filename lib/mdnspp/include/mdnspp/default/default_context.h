@@ -10,9 +10,12 @@
 // implementation — that header includes this one first.
 
 #include "mdnspp/endpoint.h"
+#include "mdnspp/detail/compat.h"
 
 #include "mdnspp/detail/platform.h"
 
+#include <deque>
+#include <mutex>
 #include <span>
 #include <array>
 #include <atomic>
@@ -124,9 +127,9 @@ public:
     DefaultContext &operator=(DefaultContext &&) = delete;
 
     /// Block until stop() is called, processing I/O and expired timers.
+    /// Call restart() before re-entering run() after a stop().
     void run()
     {
-        m_stopped.store(false, std::memory_order_relaxed);
         while(!m_stopped.load(std::memory_order_acquire))
         {
             const auto now = std::chrono::steady_clock::now();
@@ -145,7 +148,9 @@ public:
             if(wakeup_readable())
             {
                 drain_wakeup_fd();
-                break;
+                if(m_stopped.load(std::memory_order_acquire))
+                    break;
+                drain_work_queue();
             }
 
             if(any_socket_readable())
@@ -164,6 +169,9 @@ public:
         if(wakeup_readable())
         {
             drain_wakeup_fd();
+            if(m_stopped.load(std::memory_order_acquire))
+                return;
+            drain_work_queue();
             return;
         }
 
@@ -184,10 +192,29 @@ public:
     }
 
     /// Reset the stopped flag so run() can be called again after stop().
+    /// Clears any stale work left over from the previous run.
     void restart()
     {
         m_stopped.store(false, std::memory_order_relaxed);
         drain_wakeup_fd();
+        {
+            std::lock_guard lock{m_work_mutex};
+            m_work_queue.clear();
+        }
+        m_post_pending.store(false, std::memory_order_relaxed);
+    }
+
+    /// Post work to the event loop from any thread.
+    /// The function will be executed during the next run()/poll_one() iteration.
+    /// Uses atomic coalescing to avoid redundant wakeup fd writes under burst posting.
+    void post(detail::move_only_function<void()> fn)
+    {
+        {
+            std::lock_guard lock{m_work_mutex};
+            m_work_queue.push_back(std::move(fn));
+        }
+        if (!m_post_pending.exchange(true, std::memory_order_acq_rel))
+            write_wakeup_fd();
     }
 
     // -----------------------------------------------------------------------
@@ -242,6 +269,9 @@ private:
     // winsock_guard MUST be the first member — initialised before any sockets.
     winsock_guard m_wsa{};
     std::atomic<bool> m_stopped{false};
+    std::mutex m_work_mutex;
+    std::deque<detail::move_only_function<void()>> m_work_queue;
+    std::atomic<bool> m_post_pending{false};
     std::vector<socket_entry> m_sockets;
     std::vector<DefaultTimer*> m_timers;
     std::array<std::byte, 4096> m_recv_buf{};
@@ -260,6 +290,18 @@ private:
     // Poll state — rebuilt each do_poll() call.
     std::vector<pollfd> m_pollfds;
     bool m_wakeup_ready{false};
+
+    void drain_work_queue()
+    {
+        std::deque<detail::move_only_function<void()>> local;
+        {
+            std::lock_guard lock{m_work_mutex};
+            local.swap(m_work_queue);
+        }
+        m_post_pending.store(false, std::memory_order_release);
+        for (auto &fn : local)
+            fn();
+    }
 
     // ------------------------------------------------------------------
     // Platform-specific wakeup fd lifecycle

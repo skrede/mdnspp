@@ -61,7 +61,9 @@ public:
     // Movable only before async_start() is called (m_loop must be null).
     // Moving a started server is a logic error.
     basic_service_server(basic_service_server &&other) noexcept
-        : m_socket(std::move(other.m_socket))
+        : m_alive(std::move(other.m_alive))
+        , m_executor(other.m_executor)
+        , m_socket(std::move(other.m_socket))
         , m_response_timer(std::move(other.m_response_timer))
         , m_recv_timer(std::move(other.m_recv_timer))
         , m_info(std::move(other.m_info))
@@ -82,6 +84,8 @@ public:
             return *this;
         assert(m_loop == nullptr);       // this server must not be started
         assert(other.m_loop == nullptr); // source must not be started
+        m_alive = std::move(other.m_alive);
+        m_executor = other.m_executor;
         m_socket = std::move(other.m_socket);
         m_response_timer = std::move(other.m_response_timer);
         m_recv_timer = std::move(other.m_recv_timer);
@@ -98,13 +102,15 @@ public:
 
     ~basic_service_server()
     {
-        stop();
+        m_alive.reset();  // invalidate sentinel first
+        stop();           // then stop (discards pending work via event loop)
     }
 
     // Throwing constructor — constructs socket and both timers from executor.
     explicit basic_service_server(executor_type ex, service_info info,
                                   query_callback on_query = {})
-        : m_socket(ex)
+        : m_executor(ex)
+        , m_socket(ex)
         , m_response_timer(ex)
         , m_recv_timer(ex)
         , m_info(std::move(info))
@@ -118,7 +124,8 @@ public:
     // Non-throwing constructors
     basic_service_server(executor_type ex, service_info info,
                          query_callback on_query, std::error_code &ec)
-        : m_socket(ex, ec)
+        : m_executor(ex)
+        , m_socket(ex, ec)
         , m_response_timer(ex)
         , m_recv_timer(ex)
         , m_info(std::move(info))
@@ -130,7 +137,8 @@ public:
     }
 
     basic_service_server(executor_type ex, service_info info, std::error_code &ec)
-        : m_socket(ex, ec)
+        : m_executor(ex)
+        , m_socket(ex, ec)
         , m_response_timer(ex)
         , m_recv_timer(ex)
         , m_info(std::move(info))
@@ -166,6 +174,23 @@ public:
 
         m_response_timer.cancel();
         m_loop.reset(); // destructor calls stop() on the loop
+    }
+
+    // update_service_info() — posts a service info replacement to the event loop.
+    // After the update executes, an unsolicited announcement is multicast with all
+    // records (PTR, SRV, TXT, A/AAAA) per RFC 6762 section 8.4.
+    // Must only be called on a running server (after async_start(), before stop()).
+    // Thread-safe: may be called from any thread.
+    void update_service_info(service_info new_info)
+    {
+        assert(!m_stopped.load(std::memory_order_acquire)); // must be running
+        auto guard = std::weak_ptr<bool>(m_alive);
+        P::post(m_executor, [this, guard, info = std::move(new_info)]() mutable
+        {
+            if (!guard.lock()) return;  // server destroyed, skip
+            m_info = std::move(info);
+            send_announcement();
+        });
     }
 
     const socket_type &socket() const noexcept { return m_socket; }
@@ -291,6 +316,17 @@ private:
         m_socket.send(dest, std::span<const std::byte>(response));
     }
 
+    // Sends an unsolicited announcement with all records (PTR, SRV, TXT, A/AAAA)
+    // to the multicast group. RFC 6762 section 8.4 — immediate, no jitter.
+    void send_announcement()
+    {
+        auto response = detail::build_dns_response(m_info, dns_type::any);
+        if (!response.empty())
+            m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(response));
+    }
+
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // liveness sentinel
+    executor_type m_executor;    // stored executor for P::post() calls
     socket_type m_socket;        // socket used for sending responses
     timer_type m_response_timer; // RFC 6762 response delay timer
     timer_type m_recv_timer;     // passed to recv_loop for silence tracking

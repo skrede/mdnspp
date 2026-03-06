@@ -59,7 +59,7 @@ install(EXPORT mdnsppTargets
 )
 
 configure_package_config_file(
-    ${CMAKE_SOURCE_DIR}/cmake/mdnsppConfig.cmake.in
+    ${PROJECT_SOURCE_DIR}/cmake/mdnsppConfig.cmake.in
     "${CMAKE_CURRENT_BINARY_DIR}/mdnsppConfig.cmake"
     INSTALL_DESTINATION ${mdnspp_INSTALL_CMAKEDIR}
 )

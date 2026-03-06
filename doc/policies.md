@@ -53,7 +53,7 @@ requires `expires_after`, `async_wait`, and `cancel`.
 prototyping.
 
 - Include: `#include <mdnspp/defaults.h>`
-- CMake target: `mdnspp::native`
+- CMake target: `mdnspp::core`
 - Type aliases: `mdnspp::observer`, `mdnspp::querier`,
   `mdnspp::service_discovery`, `mdnspp::service_server`
 - Executor: `mdnspp::context` (wraps native sockets and a poll loop)
@@ -185,9 +185,9 @@ mdnspp::basic_observer<mdnspp::testing::MockPolicy> obs{ex};
 
 | Need | Use | CMake target |
 |------|-----|--------------|
-| Standalone, no dependencies | DefaultPolicy | `mdnspp::native` |
+| Standalone, no dependencies | DefaultPolicy | `mdnspp::core` |
 | ASIO integration | AsioPolicy | `mdnspp::asio` |
-| Unit testing | MockPolicy | (test-only, link `mdnspp::mdnspp_core`) |
+| Unit testing | MockPolicy | (test-only, link `mdnspp::core`) |
 
 ## Next steps
 

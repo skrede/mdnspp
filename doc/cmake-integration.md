@@ -5,7 +5,7 @@
 - CMake 3.25+
 - C++23 compiler:
   - GCC 13+
-  - Clang 18+
+  - Clang 18+ (Clang 17 has a template argument deduction bug that prevents compilation)
   - MSVC 17+ (Visual Studio 2022) with `/std:c++latest`
   - Xcode 15.4+
 
@@ -27,10 +27,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(mdnspp)
 
 add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE mdnspp::native)
+target_link_libraries(my_app PRIVATE mdnspp::core)
 ```
 
-Link against `mdnspp::native` for standalone usage with the default policy, or `mdnspp::asio` for ASIO completion token support. The `mdnspp::asio` target fetches standalone ASIO automatically via FetchContent.
+Link against `mdnspp::core` for standalone usage with the default policy, or `mdnspp::asio` for ASIO completion token support. The `mdnspp::asio` target fetches standalone ASIO automatically via FetchContent.
 
 ## find_package
 
@@ -56,24 +56,22 @@ list(APPEND CMAKE_PREFIX_PATH "/path/to/install")
 find_package(mdnspp CONFIG REQUIRED)
 
 add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE mdnspp::native)
+target_link_libraries(my_app PRIVATE mdnspp::core)
 ```
 
 ## CMake Targets
 
 | Target | Description |
 |--------|-------------|
-| `mdnspp::mdnspp_core` | Core headers only (Policy concept, `basic_*` templates, records, endpoint) |
-| `mdnspp::native` | DefaultPolicy with native sockets; links `ws2_32` on Windows |
+| `mdnspp::core` | DefaultPolicy with native sockets, all public headers; links `ws2_32` on Windows |
 | `mdnspp::asio` | AsioPolicy + async adapters; fetches standalone ASIO via FetchContent |
 
-Most users want `mdnspp::native` or `mdnspp::asio`, not `mdnspp::mdnspp_core` directly. The `mdnspp_core` target provides only the policy-parameterized templates without any concrete socket or timer implementation.
+Most users want `mdnspp::core`. Add `mdnspp::asio` if you need ASIO completion token support (futures, coroutines, deferred).
 
 ## CMake Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `MDNSPP_ENABLE_DEFAULT_POLICY` | `ON` | Build DefaultPolicy (native sockets) |
 | `MDNSPP_ENABLE_ASIO_POLICY` | `OFF` | Build AsioPolicy (requires standalone ASIO) |
 | `MDNSPP_BUILD_EXAMPLES` | `OFF` | Build example programs |
 | `MDNSPP_BUILD_TESTS` | `OFF` | Build test suite |

@@ -8,4 +8,6 @@ coverage:
         informational: true
 
 ignore:
-  - "example/**"
+  - "**/example/**"
+  - "**/tests/**"
+  - "**/lib/mdnspp-testing/**"

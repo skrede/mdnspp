@@ -3,6 +3,8 @@
 
 #include "mdnspp/endpoint.h"
 
+#include "mdnspp/detail/compat.h"
+
 #include <span>
 #include <chrono>
 #include <cstddef>
@@ -23,7 +25,7 @@ struct always_false : std::false_type
 
 // SocketLike<S>: satisfied by any type that provides the mDNS socket interface.
 template <typename S>
-concept SocketLike = requires(S &s, endpoint ep, std::span<const std::byte> send_data, std::function<void(std::span<std::byte>, endpoint)> handler)
+concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::function<void(const endpoint &, std::span<std::byte>)> handler)
 {
     { s.async_receive(handler) } -> std::same_as<void>;
     { s.send(ep, send_data) } -> std::same_as<void>;
@@ -54,7 +56,11 @@ concept Policy = requires
     && std::constructible_from<typename P::socket_type, typename P::executor_type>
     && std::constructible_from<typename P::timer_type, typename P::executor_type>
     && std::constructible_from<typename P::socket_type, typename P::executor_type, std::error_code&>
-    && std::constructible_from<typename P::timer_type, typename P::executor_type, std::error_code&>;
+    && std::constructible_from<typename P::timer_type, typename P::executor_type, std::error_code&>
+    && requires(typename P::executor_type ex, detail::move_only_function<void()> fn)
+    {
+        P::post(ex, std::move(fn));
+    };
 
 }
 

@@ -3,9 +3,9 @@
 
 #include "mdnspp/detail/platform.h"
 
-#include <cstdint>
 #include <cstdio>
 #include <string>
+#include <cstdint>
 
 namespace mdnspp {
 
@@ -46,16 +46,24 @@ inline std::string ip_address_to_string(const sockaddr *addr, size_t addrlen)
             }
             else
             {
-                if(cur_len > best_len) { best_start = cur_start; best_len = cur_len; }
+                if(cur_len > best_len)
+                {
+                    best_start = cur_start;
+                    best_len = cur_len;
+                }
                 cur_start = -1;
                 cur_len = 0;
             }
         }
-        if(cur_len > best_len) { best_start = cur_start; best_len = cur_len; }
+        if(cur_len > best_len)
+        {
+            best_start = cur_start;
+            best_len = cur_len;
+        }
         if(best_len < 2) best_start = -1; // only compress runs of 2+
 
         std::string host;
-        for(int i = 0; i < 8; )
+        for(int i = 0; i < 8;)
         {
             if(i == best_start)
             {

@@ -603,6 +603,120 @@ SCENARIO("service_server ignores non-matching query", "[service_server][query][n
     }
 }
 
+// -- update_service_info tests (Plan 26-03) --
+
+SCENARIO("update_service_info posts work to executor", "[service_server][update]")
+{
+    GIVEN("a started service_server")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        server.async_start();
+
+        WHEN("update_service_info() is called with new service_info")
+        {
+            auto new_info = make_test_info();
+            new_info.port = 9090;
+            new_info.txt_records = {service_txt{"version", "2.0"}};
+
+            server.update_service_info(std::move(new_info));
+
+            THEN("a lambda was posted to the executor")
+            {
+                REQUIRE(ex.m_posted.size() == 1);
+
+                AND_WHEN("the posted work is drained")
+                {
+                    ex.drain_posted();
+
+                    THEN("the socket has a sent packet (unsolicited announcement)")
+                    {
+                        REQUIRE_FALSE(server.socket().sent_packets().empty());
+                    }
+                }
+            }
+        }
+    }
+}
+
+SCENARIO("update_service_info sends unsolicited announcement to multicast", "[service_server][update][announcement]")
+{
+    GIVEN("a started service_server")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        server.async_start();
+
+        WHEN("update_service_info() is called and posted work is drained")
+        {
+            auto new_info = make_test_info();
+            new_info.port = 9090;
+            server.update_service_info(std::move(new_info));
+            ex.drain_posted();
+
+            THEN("a packet was sent to 224.0.0.251:5353")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                REQUIRE(server.socket().sent_packets().back().dest == endpoint{"224.0.0.251", 5353});
+
+                AND_THEN("the packet is non-empty DNS response data")
+                {
+                    REQUIRE_FALSE(server.socket().sent_packets().back().data.empty());
+                }
+            }
+        }
+    }
+}
+
+SCENARIO("liveness guard prevents use-after-free on server destruction", "[service_server][update][liveness]")
+{
+    GIVEN("a mock_executor outliving the server")
+    {
+        mock_executor ex;
+
+        WHEN("a server posts update_service_info() then is destroyed before drain")
+        {
+            {
+                basic_service_server<MockPolicy> server{ex, make_test_info()};
+                server.async_start();
+                server.update_service_info(make_test_info());
+                // server destroyed here — sentinel reset, then stop()
+            }
+
+            THEN("draining posted work does not crash (liveness guard skips)")
+            {
+                REQUIRE_NOTHROW(ex.drain_posted());
+                // No crash = sentinel correctly guarded the lambda
+            }
+        }
+    }
+}
+
+SCENARIO("stop discards pending posted work", "[service_server][update][stop]")
+{
+    GIVEN("a started service_server with posted update_service_info")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        server.async_start();
+        server.update_service_info(make_test_info());
+
+        WHEN("stop() is called then posted work is drained")
+        {
+            server.stop();
+            server.socket().clear_sent();
+            ex.drain_posted();
+
+            THEN("no announcement was sent after stop (lambda is guarded or no-op)")
+            {
+                // After stop+destruction resets sentinel, the guard.lock() fails
+                // so the lambda body is skipped — no send_announcement().
+                REQUIRE(server.socket().sent_packets().empty());
+            }
+        }
+    }
+}
+
 SCENARIO("response sent to multicast by default, unicast when QU bit set", "[service_server][endpoint][rfc6762]")
 {
     GIVEN("a service_server with a standard PTR query (no QU bit) from {10.0.0.1, 5353}")

@@ -6,19 +6,19 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/resolved_service.h"
 
-#include <algorithm>
+#include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/dns_wire.h"
+#include "mdnspp/detail/recv_loop.h"
+
+#include <chrono>
 #include <memory>
 #include <string>
 #include <vector>
-#include <chrono>
-#include <string_view>
-#include <cassert>
-#include <system_error>
 #include <utility>
-
-#include "mdnspp/detail/recv_loop.h"
-#include "mdnspp/detail/dns_wire.h"
-#include "mdnspp/detail/compat.h"
+#include <cassert>
+#include <algorithm>
+#include <string_view>
+#include <system_error>
 
 namespace mdnspp {
 
@@ -31,11 +31,11 @@ public:
     using timer_type = typename P::timer_type;
 
     /// Optional callback invoked per record as results arrive during discovery.
-    using record_callback = detail::move_only_function<void(const mdns_record_variant &, endpoint)>;
+    using record_callback = detail::move_only_function<void(const endpoint &, const mdns_record_variant &)>;
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.
-    using completion_handler = detail::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
+    using completion_handler = detail::move_only_function<void(std::error_code, const std::vector<mdns_record_variant> &)>;
 
     // Non-copyable (owns recv_loop by unique_ptr)
     basic_service_discovery(const basic_service_discovery &) = delete;
@@ -191,7 +191,7 @@ private:
             m_silence_timeout,
             // on_packet: identical to do_discover() — accumulates into m_results,
             // fires m_on_record per relevant record.
-            [this](std::span<std::byte> data, endpoint sender) -> bool
+            [this](const endpoint &sender, std::span<std::byte> data) -> bool
             {
                 std::vector<mdns_record_variant> batch;
                 detail::walk_dns_frame(
@@ -216,7 +216,7 @@ private:
                     if(m_on_record)
                     {
                         for(const auto &rec : batch)
-                            m_on_record(rec, sender);
+                            m_on_record(sender, rec);
                     }
                     m_results.insert(m_results.end(),
                                      std::make_move_iterator(batch.begin()),
@@ -259,7 +259,7 @@ private:
             // on_packet: walk frame into temp, keep all records from packets
             // that contain at least one record matching the queried service type.
             // Returns true (reset timer) only for relevant packets.
-            [this](std::span<std::byte> data, endpoint sender) -> bool
+            [this](const endpoint &sender, std::span<std::byte> data) -> bool
             {
                 std::vector<mdns_record_variant> batch;
                 detail::walk_dns_frame(
@@ -285,7 +285,7 @@ private:
                     if(m_on_record)
                     {
                         for(const auto &rec : batch)
-                            m_on_record(rec, sender);
+                            m_on_record(sender, rec);
                     }
                     m_results.insert(m_results.end(),
                                      std::make_move_iterator(batch.begin()),
@@ -317,6 +317,6 @@ private:
     std::vector<resolved_service> m_services; // populated by do_browse() at silence timeout
 };
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_BASIC_SERVICE_DISCOVERY_H
+#endif

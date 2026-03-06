@@ -31,23 +31,28 @@ int main()
         .address_ipv4 = "192.168.1.69",
     };
 
-    mdnspp::service_server http_srv{ctx, std::move(http_info),
-        [](mdnspp::dns_type qtype, mdnspp::endpoint sender, bool unicast)
+    mdnspp::service_server http_srv{
+        ctx,
+        std::move(http_info),
+        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, bool unicast)
         {
             std::cout << "[http] " << sender << " queried qtype=" << to_string(qtype)
                 << (unicast ? " (unicast)" : " (multicast)") << "\n";
         }
     };
 
-    mdnspp::service_server ssh_srv{ctx, std::move(ssh_info),
-        [](mdnspp::dns_type qtype, mdnspp::endpoint sender, bool unicast)
+    mdnspp::service_server ssh_srv{
+        ctx,
+        std::move(ssh_info),
+        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, bool unicast)
         {
             std::cout << "[ssh]  " << sender << " queried qtype=" << to_string(qtype)
                 << (unicast ? " (unicast)" : " (multicast)") << "\n";
         }
     };
 
-    std::thread shutdown([&ctx] {
+    std::thread shutdown([&ctx]
+    {
         std::this_thread::sleep_for(std::chrono::seconds(30));
         ctx.stop();
     });

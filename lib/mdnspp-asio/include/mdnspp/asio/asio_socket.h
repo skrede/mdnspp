@@ -50,7 +50,7 @@ public:
         m_buffer.resize(4096);
     }
 
-    void async_receive(std::function<void(std::span<std::byte>, mdnspp::endpoint)> handler)
+    void async_receive(std::function<void(const mdnspp::endpoint &, std::span<std::byte>)> handler)
     {
         m_socket.async_receive_from(
             asio::buffer(m_buffer),
@@ -63,12 +63,12 @@ public:
                         m_sender_endpoint.address().to_string(),
                         m_sender_endpoint.port()
                     };
-                    handler(std::span<std::byte>(m_buffer.data(), bytes), ep);
+                    handler(ep, std::span<std::byte>(m_buffer.data(), bytes));
                 }
             });
     }
 
-    void send(mdnspp::endpoint dest, std::span<const std::byte> data)
+    void send(const mdnspp::endpoint &dest, std::span<const std::byte> data)
     {
         asio::ip::udp::endpoint ep(asio::ip::make_address(dest.address), dest.port);
         m_socket.send_to(asio::buffer(data.data(), data.size()), ep);

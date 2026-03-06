@@ -43,6 +43,6 @@ using service_server = basic_service_server<DefaultPolicy>;
 /// Convenience alias — the default event-loop context (run(), stop(), restart()).
 using context = DefaultContext;
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_DEFAULTS_H
+#endif

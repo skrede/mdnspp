@@ -6,7 +6,7 @@ Makefile.*
 
 .DS_Store
 
-*.orig
+*.orig*
 *_LOCAL_*
 *.LOCAL*
 *.BACKUP*

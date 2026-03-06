@@ -25,7 +25,7 @@ int main()
     mdnspp::basic_service_server<mdnspp::AsioPolicy> srv{
         io,
         std::move(info),
-        [](mdnspp::dns_type qtype, mdnspp::endpoint sender, bool unicast)
+        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, bool unicast)
         {
             std::cout << sender.address << ":" << sender.port
                 << " queried qtype=" << to_string(qtype)
@@ -40,6 +40,8 @@ int main()
     });
 
     std::cout << "Serving MyApp._http._tcp.local. on port 8080 (Ctrl-C to stop)\n";
-    mdnspp::async_start(srv, [](std::error_code) {});
+    mdnspp::async_start(srv, [](std::error_code)
+    {
+    });
     io.run();
 }

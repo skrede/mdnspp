@@ -16,21 +16,24 @@ using namespace mdnspp::testing;
 
 TEST_CASE("MockSocket satisfies SocketLike concept", "[concept][conformance]")
 {
-    MockSocket mock{mock_executor{}};
+    mock_executor ex;
+    MockSocket mock{ex};
     REQUIRE(mock.queue_empty());
     REQUIRE(mock.sent_packets().empty());
 }
 
 TEST_CASE("MockTimer satisfies TimerLike concept", "[concept][conformance]")
 {
-    MockTimer timer{mock_executor{}};
+    mock_executor ex;
+    MockTimer timer{ex};
     REQUIRE_FALSE(timer.has_pending());
     REQUIRE(timer.cancel_count() == 0);
 }
 
 TEST_CASE("MockTimer fire delivers success error_code", "[concept][conformance]")
 {
-    MockTimer timer{mock_executor{}};
+    mock_executor ex;
+    MockTimer timer{ex};
     std::error_code received{std::make_error_code(std::errc::interrupted)};
     timer.async_wait([&](std::error_code ec) { received = ec; });
     REQUIRE(timer.has_pending());
@@ -41,7 +44,8 @@ TEST_CASE("MockTimer fire delivers success error_code", "[concept][conformance]"
 
 TEST_CASE("MockTimer cancel delivers operation_canceled", "[concept][conformance]")
 {
-    MockTimer timer{mock_executor{}};
+    mock_executor ex;
+    MockTimer timer{ex};
     std::error_code received{};
     timer.async_wait([&](std::error_code ec) { received = ec; });
     timer.cancel();
@@ -52,7 +56,8 @@ TEST_CASE("MockTimer cancel delivers operation_canceled", "[concept][conformance
 
 TEST_CASE("MockTimer expires_after clears pending handler", "[concept][conformance]")
 {
-    MockTimer timer{mock_executor{}};
+    mock_executor ex;
+    MockTimer timer{ex};
     bool called = false;
     timer.async_wait([&](std::error_code) { called = true; });
     REQUIRE(timer.has_pending());
@@ -65,19 +70,60 @@ TEST_CASE("MockTimer expires_after clears pending handler", "[concept][conforman
 TEST_CASE("MockSocket error_code constructor path", "[concept][error_code]")
 {
     MockSocket::set_fail_on_construct(true);
+    mock_executor ex;
     std::error_code ec;
-    MockSocket sock{mock_executor{}, ec};
+    MockSocket sock{ex, ec};
     REQUIRE(ec);
     MockSocket::set_fail_on_construct(false); // reset
+}
+
+TEST_CASE("MockPolicy::post pushes to executor queue", "[concept][conformance][post]")
+{
+    mock_executor ex;
+    bool called = false;
+    MockPolicy::post(ex, [&] { called = true; });
+    REQUIRE(ex.m_posted.size() == 1);
+    REQUIRE_FALSE(called);
+}
+
+TEST_CASE("mock_executor::drain_posted executes queued work", "[concept][conformance][post]")
+{
+    mock_executor ex;
+    bool called = false;
+    MockPolicy::post(ex, [&] { called = true; });
+    ex.drain_posted();
+    REQUIRE(called);
+    REQUIRE(ex.m_posted.empty());
+}
+
+TEST_CASE("drain_posted executes in FIFO order", "[concept][conformance][post]")
+{
+    mock_executor ex;
+    std::vector<int> order;
+    MockPolicy::post(ex, [&] { order.push_back(1); });
+    MockPolicy::post(ex, [&] { order.push_back(2); });
+    ex.drain_posted();
+    REQUIRE(order == std::vector<int>{1, 2});
+}
+
+TEST_CASE("post accepts move-only callable", "[concept][conformance][post]")
+{
+    mock_executor ex;
+    auto ptr = std::make_unique<int>(42);
+    int result = 0;
+    MockPolicy::post(ex, [p = std::move(ptr), &result] { result = *p; });
+    ex.drain_posted();
+    REQUIRE(result == 42);
 }
 
 TEST_CASE("observer error_code constructor path", "[observer][error_code]")
 {
     MockSocket::set_fail_on_construct(true);
+    mock_executor ex;
     std::error_code ec;
     mdnspp::basic_observer<mdnspp::testing::MockPolicy> obs{
-        mock_executor{},
-        [](const mdnspp::mdns_record_variant &, mdnspp::endpoint)
+        ex,
+        [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
         {
         },
         ec

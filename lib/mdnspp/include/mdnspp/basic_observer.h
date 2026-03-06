@@ -49,7 +49,7 @@ public:
     using executor_type = typename P::executor_type;
     using socket_type = typename P::socket_type;
     using timer_type = typename P::timer_type;
-    using record_callback = detail::move_only_function<void(const mdns_record_variant &, endpoint)>;
+    using record_callback = detail::move_only_function<void(const endpoint &, const mdns_record_variant &)>;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
@@ -145,9 +145,9 @@ private:
             m_socket,
             m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](std::span<std::byte> data, endpoint sender) -> bool
+            [this](const endpoint &sender, std::span<std::byte> data) -> bool
             {
-                on_packet(data, sender);
+                on_packet(sender, data);
                 return true; // basic_observer wants all traffic; always reset timer
             },
             []()
@@ -160,7 +160,7 @@ private:
 
     // Called by recv_loop for every incoming packet.
     // Checks the stop flag, then walks the DNS frame and delivers each record.
-    void on_packet(std::span<std::byte> data, endpoint sender)
+    void on_packet(const endpoint &sender, std::span<std::byte> data)
     {
         if(m_stopped.load(std::memory_order_acquire))
             return;
@@ -171,12 +171,12 @@ private:
             [this, sender](mdns_record_variant rec)
             {
                 if(!m_stopped.load(std::memory_order_acquire) && m_on_record)
-                    m_on_record(rec, sender);
+                    m_on_record(sender, rec);
             });
     }
 
-    socket_type m_socket;       // socket used for receiving multicast packets
-    timer_type m_timer;         // passed to recv_loop for silence-timeout tracking
+    socket_type m_socket;        // socket used for receiving multicast packets
+    timer_type m_timer;          // passed to recv_loop for silence-timeout tracking
     record_callback m_on_record; // called once per successfully parsed record
     // Move-only completion handler — called once at stop() or error.
     completion_handler m_on_completion;
@@ -184,6 +184,6 @@ private:
     std::atomic<bool> m_stopped;          // idempotent stop flag
 };
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_BASIC_OBSERVER_H
+#endif

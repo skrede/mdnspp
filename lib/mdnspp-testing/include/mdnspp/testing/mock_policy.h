@@ -3,7 +3,9 @@
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/detail/compat.h"
 
+#include <deque>
 #include <span>
 #include <queue>
 #include <chrono>
@@ -17,6 +19,17 @@ namespace mdnspp::testing {
 
 struct mock_executor
 {
+    std::deque<detail::move_only_function<void()>> m_posted;
+
+    void drain_posted()
+    {
+        while (!m_posted.empty())
+        {
+            auto fn = std::move(m_posted.front());
+            m_posted.pop_front();
+            fn();
+        }
+    }
 };
 
 struct sent_packet
@@ -31,12 +44,12 @@ public:
     // Default constructor — backward compatibility during transition (removed in Plan 03).
     MockSocket() = default;
 
-    // Concept-satisfying constructors — take mock_executor (no-op).
-    explicit MockSocket(mock_executor)
+    // Concept-satisfying constructors — take mock_executor& (no-op).
+    explicit MockSocket(mock_executor &)
     {
     }
 
-    explicit MockSocket(mock_executor, std::error_code &ec)
+    explicit MockSocket(mock_executor &, std::error_code &ec)
     {
         if(s_fail_on_construct)
             ec = std::make_error_code(std::errc::address_not_available);
@@ -58,17 +71,17 @@ public:
         enqueue(std::move(packet), endpoint{});
     }
 
-    void async_receive(std::function<void(std::span<std::byte>, endpoint)> handler)
+    void async_receive(std::function<void(const endpoint &, std::span<std::byte>)> handler)
     {
         if(!m_receive_queue.empty())
         {
             auto [packet, sender] = std::move(m_receive_queue.front());
             m_receive_queue.pop();
-            handler(std::span<std::byte>(packet), std::move(sender));
+            handler(std::move(sender), std::span<std::byte>(packet));
         }
     }
 
-    void send(endpoint dest, std::span<const std::byte> data)
+    void send(const endpoint &dest, std::span<const std::byte> data)
     {
         m_sent_packets.push_back(sent_packet{
             dest,
@@ -97,12 +110,12 @@ public:
     // Default constructor — backward compatibility during transition (removed in Plan 03).
     MockTimer() = default;
 
-    // Concept-satisfying constructors — take mock_executor (no-op).
-    explicit MockTimer(mock_executor)
+    // Concept-satisfying constructors — take mock_executor& (no-op).
+    explicit MockTimer(mock_executor &)
     {
     }
 
-    explicit MockTimer(mock_executor, std::error_code &)
+    explicit MockTimer(mock_executor &, std::error_code &)
     {
     }
 
@@ -147,9 +160,14 @@ private:
 
 struct MockPolicy
 {
-    using executor_type = mock_executor;
+    using executor_type = mock_executor &;
     using socket_type = MockSocket;
     using timer_type = MockTimer;
+
+    static void post(executor_type ex, detail::move_only_function<void()> fn)
+    {
+        ex.m_posted.push_back(std::move(fn));
+    }
 };
 
 }

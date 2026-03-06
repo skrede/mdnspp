@@ -766,7 +766,7 @@ SCENARIO("on_record callback fires during async_browse (same as async_discover)"
         basic_service_discovery<MockPolicy> sd{
             ex,
             500ms,
-            [&](const mdns_record_variant &rec, endpoint)
+            [&](const endpoint &, const mdns_record_variant &rec)
             {
                 captured_records.push_back(rec);
             }

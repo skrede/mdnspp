@@ -9,12 +9,12 @@
 #include "mdnspp/detail/platform.h"
 
 #include <span>
-#include <sstream>
-#include <utility>
+#include <string>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
-#include <string>
+#include <sstream>
+#include <utility>
 #include <string_view>
 
 namespace mdnspp::detail {
@@ -68,7 +68,7 @@ inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qt
 //
 // Template parameter Callback: callable accepting mdns_record_variant by value.
 template <typename Callback>
-void walk_dns_frame(std::span<const std::byte> data, endpoint sender, Callback &&on_record)
+void walk_dns_frame(std::span<const std::byte> data, const endpoint &sender, Callback &&on_record)
 {
     // Need at least 12 bytes for DNS header
     if(data.size() < 12)
@@ -226,7 +226,7 @@ inline std::vector<std::byte> encode_txt_records(const std::vector<mdnspp::servi
     return result;
 }
 
-} // namespace response_detail
+}
 
 // ---------------------------------------------------------------------------
 // build_dns_response — DNS response wire builder for mDNS service announcements

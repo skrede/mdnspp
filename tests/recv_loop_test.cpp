@@ -25,8 +25,9 @@ static std::vector<std::byte> make_packet(std::size_t n)
 
 TEST_CASE("recv_loop delivers injected packets")
 {
-    MockSocket sock{mock_executor{}};
-    MockTimer timer{mock_executor{}};
+    mock_executor ex;
+    MockSocket sock{ex};
+    MockTimer timer{ex};
     auto pkt = make_packet(8);
     sock.enqueue(pkt);
 
@@ -35,7 +36,7 @@ TEST_CASE("recv_loop delivers injected packets")
         sock,
         timer,
         SILENCE_TIMEOUT,
-        [&](std::span<std::byte> data, endpoint /*ep*/) -> bool
+        [&](endpoint, std::span<std::byte> data /*ep*/) -> bool
         {
             received.emplace_back(data.begin(), data.end());
             return true;
@@ -53,15 +54,16 @@ TEST_CASE("recv_loop delivers injected packets")
 
 TEST_CASE("recv_loop silence callback fires on timer fire")
 {
-    MockSocket sock{mock_executor{}};
-    MockTimer timer{mock_executor{}};
+    mock_executor ex;
+    MockSocket sock{ex};
+    MockTimer timer{ex};
 
     bool silence_called = false;
     recv_loop<MockPolicy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
-        [](std::span<std::byte>, endpoint) -> bool { return true; },
+        [](endpoint, std::span<std::byte>) -> bool { return true; },
         [&] { silence_called = true; }
     };
 
@@ -75,14 +77,15 @@ TEST_CASE("recv_loop silence callback fires on timer fire")
 
 TEST_CASE("recv_loop stop is idempotent")
 {
-    MockSocket sock{mock_executor{}};
-    MockTimer timer{mock_executor{}};
+    mock_executor ex;
+    MockSocket sock{ex};
+    MockTimer timer{ex};
 
     recv_loop<MockPolicy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
-        [](std::span<std::byte>, endpoint) -> bool { return true; },
+        [](endpoint, std::span<std::byte>) -> bool { return true; },
         []
         {
         }
@@ -97,8 +100,9 @@ TEST_CASE("recv_loop stop is idempotent")
 
 TEST_CASE("recv_loop stop prevents on_packet after stop")
 {
-    MockSocket sock{mock_executor{}};
-    MockTimer timer{mock_executor{}};
+    mock_executor ex;
+    MockSocket sock{ex};
+    MockTimer timer{ex};
 
     // Enqueue a packet — but stop() before start()
     sock.enqueue(make_packet(4));
@@ -108,7 +112,7 @@ TEST_CASE("recv_loop stop prevents on_packet after stop")
         sock,
         timer,
         SILENCE_TIMEOUT,
-        [&](std::span<std::byte>, endpoint) -> bool
+        [&](endpoint, std::span<std::byte>) -> bool
         {
             ++packet_calls;
             return true;
@@ -126,8 +130,9 @@ TEST_CASE("recv_loop stop prevents on_packet after stop")
 
 TEST_CASE("recv_loop resets silence timer on each packet")
 {
-    MockSocket sock{mock_executor{}};
-    MockTimer timer{mock_executor{}};
+    mock_executor ex;
+    MockSocket sock{ex};
+    MockTimer timer{ex};
 
     // Enqueue 2 packets — each delivery should call arm_silence_timer()
     sock.enqueue(make_packet(4));
@@ -137,7 +142,7 @@ TEST_CASE("recv_loop resets silence timer on each packet")
         sock,
         timer,
         SILENCE_TIMEOUT,
-        [](std::span<std::byte>, endpoint) -> bool { return true; },
+        [](endpoint, std::span<std::byte>) -> bool { return true; },
         []
         {
         }

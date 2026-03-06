@@ -5,10 +5,11 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
+
+#include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/recv_loop.h"
-#include "mdnspp/detail/dns_wire.h"
-#include "mdnspp/detail/compat.h"
 
 #include <algorithm>
 #include <memory>
@@ -37,7 +38,6 @@ namespace mdnspp {
 //                                                destroys loop
 //   4. ~basic_service_server()                 — calls stop() for RAII safety
 
-
 template <Policy P>
 class basic_service_server
 {
@@ -48,7 +48,7 @@ public:
 
     /// Optional callback invoked when an incoming query is received and parsed.
     /// Parameters: qtype requested, sender endpoint, whether unicast was requested.
-    using query_callback = detail::move_only_function<void(dns_type, endpoint, bool)>;
+    using query_callback = detail::move_only_function<void(const endpoint &sender, dns_type type, bool unicast)>;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
@@ -61,7 +61,9 @@ public:
     // Movable only before async_start() is called (m_loop must be null).
     // Moving a started server is a logic error.
     basic_service_server(basic_service_server &&other) noexcept
-        : m_socket(std::move(other.m_socket))
+        : m_alive(std::move(other.m_alive))
+        , m_executor(other.m_executor)
+        , m_socket(std::move(other.m_socket))
         , m_response_timer(std::move(other.m_response_timer))
         , m_recv_timer(std::move(other.m_recv_timer))
         , m_info(std::move(other.m_info))
@@ -82,6 +84,8 @@ public:
             return *this;
         assert(m_loop == nullptr);       // this server must not be started
         assert(other.m_loop == nullptr); // source must not be started
+        m_alive = std::move(other.m_alive);
+        m_executor = other.m_executor;
         m_socket = std::move(other.m_socket);
         m_response_timer = std::move(other.m_response_timer);
         m_recv_timer = std::move(other.m_recv_timer);
@@ -98,13 +102,15 @@ public:
 
     ~basic_service_server()
     {
-        stop();
+        m_alive.reset(); // invalidate sentinel first
+        stop();          // then stop (discards pending work via event loop)
     }
 
     // Throwing constructor — constructs socket and both timers from executor.
     explicit basic_service_server(executor_type ex, service_info info,
                                   query_callback on_query = {})
-        : m_socket(ex)
+        : m_executor(ex)
+        , m_socket(ex)
         , m_response_timer(ex)
         , m_recv_timer(ex)
         , m_info(std::move(info))
@@ -118,7 +124,8 @@ public:
     // Non-throwing constructors
     basic_service_server(executor_type ex, service_info info,
                          query_callback on_query, std::error_code &ec)
-        : m_socket(ex, ec)
+        : m_executor(ex)
+        , m_socket(ex, ec)
         , m_response_timer(ex)
         , m_recv_timer(ex)
         , m_info(std::move(info))
@@ -130,7 +137,8 @@ public:
     }
 
     basic_service_server(executor_type ex, service_info info, std::error_code &ec)
-        : m_socket(ex, ec)
+        : m_executor(ex)
+        , m_socket(ex, ec)
         , m_response_timer(ex)
         , m_recv_timer(ex)
         , m_info(std::move(info))
@@ -168,6 +176,24 @@ public:
         m_loop.reset(); // destructor calls stop() on the loop
     }
 
+    // update_service_info() — posts a service info replacement to the event loop.
+    // After the update executes, an unsolicited announcement is multicast with all
+    // records (PTR, SRV, TXT, A/AAAA) per RFC 6762 section 8.4.
+    // Must only be called on a running server (after async_start(), before stop()).
+    // Thread-safe: may be called from any thread.
+    void update_service_info(service_info new_info)
+    {
+        assert(!m_stopped.load(std::memory_order_acquire)); // must be running
+        auto guard = std::weak_ptr<bool>(m_alive);
+        P::post(m_executor, [this, guard, info = std::move(new_info)]() mutable
+        {
+            if(!guard.lock()) return;                             // server destroyed, skip
+            if(m_stopped.load(std::memory_order_acquire)) return; // server stopped, skip
+            m_info = std::move(info);
+            send_announcement();
+        });
+    }
+
     const socket_type &socket() const noexcept { return m_socket; }
     socket_type &socket() noexcept { return m_socket; }
     const timer_type &timer() const noexcept { return m_response_timer; }
@@ -184,9 +210,9 @@ private:
             m_socket,
             m_recv_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](std::span<std::byte> data, endpoint sender) -> bool
+            [this](const endpoint &sender, std::span<std::byte> data) -> bool
             {
-                on_query(data, sender);
+                on_query(sender, data);
                 return true; // server needs to see all queries; always reset timer
             },
             []()
@@ -213,7 +239,7 @@ private:
     }
 
     // Called by recv_loop on every incoming packet.
-    void on_query(std::span<std::byte> data, endpoint sender)
+    void on_query(const endpoint &sender, std::span<std::byte> data)
     {
         if(m_stopped.load(std::memory_order_acquire))
             return;
@@ -255,7 +281,7 @@ private:
         bool unicast_response = (qclass & 0x8000) != 0;
 
         if(m_on_query)
-            m_on_query(qtype, sender, unicast_response);
+            m_on_query(sender, qtype, unicast_response);
 
         // RFC 6762 section 6: random delay 20-500ms before responding via multicast.
         // Unicast responses may be sent immediately.
@@ -282,7 +308,7 @@ private:
     // dest is either the multicast group (default) or the querier's unicast address
     // (when QU bit was set in the question). Uses m_socket directly — basic_service_server
     // owns the socket, not recv_loop.
-    void send_response(endpoint dest, dns_type qtype)
+    void send_response(const endpoint &dest, dns_type qtype)
     {
         auto response = detail::build_dns_response(m_info, qtype);
         if(response.empty())
@@ -291,17 +317,28 @@ private:
         m_socket.send(dest, std::span<const std::byte>(response));
     }
 
-    socket_type m_socket;        // socket used for sending responses
-    timer_type m_response_timer; // RFC 6762 response delay timer
-    timer_type m_recv_timer;     // passed to recv_loop for silence tracking
-    service_info m_info;         // service description for DNS responses
-    query_callback m_on_query;   // optional per-query callback
+    // Sends an unsolicited announcement with all records (PTR, SRV, TXT, A/AAAA)
+    // to the multicast group. RFC 6762 section 8.4 — immediate, no jitter.
+    void send_announcement()
+    {
+        auto response = detail::build_dns_response(m_info, dns_type::any);
+        if(!response.empty())
+            m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(response));
+    }
+
+    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true); // liveness sentinel
+    executor_type m_executor;                                     // stored executor for P::post() calls
+    socket_type m_socket;                                         // socket used for sending responses
+    timer_type m_response_timer;                                  // RFC 6762 response delay timer
+    timer_type m_recv_timer;                                      // passed to recv_loop for silence tracking
+    service_info m_info;                                          // service description for DNS responses
+    query_callback m_on_query;                                    // optional per-query callback
     completion_handler m_on_completion;
     std::mt19937 m_rng;                   // PRNG for random delay generation
     std::unique_ptr<recv_loop<P>> m_loop; // continuous query listener (null until async_start())
     std::atomic<bool> m_stopped;          // idempotent stop flag
 };
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_BASIC_SERVICE_SERVER_H
+#endif

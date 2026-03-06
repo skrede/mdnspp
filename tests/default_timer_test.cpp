@@ -133,6 +133,51 @@ TEST_CASE("DefaultTimer does not fire before deadline", "[native_timer]")
     REQUIRE(timer.has_pending()); // still pending
 }
 
+TEST_CASE("DefaultTimer compute_next_timeout_ms returns -1 with no pending handlers", "[native_timer]")
+{
+    mdnspp::DefaultContext ctx;
+    mdnspp::DefaultTimer timer{ctx};
+
+    // Timer registered but no handler pending — timeout should be -1 (block indefinitely).
+    timer.expires_after(100ms);
+    REQUIRE_FALSE(timer.has_pending());
+
+    const auto now = std::chrono::steady_clock::now();
+    REQUIRE(ctx.compute_next_timeout_ms(now) == -1);
+}
+
+TEST_CASE("DefaultTimer compute_next_timeout_ms clamps expired deadline to 0", "[native_timer]")
+{
+    mdnspp::DefaultContext ctx;
+    mdnspp::DefaultTimer timer{ctx};
+
+    // Set a deadline in the past and arm a handler.
+    timer.expires_after(-1ms);
+    timer.async_wait([](std::error_code) {});
+    REQUIRE(timer.has_pending());
+
+    // Already-expired deadline must clamp to 0 (fire on next poll cycle).
+    const auto now = std::chrono::steady_clock::now();
+    REQUIRE(ctx.compute_next_timeout_ms(now) == 0);
+
+    // Cleanup
+    timer.cancel();
+}
+
+TEST_CASE("DefaultTimer fire_if_expired is a no-op when no handler is pending", "[native_timer]")
+{
+    mdnspp::DefaultContext ctx;
+    mdnspp::DefaultTimer timer{ctx};
+
+    // Set an already-expired deadline but do NOT arm a handler.
+    timer.expires_after(-1ms);
+    REQUIRE_FALSE(timer.has_pending());
+
+    // fire_if_expired should not crash or change state.
+    REQUIRE_NOTHROW(timer.fire_if_expired());
+    REQUIRE_FALSE(timer.has_pending());
+}
+
 TEST_CASE("DefaultTimer destructor deregisters from DefaultContext", "[native_timer]")
 {
     mdnspp::DefaultContext ctx;

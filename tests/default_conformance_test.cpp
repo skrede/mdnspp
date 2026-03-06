@@ -171,7 +171,7 @@ TEST_CASE("DefaultContext dispatches data on registered loopback socket", "[nati
     ctx.register_socket(fd, [&](std::span<std::byte> data, const mdnspp::endpoint &ep)
     {
         handler_called = true;
-        received_data.assign(reinterpret_cast<const char *>(data.data()), data.size());
+        received_data.assign(reinterpret_cast<const char*>(data.data()), data.size());
         received_ep = ep;
     });
 
@@ -179,10 +179,10 @@ TEST_CASE("DefaultContext dispatches data on registered loopback socket", "[nati
     const std::string payload = "hello";
 #ifdef _WIN32
     REQUIRE(::sendto(fd, payload.data(), static_cast<int>(payload.size()), 0,
-                     reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == static_cast<int>(payload.size()));
+                     reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == static_cast<int>(payload.size()));
 #else
     REQUIRE(::sendto(fd, payload.data(), payload.size(), 0,
-                     reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == static_cast<ssize_t>(payload.size()));
+        reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == static_cast<ssize_t>(payload.size()));
 #endif
 
     // Poll until handler fires (bounded attempts)
@@ -246,10 +246,10 @@ TEST_CASE("DefaultContext deregister_socket stops dispatch", "[native][context][
     const std::string payload = "nope";
 #ifdef _WIN32
     (void)::sendto(fd, payload.data(), static_cast<int>(payload.size()), 0,
-                   reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+                   reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
 #else
     (void)::sendto(fd, payload.data(), payload.size(), 0,
-                   reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+                   reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
 #endif
 
     ctx.poll_one();
@@ -283,21 +283,25 @@ TEST_CASE("DefaultContext restart then run works after stop", "[native][context]
 
     // Restart resets the stopped flag — run() should block until stop().
     ctx.restart();
-    std::thread stopper{[&ctx]
-    {
-        std::this_thread::sleep_for(30ms);
-        ctx.stop();
-    }};
+    std::thread stopper{
+        [&ctx]
+        {
+            std::this_thread::sleep_for(30ms);
+            ctx.stop();
+        }
+    };
     ctx.run();
     stopper.join();
 
     // Second restart cycle — prove it is reusable more than once.
     ctx.restart();
-    std::thread stopper2{[&ctx]
-    {
-        std::this_thread::sleep_for(30ms);
-        ctx.stop();
-    }};
+    std::thread stopper2{
+        [&ctx]
+        {
+            std::this_thread::sleep_for(30ms);
+            ctx.stop();
+        }
+    };
     ctx.run();
     stopper2.join();
 
@@ -351,10 +355,10 @@ TEST_CASE("DefaultContext register_socket twice replaces handler", "[native][con
     const std::string payload = "test";
 #ifdef _WIN32
     (void)::sendto(fd, payload.data(), static_cast<int>(payload.size()), 0,
-                   reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+                   reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
 #else
     (void)::sendto(fd, payload.data(), payload.size(), 0,
-                   reinterpret_cast<sockaddr *>(&addr), sizeof(addr));
+                   reinterpret_cast<sockaddr*>(&addr), sizeof(addr));
 #endif
 
     for(int attempt = 0; attempt < 50 && second_count == 0; ++attempt)
@@ -385,11 +389,13 @@ TEST_CASE("DefaultContext stop from another thread wakes run", "[native][context
 
     std::atomic<bool> run_returned{false};
 
-    std::thread runner{[&]
-    {
-        ctx.run();
-        run_returned.store(true, std::memory_order_release);
-    }};
+    std::thread runner{
+        [&]
+        {
+            ctx.run();
+            run_returned.store(true, std::memory_order_release);
+        }
+    };
 
     // Give run() a moment to enter the poll loop.
     std::this_thread::sleep_for(30ms);
@@ -424,7 +430,7 @@ TEST_CASE("All four public types instantiate with DefaultPolicy", "[native][poli
     {
         mdnspp::basic_observer<mdnspp::DefaultPolicy> obs{
             ctx,
-            [](const mdnspp::mdns_record_variant &, mdnspp::endpoint)
+            [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
             {
             }
         };

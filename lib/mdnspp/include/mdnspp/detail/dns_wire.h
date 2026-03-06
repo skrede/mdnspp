@@ -226,7 +226,7 @@ inline std::vector<std::byte> encode_txt_records(const std::vector<mdnspp::servi
     return result;
 }
 
-} // namespace response_detail
+}
 
 // ---------------------------------------------------------------------------
 // build_dns_response — DNS response wire builder for mDNS service announcements

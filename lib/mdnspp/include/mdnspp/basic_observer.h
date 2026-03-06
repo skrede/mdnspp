@@ -171,12 +171,12 @@ private:
             [this, sender](mdns_record_variant rec)
             {
                 if(!m_stopped.load(std::memory_order_acquire) && m_on_record)
-                    m_on_record(rec, sender);
+                    m_on_record(sender, rec);
             });
     }
 
-    socket_type m_socket;       // socket used for receiving multicast packets
-    timer_type m_timer;         // passed to recv_loop for silence-timeout tracking
+    socket_type m_socket;        // socket used for receiving multicast packets
+    timer_type m_timer;          // passed to recv_loop for silence-timeout tracking
     record_callback m_on_record; // called once per successfully parsed record
     // Move-only completion handler — called once at stop() or error.
     completion_handler m_on_completion;
@@ -184,6 +184,6 @@ private:
     std::atomic<bool> m_stopped;          // idempotent stop flag
 };
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_BASIC_OBSERVER_H
+#endif

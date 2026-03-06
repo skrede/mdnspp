@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_POLICY_H
 
 #include "mdnspp/endpoint.h"
+
 #include "mdnspp/detail/compat.h"
 
 #include <span>

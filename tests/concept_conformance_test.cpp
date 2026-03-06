@@ -123,7 +123,7 @@ TEST_CASE("observer error_code constructor path", "[observer][error_code]")
     std::error_code ec;
     mdnspp::basic_observer<mdnspp::testing::MockPolicy> obs{
         ex,
-        [](const mdnspp::mdns_record_variant &, mdnspp::endpoint)
+        [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
         {
         },
         ec

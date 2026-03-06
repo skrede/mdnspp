@@ -3,13 +3,13 @@
 
 #include "mdnspp/records.h"
 
-#include <algorithm>
-#include <cstdint>
-#include <ranges>
 #include <span>
+#include <ranges>
 #include <string>
-#include <unordered_map>
 #include <vector>
+#include <cstdint>
+#include <algorithm>
+#include <unordered_map>
 
 namespace mdnspp {
 

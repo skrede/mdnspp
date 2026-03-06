@@ -22,15 +22,18 @@ int main()
         .txt_records  = {{"path", "/index.html"}},
     };
 
-    mdnspp::service_server srv{ctx, std::move(info),
-        [](mdnspp::dns_type qtype, const mdnspp::endpoint &sender, bool unicast)
+    mdnspp::service_server srv{
+        ctx,
+        std::move(info),
+        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, bool unicast)
         {
             std::cout << sender << " queried qtype=" << to_string(qtype)
                 << (unicast ? " (unicast)" : " (multicast)") << "\n";
         }
     };
 
-    std::thread shutdown([&ctx] {
+    std::thread shutdown([&ctx]
+    {
         std::this_thread::sleep_for(std::chrono::seconds(30));
         ctx.stop();
     });

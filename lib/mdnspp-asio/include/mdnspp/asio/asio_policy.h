@@ -2,7 +2,9 @@
 #define HPP_GUARD_MDNSPP_ASIO_POLICY_H
 
 #include "mdnspp/policy.h"
+
 #include "mdnspp/detail/compat.h"
+
 #include "mdnspp/asio/asio_socket.h"
 #include "mdnspp/asio/asio_timer.h"
 

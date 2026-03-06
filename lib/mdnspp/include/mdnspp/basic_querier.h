@@ -32,7 +32,7 @@ public:
     using timer_type = typename P::timer_type;
 
     /// Optional callback invoked per record as results arrive during a query.
-    using record_callback = detail::move_only_function<void(const mdns_record_variant &, const endpoint &)>;
+    using record_callback = detail::move_only_function<void(const endpoint &, const mdns_record_variant &)>;
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.
@@ -185,7 +185,7 @@ private:
                     if(m_on_record)
                     {
                         for(const auto &rec : batch)
-                            m_on_record(rec, sender);
+                            m_on_record(sender, rec);
                     }
                     m_results.insert(m_results.end(),
                                      std::make_move_iterator(batch.begin()),
@@ -215,6 +215,6 @@ private:
     std::vector<mdns_record_variant> m_results;
 };
 
-} // namespace mdnspp
+}
 
-#endif // HPP_GUARD_MDNSPP_BASIC_QUERIER_H
+#endif

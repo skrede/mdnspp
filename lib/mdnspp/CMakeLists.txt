@@ -9,9 +9,10 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_info.h
+    ${INCLUDE_DIRECTORY}/mdnspp/socket_options.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_querier.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_observer.h
-    ${INCLUDE_DIRECTORY}/mdnspp/resolved_service.h
+    ${INCLUDE_DIRECTORY}/mdnspp/network_interface.h
     ${INCLUDE_DIRECTORY}/mdnspp/resolved_service.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_service_server.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_service_discovery.h

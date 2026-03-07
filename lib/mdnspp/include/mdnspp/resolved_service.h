@@ -69,90 +69,103 @@ inline std::vector<resolved_service> aggregate(std::span<const mdns_record_varia
     std::unordered_map<std::string, svc_entry> svc_map;
     std::unordered_map<std::string, std::vector<std::string>> host_to_instances;
 
-    for(const auto &rec : records)
+    struct pass1_visitor
     {
-        std::visit([&]<typename T>(const T &r)
+        std::unordered_map<std::string, svc_entry> &svc_map;
+        std::unordered_map<std::string, std::vector<std::string>> &host_to_instances;
+
+        void operator()(const record_ptr &r) const
         {
-            if constexpr(std::is_same_v<T, record_ptr>)
+            if(!svc_map.contains(r.ptr_name))
             {
-                // PTR seeds a new entry (insert_or_assign keeps existing if already seeded)
-                if(!svc_map.contains(r.ptr_name))
-                {
-                    resolved_service svc;
-                    svc.instance_name = r.ptr_name;
-                    svc_map.emplace(r.ptr_name, svc_entry{std::move(svc)});
-                }
+                resolved_service svc;
+                svc.instance_name = r.ptr_name;
+                svc_map.emplace(r.ptr_name, svc_entry{std::move(svc)});
             }
-            else if constexpr(std::is_same_v<T, record_srv>)
+        }
+
+        void operator()(const record_srv &r) const
+        {
+            if(auto it = svc_map.find(r.name); it != svc_map.end())
             {
-                if(auto it = svc_map.find(r.name); it != svc_map.end())
+                it->second.svc.hostname = r.srv_name;
+                it->second.svc.port = r.port;
+                if(auto hi = host_to_instances.find(r.srv_name); hi != host_to_instances.end())
+                    hi->second.push_back(r.name);
+                else
+                    host_to_instances.emplace(r.srv_name, std::vector<std::string>{r.name});
+            }
+        }
+
+        void operator()(const record_txt &r) const
+        {
+            if(auto it = svc_map.find(r.name); it != svc_map.end())
+            {
+                auto &entries = it->second.svc.txt_entries;
+                for(const auto &e : r.entries)
                 {
-                    it->second.svc.hostname = r.srv_name;
-                    it->second.svc.port = r.port;
-                    // Record the host -> instance mapping for address correlation
-                    if(auto hi = host_to_instances.find(r.srv_name); hi != host_to_instances.end())
-                        hi->second.push_back(r.name);
+                    auto existing = std::ranges::find_if(entries,
+                                                         [&](const service_txt &x) { return x.key == e.key; });
+                    if(existing != entries.end())
+                        *existing = e;
                     else
-                        host_to_instances.emplace(r.srv_name, std::vector<std::string>{r.name});
+                        entries.push_back(e);
                 }
             }
-            else if constexpr(std::is_same_v<T, record_txt>)
-            {
-                if(auto it = svc_map.find(r.name); it != svc_map.end())
-                {
-                    auto &entries = it->second.svc.txt_entries;
-                    for(const auto &e : r.entries)
-                    {
-                        // Deduplicate by key — latest value wins
-                        auto existing = std::ranges::find_if(entries,
-                                                             [&](const service_txt &x) { return x.key == e.key; });
-                        if(existing != entries.end())
-                            *existing = e;
-                        else
-                            entries.push_back(e);
-                    }
-                }
-            }
-        }, rec);
-    }
+        }
+
+        void operator()(const record_a &) const {}
+        void operator()(const record_aaaa &) const {}
+    };
+
+    for(const auto &rec : records)
+        std::visit(pass1_visitor{svc_map, host_to_instances}, rec);
 
     // Pass 2: correlate A / AAAA records via host_to_instances.
-    for(const auto &rec : records)
+    struct pass2_visitor
     {
-        std::visit([&]<typename T>(const T &r)
+        std::unordered_map<std::string, svc_entry> &svc_map;
+        std::unordered_map<std::string, std::vector<std::string>> &host_to_instances;
+
+        void operator()(const record_a &r) const
         {
-            if constexpr(std::is_same_v<T, record_a>)
+            auto host_it = host_to_instances.find(r.name);
+            if(host_it == host_to_instances.end())
+                return;
+            for(const auto &inst_name : host_it->second)
             {
-                auto host_it = host_to_instances.find(r.name);
-                if(host_it == host_to_instances.end())
-                    return;
-                for(const auto &inst_name : host_it->second)
-                {
-                    auto svc_it = svc_map.find(inst_name);
-                    if(svc_it == svc_map.end())
-                        continue;
-                    auto &addrs = svc_it->second.svc.ipv4_addresses;
-                    if(std::ranges::find(addrs, r.address_string) == addrs.end())
-                        addrs.push_back(r.address_string);
-                }
+                auto svc_it = svc_map.find(inst_name);
+                if(svc_it == svc_map.end())
+                    continue;
+                auto &addrs = svc_it->second.svc.ipv4_addresses;
+                if(std::ranges::find(addrs, r.address_string) == addrs.end())
+                    addrs.push_back(r.address_string);
             }
-            else if constexpr(std::is_same_v<T, record_aaaa>)
+        }
+
+        void operator()(const record_aaaa &r) const
+        {
+            auto host_it = host_to_instances.find(r.name);
+            if(host_it == host_to_instances.end())
+                return;
+            for(const auto &inst_name : host_it->second)
             {
-                auto host_it = host_to_instances.find(r.name);
-                if(host_it == host_to_instances.end())
-                    return;
-                for(const auto &inst_name : host_it->second)
-                {
-                    auto svc_it = svc_map.find(inst_name);
-                    if(svc_it == svc_map.end())
-                        continue;
-                    auto &addrs = svc_it->second.svc.ipv6_addresses;
-                    if(std::ranges::find(addrs, r.address_string) == addrs.end())
-                        addrs.push_back(r.address_string);
-                }
+                auto svc_it = svc_map.find(inst_name);
+                if(svc_it == svc_map.end())
+                    continue;
+                auto &addrs = svc_it->second.svc.ipv6_addresses;
+                if(std::ranges::find(addrs, r.address_string) == addrs.end())
+                    addrs.push_back(r.address_string);
             }
-        }, rec);
-    }
+        }
+
+        void operator()(const record_ptr &) const {}
+        void operator()(const record_srv &) const {}
+        void operator()(const record_txt &) const {}
+    };
+
+    for(const auto &rec : records)
+        std::visit(pass2_visitor{svc_map, host_to_instances}, rec);
 
     // Collect results
     std::vector<resolved_service> result;

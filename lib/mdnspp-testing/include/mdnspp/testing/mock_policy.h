@@ -74,6 +74,10 @@ public:
     static void set_fail_on_construct(bool v) noexcept { s_fail_on_construct = v; }
     static bool fail_on_construct() noexcept { return s_fail_on_construct; }
 
+    // Failure injection: set before send to trigger error in ec send overload.
+    static void set_fail_on_send(bool v) noexcept { s_fail_on_send = v; }
+    static bool fail_on_send() noexcept { return s_fail_on_send; }
+
     // Enqueue a packet with a specific sender endpoint.
     void enqueue(std::vector<std::byte> packet, endpoint from)
     {
@@ -123,6 +127,20 @@ public:
         });
     }
 
+    void send(const endpoint &dest, std::span<const std::byte> data, std::error_code &ec)
+    {
+        if(s_fail_on_send)
+        {
+            ec = std::make_error_code(std::errc::network_unreachable);
+            return;
+        }
+        ec.clear();
+        m_sent_packets.push_back(sent_packet{
+            dest,
+            std::vector<std::byte>(data.begin(), data.end())
+        });
+    }
+
     void close() noexcept
     {
     }
@@ -138,6 +156,7 @@ private:
     socket_options m_opts{};
 
     static inline bool s_fail_on_construct{false};
+    static inline bool s_fail_on_send{false};
 };
 
 class MockTimer

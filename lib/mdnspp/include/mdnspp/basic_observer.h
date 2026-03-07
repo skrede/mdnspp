@@ -58,6 +58,9 @@ public:
     /// Receives error_code (always success).
     using completion_handler = detail::move_only_function<void(std::error_code)>;
 
+    /// Error handler invoked on fire-and-forget send failures.
+    using error_handler = detail::move_only_function<void(std::error_code, std::string_view)>;
+
     // Non-copyable
     basic_observer(const basic_observer &) = delete;
     basic_observer &operator=(const basic_observer &) = delete;
@@ -65,7 +68,9 @@ public:
     // Movable only before async_observe() is called (m_loop must be null).
     // Moving a started basic_observer is a logic error (recv_loop callbacks capture this).
     basic_observer(basic_observer &&other) noexcept
-        : m_socket(std::move(other.m_socket))
+        : m_alive(std::move(other.m_alive))
+        , m_executor(other.m_executor)
+        , m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
         , m_on_record(std::move(other.m_on_record))
         , m_on_completion(std::move(other.m_on_completion))
@@ -80,14 +85,15 @@ public:
 
     ~basic_observer()
     {
-        m_stopped.store(true, std::memory_order_release);
-        m_loop.reset(); // safe — destructor is never called from within callback chain
+        m_alive.reset(); // invalidate sentinel -- posted lambda becomes no-op
+        stop();          // idempotent via atomic flag
     }
 
     // Throwing constructor — constructs socket and timer from executor.
     // Throws on construction failure (e.g. socket bind error).
     explicit basic_observer(executor_type ex, record_callback on_record = {})
-        : m_socket(ex)
+        : m_executor(ex)
+        , m_socket(ex)
         , m_timer(ex)
         , m_on_record(std::move(on_record))
         , m_loop(nullptr)
@@ -98,7 +104,8 @@ public:
     // Non-throwing constructor — sets ec on failure instead of throwing.
     // ec is the last parameter, matching ASIO convention.
     basic_observer(executor_type ex, record_callback on_record, std::error_code &ec)
-        : m_socket(ex, ec)
+        : m_executor(ex)
+        , m_socket(ex, ec)
         , m_timer(ex)
         , m_on_record(std::move(on_record))
         , m_loop(nullptr)
@@ -108,7 +115,8 @@ public:
 
     // Throwing constructor with socket_options.
     explicit basic_observer(executor_type ex, const socket_options &opts, record_callback on_record = {})
-        : m_socket(ex, opts)
+        : m_executor(ex)
+        , m_socket(ex, opts)
         , m_timer(ex)
         , m_on_record(std::move(on_record))
         , m_loop(nullptr)
@@ -118,7 +126,8 @@ public:
 
     // Non-throwing constructor with socket_options.
     basic_observer(executor_type ex, const socket_options &opts, record_callback on_record, std::error_code &ec)
-        : m_socket(ex, opts, ec)
+        : m_executor(ex)
+        , m_socket(ex, opts, ec)
         , m_timer(ex)
         , m_on_record(std::move(on_record))
         , m_loop(nullptr)
@@ -139,18 +148,27 @@ public:
         do_observe();
     }
 
-    // stop() — idempotent; fires the completion handler, then sets the stop flag.
-    //
-    // Does NOT call m_loop.reset() here — this is critical for callback-safe stop.
-    // The recv_loop remains alive until ~basic_observer() destroys it, ensuring that
-    // any in-progress callback chain can complete without accessing a dangling loop.
+    /// Sets the error handler invoked on fire-and-forget send failures.
+    void on_error(error_handler handler) { m_on_error = std::move(handler); }
+
+    // stop() — idempotent; posts teardown to executor thread, ensuring all
+    // state mutations happen on the executor (no cross-thread data race).
     void stop()
     {
         if(m_stopped.exchange(true, std::memory_order_acq_rel))
-            return; // already stopped — idempotent
+            return;
 
-        if(auto h = std::exchange(m_on_completion, nullptr); h)
-            h(std::error_code{});
+        auto guard = std::weak_ptr<bool>(m_alive);
+        P::post(m_executor, [this, guard]()
+        {
+            if(!guard.lock()) return;
+
+            if(m_loop)
+                m_loop->stop();
+
+            if(auto h = std::exchange(m_on_completion, nullptr); h)
+                h(std::error_code{});
+        });
     }
 
     // Accessors — basic_observer owns socket and timer directly.
@@ -198,13 +216,15 @@ private:
             });
     }
 
-    socket_type m_socket;        // socket used for receiving multicast packets
-    timer_type m_timer;          // passed to recv_loop for silence-timeout tracking
-    record_callback m_on_record; // called once per successfully parsed record
-    // Move-only completion handler — called once at stop() or error.
+    std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
+    executor_type m_executor;
+    socket_type m_socket;
+    timer_type m_timer;
+    record_callback m_on_record;
     completion_handler m_on_completion;
-    std::unique_ptr<recv_loop<P>> m_loop; // continuous listener (null until async_observe())
-    std::atomic<bool> m_stopped;          // idempotent stop flag
+    error_handler m_on_error;
+    std::unique_ptr<recv_loop<P>> m_loop;
+    std::atomic<bool> m_stopped;
 };
 
 }

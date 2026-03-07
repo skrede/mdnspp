@@ -670,6 +670,7 @@ SCENARIO("stop() during async_browse fires completion with partial aggregated re
         WHEN("stop() is called before the silence timeout")
         {
             sd.stop();
+            ex.drain_posted();
 
             THEN("browse completion fires with whatever was aggregated so far")
             {
@@ -747,6 +748,7 @@ SCENARIO("service_discovery stop with both discover and browse loops", "[service
         WHEN("stop() is called")
         {
             sd.stop();
+            ex.drain_posted();
 
             THEN("the browse completion fires with aggregated results")
             {

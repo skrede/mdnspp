@@ -101,10 +101,9 @@ SCENARIO("async_observe with callback fires when stop() is called", "[completion
 
         std::thread io_thread([&io] { io.run(); });
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        obs->stop(); // dispatches handler to io_context thread
-
-        obs.reset();
+        obs->stop();
         io_thread.join();
+        obs.reset();
 
         REQUIRE(handler_fired);
     }
@@ -138,8 +137,8 @@ SCENARIO("async_start with callback fires when stop() is called", "[completion_t
         std::thread io_thread([&io] { io.run(); });
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         server->stop();
-        server.reset();
         io_thread.join();
+        server.reset();
 
         REQUIRE(handler_fired);
     }
@@ -216,10 +215,9 @@ SCENARIO("async_observe completion handler dispatched on correct executor — TS
 
         std::thread io_thread([&io] { io.run(); });
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        obs->stop(); // dispatches handler to io_context thread via asio::dispatch
-        // Reset shared_ptr to destroy observer, closing socket so io.run() can return.
-        obs.reset();
+        obs->stop();
         io_thread.join();
+        obs.reset();
 
         // When compiled with -fsanitize=thread, any data race in stop() / dispatch path
         // causes a non-zero exit and test failure before this line.

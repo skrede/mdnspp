@@ -16,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <atomic>
 #include <utility>
 #include <cassert>
 #include <algorithm>
@@ -42,13 +43,18 @@ public:
     /// Completion callback for async_enumerate_types.
     using enumerate_handler = detail::move_only_function<void(std::error_code, std::vector<service_type_info>)>;
 
+    /// Error handler invoked on fire-and-forget send failures.
+    using error_handler = detail::move_only_function<void(std::error_code, std::string_view)>;
+
     // Non-copyable (owns recv_loop by unique_ptr)
     basic_service_discovery(const basic_service_discovery &) = delete;
     basic_service_discovery &operator=(const basic_service_discovery &) = delete;
 
     // Movable only before async_discover()/async_browse() is called (loops must be null).
     basic_service_discovery(basic_service_discovery &&other) noexcept
-        : m_socket(std::move(other.m_socket))
+        : m_alive(std::move(other.m_alive))
+        , m_executor(other.m_executor)
+        , m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
         , m_silence_timeout(other.m_silence_timeout)
         , m_on_record(std::move(other.m_on_record))
@@ -61,19 +67,20 @@ public:
         , m_results(std::move(other.m_results))
         , m_services(std::move(other.m_services))
         , m_enumerated_types(std::move(other.m_enumerated_types))
+        , m_stopped(other.m_stopped.load(std::memory_order_acquire))
     {
-        assert(other.m_loop == nullptr);           // source must not have been started
-        assert(other.m_browse_loop == nullptr);    // source must not have been started
-        assert(other.m_enumerate_loop == nullptr); // source must not have been started
+        assert(other.m_loop == nullptr);
+        assert(other.m_browse_loop == nullptr);
+        assert(other.m_enumerate_loop == nullptr);
+        other.m_stopped.store(true, std::memory_order_release);
     }
 
     basic_service_discovery &operator=(basic_service_discovery &&) = delete;
 
     ~basic_service_discovery()
     {
-        m_loop.reset();
-        m_browse_loop.reset();
-        m_enumerate_loop.reset();
+        m_alive.reset(); // invalidate sentinel -- posted lambda becomes no-op
+        stop();          // idempotent via atomic flag
     }
 
     // Throwing constructor — constructs socket and timer from executor.
@@ -82,7 +89,8 @@ public:
     explicit basic_service_discovery(executor_type ex,
                                      std::chrono::milliseconds silence_timeout,
                                      record_callback on_record = {})
-        : m_socket(ex)
+        : m_executor(ex)
+        , m_socket(ex)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
         , m_on_record(std::move(on_record))
@@ -95,7 +103,8 @@ public:
                             std::chrono::milliseconds silence_timeout,
                             record_callback on_record,
                             std::error_code &ec)
-        : m_socket(ex, ec)
+        : m_executor(ex)
+        , m_socket(ex, ec)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
         , m_on_record(std::move(on_record))
@@ -106,7 +115,8 @@ public:
     basic_service_discovery(executor_type ex,
                             std::chrono::milliseconds silence_timeout,
                             std::error_code &ec)
-        : m_socket(ex, ec)
+        : m_executor(ex)
+        , m_socket(ex, ec)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
         , m_loop(nullptr)
@@ -117,7 +127,8 @@ public:
     explicit basic_service_discovery(executor_type ex, const socket_options &opts,
                                      std::chrono::milliseconds silence_timeout,
                                      record_callback on_record = {})
-        : m_socket(ex, opts)
+        : m_executor(ex)
+        , m_socket(ex, opts)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
         , m_on_record(std::move(on_record))
@@ -129,7 +140,8 @@ public:
     basic_service_discovery(executor_type ex, const socket_options &opts,
                             std::chrono::milliseconds silence_timeout,
                             record_callback on_record, std::error_code &ec)
-        : m_socket(ex, opts, ec)
+        : m_executor(ex)
+        , m_socket(ex, opts, ec)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
         , m_on_record(std::move(on_record))
@@ -140,7 +152,8 @@ public:
     basic_service_discovery(executor_type ex, const socket_options &opts,
                             std::chrono::milliseconds silence_timeout,
                             std::error_code &ec)
-        : m_socket(ex, opts, ec)
+        : m_executor(ex)
+        , m_socket(ex, opts, ec)
         , m_timer(ex)
         , m_silence_timeout(silence_timeout)
         , m_loop(nullptr)
@@ -215,28 +228,41 @@ public:
         return m_services;
     }
 
-    // Early termination — stops the recv_loop(s) and fires the completion handler(s).
+    /// Sets the error handler invoked on fire-and-forget send failures.
+    void on_error(error_handler handler) { m_on_error = std::move(handler); }
+
+    // Early termination — posts teardown to executor thread, ensuring all
+    // state mutations happen on the executor (no cross-thread data race).
     void stop()
     {
-        if(m_loop)
+        if(m_stopped.exchange(true, std::memory_order_acq_rel))
+            return;
+
+        auto guard = std::weak_ptr<bool>(m_alive);
+        P::post(m_executor, [this, guard]()
         {
-            m_loop->stop();
-            if(auto h = std::exchange(m_on_completion, nullptr); h)
-                h(std::error_code{}, m_results);
-        }
-        if(m_browse_loop)
-        {
-            m_browse_loop->stop();
-            m_services = mdnspp::aggregate(m_results);
-            if(auto h = std::exchange(m_on_browse_completion, nullptr); h)
-                h(std::error_code{}, m_services);
-        }
-        if(m_enumerate_loop)
-        {
-            m_enumerate_loop->stop();
-            if(auto h = std::exchange(m_on_enumerate_completion, nullptr); h)
-                h(std::error_code{}, m_enumerated_types);
-        }
+            if(!guard.lock()) return;
+
+            if(m_loop)
+            {
+                m_loop->stop();
+                if(auto h = std::exchange(m_on_completion, nullptr); h)
+                    h(std::error_code{}, m_results);
+            }
+            if(m_browse_loop)
+            {
+                m_browse_loop->stop();
+                m_services = mdnspp::aggregate(m_results);
+                if(auto h = std::exchange(m_on_browse_completion, nullptr); h)
+                    h(std::error_code{}, m_services);
+            }
+            if(m_enumerate_loop)
+            {
+                m_enumerate_loop->stop();
+                if(auto h = std::exchange(m_on_enumerate_completion, nullptr); h)
+                    h(std::error_code{}, m_enumerated_types);
+            }
+        });
     }
 
 private:
@@ -256,8 +282,12 @@ private:
         // Includes known answers (m_results) per RFC 6762 section 7.1
         auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr,
                                                    std::span<const mdns_record_variant>(m_results), mode);
-        m_socket.send(endpoint{"224.0.0.251", 5353},
-                      std::span<const std::byte>(query_bytes));
+        {
+            std::error_code ec;
+            m_socket.send(endpoint{"224.0.0.251", 5353},
+                          std::span<const std::byte>(query_bytes), ec);
+            if(ec && m_on_error) m_on_error(ec, "browse send");
+        }
 
         m_browse_loop = std::make_unique<recv_loop<P>>(
             m_socket,
@@ -325,8 +355,12 @@ private:
         // Includes known answers (m_results) per RFC 6762 section 7.1
         auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr,
                                                    std::span<const mdns_record_variant>(m_results), mode);
-        m_socket.send(endpoint{"224.0.0.251", 5353},
-                      std::span<const std::byte>(query_bytes));
+        {
+            std::error_code ec;
+            m_socket.send(endpoint{"224.0.0.251", 5353},
+                          std::span<const std::byte>(query_bytes), ec);
+            if(ec && m_on_error) m_on_error(ec, "discover send");
+        }
 
         m_loop = std::make_unique<recv_loop<P>>(
             m_socket,
@@ -390,8 +424,12 @@ private:
         static constexpr std::string_view meta_name = "_services._dns-sd._udp.local";
 
         auto query_bytes = detail::build_dns_query(meta_name, dns_type::ptr, mode);
-        m_socket.send(endpoint{"224.0.0.251", 5353},
-                      std::span<const std::byte>(query_bytes));
+        {
+            std::error_code ec;
+            m_socket.send(endpoint{"224.0.0.251", 5353},
+                          std::span<const std::byte>(query_bytes), ec);
+            if(ec && m_on_error) m_on_error(ec, "enumerate send");
+        }
 
         m_enumerate_loop = std::make_unique<recv_loop<P>>(
             m_socket,
@@ -427,20 +465,24 @@ private:
         m_enumerate_loop->start();
     }
 
+    std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
+    executor_type m_executor;
     socket_type m_socket;
     timer_type m_timer;
     std::chrono::milliseconds m_silence_timeout;
-    record_callback m_on_record; // optional per-record callback
+    record_callback m_on_record;
     completion_handler m_on_completion;
     detail::move_only_function<void(std::error_code, std::vector<resolved_service>)> m_on_browse_completion;
     enumerate_handler m_on_enumerate_completion;
-    std::string m_service_type;                      // set in do_discover()/do_browse(), used for filtering
-    std::unique_ptr<recv_loop<P>> m_loop;            // null until async_discover()
-    std::unique_ptr<recv_loop<P>> m_browse_loop;     // null until async_browse()
-    std::unique_ptr<recv_loop<P>> m_enumerate_loop;  // null until async_enumerate_types()
+    error_handler m_on_error;
+    std::string m_service_type;
+    std::unique_ptr<recv_loop<P>> m_loop;
+    std::unique_ptr<recv_loop<P>> m_browse_loop;
+    std::unique_ptr<recv_loop<P>> m_enumerate_loop;
     std::vector<mdns_record_variant> m_results;
-    std::vector<resolved_service> m_services;        // populated by do_browse() at silence timeout
-    std::vector<service_type_info> m_enumerated_types; // populated by do_enumerate() at silence timeout
+    std::vector<resolved_service> m_services;
+    std::vector<service_type_info> m_enumerated_types;
+    std::atomic<bool> m_stopped{false};
 };
 
 }

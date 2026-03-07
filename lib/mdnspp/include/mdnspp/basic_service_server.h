@@ -59,6 +59,10 @@ public:
     /// Receives error_code.
     using completion_handler = detail::move_only_function<void(std::error_code)>;
 
+    /// Error handler invoked on fire-and-forget send failures.
+    /// Receives the error_code and a context string identifying the send site.
+    using error_handler = detail::move_only_function<void(std::error_code, std::string_view)>;
+
     // Non-copyable
     basic_service_server(const basic_service_server &) = delete;
     basic_service_server &operator=(const basic_service_server &) = delete;
@@ -235,46 +239,53 @@ public:
         do_start();
     }
 
-    // stop() -- idempotent; fires on_ready with operation_canceled if still probing/announcing,
-    // then fires on_done.
+    /// Sets the error handler invoked on fire-and-forget send failures.
+    void on_error(error_handler handler) { m_on_error = std::move(handler); }
+
+    // stop() -- idempotent; posts teardown to the executor thread, ensuring all
+    // state mutations happen on the executor (no cross-thread data race).
     //
-    // Does NOT cancel timers or reset the recv_loop here -- this is critical for
-    // callback-safe stop. stop() may be called from a thread other than the executor,
-    // and modifying asio objects cross-thread is a data race. The recv_loop remains
-    // alive until ~basic_service_server() destroys it via member destruction, ensuring
-    // that any in-progress callback chain can complete without accessing a dangling loop.
+    // The goodbye send happens on the caller thread (best-effort, before posting)
+    // because the destructor invalidates m_alive before stop() runs, and the
+    // goodbye must complete before that invalidation.
     void stop()
     {
         if(m_stopped.exchange(true, std::memory_order_acq_rel))
-            return; // already stopped
+            return;
 
-        // RFC 6762 section 10.1: send goodbye packet (TTL=0) when shutting down
-        // from live or announcing state. Best-effort UDP -- ignore errors since
-        // the socket may already be closed or the network unavailable.
+        // Best-effort goodbye on caller thread -- non-throwing via ec overload.
         if(m_opts.send_goodbye &&
            (m_state == server_state::live || m_state == server_state::announcing))
         {
-            try
-            {
-                auto goodbye = detail::build_dns_response(m_info, dns_type::any, 0);
-                if(!goodbye.empty())
-                    m_socket.send(endpoint{"224.0.0.251", 5353},
-                                  std::span<const std::byte>(goodbye));
-            }
-            catch(...) {}
+            std::error_code ec;
+            auto goodbye = detail::build_dns_response(m_info, dns_type::any, 0);
+            if(!goodbye.empty())
+                m_socket.send(endpoint{"224.0.0.251", 5353},
+                              std::as_bytes(std::span(goodbye)), ec);
+            if(ec && m_on_error) m_on_error(ec, "goodbye send");
         }
 
-        if(m_state == server_state::probing || m_state == server_state::announcing)
+        auto guard = std::weak_ptr<bool>(m_alive);
+        P::post(m_executor, [this, guard]()
         {
-            if(auto h = std::exchange(m_on_ready, nullptr); h)
-                h(std::make_error_code(std::errc::operation_canceled));
-        }
+            if(!guard.lock()) return;
 
-        m_state = server_state::stopped;
-        m_pending_armed = false;
+            if(m_state == server_state::probing || m_state == server_state::announcing)
+            {
+                if(auto h = std::exchange(m_on_ready, nullptr); h)
+                    h(std::make_error_code(std::errc::operation_canceled));
+            }
 
-        if(auto h = std::exchange(m_on_completion, nullptr); h)
-            h(std::error_code{});
+            m_state = server_state::stopped;
+            m_pending_armed = false;
+            m_response_timer.cancel();
+
+            if(m_loop)
+                m_loop->stop();
+
+            if(auto h = std::exchange(m_on_completion, nullptr); h)
+                h(std::error_code{});
+        });
     }
 
     // update_service_info() -- posts a service info replacement to the event loop.
@@ -351,7 +362,9 @@ private:
         if(m_stopped.load(std::memory_order_acquire)) return;
 
         auto probe = detail::build_probe_query(m_info);
-        m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(probe));
+        std::error_code ec;
+        m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(probe), ec);
+        if(ec && m_on_error) m_on_error(ec, "probe send");
         ++m_probe_count;
 
         if(m_probe_count < 3)
@@ -806,20 +819,24 @@ private:
         if(meta_matched)
         {
             auto meta_response = build_meta_query_response();
+            std::error_code ec;
             if(resp_mode == response_mode::unicast)
-                m_socket.send(sender, std::span<const std::byte>(meta_response));
+                m_socket.send(sender, std::span<const std::byte>(meta_response), ec);
             else
-                m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(meta_response));
+                m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(meta_response), ec);
+            if(ec && m_on_error) m_on_error(ec, "meta-query response send");
         }
 
         // Handle subtype PTR response (separate from normal response)
         if(!matched_subtype.empty())
         {
             auto sub_response = build_subtype_response(matched_subtype);
+            std::error_code ec;
             if(resp_mode == response_mode::unicast)
-                m_socket.send(sender, std::span<const std::byte>(sub_response));
+                m_socket.send(sender, std::span<const std::byte>(sub_response), ec);
             else
-                m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response));
+                m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response), ec);
+            if(ec && m_on_error) m_on_error(ec, "subtype response send");
         }
 
         if(!any_matched)
@@ -885,7 +902,11 @@ private:
         {
             auto response = build_response_packet(accumulated_qtype);
             if(!response.empty())
-                m_socket.send(sender, std::span<const std::byte>(response));
+            {
+                std::error_code ec;
+                m_socket.send(sender, std::span<const std::byte>(response), ec);
+                if(ec && m_on_error) m_on_error(ec, "response send");
+            }
             return;
         }
 
@@ -977,8 +998,12 @@ private:
                     }
 
                     if(!response.empty())
+                    {
+                        std::error_code ec;
                         m_socket.send(endpoint{"224.0.0.251", 5353},
-                                      std::span<const std::byte>(response));
+                                      std::span<const std::byte>(response), ec);
+                        if(ec && m_on_error) m_on_error(ec, "response send");
+                    }
                 });
         }
         else
@@ -999,7 +1024,9 @@ private:
         if(response.empty())
             return;
 
-        m_socket.send(dest, std::span<const std::byte>(response));
+        std::error_code ec;
+        m_socket.send(dest, std::span<const std::byte>(response), ec);
+        if(ec && m_on_error) m_on_error(ec, "response send");
     }
 
     // Sends an unsolicited announcement with all records (PTR, SRV, TXT, A/AAAA)
@@ -1009,7 +1036,11 @@ private:
     {
         auto response = detail::build_dns_response(m_info, dns_type::any);
         if(!response.empty())
-            m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(response));
+        {
+            std::error_code ec;
+            m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(response), ec);
+            if(ec && m_on_error) m_on_error(ec, "announcement send");
+        }
 
         if(m_opts.announce_subtypes)
         {
@@ -1017,7 +1048,11 @@ private:
             {
                 auto sub_response = build_subtype_response(sub);
                 if(!sub_response.empty())
-                    m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response));
+                {
+                    std::error_code ec;
+                    m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response), ec);
+                    if(ec && m_on_error) m_on_error(ec, "announcement send");
+                }
             }
         }
     }
@@ -1031,6 +1066,7 @@ private:
     service_options m_opts;
     completion_handler m_on_ready;
     completion_handler m_on_completion;
+    error_handler m_on_error;
     std::mt19937 m_rng;
     std::unique_ptr<recv_loop<P>> m_loop;
     server_state m_state{server_state::idle};

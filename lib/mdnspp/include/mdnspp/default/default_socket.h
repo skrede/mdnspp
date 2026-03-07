@@ -112,6 +112,45 @@ public:
 #endif
     }
 
+    /// Synchronous sendto() — non-throwing, reports errors via ec.
+    void send(const endpoint &dest, std::span<const std::byte> data, std::error_code &ec)
+    {
+        sockaddr_in addr{};
+        addr.sin_family = AF_INET;
+        addr.sin_port = htons(dest.port);
+#ifdef _WIN32
+        addr.sin_addr.s_addr = ::inet_addr(dest.address.c_str());
+#else
+        ::inet_pton(AF_INET, dest.address.c_str(), &addr.sin_addr);
+#endif
+
+#ifdef _WIN32
+        auto result = ::sendto(
+            m_fd,
+            reinterpret_cast<const char*>(data.data()),
+            static_cast<int>(data.size()),
+            0,
+            reinterpret_cast<const sockaddr*>(&addr),
+            static_cast<int>(sizeof(addr)));
+        if(result == SOCKET_ERROR)
+            ec = std::error_code(::WSAGetLastError(), std::system_category());
+        else
+            ec.clear();
+#else
+        auto result = ::sendto(
+            m_fd,
+            data.data(),
+            data.size(),
+            0,
+            reinterpret_cast<const sockaddr*>(&addr),
+            static_cast<socklen_t>(sizeof(addr)));
+        if(result < 0)
+            ec = std::error_code(errno, std::system_category());
+        else
+            ec.clear();
+#endif
+    }
+
     /// Close the socket and deregister from the context. Idempotent.
     void close()
     {

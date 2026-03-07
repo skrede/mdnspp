@@ -373,6 +373,7 @@ SCENARIO("async_start fires completion callback on stop", "[service_server][asyn
             AND_WHEN("stop() is called")
             {
                 server.stop();
+                ex.drain_posted();
 
                 THEN("the on_done callback fires with error_code{}")
                 {
@@ -401,6 +402,7 @@ SCENARIO("async_start completion handler fires exactly once on double stop", "[s
         {
             server.stop();
             server.stop();
+            ex.drain_posted();
 
             THEN("the on_done callback fires exactly once")
             {
@@ -1044,6 +1046,7 @@ SCENARIO("stop during probing fires on_ready with operation_canceled", "[service
                 [&](std::error_code ec) { done_fired = true; done_ec = ec; }
             );
             server.stop();
+            ex.drain_posted();
 
             THEN("on_ready fired with operation_canceled")
             {
@@ -2135,6 +2138,72 @@ SCENARIO("announce_subtypes=true includes subtype PTR in announcements", "[subty
                 }
             }
             REQUIRE(found_subtype_ptr);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// on_error callback and stop-then-destroy safety tests (Plan 33-02)
+// ---------------------------------------------------------------------------
+
+SCENARIO("on_error callback fires on send failure", "[service_server][on_error]")
+{
+    GIVEN("a service_server with on_error callback and send failure injection")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
+
+        std::error_code received_ec;
+        std::string_view received_context;
+        server.on_error([&](std::error_code ec, std::string_view ctx)
+        {
+            received_ec = ec;
+            received_context = ctx;
+        });
+
+        MockSocket::set_fail_on_send(true);
+
+        WHEN("the server starts and attempts to send a probe")
+        {
+            server.async_start();
+            // First timer fire triggers send_probe via start_probing delay
+            server.timer().fire();
+
+            THEN("on_error was called with a non-empty context string")
+            {
+                REQUIRE(received_ec);
+                REQUIRE(received_ec == std::errc::network_unreachable);
+                REQUIRE_FALSE(received_context.empty());
+            }
+        }
+
+        MockSocket::set_fail_on_send(false);
+    }
+}
+
+SCENARIO("stop-then-destroy is safe without draining posted work", "[service_server][stop-destroy-safety]")
+{
+    GIVEN("a service_server in a scoped block")
+    {
+        mock_executor ex;
+
+        WHEN("the server is created, started, stopped, and destroyed without draining")
+        {
+            THEN("no crash occurs (posted lambda becomes a no-op via weak_ptr sentinel)")
+            {
+                REQUIRE_NOTHROW([&]()
+                {
+                    basic_service_server<MockPolicy> server{ex, make_test_info()};
+                    server.async_start();
+                    advance_to_live(server);
+                    server.stop();
+                    // Destroy without calling ex.drain_posted()
+                }());
+
+                // The posted work is still in the executor queue but the lambda
+                // becomes a no-op because m_alive was reset by the destructor.
+                REQUIRE_NOTHROW(ex.drain_posted());
+            }
         }
     }
 }

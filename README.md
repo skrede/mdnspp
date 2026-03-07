@@ -11,12 +11,12 @@
 
 ## Features
 
-- **Standalone native networking** -- no external dependencies for the default policy.
-- **Optional ASIO support** -- networking and completion token support (callbacks, futures, coroutines, and deferred operations).
-- **Policy-based architecture** -- swap socket/timer/executor implementations at compile time.
 - **Cross-platform** -- Linux, macOS, and Windows.
-- **Network interface selection** -- bind mDNS to a specific NIC via `socket_options`, enumerate interfaces with `enumerate_interfaces()`.
-- **Thread-safe updates** -- `update_service_info()` safely modifies a running service server from any thread via `post()`.
+- **Standalone native networking** -- no external dependencies for the default policy.
+- **Network interface selection** -- run mDNS services on any NIC or bind to a specific NIC.
+- **Thread-safe service updates** -- safely modify the records of running mDNS service server from any thread.
+- **Policy-based architecture** -- swap socket/timer/executor implementations at compile time.
+- **Optional ASIO support** -- networking and completion token support (callbacks, futures, coroutines, and deferred operations).
 
 ## Quick Start
 
@@ -44,10 +44,9 @@ A typical discovery flow looks like this: query for PTR records of a service typ
 
 ```cpp
 #include <mdnspp/defaults.h>
-#include <mdnspp/service_info.h>
 
-#include <iostream>
 #include <thread>
+#include <iostream>
 
 int main()
 {
@@ -58,21 +57,25 @@ int main()
         .service_type = "_http._tcp.local.",
         .hostname     = "myhost.local.",
         .port         = 8080,
-        .address_ipv4 = "192.168.1.67",
+        .address_ipv4 = "192.168.1.69",
+        .address_ipv6 = {},
         .txt_records  = {{"path", "/index.html"}},
     };
 
-    mdnspp::service_server srv{ctx, std::move(info),
+    mdnspp::service_server srv{
+        ctx,
+        std::move(info),
         [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, bool unicast)
         {
             std::cout << sender << " queried qtype=" << to_string(qtype)
-                      << (unicast ? " (unicast)" : " (multicast)") << "\n";
+                << (unicast ? " (unicast)" : " (multicast)") << "\n";
         }
     };
 
-    std::thread shutdown([&ctx] {
+    std::thread shutdown([&ctx]
+    {
         std::this_thread::sleep_for(std::chrono::seconds(30));
-        ctx.stop(); // ctx.stop() ends ctx.run()
+        ctx.stop();
     });
 
     std::cout << "Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)\n";
@@ -93,34 +96,38 @@ Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)
 ### Discover Services
 
 ```cpp
+// Discover HTTP services on the local network using DefaultPolicy.
+// Self-terminates after 3 seconds of silence.
+
 #include <mdnspp/defaults.h>
-#include <mdnspp/records.h>
 
 #include <iostream>
-#include <variant>
 
 int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3),
-        [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
+    mdnspp::service_discovery sd{
+        ctx,
+        std::chrono::seconds(3),
+        [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
-            std::visit([&](const auto &r) {
+            std::visit([&](const auto &r)
+            {
                 std::cout << sender << " -> " << r << "\n";
             }, rec);
         }
     };
 
     sd.async_discover("_http._tcp.local.",
-        [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
-        {
-            if (ec)
-                std::cerr << "discovery error: " << ec.message() << "\n";
-            else
-                std::cout << results.size() << " record(s)\n";
-            ctx.stop(); // ctx.stop() ends ctx.run()
-        });
+    [&ctx](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)
+    {
+        if(ec)
+            std::cerr << "Discovery error: " << ec.message() << "\n";
+        else
+            std::cout << "Discovery complete: " << results.size() << " record(s)\n";
+        ctx.stop();
+    });
 
     ctx.run();
 }
@@ -138,34 +145,39 @@ Discovery complete -- 4 record(s)
 ### Query for Records
 
 ```cpp
+// Query for mDNS PTR records using DefaultPolicy.
+// Self-terminates after 3 seconds of silence.
+
 #include <mdnspp/defaults.h>
-#include <mdnspp/records.h>
 
 #include <iostream>
-#include <variant>
 
 int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::querier q{ctx, std::chrono::seconds(3),
-        [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
+    mdnspp::querier q
+    {
+        ctx,
+        std::chrono::seconds(3),
+        [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
-            std::visit([&](const auto &r) {
+            std::visit([&](const auto &r)
+            {
                 std::cout << sender << " -> " << r << "\n";
             }, rec);
         }
     };
 
     q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,
-        [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
-        {
-            if (ec)
-                std::cerr << "query error: " << ec.message() << "\n";
-            else
-                std::cout << results.size() << " record(s)\n";
-            ctx.stop(); // ctx.stop() ends ctx.run()
-        });
+    [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
+    {
+        if(ec)
+            std::cerr << "query error: " << ec.message() << "\n";
+        else
+            std::cout << "Query complete -- " << results.size() << " record(s)\n";
+        ctx.stop();
+    });
 
     ctx.run();
 }
@@ -183,26 +195,34 @@ Query complete -- 4 record(s)
 ### Observe mDNS Traffic
 
 ```cpp
+// Observe mDNS multicast traffic using DefaultPolicy.
+// Prints each record to stdout, stops after 10 records.
+
 #include <mdnspp/defaults.h>
-#include <mdnspp/records.h>
 
 #include <iostream>
-#include <variant>
 
 int main()
 {
     mdnspp::context ctx;
+    int count = 0;
 
-    mdnspp::observer obs{ctx,
-        [&](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
+    mdnspp::observer obs
+    {
+        ctx,
+        [&](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
-            std::visit([&](const auto &r) {
+            std::visit([&](const auto &r)
+            {
                 std::cout << sender << " -> " << r << "\n";
             }, rec);
+
+            if(++count >= 100)
+                obs.stop();
         }
     };
 
-    obs.async_observe([&ctx](std::error_code) { ctx.stop(); }); // ctx.stop() ends ctx.run()
+    obs.async_observe([&ctx](std::error_code) { ctx.stop(); });
     ctx.run();
 }
 ```
@@ -221,7 +241,9 @@ int main()
 
 ### Unicast responses (QU bit)
 
-All mDNS traffic is multicast by default — every device on the network sees every response. However, a querier can set the QU bit (RFC 6762 §5.4) to request a unicast reply sent directly back to it, skipping the multicast group entirely. This is useful when a device first joins the network and wants a fast answer without waiting for the usual multicast delay.
+All mDNS traffic is multicast by default -- every device on the network sees every response.
+However, a querier can set the QU bit (RFC 6762 §5.4) to request a unicast reply sent directly back to it, skipping the multicast group entirely.
+This can be useful when a device first joins the network and wants a fast answer without waiting for the usual multicast delay.
 
 On the client side, pass `unicast = true` to `async_query`, `async_discover`, or `async_browse` to set the QU bit in the outgoing query:
 
@@ -235,11 +257,12 @@ q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,
     true /* unicast */);
 ```
 
-On the server side, `service_server` detects the QU bit automatically and routes the response accordingly. Pass a query callback to see which queries arrive and whether they request unicast:
+On the server side, `service_server` detects the QU bit automatically and routes the response accordingly.
+Users can pass a query callback for introspection or logging queries -- `service_server` handles responses internally:
 
 ```cpp
 mdnspp::service_server srv{ctx, std::move(info),
-    [](mdnspp::dns_type qtype, mdnspp::endpoint sender, bool unicast)
+    [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, bool unicast)
     {
         std::cout << sender << " queried qtype=" << to_string(qtype)
                   << (unicast ? " (unicast)" : " (multicast)") << "\n";

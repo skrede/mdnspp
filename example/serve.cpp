@@ -1,10 +1,7 @@
 // Announce an HTTP service via mDNS using DefaultPolicy.
 // Auto-stops after 30 seconds.
-// Usage: ./mdnspp_example_serve
 
 #include <mdnspp/defaults.h>
-#include <mdnspp/service_info.h>
-#include <mdnspp/detail/dns_enums.h>
 
 #include <thread>
 #include <iostream>

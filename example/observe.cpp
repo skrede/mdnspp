@@ -1,12 +1,9 @@
 // Observe mDNS multicast traffic using DefaultPolicy.
 // Prints each record to stdout, stops after 10 records.
-// Usage: ./mdnspp_example_observe
 
 #include <mdnspp/defaults.h>
-#include <mdnspp/records.h>
 
 #include <iostream>
-#include <variant>
 
 int main()
 {

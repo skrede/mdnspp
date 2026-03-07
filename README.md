@@ -7,7 +7,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://en.cppreference.com/w/cpp/23)
 
-**mdnspp** is a C++23 mDNS/DNS-SD library with a policy-based architecture. The library is fully standalone -- no Boost dependency, no hidden threads, no owned allocations. The policy design lets it compose naturally with any executor or event loop: use the built-in native sockets for standalone applications, or plug in ASIO for completion token support. Cross-platform on Linux, macOS, and Windows.
+**mdnspp** is a C++23 mDNS/DNS-SD library with a policy-based architecture. The library is fully standalone -- no Boost dependency and no hidden threads. The policy design lets it compose naturally with any executor or event loop: use the built-in native sockets for standalone applications, or plug in ASIO for completion token support. Cross-platform on Linux, macOS, and Windows.
 
 ## Features
 

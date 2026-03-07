@@ -11,12 +11,12 @@ template <Policy P,
     asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>
     CompletionToken>
 auto async_query(basic_querier<P> &q, std::string_view name, dns_type qtype,
-                 CompletionToken &&token, bool unicast = false)
+                 CompletionToken &&token, response_mode mode = response_mode::multicast)
 {
     return asio::async_initiate<
         CompletionToken,
         void(std::error_code, std::vector<mdns_record_variant>)>(
-        [&q, unicast](auto handler, std::string qname, dns_type qt)
+        [&q, mode](auto handler, std::string qname, dns_type qt)
         {
             auto work = asio::make_work_guard(handler);
             q.async_query(std::move(qname), qt,
@@ -24,7 +24,7 @@ auto async_query(basic_querier<P> &q, std::string_view name, dns_type qtype,
                           {
                               mdnspp::dispatch_completion(std::move(h), std::move(w), ec, std::move(results));
                           },
-                          unicast);
+                          mode);
         },
         token, std::string(name), qtype);
 }

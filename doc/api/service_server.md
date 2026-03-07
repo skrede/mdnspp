@@ -30,7 +30,7 @@ using service_server = basic_service_server<DefaultPolicy>;
 using executor_type      = typename P::executor_type;
 using socket_type        = typename P::socket_type;
 using timer_type         = typename P::timer_type;
-using query_callback     = std::move_only_function<void(const endpoint&, dns_type, bool)>;
+using query_callback     = std::move_only_function<void(const endpoint&, dns_type, response_mode)>;
 using completion_handler = std::move_only_function<void(std::error_code)>;
 ```
 
@@ -172,7 +172,7 @@ mdnspp::service_info info{
 ### query_callback
 
 ```cpp
-using query_callback = std::move_only_function<void(const endpoint&, dns_type, bool)>;
+using query_callback = std::move_only_function<void(const endpoint&, dns_type, response_mode)>;
 ```
 
 Called when a matching mDNS query is received. Parameters:
@@ -181,7 +181,7 @@ Called when a matching mDNS query is received. Parameters:
 |-----------|------|-------------|
 | `sender` | `endpoint` | The querier's address and port |
 | `qtype` | `dns_type` | The record type requested (PTR, SRV, A, etc.) |
-| `unicast` | `bool` | `true` if the QU bit was set (RFC 6762 section 5.4) |
+| `mode` | `response_mode` | `unicast` if the QU bit was set (RFC 6762 section 5.4), `multicast` otherwise |
 
 ### service_txt
 
@@ -220,10 +220,10 @@ int main()
     };
 
     mdnspp::service_server srv{ctx, std::move(info),
-        [](const mdnspp::endpoint& sender, mdnspp::dns_type qtype, bool unicast)
+        [](const mdnspp::endpoint& sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
         {
             std::cout << sender << " queried qtype=" << to_string(qtype)
-                      << (unicast ? " (unicast)" : " (multicast)") << "\n";
+                      << " (" << to_string(mode) << ")\n";
         }
     };
 

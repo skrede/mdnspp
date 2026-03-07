@@ -65,10 +65,10 @@ int main()
     mdnspp::service_server srv{
         ctx,
         std::move(info),
-        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, bool unicast)
+        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
         {
             std::cout << sender << " queried qtype=" << to_string(qtype)
-                << (unicast ? " (unicast)" : " (multicast)") << "\n";
+                << " (" << to_string(mode) << ")\n";
         }
     };
 
@@ -139,7 +139,7 @@ int main()
 192.168.1.67:5353 -> 192.168.1.67: SRV MyApp._http._tcp.local -> myhost.local port 8080 weight 0 priority 0 rclass IN ttl 4500 length 20
 192.168.1.67:5353 -> 192.168.1.67: A myhost.local -> 192.168.1.67 rclass IN ttl 4500 length 4
 192.168.1.67:5353 -> 192.168.1.67: TXT MyApp._http._tcp.local path=/index.html rclass IN ttl 4500 length 17
-Discovery complete -- 4 record(s)
+Discovery complete: 4 record(s)
 ```
 
 ### Query for Records
@@ -245,7 +245,7 @@ All mDNS traffic is multicast by default -- every device on the network sees eve
 However, a querier can set the QU bit (RFC 6762 §5.4) to request a unicast reply sent directly back to it, skipping the multicast group entirely.
 This can be useful when a device first joins the network and wants a fast answer without waiting for the usual multicast delay.
 
-On the client side, pass `unicast = true` to `async_query`, `async_discover`, or `async_browse` to set the QU bit in the outgoing query:
+On the client side, pass `response_mode::unicast` to `async_query`, `async_discover`, or `async_browse` to set the QU bit in the outgoing query:
 
 ```cpp
 q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,
@@ -254,18 +254,18 @@ q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,
         std::cout << results.size() << " record(s)\n";
         ctx.stop();
     },
-    true /* unicast */);
+    mdnspp::response_mode::unicast);
 ```
 
 On the server side, `service_server` detects the QU bit automatically and routes the response accordingly.
-Users can pass a query callback for introspection or logging queries -- `service_server` handles responses internally:
+Users can pass an optional callback for each query that matches the announced service, purely for introspection or logging queries -- `service_server` handles responses internally:
 
 ```cpp
 mdnspp::service_server srv{ctx, std::move(info),
-    [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, bool unicast)
+    [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
     {
         std::cout << sender << " queried qtype=" << to_string(qtype)
-                  << (unicast ? " (unicast)" : " (multicast)") << "\n";
+                  << " (" << to_string(mode) << ")\n";
     }
 };
 ```

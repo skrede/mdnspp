@@ -25,7 +25,7 @@ namespace mdnspp::detail {
 //   + qtype (big-endian, 2 bytes)
 //   + qclass (2 bytes): 0x0001 (IN) or 0x8001 (IN + QU bit, RFC 6762 §5.4)
 inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qtype,
-                                              bool unicast = false)
+                                              response_mode mode = response_mode::multicast)
 {
     std::vector<std::byte> packet;
     packet.reserve(12 + 256 + 4);
@@ -58,7 +58,7 @@ inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qt
     push_u16_be(packet, std::to_underlying(qtype));
 
     // QCLASS: IN (0x0001) with optional QU bit (bit 15) per RFC 6762 §5.4
-    push_u16_be(packet, unicast ? uint16_t{0x8001} : uint16_t{0x0001});
+    push_u16_be(packet, mode == response_mode::unicast ? uint16_t{0x8001} : uint16_t{0x0001});
 
     return packet;
 }

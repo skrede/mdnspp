@@ -84,10 +84,11 @@ Same as the corresponding constructors above, but passes `opts` to the underlyin
 ### async_query
 
 ```cpp
-void async_query(std::string_view name, dns_type qtype, completion_handler on_done);
+void async_query(std::string_view name, dns_type qtype, completion_handler on_done,
+                 response_mode mode = response_mode::multicast);
 ```
 
-Sends a DNS query for `name` with record type `qtype` to the mDNS multicast group (`224.0.0.251:5353`), then listens for responses. The `on_done` handler fires with the accumulated results when the silence timeout expires or `stop()` is called.
+Sends a DNS query for `name` with record type `qtype` to the mDNS multicast group (`224.0.0.251:5353`), then listens for responses. The `on_done` handler fires with the accumulated results when the silence timeout expires or `stop()` is called. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 §5.4) is set in the outgoing query, requesting a direct unicast response.
 
 Must only be called once per lifetime.
 

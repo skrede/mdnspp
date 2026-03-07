@@ -81,7 +81,7 @@ int main()
     mdnspp::context ctx;
 
     mdnspp::observer obs{ctx,
-        [&](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
+        [&](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&](const auto &r) {
                 std::cout << sender << " -> " << r << "\n";

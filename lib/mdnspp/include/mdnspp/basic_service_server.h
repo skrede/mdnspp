@@ -50,8 +50,8 @@ public:
     using timer_type = typename P::timer_type;
 
     /// Optional callback invoked when an incoming query is received and parsed.
-    /// Parameters: qtype requested, sender endpoint, whether unicast was requested.
-    using query_callback = detail::move_only_function<void(const endpoint &sender, dns_type type, bool unicast)>;
+    /// Parameters: sender endpoint, qtype requested, response mode (unicast or multicast).
+    using query_callback = detail::move_only_function<void(const endpoint &sender, dns_type type, response_mode mode)>;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
@@ -325,10 +325,12 @@ private:
         // RFC 6762 section 5.4: QU bit is the top bit of QCLASS.
         // If set, the querier requests a unicast response directly to its address.
         // Otherwise, respond via multicast so all listeners benefit.
-        bool unicast_response = (qclass & 0x8000) != 0;
+        auto response_mode = (qclass & 0x8000) != 0
+                                 ? response_mode::unicast
+                                 : response_mode::multicast;
 
         if(m_on_query)
-            m_on_query(sender, qtype, unicast_response);
+            m_on_query(sender, qtype, response_mode);
 
         // RFC 6762 section 6: random delay 20-500ms before responding via multicast.
         // Unicast responses may be sent immediately.
@@ -336,7 +338,7 @@ private:
         int delay_ms = dist(m_rng);
 
         // Choose destination: unicast back to querier, or multicast to the group
-        endpoint dest = unicast_response
+        endpoint dest = response_mode == response_mode::unicast
                             ? sender
                             : endpoint{"224.0.0.251", 5353};
 

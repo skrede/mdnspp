@@ -26,11 +26,11 @@ int main()
     mdnspp::basic_service_server<mdnspp::AsioPolicy> srv{
         io,
         std::move(info),
-        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, bool unicast)
+        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
         {
             std::cout << sender.address << ":" << sender.port
                 << " queried qtype=" << to_string(qtype)
-                << (unicast ? " (unicast)" : " (multicast)") << "\n";
+                << " (" << to_string(mode) << ")\n";
         }
     };
 

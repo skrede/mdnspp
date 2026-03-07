@@ -145,29 +145,29 @@ public:
     timer_type &timer() noexcept { return m_timer; }
 
     // Plain callback overloads — used by NativePolicy, MockPolicy, and ASIO adapter users.
-    // When unicast is true the QU bit (RFC 6762 §5.4) is set, requesting a
-    // direct unicast response from the responder instead of a multicast reply.
+    // When mode is response_mode::unicast the QU bit (RFC 6762 §5.4) is set,
+    // requesting a direct unicast response from the responder instead of a multicast reply.
     void async_discover(std::string_view service_type, completion_handler on_done,
-                        bool unicast = false)
+                        response_mode mode = response_mode::multicast)
     {
         assert(m_loop == nullptr); // one discover per lifetime
         if(on_done)
             m_on_completion = std::move(on_done);
-        do_discover(std::string(service_type), unicast);
+        do_discover(std::string(service_type), mode);
     }
 
     /// Aggregating browse — delivers resolved_service values via RFC 6763 name-chain
     /// correlation (PTR -> SRV -> TXT -> A/AAAA) at the silence timeout.
     /// Completion signature: void(std::error_code, std::vector<resolved_service>).
-    /// When unicast is true the QU bit (RFC 6762 §5.4) is set.
+    /// When mode is response_mode::unicast the QU bit (RFC 6762 §5.4) is set.
     void async_browse(std::string_view service_type,
                       detail::move_only_function<void(std::error_code, std::vector<resolved_service>)> on_done,
-                      bool unicast = false)
+                      response_mode mode = response_mode::multicast)
     {
         assert(m_browse_loop == nullptr); // one browse per lifetime
         if(on_done)
             m_on_browse_completion = std::move(on_done);
-        do_browse(std::string(service_type), unicast);
+        do_browse(std::string(service_type), mode);
     }
 
     // Access accumulated raw record results (populated during io.run()).
@@ -207,7 +207,7 @@ private:
     // Mirrors do_discover() exactly; silence callback calls aggregate(m_results)
     // instead of firing the discover handler.
     // Must only be called once per lifetime (m_browse_loop must be null on entry).
-    void do_browse(std::string svc_type, bool unicast = false)
+    void do_browse(std::string svc_type, response_mode mode = response_mode::multicast)
     {
         assert(m_browse_loop == nullptr); // one browse per lifetime
         m_results.clear();
@@ -216,7 +216,7 @@ private:
             m_service_type.pop_back();
 
         // Build and send DNS PTR query (qtype = 12) — same as do_discover()
-        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr, unicast);
+        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr, mode);
         m_socket.send(endpoint{"224.0.0.251", 5353},
                       std::span<const std::byte>(query_bytes));
 
@@ -273,7 +273,7 @@ private:
 
     // Sets up m_service_type, sends DNS query, creates and starts recv_loop.
     // Must only be called once per lifetime (m_loop must be null on entry).
-    void do_discover(std::string svc_type, bool unicast = false)
+    void do_discover(std::string svc_type, response_mode mode = response_mode::multicast)
     {
         assert(m_loop == nullptr); // one discover per lifetime
         m_results.clear();
@@ -283,7 +283,7 @@ private:
             m_service_type.pop_back();
 
         // Build and send DNS PTR query (qtype = 12)
-        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr, unicast);
+        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr, mode);
         m_socket.send(endpoint{"224.0.0.251", 5353},
                       std::span<const std::byte>(query_bytes));
 

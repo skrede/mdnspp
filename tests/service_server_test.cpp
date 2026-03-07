@@ -80,7 +80,7 @@ static std::vector<std::byte> make_a_query(std::string_view hostname)
 // RFC 6762 section 5.4: QU bit requests unicast response.
 static std::vector<std::byte> make_qu_query(std::string_view name, dns_type qtype)
 {
-    return build_dns_query(name, qtype, true);
+    return build_dns_query(name, qtype, response_mode::unicast);
 }
 
 SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response][PTR]")

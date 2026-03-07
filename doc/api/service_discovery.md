@@ -31,7 +31,7 @@ using executor_type      = typename P::executor_type;
 using socket_type        = typename P::socket_type;
 using timer_type         = typename P::timer_type;
 using record_callback    = std::move_only_function<void(const endpoint&, const mdns_record_variant&)>;
-using completion_handler = std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
+using completion_handler = std::move_only_function<void(std::error_code, const std::vector<mdns_record_variant>&)>;
 ```
 
 ## Constructors
@@ -84,10 +84,11 @@ Same as the corresponding constructors above, but passes `opts` to the underlyin
 ### async_discover
 
 ```cpp
-void async_discover(std::string_view service_type, completion_handler on_done);
+void async_discover(std::string_view service_type, completion_handler on_done,
+                    response_mode mode = response_mode::multicast);
 ```
 
-Sends a PTR query for `service_type` to the mDNS multicast group and collects **raw DNS records** until the silence timeout expires. The `on_done` handler receives all accumulated records (PTR, SRV, A, AAAA, TXT) as a flat vector.
+Sends a PTR query for `service_type` to the mDNS multicast group and collects **raw DNS records** until the silence timeout expires. The `on_done` handler receives all accumulated records (PTR, SRV, A, AAAA, TXT) as a flat vector. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 §5.4) is set in the outgoing query.
 
 Use this when you need access to individual DNS records. To get fully-resolved services instead, use `async_browse`.
 
@@ -97,10 +98,11 @@ Must only be called once per lifetime. Cannot be combined with `async_browse` on
 
 ```cpp
 void async_browse(std::string_view service_type,
-                  std::move_only_function<void(std::error_code, std::vector<resolved_service>)> on_done);
+                  std::move_only_function<void(std::error_code, std::vector<resolved_service>)> on_done,
+                  response_mode mode = response_mode::multicast);
 ```
 
-Higher-level alternative to `async_discover`. Sends the same PTR query, but internally calls [`aggregate()`](resolved_service.md) on the collected records at the silence timeout, delivering fully-resolved [`resolved_service`](resolved_service.md) values with hostname, port, addresses, and TXT entries already correlated.
+Higher-level alternative to `async_discover`. Sends the same PTR query, but internally calls [`aggregate()`](resolved_service.md) on the collected records at the silence timeout, delivering fully-resolved [`resolved_service`](resolved_service.md) values with hostname, port, addresses, and TXT entries already correlated. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 §5.4) is set in the outgoing query.
 
 Must only be called once per lifetime. Cannot be combined with `async_discover` on the same instance.
 

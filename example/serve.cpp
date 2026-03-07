@@ -23,10 +23,10 @@ int main()
     mdnspp::service_server srv{
         ctx,
         std::move(info),
-        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, bool unicast)
+        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
         {
             std::cout << sender << " queried qtype=" << to_string(qtype)
-                << (unicast ? " (unicast)" : " (multicast)") << "\n";
+                << " (" << to_string(mode) << ")\n";
         }
     };
 

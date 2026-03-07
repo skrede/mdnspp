@@ -26,11 +26,13 @@ int main()
     mdnspp::basic_service_server<mdnspp::AsioPolicy> srv{
         io,
         std::move(info),
-        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
-        {
-            std::cout << sender.address << ":" << sender.port
-                << " queried qtype=" << to_string(qtype)
-                << " (" << to_string(mode) << ")\n";
+        mdnspp::service_options{
+            .on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
+            {
+                std::cout << sender.address << ":" << sender.port
+                    << " queried qtype=" << to_string(qtype)
+                    << " (" << to_string(mode) << ")\n";
+            }
         }
     };
 

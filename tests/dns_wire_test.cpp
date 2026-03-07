@@ -776,3 +776,199 @@ SCENARIO("skip_dns_name where label extends past end of buffer", "[dns_read][ski
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Cache-flush bit tests — verify raw wire bytes (not walk_dns_frame which strips the bit)
+// ---------------------------------------------------------------------------
+
+using mdnspp::detail::read_u16_be;
+
+// Helper: find rrclass value of the first resource record after skipping the DNS header
+// and question section. Returns the raw 16-bit rrclass (including cache-flush bit if set).
+static uint16_t find_first_rr_rrclass(const std::vector<std::byte> &pkt)
+{
+    // Skip 12-byte header
+    size_t offset = 12;
+    auto span = std::span<const std::byte>(pkt);
+
+    // Skip question section (qdcount questions)
+    uint16_t qdcount = read_u16_be(pkt.data() + 4);
+    for(uint16_t i = 0; i < qdcount; ++i)
+    {
+        skip_dns_name(span, offset);
+        offset += 4; // qtype + qclass
+    }
+
+    // Now at the first RR — skip name, then read rtype(2) + rrclass(2)
+    skip_dns_name(span, offset);
+    offset += 2; // skip rtype
+    return read_u16_be(pkt.data() + offset);
+}
+
+// Helper: collect all (rtype, rrclass) pairs from all RRs in a packet
+static std::vector<std::pair<uint16_t, uint16_t>> collect_rr_type_class(const std::vector<std::byte> &pkt)
+{
+    std::vector<std::pair<uint16_t, uint16_t>> result;
+    size_t offset = 12;
+    auto span = std::span<const std::byte>(pkt);
+
+    uint16_t qdcount = read_u16_be(pkt.data() + 4);
+    for(uint16_t i = 0; i < qdcount; ++i)
+    {
+        skip_dns_name(span, offset);
+        offset += 4;
+    }
+
+    uint16_t ancount = read_u16_be(pkt.data() + 6);
+    uint16_t nscount = read_u16_be(pkt.data() + 8);
+    uint16_t arcount = read_u16_be(pkt.data() + 10);
+    uint32_t rr_total = static_cast<uint32_t>(ancount) +
+        static_cast<uint32_t>(nscount) +
+        static_cast<uint32_t>(arcount);
+
+    for(uint32_t rr = 0; rr < rr_total; ++rr)
+    {
+        skip_dns_name(span, offset);
+        uint16_t rtype = read_u16_be(pkt.data() + offset);
+        offset += 2;
+        uint16_t rclass = read_u16_be(pkt.data() + offset);
+        offset += 2;
+        result.emplace_back(rtype, rclass);
+
+        // Skip ttl(4) + rdlength(2) + rdata
+        offset += 4;
+        uint16_t rdlength = read_u16_be(pkt.data() + offset);
+        offset += 2;
+        offset += rdlength;
+    }
+
+    return result;
+}
+
+SCENARIO("build_dns_response PTR answer does NOT have cache-flush bit set", "[build_dns_response][cache_flush]")
+{
+    GIVEN("a service_info with both addresses")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_dns_response is called with qtype=PTR")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::ptr);
+
+            THEN("the first RR (PTR answer) has rrclass 0x0001 (no cache-flush bit)")
+            {
+                uint16_t rrclass = find_first_rr_rrclass(pkt);
+                REQUIRE(rrclass == 0x0001);
+            }
+        }
+    }
+}
+
+SCENARIO("build_dns_response SRV answer has cache-flush bit set", "[build_dns_response][cache_flush]")
+{
+    GIVEN("a service_info with both addresses")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_dns_response is called with qtype=SRV")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::srv);
+
+            THEN("the first RR (SRV answer) has rrclass 0x8001 (cache-flush bit set)")
+            {
+                uint16_t rrclass = find_first_rr_rrclass(pkt);
+                REQUIRE(rrclass == 0x8001);
+            }
+        }
+    }
+}
+
+SCENARIO("build_dns_response ANY sets cache-flush on unique records only", "[build_dns_response][cache_flush]")
+{
+    GIVEN("a service_info with both addresses and TXT records")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_dns_response is called with qtype=ANY")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::any);
+
+            THEN("PTR has rrclass 0x0001, SRV/A/AAAA/TXT have rrclass 0x8001")
+            {
+                auto rrs = collect_rr_type_class(pkt);
+                REQUIRE_FALSE(rrs.empty());
+
+                for(auto [rtype, rclass] : rrs)
+                {
+                    if(rtype == std::to_underlying(mdnspp::dns_type::ptr))
+                        REQUIRE(rclass == 0x0001);
+                    else
+                        REQUIRE(rclass == 0x8001);
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// build_probe_query tests
+// ---------------------------------------------------------------------------
+
+using mdnspp::detail::build_probe_query;
+
+SCENARIO("build_probe_query produces valid probe packet with question and authority", "[build_probe_query]")
+{
+    GIVEN("a test service_info")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_probe_query is called")
+        {
+            auto pkt = build_probe_query(info);
+
+            THEN("the header has flags=0x0000, qdcount=1, nscount=1")
+            {
+                REQUIRE(pkt.size() >= 12);
+                uint16_t flags = read_u16_be(pkt.data() + 2);
+                uint16_t qdcount = read_u16_be(pkt.data() + 4);
+                uint16_t ancount = read_u16_be(pkt.data() + 6);
+                uint16_t nscount = read_u16_be(pkt.data() + 8);
+
+                REQUIRE(flags == 0x0000);
+                REQUIRE(qdcount == 1);
+                REQUIRE(ancount == 0);
+                REQUIRE(nscount == 1);
+            }
+
+            THEN("the question has QTYPE=ANY and QCLASS=0x8001 (QU bit)")
+            {
+                // Skip header (12 bytes) + question name
+                size_t offset = 12;
+                auto span = std::span<const std::byte>(pkt);
+                skip_dns_name(span, offset);
+
+                uint16_t qtype = read_u16_be(pkt.data() + offset);
+                uint16_t qclass = read_u16_be(pkt.data() + offset + 2);
+
+                REQUIRE(qtype == std::to_underlying(mdnspp::dns_type::any));
+                REQUIRE(qclass == 0x8001);
+            }
+
+            THEN("the authority section contains an SRV record")
+            {
+                auto rrs = collect_rr_type_class(pkt);
+                REQUIRE(rrs.size() == 1);
+                REQUIRE(rrs[0].first == std::to_underlying(mdnspp::dns_type::srv));
+            }
+
+            THEN("the question name matches the service_name")
+            {
+                auto result = mdnspp::detail::read_dns_name(
+                    std::span<const std::byte>(pkt), 12);
+                REQUIRE(result.has_value());
+                // service_name is "MyService._http._tcp.local." — trailing dot stripped
+                REQUIRE(*result == "MyService._http._tcp.local");
+            }
+        }
+    }
+}

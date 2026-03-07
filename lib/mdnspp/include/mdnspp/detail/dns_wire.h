@@ -161,11 +161,12 @@ inline void append_dns_rr(std::vector<std::byte> &buf,
                           const std::vector<std::byte> &name,
                           dns_type rtype,
                           uint32_t ttl,
-                          const std::vector<std::byte> &rdata)
+                          const std::vector<std::byte> &rdata,
+                          bool cache_flush = false)
 {
     buf.insert(buf.end(), name.begin(), name.end());
     push_u16_be(buf, std::to_underlying(rtype));
-    push_u16_be(buf, 0x0001); // class IN
+    push_u16_be(buf, cache_flush ? uint16_t{0x8001} : uint16_t{0x0001});
     push_u32_be(buf, ttl);
     push_u16_be(buf, static_cast<uint16_t>(rdata.size()));
     buf.insert(buf.end(), rdata.begin(), rdata.end());
@@ -294,18 +295,25 @@ inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &inf
     uint16_t ancount = 0;
     uint16_t arcount = 0;
 
+    // Unique record types get cache-flush bit set (RFC 6762 section 10.2).
+    // PTR is shared (never cache-flush); SRV, A, AAAA, TXT are unique (always cache-flush).
+    auto is_unique = [](dns_type t) -> bool {
+        return t == dns_type::srv || t == dns_type::a ||
+               t == dns_type::aaaa || t == dns_type::txt;
+    };
+
     // Helper lambdas to append to the right section
     auto add_answer = [&](const std::vector<std::byte> &name, dns_type rtype,
                           uint32_t ttl, const std::vector<std::byte> &rdata)
     {
-        append_dns_rr(answers, name, rtype, ttl, rdata);
+        append_dns_rr(answers, name, rtype, ttl, rdata, is_unique(rtype));
         ++ancount;
     };
 
     auto add_additional = [&](const std::vector<std::byte> &name, dns_type rtype,
                               uint32_t ttl, const std::vector<std::byte> &rdata)
     {
-        append_dns_rr(additional, name, rtype, ttl, rdata);
+        append_dns_rr(additional, name, rtype, ttl, rdata, is_unique(rtype));
         ++arcount;
     };
 
@@ -385,6 +393,44 @@ inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &inf
 
     packet.insert(packet.end(), answers.begin(), answers.end());
     packet.insert(packet.end(), additional.begin(), additional.end());
+
+    return packet;
+}
+
+// Builds an mDNS probe query per RFC 6762 section 8.1:
+//   - Header: id=0, flags=0x0000 (query), qdcount=1, ancount=0, nscount=1, arcount=0
+//   - Question: service_name, QTYPE=ANY (0x00FF), QCLASS=IN|QU (0x8001)
+//   - Authority: proposed SRV record for simultaneous probe tiebreaking (RFC 6762 section 8.2)
+inline std::vector<std::byte> build_probe_query(const service_info &info)
+{
+    auto name_service = encode_dns_name(info.service_name);
+    auto name_host = encode_dns_name(info.hostname);
+
+    // Build SRV rdata: priority(2) + weight(2) + port(2) + encoded hostname
+    std::vector<std::byte> rdata_srv;
+    push_u16_be(rdata_srv, info.priority);
+    push_u16_be(rdata_srv, info.weight);
+    push_u16_be(rdata_srv, info.port);
+    rdata_srv.insert(rdata_srv.end(), name_host.begin(), name_host.end());
+
+    std::vector<std::byte> packet;
+    packet.reserve(12 + name_service.size() + 4 + name_service.size() + 10 + rdata_srv.size());
+
+    // DNS header
+    push_u16_be(packet, 0x0000); // id = 0
+    push_u16_be(packet, 0x0000); // flags = 0x0000 (standard query)
+    push_u16_be(packet, 0x0001); // qdcount = 1
+    push_u16_be(packet, 0x0000); // ancount = 0
+    push_u16_be(packet, 0x0001); // nscount = 1
+    push_u16_be(packet, 0x0000); // arcount = 0
+
+    // Question section: service_name, QTYPE=ANY, QCLASS=IN|QU
+    packet.insert(packet.end(), name_service.begin(), name_service.end());
+    push_u16_be(packet, std::to_underlying(dns_type::any)); // QTYPE = ANY (0x00FF)
+    push_u16_be(packet, uint16_t{0x8001}); // QCLASS = IN | QU bit
+
+    // Authority section: proposed SRV record
+    response_detail::append_dns_rr(packet, name_service, dns_type::srv, 120, rdata_srv);
 
     return packet;
 }

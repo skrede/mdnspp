@@ -135,8 +135,9 @@ public:
     {
     }
 
-    void expires_after(std::chrono::milliseconds)
+    void expires_after(std::chrono::milliseconds d)
     {
+        m_last_duration = d;
         m_pending_handler = nullptr;
         m_cancel_count++;
     }
@@ -168,9 +169,11 @@ public:
 
     int cancel_count() const { return m_cancel_count; }
     bool has_pending() const { return m_pending_handler != nullptr; }
+    std::chrono::milliseconds last_duration() const { return m_last_duration; }
 
 private:
     std::function<void(std::error_code)> m_pending_handler;
+    std::chrono::milliseconds m_last_duration{0};
     int m_cancel_count{0};
 };
 

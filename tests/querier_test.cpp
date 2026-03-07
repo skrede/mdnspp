@@ -302,6 +302,9 @@ SCENARIO("async_query sends correct DNS query packet", "[querier][query][packet]
                           {
                           });
 
+            // QM query is delayed — fire the delay timer to send
+            q.delay_timer().fire();
+
             THEN("a DNS query was sent to 224.0.0.251:5353")
             {
                 REQUIRE_FALSE(q.socket().sent_packets().empty());
@@ -507,6 +510,173 @@ SCENARIO("basic_querier with socket_options", "[querier][socket_options]")
                 REQUIRE(q.socket().options().multicast_ttl == 100);
                 REQUIRE(q.socket().queue_empty());
                 REQUIRE(q.results().empty());
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Initial query delay tests (RFC 6762 section 5.2)
+// ---------------------------------------------------------------------------
+
+// Build a raw DNS query packet (for injection as duplicate detection)
+static std::vector<std::byte> make_dns_query_packet(std::string_view name, uint16_t qtype,
+                                                     bool qu_bit = false)
+{
+    std::vector<std::byte> pkt;
+    push_u16_be(pkt, 0x0000); // id
+    push_u16_be(pkt, 0x0000); // flags: QR=0 (query)
+    push_u16_be(pkt, 0x0001); // qdcount = 1
+    push_u16_be(pkt, 0x0000); // ancount
+    push_u16_be(pkt, 0x0000); // nscount
+    push_u16_be(pkt, 0x0000); // arcount
+
+    auto enc = encode_name(name);
+    pkt.insert(pkt.end(), enc.begin(), enc.end());
+    push_u16_be(pkt, qtype);
+    push_u16_be(pkt, qu_bit ? uint16_t{0x8001} : uint16_t{0x0001}); // qclass
+
+    return pkt;
+}
+
+SCENARIO("QM query delays send by 20-120ms", "[querier][delay]")
+{
+    GIVEN("a querier instance with no enqueued responses")
+    {
+        mock_executor ex;
+        basic_querier<MockPolicy> q{ex, 500ms};
+
+        WHEN("async_query is called with multicast mode (default)")
+        {
+            q.async_query("myhost.local.", dns_type::a,
+                          [](std::error_code, std::vector<mdns_record_variant>)
+                          {
+                          });
+
+            THEN("no query packet is sent immediately")
+            {
+                REQUIRE(q.socket().sent_packets().empty());
+            }
+
+            THEN("the delay timer has a pending handler")
+            {
+                REQUIRE(q.delay_timer().has_pending());
+            }
+
+            THEN("the delay timer duration is between 20ms and 120ms")
+            {
+                auto d = q.delay_timer().last_duration();
+                REQUIRE(d >= 20ms);
+                REQUIRE(d <= 120ms);
+            }
+
+            AND_WHEN("the delay timer fires")
+            {
+                q.delay_timer().fire();
+
+                THEN("the query packet is now sent")
+                {
+                    REQUIRE_FALSE(q.socket().sent_packets().empty());
+                }
+            }
+        }
+    }
+}
+
+SCENARIO("QU query sends immediately without delay", "[querier][delay]")
+{
+    GIVEN("a querier instance with no enqueued responses")
+    {
+        mock_executor ex;
+        basic_querier<MockPolicy> q{ex, 500ms};
+
+        WHEN("async_query is called with unicast mode")
+        {
+            q.async_query("myhost.local.", dns_type::a,
+                          [](std::error_code, std::vector<mdns_record_variant>)
+                          {
+                          },
+                          response_mode::unicast);
+
+            THEN("the query packet is sent immediately")
+            {
+                REQUIRE_FALSE(q.socket().sent_packets().empty());
+            }
+
+            THEN("the delay timer has no pending handler")
+            {
+                REQUIRE_FALSE(q.delay_timer().has_pending());
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Duplicate question suppression tests (RFC 6762 section 7.3)
+// ---------------------------------------------------------------------------
+
+SCENARIO("duplicate QM question suppresses pending query", "[querier][suppression]")
+{
+    GIVEN("a querier with a pending QM query")
+    {
+        mock_executor ex;
+        basic_querier<MockPolicy> q{ex, 500ms};
+
+        q.async_query("myhost.local.", dns_type::a,
+                      [](std::error_code, std::vector<mdns_record_variant>)
+                      {
+                      });
+
+        // Verify query is not yet sent (delayed)
+        REQUIRE(q.socket().sent_packets().empty());
+        REQUIRE(q.delay_timer().has_pending());
+
+        WHEN("a matching QM query packet is injected during the delay window")
+        {
+            auto dup_query = make_dns_query_packet("myhost.local.", 1, false); // QM (not QU)
+            q.socket().inject_receive(endpoint{}, dup_query);
+
+            AND_WHEN("the delay timer fires")
+            {
+                q.delay_timer().fire();
+
+                THEN("no query packet was sent by the querier (suppressed)")
+                {
+                    REQUIRE(q.socket().sent_packets().empty());
+                }
+            }
+        }
+    }
+}
+
+SCENARIO("QU duplicate does NOT suppress pending QM query", "[querier][suppression]")
+{
+    GIVEN("a querier with a pending QM query")
+    {
+        mock_executor ex;
+        basic_querier<MockPolicy> q{ex, 500ms};
+
+        q.async_query("myhost.local.", dns_type::a,
+                      [](std::error_code, std::vector<mdns_record_variant>)
+                      {
+                      });
+
+        REQUIRE(q.socket().sent_packets().empty());
+        REQUIRE(q.delay_timer().has_pending());
+
+        WHEN("a matching QU query packet is injected during the delay window")
+        {
+            auto qu_query = make_dns_query_packet("myhost.local.", 1, true); // QU bit set
+            q.socket().inject_receive(endpoint{}, qu_query);
+
+            AND_WHEN("the delay timer fires")
+            {
+                q.delay_timer().fire();
+
+                THEN("the query packet WAS sent (QU does not suppress)")
+                {
+                    REQUIRE_FALSE(q.socket().sent_packets().empty());
+                }
             }
         }
     }

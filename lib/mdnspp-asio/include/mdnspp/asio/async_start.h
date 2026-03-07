@@ -14,7 +14,7 @@ auto async_start(basic_service_server<P> &srv, CompletionToken &&token)
         [&srv](auto handler)
         {
             auto work = asio::make_work_guard(handler);
-            srv.async_start(
+            srv.async_start({},
                 [h = std::move(handler), w = std::move(work)](std::error_code ec) mutable
                 {
                     mdnspp::dispatch_completion(std::move(h), std::move(w), ec);

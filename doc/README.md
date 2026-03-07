@@ -14,6 +14,11 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 
 - [observer](api/observer.md) -- mDNS multicast listener
 - [querier](api/querier.md) -- mDNS query client
-- [service_discovery](api/service_discovery.md) -- mDNS service browser with record aggregation
-- [service_server](api/service_server.md) -- mDNS service responder
 - [resolved_service](api/resolved_service.md) -- Aggregated service result from discovery
+- [service_discovery](api/service_discovery.md) -- mDNS service browser with record aggregation
+- [service_options](api/service_options.md) -- Service announcement configuration
+- [service_server](api/service_server.md) -- mDNS service responder
+
+## RFC Compliance
+
+- [RFC Compliance](rfc/README.md) -- RFC 6762/6763 conformance status and feature documentation

@@ -11,6 +11,7 @@
 #include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/detail/recv_loop.h"
 
+#include <span>
 #include <chrono>
 #include <memory>
 #include <string>
@@ -38,6 +39,9 @@ public:
     /// Receives error_code (always success for normal completion) and the accumulated results.
     using completion_handler = detail::move_only_function<void(std::error_code, const std::vector<mdns_record_variant> &)>;
 
+    /// Completion callback for async_enumerate_types.
+    using enumerate_handler = detail::move_only_function<void(std::error_code, std::vector<service_type_info>)>;
+
     // Non-copyable (owns recv_loop by unique_ptr)
     basic_service_discovery(const basic_service_discovery &) = delete;
     basic_service_discovery &operator=(const basic_service_discovery &) = delete;
@@ -50,13 +54,17 @@ public:
         , m_on_record(std::move(other.m_on_record))
         , m_on_completion(std::move(other.m_on_completion))
         , m_on_browse_completion(std::move(other.m_on_browse_completion))
+        , m_on_enumerate_completion(std::move(other.m_on_enumerate_completion))
         , m_loop(std::move(other.m_loop))
         , m_browse_loop(std::move(other.m_browse_loop))
+        , m_enumerate_loop(std::move(other.m_enumerate_loop))
         , m_results(std::move(other.m_results))
         , m_services(std::move(other.m_services))
+        , m_enumerated_types(std::move(other.m_enumerated_types))
     {
-        assert(other.m_loop == nullptr);        // source must not have been started
-        assert(other.m_browse_loop == nullptr); // source must not have been started
+        assert(other.m_loop == nullptr);           // source must not have been started
+        assert(other.m_browse_loop == nullptr);    // source must not have been started
+        assert(other.m_enumerate_loop == nullptr); // source must not have been started
     }
 
     basic_service_discovery &operator=(basic_service_discovery &&) = delete;
@@ -65,6 +73,7 @@ public:
     {
         m_loop.reset();
         m_browse_loop.reset();
+        m_enumerate_loop.reset();
     }
 
     // Throwing constructor — constructs socket and timer from executor.
@@ -170,6 +179,28 @@ public:
         do_browse(std::string(service_type), mode);
     }
 
+    /// DNS-SD service type enumeration (RFC 6763 section 9).
+    /// Queries _services._dns-sd._udp.local. and returns parsed service_type_info values.
+    void async_enumerate_types(enumerate_handler on_done,
+                               response_mode mode = response_mode::multicast)
+    {
+        assert(m_enumerate_loop == nullptr); // one enumerate per lifetime
+        if(on_done)
+            m_on_enumerate_completion = std::move(on_done);
+        do_enumerate(mode);
+    }
+
+    /// Subtype-filtered discovery (RFC 6763 section 7.1).
+    /// Constructs subtype query name and delegates to async_discover.
+    void async_discover_subtype(std::string_view service_type,
+                                std::string_view subtype_label,
+                                completion_handler on_done,
+                                response_mode mode = response_mode::multicast)
+    {
+        auto query_name = std::string(subtype_label) + "._sub." + std::string(service_type);
+        async_discover(query_name, std::move(on_done), mode);
+    }
+
     // Access accumulated raw record results (populated during io.run()).
     // Remains valid after completion — the completion handler receives a copy.
     const std::vector<mdns_record_variant> &results() const noexcept
@@ -200,6 +231,12 @@ public:
             if(auto h = std::exchange(m_on_browse_completion, nullptr); h)
                 h(std::error_code{}, m_services);
         }
+        if(m_enumerate_loop)
+        {
+            m_enumerate_loop->stop();
+            if(auto h = std::exchange(m_on_enumerate_completion, nullptr); h)
+                h(std::error_code{}, m_enumerated_types);
+        }
     }
 
 private:
@@ -216,7 +253,9 @@ private:
             m_service_type.pop_back();
 
         // Build and send DNS PTR query (qtype = 12) — same as do_discover()
-        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr, mode);
+        // Includes known answers (m_results) per RFC 6762 section 7.1
+        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr,
+                                                   std::span<const mdns_record_variant>(m_results), mode);
         m_socket.send(endpoint{"224.0.0.251", 5353},
                       std::span<const std::byte>(query_bytes));
 
@@ -283,7 +322,9 @@ private:
             m_service_type.pop_back();
 
         // Build and send DNS PTR query (qtype = 12)
-        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr, mode);
+        // Includes known answers (m_results) per RFC 6762 section 7.1
+        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr,
+                                                   std::span<const mdns_record_variant>(m_results), mode);
         m_socket.send(endpoint{"224.0.0.251", 5353},
                       std::span<const std::byte>(query_bytes));
 
@@ -339,17 +380,67 @@ private:
         m_loop->start();
     }
 
+    // Sets up the meta-query for DNS-SD service type enumeration (RFC 6763 section 9).
+    // Queries _services._dns-sd._udp.local and accumulates parsed service_type_info values.
+    void do_enumerate(response_mode mode = response_mode::multicast)
+    {
+        assert(m_enumerate_loop == nullptr);
+        m_enumerated_types.clear();
+
+        static constexpr std::string_view meta_name = "_services._dns-sd._udp.local";
+
+        auto query_bytes = detail::build_dns_query(meta_name, dns_type::ptr, mode);
+        m_socket.send(endpoint{"224.0.0.251", 5353},
+                      std::span<const std::byte>(query_bytes));
+
+        m_enumerate_loop = std::make_unique<recv_loop<P>>(
+            m_socket,
+            m_timer,
+            m_silence_timeout,
+            [this](const endpoint &sender, std::span<std::byte> data) -> bool
+            {
+                bool found = false;
+                detail::walk_dns_frame(
+                    std::span<const std::byte>(data.data(), data.size()),
+                    sender,
+                    [this, &found](mdns_record_variant rec)
+                    {
+                        if(auto *ptr = std::get_if<record_ptr>(&rec))
+                        {
+                            if(ptr->name == "_services._dns-sd._udp.local")
+                            {
+                                m_enumerated_types.push_back(
+                                    parse_service_type(ptr->ptr_name));
+                                found = true;
+                            }
+                        }
+                    });
+                return found;
+            },
+            [this]()
+            {
+                m_enumerate_loop->stop();
+                if(auto h = std::exchange(m_on_enumerate_completion, nullptr); h)
+                    h(std::error_code{}, m_enumerated_types);
+            });
+
+        m_enumerate_loop->start();
+    }
+
     socket_type m_socket;
     timer_type m_timer;
     std::chrono::milliseconds m_silence_timeout;
     record_callback m_on_record; // optional per-record callback
     completion_handler m_on_completion;
     detail::move_only_function<void(std::error_code, std::vector<resolved_service>)> m_on_browse_completion;
-    std::string m_service_type;                  // set in do_discover()/do_browse(), used for filtering
-    std::unique_ptr<recv_loop<P>> m_loop;        // null until async_discover()
-    std::unique_ptr<recv_loop<P>> m_browse_loop; // null until async_browse()
+    enumerate_handler m_on_enumerate_completion;
+    std::string m_service_type;                      // set in do_discover()/do_browse(), used for filtering
+    std::unique_ptr<recv_loop<P>> m_loop;            // null until async_discover()
+    std::unique_ptr<recv_loop<P>> m_browse_loop;     // null until async_browse()
+    std::unique_ptr<recv_loop<P>> m_enumerate_loop;  // null until async_enumerate_types()
     std::vector<mdns_record_variant> m_results;
-    std::vector<resolved_service> m_services; // populated by do_browse() at silence timeout
+    std::vector<resolved_service> m_services;        // populated by do_browse() at silence timeout
+    std::vector<service_type_info> m_enumerated_types; // populated by do_enumerate() at silence timeout
 };
 
 }

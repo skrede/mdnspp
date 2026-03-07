@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DNS_WIRE_H
 
 #include "mdnspp/parse.h"
+#include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
 
@@ -11,6 +12,7 @@
 #include <span>
 #include <string>
 #include <vector>
+#include <variant>
 #include <cstddef>
 #include <cstdint>
 #include <sstream>
@@ -161,11 +163,12 @@ inline void append_dns_rr(std::vector<std::byte> &buf,
                           const std::vector<std::byte> &name,
                           dns_type rtype,
                           uint32_t ttl,
-                          const std::vector<std::byte> &rdata)
+                          const std::vector<std::byte> &rdata,
+                          bool cache_flush = false)
 {
     buf.insert(buf.end(), name.begin(), name.end());
     push_u16_be(buf, std::to_underlying(rtype));
-    push_u16_be(buf, 0x0001); // class IN
+    push_u16_be(buf, cache_flush ? uint16_t{0x8001} : uint16_t{0x0001});
     push_u32_be(buf, ttl);
     push_u16_be(buf, static_cast<uint16_t>(rdata.size()));
     buf.insert(buf.end(), rdata.begin(), rdata.end());
@@ -224,6 +227,65 @@ inline std::vector<std::byte> encode_txt_records(const std::vector<mdnspp::servi
             result.push_back(static_cast<std::byte>(static_cast<uint8_t>(s[i])));
     }
     return result;
+}
+
+// Builds an RFC 4034 section 4.1.2 window-block-0 type bitmap for NSEC records.
+// Sets bits for PTR(12), TXT(16), SRV(33), and conditionally A(1) and AAAA(28)
+// based on the service_info address fields. NSEC(47) is NOT set per RFC 6762 section 6.1.
+// Returns the complete window block: [window=0x00][bitmap_length][bitmap bytes...].
+// Trailing zero bytes are trimmed per RFC 4034 section 4.1.2.
+inline std::vector<std::byte> build_nsec_bitmap(const mdnspp::service_info &info)
+{
+    // Highest type bit we need is SRV=33, which falls in byte index 4 (covers types 32-39).
+    // Allocate 5 bytes (types 0-39).
+    std::vector<uint8_t> bitmap(5, 0);
+
+    auto set_bit = [&](uint16_t type_val)
+    {
+        bitmap[type_val / 8] |= static_cast<uint8_t>(1u << (7u - (type_val % 8u)));
+    };
+
+    // Always set PTR(12), TXT(16), SRV(33)
+    set_bit(std::to_underlying(dns_type::ptr));  // 12
+    set_bit(std::to_underlying(dns_type::txt));  // 16
+    set_bit(std::to_underlying(dns_type::srv));  // 33
+
+    // Conditionally set A(1) and AAAA(28)
+    if(info.address_ipv4.has_value())
+        set_bit(std::to_underlying(dns_type::a));    // 1
+    if(info.address_ipv6.has_value())
+        set_bit(std::to_underlying(dns_type::aaaa)); // 28
+
+    // Trim trailing zero bytes
+    while(!bitmap.empty() && bitmap.back() == 0)
+        bitmap.pop_back();
+
+    // Build window block: [window=0x00][length][bitmap bytes...]
+    std::vector<std::byte> result;
+    result.reserve(2 + bitmap.size());
+    result.push_back(std::byte{0x00}); // window number
+    result.push_back(static_cast<std::byte>(bitmap.size()));
+    for(auto b : bitmap)
+        result.push_back(static_cast<std::byte>(b));
+
+    return result;
+}
+
+// Appends a complete NSEC resource record to buf.
+// NSEC rdata = next domain name (same as owner for mDNS, per RFC 6762 section 6.1)
+//            + type bitmap from build_nsec_bitmap.
+// No cache-flush bit for NSEC records.
+inline void append_nsec_rr(std::vector<std::byte> &buf,
+                           const std::vector<std::byte> &owner_name,
+                           const mdnspp::service_info &info,
+                           uint32_t ttl)
+{
+    auto bitmap = build_nsec_bitmap(info);
+    std::vector<std::byte> rdata;
+    rdata.reserve(owner_name.size() + bitmap.size());
+    rdata.insert(rdata.end(), owner_name.begin(), owner_name.end());
+    rdata.insert(rdata.end(), bitmap.begin(), bitmap.end());
+    append_dns_rr(buf, owner_name, dns_type::nsec, ttl, rdata);
 }
 
 }
@@ -294,18 +356,25 @@ inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &inf
     uint16_t ancount = 0;
     uint16_t arcount = 0;
 
+    // Unique record types get cache-flush bit set (RFC 6762 section 10.2).
+    // PTR is shared (never cache-flush); SRV, A, AAAA, TXT are unique (always cache-flush).
+    auto is_unique = [](dns_type t) -> bool {
+        return t == dns_type::srv || t == dns_type::a ||
+               t == dns_type::aaaa || t == dns_type::txt;
+    };
+
     // Helper lambdas to append to the right section
     auto add_answer = [&](const std::vector<std::byte> &name, dns_type rtype,
                           uint32_t ttl, const std::vector<std::byte> &rdata)
     {
-        append_dns_rr(answers, name, rtype, ttl, rdata);
+        append_dns_rr(answers, name, rtype, ttl, rdata, is_unique(rtype));
         ++ancount;
     };
 
     auto add_additional = [&](const std::vector<std::byte> &name, dns_type rtype,
                               uint32_t ttl, const std::vector<std::byte> &rdata)
     {
-        append_dns_rr(additional, name, rtype, ttl, rdata);
+        append_dns_rr(additional, name, rtype, ttl, rdata, is_unique(rtype));
         ++arcount;
     };
 
@@ -387,6 +456,159 @@ inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &inf
     packet.insert(packet.end(), additional.begin(), additional.end());
 
     return packet;
+}
+
+// Builds an mDNS probe query per RFC 6762 section 8.1:
+//   - Header: id=0, flags=0x0000 (query), qdcount=1, ancount=0, nscount=1, arcount=0
+//   - Question: service_name, QTYPE=ANY (0x00FF), QCLASS=IN|QU (0x8001)
+//   - Authority: proposed SRV record for simultaneous probe tiebreaking (RFC 6762 section 8.2)
+inline std::vector<std::byte> build_probe_query(const service_info &info)
+{
+    auto name_service = encode_dns_name(info.service_name);
+    auto name_host = encode_dns_name(info.hostname);
+
+    // Build SRV rdata: priority(2) + weight(2) + port(2) + encoded hostname
+    std::vector<std::byte> rdata_srv;
+    push_u16_be(rdata_srv, info.priority);
+    push_u16_be(rdata_srv, info.weight);
+    push_u16_be(rdata_srv, info.port);
+    rdata_srv.insert(rdata_srv.end(), name_host.begin(), name_host.end());
+
+    std::vector<std::byte> packet;
+    packet.reserve(12 + name_service.size() + 4 + name_service.size() + 10 + rdata_srv.size());
+
+    // DNS header
+    push_u16_be(packet, 0x0000); // id = 0
+    push_u16_be(packet, 0x0000); // flags = 0x0000 (standard query)
+    push_u16_be(packet, 0x0001); // qdcount = 1
+    push_u16_be(packet, 0x0000); // ancount = 0
+    push_u16_be(packet, 0x0001); // nscount = 1
+    push_u16_be(packet, 0x0000); // arcount = 0
+
+    // Question section: service_name, QTYPE=ANY, QCLASS=IN|QU
+    packet.insert(packet.end(), name_service.begin(), name_service.end());
+    push_u16_be(packet, std::to_underlying(dns_type::any)); // QTYPE = ANY (0x00FF)
+    push_u16_be(packet, uint16_t{0x8001}); // QCLASS = IN | QU bit
+
+    // Authority section: proposed SRV record
+    response_detail::append_dns_rr(packet, name_service, dns_type::srv, 120, rdata_srv);
+
+    return packet;
+}
+
+// Serializes an mdns_record_variant as a DNS resource record into buf.
+// Used for known-answer suppression (RFC 6762 section 7.1): records are
+// appended to the Answer section of a query packet. No cache-flush bit.
+inline void append_known_answer(std::vector<std::byte> &buf, const mdns_record_variant &rec)
+{
+    std::visit([&buf](const auto &r)
+    {
+        auto name = encode_dns_name(r.name);
+
+        using T = std::decay_t<decltype(r)>;
+
+        if constexpr(std::is_same_v<T, record_ptr>)
+        {
+            auto rdata = encode_dns_name(r.ptr_name);
+            response_detail::append_dns_rr(buf, name, dns_type::ptr, r.ttl, rdata);
+        }
+        else if constexpr(std::is_same_v<T, record_srv>)
+        {
+            std::vector<std::byte> rdata;
+            push_u16_be(rdata, r.priority);
+            push_u16_be(rdata, r.weight);
+            push_u16_be(rdata, r.port);
+            auto target = encode_dns_name(r.srv_name);
+            rdata.insert(rdata.end(), target.begin(), target.end());
+            response_detail::append_dns_rr(buf, name, dns_type::srv, r.ttl, rdata);
+        }
+        else if constexpr(std::is_same_v<T, record_a>)
+        {
+            auto rdata = response_detail::encode_ipv4(r.address_string);
+            if(!rdata.empty())
+                response_detail::append_dns_rr(buf, name, dns_type::a, r.ttl, rdata);
+        }
+        else if constexpr(std::is_same_v<T, record_aaaa>)
+        {
+            auto rdata = response_detail::encode_ipv6(r.address_string);
+            if(!rdata.empty())
+                response_detail::append_dns_rr(buf, name, dns_type::aaaa, r.ttl, rdata);
+        }
+        else if constexpr(std::is_same_v<T, record_txt>)
+        {
+            auto rdata = response_detail::encode_txt_records(r.entries);
+            response_detail::append_dns_rr(buf, name, dns_type::txt, r.ttl, rdata);
+        }
+    }, rec);
+}
+
+// Builds a DNS query with known-answer records appended in the Answer section
+// (RFC 6762 section 7.1). The header ancount is updated to reflect the number
+// of known answers actually serialized.
+inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qtype,
+                                              std::span<const mdns_record_variant> known_answers,
+                                              response_mode mode = response_mode::multicast)
+{
+    auto packet = build_dns_query(name, qtype, mode);
+
+    uint16_t ancount = 0;
+    for(const auto &ka : known_answers)
+    {
+        size_t before = packet.size();
+        append_known_answer(packet, ka);
+        if(packet.size() > before)
+            ++ancount;
+    }
+
+    // Update header ancount (bytes 6-7)
+    packet[6] = static_cast<std::byte>(static_cast<uint8_t>(ancount >> 8));
+    packet[7] = static_cast<std::byte>(static_cast<uint8_t>(ancount & 0xFF));
+
+    return packet;
+}
+
+}
+
+namespace mdnspp {
+
+// Service type information parsed from a DNS-SD PTR name.
+struct service_type_info
+{
+    std::string service_type; // full: "_http._tcp.local" or "_http._tcp.local."
+    std::string type_name;    // "_http"
+    std::string protocol;     // "_tcp"
+    std::string domain;       // "local"
+};
+
+// Parses a DNS-SD service type name (e.g. "_http._tcp.local") into components.
+// Expects at least three dot-separated labels: type, protocol, domain.
+inline service_type_info parse_service_type(std::string_view name)
+{
+    // Strip trailing dot if present
+    if(!name.empty() && name.back() == '.')
+        name.remove_suffix(1);
+
+    service_type_info info;
+    info.service_type = std::string(name);
+
+    // Split on dots
+    size_t first_dot = name.find('.');
+    if(first_dot == std::string_view::npos)
+        return info;
+
+    info.type_name = std::string(name.substr(0, first_dot));
+
+    size_t second_dot = name.find('.', first_dot + 1);
+    if(second_dot == std::string_view::npos)
+    {
+        info.protocol = std::string(name.substr(first_dot + 1));
+        return info;
+    }
+
+    info.protocol = std::string(name.substr(first_dot + 1, second_dot - first_dot - 1));
+    info.domain = std::string(name.substr(second_dot + 1));
+
+    return info;
 }
 
 }

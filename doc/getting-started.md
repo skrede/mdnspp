@@ -83,7 +83,8 @@ invoked once when discovery finishes (silence timeout or error).
 
 For resolved service instances (hostname, port, addresses) instead of raw
 records, use `async_browse` -- it returns `std::vector<resolved_service>`
-directly.
+directly. For service type enumeration and subtype discovery, see
+[service_discovery](api/service_discovery.md).
 
 ## Announce a service
 
@@ -134,8 +135,14 @@ Multiple mdnspp components can share the same context -- for example, two
 event loop. Each component creates its own socket, and the context
 multiplexes them all. See the `multi_serve` example.
 
+For conflict resolution, goodbye packets, and other server options, see
+[service_options](api/service_options.md). For RFC compliance details, see
+[RFC Compliance](rfc/README.md).
+
 ## What's next
 
+- [Service Options](api/service_options.md) -- conflict resolution, goodbye, announcement tuning
+- [RFC Compliance](rfc/README.md) -- RFC 6762/6763 conformance status and feature documentation
 - [Policies](policies.md) -- understand the DefaultPolicy, AsioPolicy, and MockPolicy architecture
 - [Async Patterns](async-patterns.md) -- use ASIO completion tokens (futures, coroutines, deferred)
 - [API Reference](api/) -- full type documentation

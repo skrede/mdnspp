@@ -36,20 +36,24 @@ int main()
     mdnspp::service_server http_srv{
         ctx,
         std::move(http_info),
-        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
-        {
-            std::cout << "[http] " << sender << " queried qtype=" << to_string(qtype)
-                << " (" << to_string(mode) << ")\n";
+        mdnspp::service_options{
+            .on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
+            {
+                std::cout << "[http] " << sender << " queried qtype=" << to_string(qtype)
+                    << " (" << to_string(mode) << ")\n";
+            }
         }
     };
 
     mdnspp::service_server ssh_srv{
         ctx,
         std::move(ssh_info),
-        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
-        {
-            std::cout << "[ssh]  " << sender << " queried qtype=" << to_string(qtype)
-                << " (" << to_string(mode) << ")\n";
+        mdnspp::service_options{
+            .on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
+            {
+                std::cout << "[ssh]  " << sender << " queried qtype=" << to_string(qtype)
+                    << " (" << to_string(mode) << ")\n";
+            }
         }
     };
 

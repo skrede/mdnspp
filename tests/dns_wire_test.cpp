@@ -2,7 +2,8 @@
 // Unit tests for detail::read_dns_name — RFC 1035 §4.1.4 name decompression
 // with RFC 9267 safety guarantees (backward-only pointers, hop limit, name length limit).
 // Also covers build_dns_response, encode_ipv4/ipv6, encode_txt_records,
-// encode_dns_name, and skip_dns_name edge cases.
+// encode_dns_name, skip_dns_name edge cases, known-answer query building,
+// and parse_service_type.
 
 #include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/records.h"
@@ -773,6 +774,450 @@ SCENARIO("skip_dns_name where label extends past end of buffer", "[dns_read][ski
             {
                 REQUIRE_FALSE(ok);
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Cache-flush bit tests — verify raw wire bytes (not walk_dns_frame which strips the bit)
+// ---------------------------------------------------------------------------
+
+using mdnspp::detail::read_u16_be;
+
+// Helper: find rrclass value of the first resource record after skipping the DNS header
+// and question section. Returns the raw 16-bit rrclass (including cache-flush bit if set).
+static uint16_t find_first_rr_rrclass(const std::vector<std::byte> &pkt)
+{
+    // Skip 12-byte header
+    size_t offset = 12;
+    auto span = std::span<const std::byte>(pkt);
+
+    // Skip question section (qdcount questions)
+    uint16_t qdcount = read_u16_be(pkt.data() + 4);
+    for(uint16_t i = 0; i < qdcount; ++i)
+    {
+        skip_dns_name(span, offset);
+        offset += 4; // qtype + qclass
+    }
+
+    // Now at the first RR — skip name, then read rtype(2) + rrclass(2)
+    skip_dns_name(span, offset);
+    offset += 2; // skip rtype
+    return read_u16_be(pkt.data() + offset);
+}
+
+// Helper: collect all (rtype, rrclass) pairs from all RRs in a packet
+static std::vector<std::pair<uint16_t, uint16_t>> collect_rr_type_class(const std::vector<std::byte> &pkt)
+{
+    std::vector<std::pair<uint16_t, uint16_t>> result;
+    size_t offset = 12;
+    auto span = std::span<const std::byte>(pkt);
+
+    uint16_t qdcount = read_u16_be(pkt.data() + 4);
+    for(uint16_t i = 0; i < qdcount; ++i)
+    {
+        skip_dns_name(span, offset);
+        offset += 4;
+    }
+
+    uint16_t ancount = read_u16_be(pkt.data() + 6);
+    uint16_t nscount = read_u16_be(pkt.data() + 8);
+    uint16_t arcount = read_u16_be(pkt.data() + 10);
+    uint32_t rr_total = static_cast<uint32_t>(ancount) +
+        static_cast<uint32_t>(nscount) +
+        static_cast<uint32_t>(arcount);
+
+    for(uint32_t rr = 0; rr < rr_total; ++rr)
+    {
+        skip_dns_name(span, offset);
+        uint16_t rtype = read_u16_be(pkt.data() + offset);
+        offset += 2;
+        uint16_t rclass = read_u16_be(pkt.data() + offset);
+        offset += 2;
+        result.emplace_back(rtype, rclass);
+
+        // Skip ttl(4) + rdlength(2) + rdata
+        offset += 4;
+        uint16_t rdlength = read_u16_be(pkt.data() + offset);
+        offset += 2;
+        offset += rdlength;
+    }
+
+    return result;
+}
+
+SCENARIO("build_dns_response PTR answer does NOT have cache-flush bit set", "[build_dns_response][cache_flush]")
+{
+    GIVEN("a service_info with both addresses")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_dns_response is called with qtype=PTR")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::ptr);
+
+            THEN("the first RR (PTR answer) has rrclass 0x0001 (no cache-flush bit)")
+            {
+                uint16_t rrclass = find_first_rr_rrclass(pkt);
+                REQUIRE(rrclass == 0x0001);
+            }
+        }
+    }
+}
+
+SCENARIO("build_dns_response SRV answer has cache-flush bit set", "[build_dns_response][cache_flush]")
+{
+    GIVEN("a service_info with both addresses")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_dns_response is called with qtype=SRV")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::srv);
+
+            THEN("the first RR (SRV answer) has rrclass 0x8001 (cache-flush bit set)")
+            {
+                uint16_t rrclass = find_first_rr_rrclass(pkt);
+                REQUIRE(rrclass == 0x8001);
+            }
+        }
+    }
+}
+
+SCENARIO("build_dns_response ANY sets cache-flush on unique records only", "[build_dns_response][cache_flush]")
+{
+    GIVEN("a service_info with both addresses and TXT records")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_dns_response is called with qtype=ANY")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::any);
+
+            THEN("PTR has rrclass 0x0001, SRV/A/AAAA/TXT have rrclass 0x8001")
+            {
+                auto rrs = collect_rr_type_class(pkt);
+                REQUIRE_FALSE(rrs.empty());
+
+                for(auto [rtype, rclass] : rrs)
+                {
+                    if(rtype == std::to_underlying(mdnspp::dns_type::ptr))
+                        REQUIRE(rclass == 0x0001);
+                    else
+                        REQUIRE(rclass == 0x8001);
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// build_probe_query tests
+// ---------------------------------------------------------------------------
+
+using mdnspp::detail::build_probe_query;
+
+SCENARIO("build_probe_query produces valid probe packet with question and authority", "[build_probe_query]")
+{
+    GIVEN("a test service_info")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_probe_query is called")
+        {
+            auto pkt = build_probe_query(info);
+
+            THEN("the header has flags=0x0000, qdcount=1, nscount=1")
+            {
+                REQUIRE(pkt.size() >= 12);
+                uint16_t flags = read_u16_be(pkt.data() + 2);
+                uint16_t qdcount = read_u16_be(pkt.data() + 4);
+                uint16_t ancount = read_u16_be(pkt.data() + 6);
+                uint16_t nscount = read_u16_be(pkt.data() + 8);
+
+                REQUIRE(flags == 0x0000);
+                REQUIRE(qdcount == 1);
+                REQUIRE(ancount == 0);
+                REQUIRE(nscount == 1);
+            }
+
+            THEN("the question has QTYPE=ANY and QCLASS=0x8001 (QU bit)")
+            {
+                // Skip header (12 bytes) + question name
+                size_t offset = 12;
+                auto span = std::span<const std::byte>(pkt);
+                skip_dns_name(span, offset);
+
+                uint16_t qtype = read_u16_be(pkt.data() + offset);
+                uint16_t qclass = read_u16_be(pkt.data() + offset + 2);
+
+                REQUIRE(qtype == std::to_underlying(mdnspp::dns_type::any));
+                REQUIRE(qclass == 0x8001);
+            }
+
+            THEN("the authority section contains an SRV record")
+            {
+                auto rrs = collect_rr_type_class(pkt);
+                REQUIRE(rrs.size() == 1);
+                REQUIRE(rrs[0].first == std::to_underlying(mdnspp::dns_type::srv));
+            }
+
+            THEN("the question name matches the service_name")
+            {
+                auto result = mdnspp::detail::read_dns_name(
+                    std::span<const std::byte>(pkt), 12);
+                REQUIRE(result.has_value());
+                // service_name is "MyService._http._tcp.local." — trailing dot stripped
+                REQUIRE(*result == "MyService._http._tcp.local");
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// NSEC bitmap and record tests
+// ---------------------------------------------------------------------------
+
+using mdnspp::detail::response_detail::build_nsec_bitmap;
+using mdnspp::detail::response_detail::append_nsec_rr;
+
+SCENARIO("build_nsec_bitmap with IPv4 only sets A, PTR, TXT, SRV bits", "[nsec][bitmap]")
+{
+    GIVEN("a service_info with only address_ipv4 set")
+    {
+        auto info = make_test_service_v46();
+        info.address_ipv6 = std::nullopt;
+
+        WHEN("build_nsec_bitmap is called")
+        {
+            auto bitmap = build_nsec_bitmap(info);
+
+            THEN("the bitmap has window=0x00, length=5, correct bit pattern")
+            {
+                // Expected: A(1), PTR(12), TXT(16), SRV(33)
+                // Byte 0: bit 6 set (type 1) -> 0x40
+                // Byte 1: bit 3 set (type 12) -> 0x08
+                // Byte 2: bit 7 set (type 16) -> 0x80
+                // Byte 3: no bits -> 0x00
+                // Byte 4: bit 6 set (type 33) -> 0x40
+                REQUIRE(bitmap.size() == 7); // 2 header + 5 bitmap
+                REQUIRE(bitmap[0] == std::byte{0x00}); // window
+                REQUIRE(bitmap[1] == std::byte{0x05}); // length
+                REQUIRE(bitmap[2] == std::byte{0x40}); // A(1)
+                REQUIRE(bitmap[3] == std::byte{0x08}); // PTR(12)
+                REQUIRE(bitmap[4] == std::byte{0x80}); // TXT(16)
+                REQUIRE(bitmap[5] == std::byte{0x00}); // no AAAA
+                REQUIRE(bitmap[6] == std::byte{0x40}); // SRV(33)
+            }
+        }
+    }
+}
+
+SCENARIO("build_nsec_bitmap with IPv4 and IPv6 sets A, PTR, TXT, AAAA, SRV bits", "[nsec][bitmap]")
+{
+    GIVEN("a service_info with both address_ipv4 and address_ipv6 set")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_nsec_bitmap is called")
+        {
+            auto bitmap = build_nsec_bitmap(info);
+
+            THEN("byte 3 has AAAA(28) bit set -> 0x08")
+            {
+                REQUIRE(bitmap.size() == 7);
+                REQUIRE(bitmap[5] == std::byte{0x08}); // AAAA(28): byte 3, bit 3
+            }
+        }
+    }
+}
+
+SCENARIO("build_nsec_bitmap with no addresses sets only PTR, TXT, SRV bits", "[nsec][bitmap]")
+{
+    GIVEN("a service_info with no address fields set")
+    {
+        auto info = make_test_service_v46();
+        info.address_ipv4 = std::nullopt;
+        info.address_ipv6 = std::nullopt;
+
+        WHEN("build_nsec_bitmap is called")
+        {
+            auto bitmap = build_nsec_bitmap(info);
+
+            THEN("byte 0 is 0x00 (no A bit)")
+            {
+                REQUIRE(bitmap.size() == 7);
+                REQUIRE(bitmap[2] == std::byte{0x00}); // no A(1)
+            }
+        }
+    }
+}
+
+SCENARIO("append_nsec_rr produces a parseable NSEC resource record", "[nsec][bitmap]")
+{
+    GIVEN("a service_info with IPv4")
+    {
+        auto info = make_test_service_v46();
+        info.address_ipv6 = std::nullopt;
+
+        auto owner_name = encode_dns_name(info.hostname);
+
+        WHEN("append_nsec_rr is called and wrapped in a DNS response packet")
+        {
+            // Build a minimal DNS response with the NSEC record as answer
+            std::vector<std::byte> packet;
+            // DNS header
+            mdnspp::detail::push_u16_be(packet, 0x0000); // id
+            mdnspp::detail::push_u16_be(packet, 0x8400); // flags
+            mdnspp::detail::push_u16_be(packet, 0x0000); // qdcount
+            mdnspp::detail::push_u16_be(packet, 0x0001); // ancount = 1
+            mdnspp::detail::push_u16_be(packet, 0x0000); // nscount
+            mdnspp::detail::push_u16_be(packet, 0x0000); // arcount
+
+            append_nsec_rr(packet, owner_name, info, 4500);
+
+            THEN("the RR has type=47, class=IN, correct TTL and rdata containing owner name + bitmap")
+            {
+                // Parse the packet manually: skip header (12), skip owner name, read rtype
+                size_t offset = 12;
+                auto span = std::span<const std::byte>(packet);
+                skip_dns_name(span, offset);
+
+                uint16_t rtype = read_u16_be(packet.data() + offset);
+                offset += 2;
+                uint16_t rclass = read_u16_be(packet.data() + offset);
+                offset += 2;
+                uint32_t ttl = mdnspp::detail::read_u32_be(packet.data() + offset);
+                offset += 4;
+                uint16_t rdlength = read_u16_be(packet.data() + offset);
+                offset += 2;
+
+                REQUIRE(rtype == 47);
+                REQUIRE(rclass == 0x0001); // no cache-flush
+                REQUIRE(ttl == 4500);
+
+                // rdata should contain: next domain name (= owner) + bitmap
+                auto expected_bitmap = build_nsec_bitmap(info);
+                REQUIRE(rdlength == owner_name.size() + expected_bitmap.size());
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Known-answer query building tests
+// ---------------------------------------------------------------------------
+
+using mdnspp::detail::build_dns_query;
+using mdnspp::detail::append_known_answer;
+using mdnspp::detail::push_u16_be;
+
+SCENARIO("build_dns_query with known answers includes Answer section", "[dns_wire][known_answer]")
+{
+    GIVEN("a PTR record as a known answer")
+    {
+        mdnspp::record_ptr ptr;
+        ptr.name = "_http._tcp.local";
+        ptr.ttl = 4500;
+        ptr.ptr_name = "MyService._http._tcp.local";
+
+        std::vector<mdnspp::mdns_record_variant> known = {ptr};
+
+        WHEN("build_dns_query is called with the known answer")
+        {
+            auto pkt = build_dns_query("_http._tcp.local", mdnspp::dns_type::ptr,
+                                       std::span<const mdnspp::mdns_record_variant>(known));
+
+            THEN("the header ancount is 1")
+            {
+                REQUIRE(pkt.size() >= 12);
+                uint16_t ancount = read_u16_be(pkt.data() + 6);
+                REQUIRE(ancount == 1);
+            }
+
+            THEN("the packet is longer than a basic query")
+            {
+                auto basic = build_dns_query("_http._tcp.local", mdnspp::dns_type::ptr);
+                REQUIRE(pkt.size() > basic.size());
+            }
+
+            THEN("walk_dns_frame can parse the known-answer PTR record")
+            {
+                // To parse as a response frame, we need QR=1 in flags.
+                // Modify flags to make it parseable by walk_dns_frame.
+                auto parseable = pkt;
+                // Set qdcount=0 so walk_dns_frame skips question section
+                // Actually walk_dns_frame skips questions by count, so let's
+                // just verify the answer section by manually checking.
+                auto records = parse_wire(pkt);
+                // walk_dns_frame skips questions by qdcount, then reads ancount RRs.
+                // Our packet has qdcount=1 and ancount=1, so it will skip the question
+                // and parse the answer section.
+                bool found_ptr = false;
+                for(const auto &rv : records)
+                {
+                    if(auto *p = std::get_if<mdnspp::record_ptr>(&rv))
+                    {
+                        found_ptr = true;
+                        REQUIRE(p->ptr_name == "MyService._http._tcp.local");
+                    }
+                }
+                REQUIRE(found_ptr);
+            }
+        }
+    }
+}
+
+SCENARIO("build_dns_query with empty known answers matches basic overload", "[dns_wire][known_answer]")
+{
+    GIVEN("an empty known-answers span")
+    {
+        std::span<const mdnspp::mdns_record_variant> empty;
+
+        WHEN("both overloads are called for the same query")
+        {
+            auto basic = build_dns_query("_http._tcp.local", mdnspp::dns_type::ptr);
+            auto with_empty = build_dns_query("_http._tcp.local", mdnspp::dns_type::ptr, empty);
+
+            THEN("the output is byte-for-byte identical")
+            {
+                REQUIRE(basic == with_empty);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// parse_service_type tests
+// ---------------------------------------------------------------------------
+
+using mdnspp::parse_service_type;
+
+SCENARIO("parse_service_type splits PTR name into components", "[dns_wire][parse_service_type]")
+{
+    GIVEN("the service type _http._tcp.local")
+    {
+        auto info = parse_service_type("_http._tcp.local");
+
+        THEN("type_name is _http, protocol is _tcp, domain is local")
+        {
+            REQUIRE(info.type_name == "_http");
+            REQUIRE(info.protocol == "_tcp");
+            REQUIRE(info.domain == "local");
+            REQUIRE(info.service_type == "_http._tcp.local");
+        }
+    }
+
+    GIVEN("the service type _ipp._tcp.local. with trailing dot")
+    {
+        auto info = parse_service_type("_ipp._tcp.local.");
+
+        THEN("trailing dot is stripped and components are correct")
+        {
+            REQUIRE(info.type_name == "_ipp");
+            REQUIRE(info.protocol == "_tcp");
+            REQUIRE(info.domain == "local");
+            REQUIRE(info.service_type == "_ipp._tcp.local");
         }
     }
 }

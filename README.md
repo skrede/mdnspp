@@ -17,6 +17,7 @@
 - **Thread-safe service updates** -- safely modify the records of running mDNS service server from any thread.
 - **Policy-based architecture** -- swap socket/timer/executor implementations at compile time.
 - **Optional ASIO support** -- networking and completion token support (callbacks, futures, coroutines, and deferred operations).
+- **RFC 6762/6763 compliance** -- probing, goodbye packets, known-answer suppression, traffic reduction, and [DNS-SD](doc/rfc/README.md).
 
 ## Quick Start
 
@@ -62,24 +63,28 @@ int main()
         .txt_records  = {{"path", "/index.html"}},
     };
 
-    mdnspp::service_server srv{
-        ctx,
-        std::move(info),
-        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
-        {
-            std::cout << sender << " queried qtype=" << to_string(qtype)
-                << " (" << to_string(mode) << ")\n";
-        }
-    };
+    mdnspp::service_server srv{ctx, std::move(info)};
 
-    std::thread shutdown([&ctx]
+    srv.async_start(
+        [](std::error_code ec)
+        {
+            if(ec)
+                std::cerr << "Start failed: " << ec.message() << "\n";
+            else
+                std::cout << "Service is live\n";
+        },
+        [&ctx](std::error_code)
+        {
+            ctx.stop();
+        });
+
+    std::thread shutdown([&srv]
     {
         std::this_thread::sleep_for(std::chrono::seconds(30));
-        ctx.stop();
+        srv.stop();
     });
 
     std::cout << "Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)\n";
-    srv.async_start();
     ctx.run();
 
     shutdown.join();
@@ -89,8 +94,7 @@ int main()
 ```console
 [mdnspp@dev ~]$ ./serve
 Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)
-192.168.1.67:5353 queried qtype=PTR (multicast)
-192.168.1.67:5353 queried qtype=PTR (multicast)
+Service is live
 ```
 
 ### Discover Services
@@ -258,23 +262,53 @@ q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,
 ```
 
 On the server side, `service_server` detects the QU bit automatically and routes the response accordingly.
-Users can pass an optional callback for each query that matches the announced service, purely for introspection or logging queries -- `service_server` handles responses internally:
+To log incoming queries, set `service_options::on_query` -- `service_server` handles responses internally:
 
 ```cpp
-mdnspp::service_server srv{ctx, std::move(info),
-    [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
-    {
-        std::cout << sender << " queried qtype=" << to_string(qtype)
-                  << " (" << to_string(mode) << ")\n";
-    }
+mdnspp::service_options opts;
+opts.on_query = [](const mdnspp::endpoint &sender,
+                   mdnspp::dns_type qtype,
+                   mdnspp::response_mode mode)
+{
+    std::cout << sender << " queried qtype=" << to_string(qtype)
+              << " (" << to_string(mode) << ")\n";
 };
+
+mdnspp::service_server srv{ctx, std::move(info), std::move(opts)};
 ```
 
 ```console
 [mdnspp@dev ~]$ ./serve
 Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)
+Service is live
 192.168.1.67:5353 queried qtype=PTR (multicast)
 192.168.1.42:5353 queried qtype=SRV (unicast)
+```
+
+### Enumerate Service Types
+
+DNS-SD defines a meta-query that discovers all service types advertised on the local network.
+`async_enumerate_types` sends this query and returns parsed `service_type_info` values:
+
+```cpp
+mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+
+sd.async_enumerate_types(
+    [&ctx](std::error_code ec, std::vector<mdnspp::service_type_info> types)
+    {
+        for(const auto &t : types)
+            std::cout << t.type_name << "." << t.protocol << "." << t.domain << "\n";
+        ctx.stop();
+    });
+
+ctx.run();
+```
+
+```console
+[mdnspp@dev ~]$ ./enumerate
+_http._tcp.local
+_ssh._tcp.local
+_ipp._tcp.local
 ```
 
 ## CMake Integration
@@ -303,6 +337,8 @@ For `find_package`, building from source, and all available CMake targets, see t
 - [Socket Options](doc/socket-options.md) -- Network interface selection, multicast TTL, and loopback control
 - [Async Patterns](doc/async-patterns.md) -- ASIO completion tokens: callbacks, futures, coroutines, deferred
 - [CMake Integration](doc/cmake-integration.md) -- FetchContent, find_package, and building from source
+- [Service Options](doc/api/service_options.md) -- Conflict resolution, goodbye, announcement tuning
+- [RFC Compliance](doc/rfc/README.md) -- RFC 6762/6763 conformance status and feature documentation
 - [API Reference](doc/api/)
 
 ## License

@@ -1,6 +1,6 @@
 # service_server
 
-Announces an mDNS service on the local network and responds to matching queries with DNS records. Implements RFC 6762 random response delay (20--500 ms) for multicast responses and supports unicast responses when the QU bit is set.
+Announces an mDNS service on the local network and responds to matching queries with DNS records. Implements the full RFC 6762 service lifecycle: probing for name uniqueness, announcing, responding with random 20--120 ms delay (RFC 6762 section 6) for multicast responses, sending goodbye packets on shutdown, known-answer suppression, and unicast responses when the QU bit is set.
 
 ## Header and Alias
 
@@ -34,55 +34,55 @@ using query_callback     = std::move_only_function<void(const endpoint&, dns_typ
 using completion_handler = std::move_only_function<void(std::error_code)>;
 ```
 
+`query_callback` is retained as a type alias for the query notification signature. Set it via [`service_options::on_query`](service_options.md) rather than as a constructor parameter.
+
 ## Constructors
 
 ### Throwing
 
 ```cpp
 explicit basic_service_server(executor_type ex, service_info info,
-                              query_callback on_query = {});
+                              service_options opts = {});
+
+explicit basic_service_server(executor_type ex, const socket_options& sock_opts,
+                              service_info info, service_options opts = {});
 ```
 
-Constructs the server from an executor, a [`service_info`](#service_info) describing the service to announce, and an optional callback invoked when a matching query is received. Throws on socket construction failure.
+Constructs the server from an executor and a [`service_info`](#service_info) describing the service to announce. The optional [`service_options`](service_options.md) controls probing, announcing, goodbye, and query notification behavior. Throws on socket construction failure.
 
 ### Non-throwing
 
 ```cpp
-basic_service_server(executor_type ex, service_info info,
-                     query_callback on_query, std::error_code& ec);
-
 basic_service_server(executor_type ex, service_info info, std::error_code& ec);
-```
 
-Same as the throwing constructor, but sets `ec` instead of throwing on failure.
+basic_service_server(executor_type ex, service_info info,
+                     service_options opts, std::error_code& ec);
 
-### With socket_options
-
-```cpp
-explicit basic_service_server(executor_type ex, const socket_options& opts,
-                              service_info info, query_callback on_query = {});
-
-basic_service_server(executor_type ex, const socket_options& opts,
-                     service_info info, query_callback on_query,
-                     std::error_code& ec);
-
-basic_service_server(executor_type ex, const socket_options& opts,
+basic_service_server(executor_type ex, const socket_options& sock_opts,
                      service_info info, std::error_code& ec);
+
+basic_service_server(executor_type ex, const socket_options& sock_opts,
+                     service_info info, service_options opts,
+                     std::error_code& ec);
 ```
 
-Same as the corresponding constructors above, but passes `opts` to the underlying socket for network interface selection, multicast TTL, and loopback control. The `opts` parameter is always second, after executor and before `service_info`. See [Socket Options](../socket-options.md).
+Same as the throwing constructors, but sets `ec` instead of throwing on failure.
 
 ## Methods
 
 ### async_start
 
 ```cpp
-void async_start(completion_handler on_done = {});
+void async_start(completion_handler on_ready = {}, completion_handler on_done = {});
 ```
 
-Arms the internal receive loop and returns immediately. The server begins listening for mDNS queries that match the configured service name, type, or hostname. Matching queries trigger RFC 6762-delayed responses.
+Begins the probe -> announce -> live sequence and returns immediately.
 
-The `on_done` handler fires with `std::error_code{}` when `stop()` is called.
+- **Probing:** sends 3 probe queries at 250 ms intervals (with a random 0--250 ms initial delay per RFC 6762 section 8.1). If a conflicting response is detected, `service_options::on_conflict` is called.
+- **Announcing:** sends `announce_count` unsolicited announcements at `announce_interval` intervals.
+- **Live:** the server responds to matching queries.
+
+The `on_ready` handler fires with `std::error_code{}` when the server reaches the live state, or with `mdns_error::probe_conflict` if conflict resolution fails. The `on_done` handler fires with `std::error_code{}` when `stop()` is called.
 
 Must only be called once per lifetime.
 
@@ -92,7 +92,7 @@ Must only be called once per lifetime.
 void stop();
 ```
 
-Idempotent. Fires the completion handler, cancels the response timer, and destroys the receive loop. The destructor calls `stop()` automatically for RAII safety.
+Idempotent. Sends a goodbye packet (TTL=0) if `service_options::send_goodbye` is `true` and the server is in the live or announcing state. Fires `on_ready` with `operation_canceled` if still probing or announcing, then fires `on_done`. Cancels the response timer and destroys the receive loop. The destructor calls `stop()` automatically for RAII safety.
 
 ### update_service_info
 
@@ -100,7 +100,7 @@ Idempotent. Fires the completion handler, cancels the response timer, and destro
 void update_service_info(service_info new_info);
 ```
 
-Replaces the service's metadata at runtime and multicasts an unsolicited announcement with all records (PTR, SRV, TXT, A/AAAA) per RFC 6762 section 8.4.
+Replaces the service's metadata at runtime and multicasts an unsolicited announcement burst with all records (PTR, SRV, TXT, A/AAAA) per RFC 6762 section 8.4. The number of announcements and their interval are controlled by `service_options::announce_count` and `service_options::announce_interval`.
 
 **Thread-safety:** May be called from any thread. Internally uses `P::post()` to schedule the update on the server's event loop, ensuring no data races with the receive loop.
 
@@ -136,7 +136,27 @@ const timer_type&  recv_timer() const noexcept;  // receive loop timer
       timer_type&  recv_timer()       noexcept;
 ```
 
-The server uses two timers: `timer()` for the RFC 6762 random response delay, and `recv_timer()` for the internal receive loop.
+The server uses two timers: `timer()` for the RFC 6762 random response delay (20--120 ms for multicast), and `recv_timer()` for the internal receive loop.
+
+## Lifecycle
+
+The server progresses through five states:
+
+| State | Description |
+|-------|-------------|
+| **idle** | Constructed but `async_start()` not yet called. |
+| **probing** | Sending probe queries to check name uniqueness (3 probes at 250 ms intervals). Incoming responses are checked for conflicts. |
+| **announcing** | Sending unsolicited announcement burst (`announce_count` packets at `announce_interval`). |
+| **live** | Responding to matching queries with RFC 6762-delayed responses. `on_ready` has fired. |
+| **stopped** | `stop()` called or conflict resolution failed. `on_done` has fired. |
+
+```
+idle -> probing -> announcing -> live -> stopped
+                \                        ^
+                 -> (conflict) ----------/
+```
+
+Conflict during probing invokes `service_options::on_conflict`. If the callback returns `true`, probing restarts with the new name. If it returns `false` (or no callback is set), the server transitions directly to stopped and fires `on_ready` with `mdns_error::probe_conflict`.
 
 ## Supporting Types
 
@@ -153,10 +173,13 @@ struct service_info {
     std::optional<std::string> address_ipv4;   // e.g. "192.168.1.10"
     std::optional<std::string> address_ipv6;   // e.g. "fe80::1"
     std::vector<service_txt>   txt_records;    // RFC 6763 key/value entries
+    std::vector<std::string>   subtypes;       // e.g. {"_printer"} for subtype enumeration
 };
 ```
 
-Defined in `<mdnspp/service_info.h>`. Describes the service to announce. Use C++20 designated initializers for readability:
+Defined in `<mdnspp/service_info.h>`. Describes the service to announce. The `subtypes` field lists DNS-SD subtype labels (RFC 6763 section 7.1) for subtype-filtered discovery and optional subtype announcement (see `service_options::announce_subtypes`).
+
+Use C++20 designated initializers for readability:
 
 ```cpp
 mdnspp::service_info info{
@@ -166,6 +189,7 @@ mdnspp::service_info info{
     .port         = 8080,
     .address_ipv4 = "192.168.1.10",
     .txt_records  = {{"path", "/index.html"}},
+    .subtypes     = {"_printer"},
 };
 ```
 
@@ -175,7 +199,7 @@ mdnspp::service_info info{
 using query_callback = std::move_only_function<void(const endpoint&, dns_type, response_mode)>;
 ```
 
-Called when a matching mDNS query is received. Parameters:
+Called when a matching mDNS query is received. Set via [`service_options::on_query`](service_options.md).
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
@@ -201,7 +225,6 @@ Defined in `<mdnspp/records.h>`. Represents a single RFC 6763 TXT key/value pair
 
 #include <mdnspp/defaults.h>
 #include <mdnspp/service_info.h>
-#include <mdnspp/detail/dns_enums.h>
 
 #include <iostream>
 #include <thread>
@@ -219,17 +242,18 @@ int main()
         .txt_records  = {{"path", "/index.html"}},
     };
 
-    mdnspp::service_server srv{ctx, std::move(info),
-        [](const mdnspp::endpoint& sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
-        {
-            std::cout << sender << " queried qtype=" << to_string(qtype)
-                      << " (" << to_string(mode) << ")\n";
-        }
+    mdnspp::service_options opts;
+    opts.on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
+    {
+        std::cout << sender << " queried qtype=" << to_string(qtype)
+                  << " (" << to_string(mode) << ")\n";
     };
+
+    mdnspp::service_server srv{ctx, std::move(info), std::move(opts)};
 
     std::thread shutdown{[&ctx] {
         std::this_thread::sleep_for(std::chrono::seconds(30));
-        ctx.stop();  // ctx.stop() ends ctx.run()
+        ctx.stop();
     }};
 
     std::cout << "Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)\n";
@@ -262,6 +286,7 @@ share a context, as can any combination of mdnspp components.
 
 ## See Also
 
+- [service_options](service_options.md) -- controls probing, announcing, goodbye, conflict resolution
 - [service_discovery](service_discovery.md) -- discover services announced by servers
 - [resolved_service](resolved_service.md) -- the aggregated service type
 - [observer](observer.md) -- passively listen to all mDNS traffic

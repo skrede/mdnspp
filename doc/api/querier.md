@@ -2,6 +2,8 @@
 
 Sends a single mDNS query for a given name and record type, then collects matching responses until a silence timeout expires. Results are delivered both per-record (via the optional `record_callback`) and in aggregate (via the `completion_handler`).
 
+For multicast (QM) queries, the querier implements a 20--120 ms random delay before sending (RFC 6762 section 5.2) and duplicate question suppression (RFC 6762 section 7.3) during the delay window. Unicast (QU) queries are sent immediately with no delay.
+
 ## Header and Alias
 
 | Form | Header |
@@ -88,9 +90,21 @@ void async_query(std::string_view name, dns_type qtype, completion_handler on_do
                  response_mode mode = response_mode::multicast);
 ```
 
-Sends a DNS query for `name` with record type `qtype` to the mDNS multicast group (`224.0.0.251:5353`), then listens for responses. The `on_done` handler fires with the accumulated results when the silence timeout expires or `stop()` is called. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 §5.4) is set in the outgoing query, requesting a direct unicast response.
+Sends a DNS query for `name` with record type `qtype` to the mDNS multicast group (`224.0.0.251:5353`), then listens for responses. The `on_done` handler fires with the accumulated results when the silence timeout expires or `stop()` is called. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 section 5.4) is set in the outgoing query, requesting a direct unicast response.
 
 Must only be called once per lifetime.
+
+#### QM delay behavior
+
+For multicast (QM) queries, the query is not sent immediately. Instead:
+
+1. The receive loop starts first to listen for traffic.
+2. A random delay of 20--120 ms is chosen (RFC 6762 section 5.2).
+3. During the delay window, incoming QM queries with a matching name and type are checked for duplicate question suppression (RFC 6762 section 7.3).
+4. If a duplicate is detected, the outgoing query is suppressed entirely -- another host has already asked the same question.
+5. If no duplicate is seen, the query is sent after the delay expires.
+
+For unicast (QU) queries, the query is sent immediately with no delay and no duplicate suppression.
 
 ### stop
 
@@ -98,7 +112,7 @@ Must only be called once per lifetime.
 void stop();
 ```
 
-Stops the receive loop early and fires the completion handler with the results accumulated so far.
+Cancels the delay timer and stops the receive loop. Fires the completion handler with the results accumulated so far.
 
 ### results
 
@@ -111,11 +125,15 @@ Returns a reference to the accumulated results. Remains valid after completion -
 ### Accessors
 
 ```cpp
-const socket_type& socket() const noexcept;
-      socket_type& socket()       noexcept;
-const timer_type&  timer()  const noexcept;
-      timer_type&  timer()        noexcept;
+const socket_type& socket()      const noexcept;
+      socket_type& socket()            noexcept;
+const timer_type&  timer()       const noexcept;
+      timer_type&  timer()             noexcept;
+const timer_type&  delay_timer() const noexcept;
+      timer_type&  delay_timer()       noexcept;
 ```
+
+The querier uses two timers: `timer()` for the silence timeout on the receive loop, and `delay_timer()` for the 20--120 ms QM delay before sending.
 
 ## Supporting Types
 
@@ -178,7 +196,7 @@ int main()
             else
                 std::cout << "Query complete -- " << results.size() << " record(s)\n";
 
-            ctx.stop();  // ctx.stop() ends ctx.run()
+            ctx.stop();
         });
 
     ctx.run();

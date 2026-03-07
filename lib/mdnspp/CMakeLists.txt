@@ -9,6 +9,7 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_info.h
+    ${INCLUDE_DIRECTORY}/mdnspp/service_options.h
     ${INCLUDE_DIRECTORY}/mdnspp/socket_options.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_querier.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_observer.h

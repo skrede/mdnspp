@@ -14,6 +14,7 @@ enum class dns_type : uint16_t
     txt  = 16u,
     aaaa = 28u,
     srv  = 33u,
+    nsec = 47u,
     any  = 255u,
 };
 
@@ -39,6 +40,7 @@ constexpr std::string_view to_string(dns_type t) noexcept
     case dns_type::txt: return "TXT";
     case dns_type::aaaa: return "AAAA";
     case dns_type::srv: return "SRV";
+    case dns_type::nsec: return "NSEC";
     case dns_type::any: return "ANY";
     }
     return "unknown";

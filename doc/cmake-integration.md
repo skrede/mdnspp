@@ -27,10 +27,10 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(mdnspp)
 
 add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE mdnspp::core)
+target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 ```
 
-Link against `mdnspp::core` for standalone usage with the default policy, or `mdnspp::asio` for ASIO completion token support. The `mdnspp::asio` target fetches standalone ASIO automatically via FetchContent.
+Link against `mdnspp::mdnspp` for standalone usage with the default policy, or `mdnspp::asio` for ASIO completion token support. The `mdnspp::asio` target fetches standalone ASIO automatically via FetchContent.
 
 ## find_package
 
@@ -56,17 +56,18 @@ list(APPEND CMAKE_PREFIX_PATH "/path/to/install")
 find_package(mdnspp CONFIG REQUIRED)
 
 add_executable(my_app main.cpp)
-target_link_libraries(my_app PRIVATE mdnspp::core)
+target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 ```
 
 ## CMake Targets
 
 | Target | Description |
 |--------|-------------|
-| `mdnspp::core` | DefaultPolicy with native sockets, all public headers; links `ws2_32` on Windows |
+| `mdnspp::mdnspp` | DefaultPolicy with native sockets, all public headers; links `ws2_32` on Windows |
 | `mdnspp::asio` | AsioPolicy + async adapters; fetches standalone ASIO via FetchContent |
+| `mdnspp::testing` | MockPolicy and test utilities for unit testing without network access |
 
-Most users want `mdnspp::core`. Add `mdnspp::asio` if you need ASIO completion token support (futures, coroutines, deferred).
+Most users want `mdnspp::mdnspp`. Add `mdnspp::asio` if you need ASIO completion token support (futures, coroutines, deferred). Link `mdnspp::testing` in your test targets for MockPolicy.
 
 ## CMake Options
 

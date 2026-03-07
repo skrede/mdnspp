@@ -61,15 +61,34 @@ basic_querier(executor_type ex,
 
 Same as the throwing constructor, but sets `ec` instead of throwing on failure.
 
+### With socket_options
+
+```cpp
+explicit basic_querier(executor_type ex, const socket_options& opts,
+                       std::chrono::milliseconds silence_timeout,
+                       record_callback on_record = {});
+
+basic_querier(executor_type ex, const socket_options& opts,
+              std::chrono::milliseconds silence_timeout,
+              record_callback on_record, std::error_code& ec);
+
+basic_querier(executor_type ex, const socket_options& opts,
+              std::chrono::milliseconds silence_timeout,
+              std::error_code& ec);
+```
+
+Same as the corresponding constructors above, but passes `opts` to the underlying socket for network interface selection, multicast TTL, and loopback control. The `opts` parameter is always second, before `silence_timeout`. See [Socket Options](../socket-options.md).
+
 ## Methods
 
 ### async_query
 
 ```cpp
-void async_query(std::string_view name, dns_type qtype, completion_handler on_done);
+void async_query(std::string_view name, dns_type qtype, completion_handler on_done,
+                 response_mode mode = response_mode::multicast);
 ```
 
-Sends a DNS query for `name` with record type `qtype` to the mDNS multicast group (`224.0.0.251:5353`), then listens for responses. The `on_done` handler fires with the accumulated results when the silence timeout expires or `stop()` is called.
+Sends a DNS query for `name` with record type `qtype` to the mDNS multicast group (`224.0.0.251:5353`), then listens for responses. The `on_done` handler fires with the accumulated results when the silence timeout expires or `stop()` is called. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 §5.4) is set in the outgoing query, requesting a direct unicast response.
 
 Must only be called once per lifetime.
 
@@ -171,3 +190,4 @@ int main()
 - [observer](observer.md) -- passively listen to all mDNS traffic
 - [service_discovery](service_discovery.md) -- higher-level service browsing
 - [resolved_service](resolved_service.md) -- aggregated service view
+- [Socket Options](../socket-options.md) -- network interface selection, multicast TTL, loopback control

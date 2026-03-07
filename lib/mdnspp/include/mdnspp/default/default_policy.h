@@ -28,6 +28,8 @@ struct DefaultPolicy
 
 }
 
-static_assert(mdnspp::Policy<mdnspp::DefaultPolicy>, "DefaultPolicy must satisfy Policy — check NativeSocket/NativeTimer constructor signatures");
+static_assert(mdnspp::Policy<mdnspp::DefaultPolicy>, "DefaultPolicy must satisfy Policy — check DefaultSocket/DefaultTimer constructor signatures");
 
 #endif
+
+

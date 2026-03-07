@@ -2,6 +2,7 @@
 
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/socket_options.h"
 #include "mdnspp/resolved_service.h"
 #include "mdnspp/basic_service_discovery.h"
 
@@ -18,7 +19,7 @@ using namespace mdnspp;
 using namespace mdnspp::testing;
 using namespace std::chrono_literals;
 
-static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
+[[maybe_unused]] static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
 {
     std::vector<std::byte> v;
     v.reserve(vals.size());
@@ -96,7 +97,7 @@ static std::vector<std::byte> make_ptr_response(std::string_view owner,
 }
 
 // Builds a mDNS response packet with one A record.
-static std::vector<std::byte> make_a_response(std::string_view owner,
+[[maybe_unused]] static std::vector<std::byte> make_a_response(std::string_view owner,
                                               uint8_t a, uint8_t b,
                                               uint8_t c, uint8_t d)
 {
@@ -395,7 +396,7 @@ SCENARIO("async_discover skips malformed records and returns valid ones", "[serv
 //   owner           — fully-qualified service instance name (e.g. "My Service._http._tcp.local.")
 //   target_hostname — SRV target (e.g. "myhost.local.")
 //   port            — service port
-static std::vector<std::byte> make_srv_response(std::string_view owner,
+[[maybe_unused]] static std::vector<std::byte> make_srv_response(std::string_view owner,
                                                 std::string_view target_hostname,
                                                 uint16_t port)
 {
@@ -789,6 +790,27 @@ SCENARIO("on_record callback fires during async_browse (same as async_discover)"
             {
                 REQUIRE(captured_records.size() == 1);
                 REQUIRE(std::holds_alternative<record_ptr>(captured_records[0]));
+            }
+        }
+    }
+}
+
+SCENARIO("basic_service_discovery with socket_options", "[service_discovery][socket_options]")
+{
+    GIVEN("a socket_options with a specific interface address")
+    {
+        mock_executor ex;
+        socket_options opts{.interface_address = "172.16.0.1"};
+
+        WHEN("basic_service_discovery<MockPolicy> is constructed with socket_options")
+        {
+            basic_service_discovery<MockPolicy> sd{ex, opts, 500ms};
+
+            THEN("the socket stores the options")
+            {
+                REQUIRE(sd.socket().options().interface_address == "172.16.0.1");
+                REQUIRE(sd.socket().queue_empty());
+                REQUIRE(sd.results().empty());
             }
         }
     }

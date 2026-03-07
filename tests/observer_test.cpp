@@ -1,8 +1,9 @@
 // tests/observer_test.cpp
 
 #include "mdnspp/records.h"
-#include "mdnspp/basic_observer.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/basic_observer.h"
+#include "mdnspp/socket_options.h"
 
 #include "mdnspp/testing/mock_policy.h"
 
@@ -430,6 +431,30 @@ SCENARIO("observer skips malformed packets without crashing", "[observer][malfor
             {
                 REQUIRE_NOTHROW(obs.async_observe());
                 REQUIRE(callback_count == 0);
+            }
+        }
+    }
+}
+
+SCENARIO("basic_observer with socket_options", "[observer][socket_options]")
+{
+    GIVEN("a socket_options with a specific interface address")
+    {
+        mock_executor ex;
+        socket_options opts{.interface_address = "10.0.0.1", .multicast_ttl = 64};
+
+        WHEN("basic_observer<MockPolicy> is constructed with socket_options")
+        {
+            basic_observer<MockPolicy> obs{
+                ex,
+                opts,
+                [](const endpoint &, const mdns_record_variant &) {}
+            };
+
+            THEN("the socket stores the options")
+            {
+                REQUIRE(obs.socket().options().interface_address == "10.0.0.1");
+                REQUIRE(obs.socket().options().multicast_ttl == 64);
             }
         }
     }

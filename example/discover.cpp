@@ -1,12 +1,9 @@
 // Discover HTTP services on the local network using DefaultPolicy.
 // Self-terminates after 3 seconds of silence.
-// Usage: ./mdnspp_example_discover
 
 #include <mdnspp/defaults.h>
-#include <mdnspp/records.h>
 
 #include <iostream>
-#include <variant>
 
 int main()
 {
@@ -24,15 +21,14 @@ int main()
         }
     };
 
-    sd.async_discover("_http._tcp.local.",
-                      [&ctx](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)
-                      {
-                          if(ec)
-                              std::cerr << "discovery error: " << ec.message() << "\n";
-                          else
-                              std::cout << "Discovery complete -- " << results.size() << " record(s)\n";
-                          ctx.stop();
-                      });
+    sd.async_discover("_http._tcp.local.", [&ctx](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)
+    {
+        if(ec)
+            std::cerr << "Discovery error: " << ec.message() << "\n";
+        else
+            std::cout << "Discovery complete: " << results.size() << " record(s)\n";
+        ctx.stop();
+    });
 
     ctx.run();
 }

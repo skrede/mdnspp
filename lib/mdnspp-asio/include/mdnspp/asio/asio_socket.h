@@ -3,6 +3,7 @@
 
 #include <mdnspp/policy.h>
 #include <mdnspp/endpoint.h>
+#include <mdnspp/socket_options.h>
 
 #include <asio.hpp>
 
@@ -47,6 +48,82 @@ public:
         if(ec) return;
         m_socket.set_option(asio::ip::multicast::join_group(multicast_addr), ec);
         if(ec) return;
+        m_buffer.resize(4096);
+    }
+
+    // Throwing constructor with socket_options.
+    explicit AsioSocket(asio::io_context &io, const socket_options &opts)
+        : m_socket(io)
+        , m_sender_endpoint{}
+    {
+        const auto multicast_addr = asio::ip::make_address_v4("224.0.0.251");
+        const uint16_t mdns_port = 5353;
+
+        m_socket.open(asio::ip::udp::v4());
+        m_socket.set_option(asio::ip::udp::socket::reuse_address(true));
+        m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), mdns_port));
+
+        if(!opts.interface_address.empty())
+        {
+            auto iface_addr = asio::ip::make_address_v4(opts.interface_address);
+            m_socket.set_option(asio::ip::multicast::outbound_interface(iface_addr));
+            m_socket.set_option(asio::ip::multicast::join_group(multicast_addr, iface_addr));
+        }
+        else
+        {
+            m_socket.set_option(asio::ip::multicast::join_group(multicast_addr));
+        }
+
+        m_socket.set_option(asio::ip::multicast::hops(opts.multicast_ttl.value_or(255)));
+
+        if(opts.multicast_loopback.has_value())
+            m_socket.set_option(asio::ip::multicast::enable_loopback(
+                opts.multicast_loopback.value() == loopback_mode::enabled));
+
+        m_buffer.resize(4096);
+    }
+
+    // Non-throwing constructor with socket_options.
+    explicit AsioSocket(asio::io_context &io, const socket_options &opts, std::error_code &ec)
+        : m_socket(io)
+        , m_sender_endpoint{}
+    {
+        const auto multicast_addr = asio::ip::make_address_v4("224.0.0.251", ec);
+        if(ec) return;
+
+        const uint16_t mdns_port = 5353;
+        m_socket.open(asio::ip::udp::v4(), ec);
+        if(ec) return;
+        m_socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
+        if(ec) return;
+        m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), mdns_port), ec);
+        if(ec) return;
+
+        if(!opts.interface_address.empty())
+        {
+            auto iface_addr = asio::ip::make_address_v4(opts.interface_address, ec);
+            if(ec) return;
+            m_socket.set_option(asio::ip::multicast::outbound_interface(iface_addr), ec);
+            if(ec) return;
+            m_socket.set_option(asio::ip::multicast::join_group(multicast_addr, iface_addr), ec);
+            if(ec) return;
+        }
+        else
+        {
+            m_socket.set_option(asio::ip::multicast::join_group(multicast_addr), ec);
+            if(ec) return;
+        }
+
+        m_socket.set_option(asio::ip::multicast::hops(opts.multicast_ttl.value_or(255)), ec);
+        if(ec) return;
+
+        if(opts.multicast_loopback.has_value())
+        {
+            m_socket.set_option(asio::ip::multicast::enable_loopback(
+                opts.multicast_loopback.value() == loopback_mode::enabled), ec);
+            if(ec) return;
+        }
+
         m_buffer.resize(4096);
     }
 

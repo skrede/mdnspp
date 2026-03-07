@@ -1,10 +1,7 @@
 // Announce an HTTP service via mDNS using DefaultPolicy.
 // Auto-stops after 30 seconds.
-// Usage: ./mdnspp_example_serve
 
 #include <mdnspp/defaults.h>
-#include <mdnspp/service_info.h>
-#include <mdnspp/detail/dns_enums.h>
 
 #include <thread>
 #include <iostream>
@@ -19,16 +16,17 @@ int main()
         .hostname     = "myhost.local.",
         .port         = 8080,
         .address_ipv4 = "192.168.1.69",
+        .address_ipv6 = {},
         .txt_records  = {{"path", "/index.html"}},
     };
 
     mdnspp::service_server srv{
         ctx,
         std::move(info),
-        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, bool unicast)
+        [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
         {
             std::cout << sender << " queried qtype=" << to_string(qtype)
-                << (unicast ? " (unicast)" : " (multicast)") << "\n";
+                << " (" << to_string(mode) << ")\n";
         }
     };
 

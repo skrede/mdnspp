@@ -2,10 +2,15 @@
 
 #include "mdnspp/asio/asio_policy.h"
 #include "mdnspp/policy.h"
+#include "mdnspp/socket_options.h"
 
 static_assert(mdnspp::Policy<mdnspp::AsioPolicy>, "AsioPolicy must satisfy Policy — check AsioSocket/AsioTimer constructor signatures");
 static_assert(mdnspp::SocketLike<mdnspp::AsioSocket>, "AsioSocket must satisfy SocketLike — check async_receive/send/close signatures");
 static_assert(mdnspp::TimerLike<mdnspp::AsioTimer>, "AsioTimer must satisfy TimerLike — check expires_after/async_wait/cancel signatures");
+static_assert(std::constructible_from<mdnspp::AsioSocket, asio::io_context&, const mdnspp::socket_options&>,
+              "AsioSocket must be constructible from (io_context, socket_options)");
+static_assert(std::constructible_from<mdnspp::AsioSocket, asio::io_context&, const mdnspp::socket_options&, std::error_code&>,
+              "AsioSocket must be constructible from (io_context, socket_options, error_code)");
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -38,4 +43,31 @@ TEST_CASE("AsioTimer satisfies TimerLike concept", "[concept][conformance][asio]
     timer.expires_after(std::chrono::milliseconds{100});
     timer.cancel();
     SUCCEED("AsioTimer methods callable");
+}
+
+TEST_CASE("AsioSocket with default socket_options", "[concept][conformance][asio][socket_options]")
+{
+    asio::io_context io;
+    try
+    {
+        mdnspp::socket_options opts{};
+        mdnspp::AsioSocket socket{io, opts};
+        SUCCEED("AsioSocket constructed with default socket_options (INADDR_ANY, TTL=255)");
+    }
+    catch(const std::exception &e)
+    {
+        WARN("AsioSocket construction with socket_options failed (expected in no-network CI): " << e.what());
+    }
+}
+
+TEST_CASE("AsioSocket with socket_options error_code overload", "[concept][conformance][asio][socket_options]")
+{
+    asio::io_context io;
+    mdnspp::socket_options opts{};
+    std::error_code ec;
+    mdnspp::AsioSocket socket{io, opts, ec};
+    if(ec)
+        WARN("AsioSocket non-throwing construction with socket_options failed (expected in no-network CI): " << ec.message());
+    else
+        SUCCEED("AsioSocket constructed with default socket_options via error_code overload");
 }

@@ -9,12 +9,12 @@ namespace mdnspp {
 
 template <Policy P, asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>CompletionToken>
 auto async_discover(basic_service_discovery<P> &sd, std::string_view service_type,
-                    CompletionToken &&token, bool unicast = false)
+                    CompletionToken &&token, response_mode mode = response_mode::multicast)
 {
     return asio::async_initiate<
         CompletionToken,
         void(std::error_code, std::vector<mdns_record_variant>)>(
-        [&sd, unicast](auto handler, std::string svc_type)
+        [&sd, mode](auto handler, std::string svc_type)
         {
             auto work = asio::make_work_guard(handler);
             sd.async_discover(std::move(svc_type),
@@ -23,7 +23,7 @@ auto async_discover(basic_service_discovery<P> &sd, std::string_view service_typ
                               {
                                   mdnspp::dispatch_completion(std::move(h), std::move(w), ec, std::move(results));
                               },
-                              unicast);
+                              mode);
         },
         token,
         std::string(service_type));
@@ -31,12 +31,12 @@ auto async_discover(basic_service_discovery<P> &sd, std::string_view service_typ
 
 template <Policy P, asio::completion_token_for<void(std::error_code, std::vector<resolved_service>)>CompletionToken>
 auto async_browse(basic_service_discovery<P> &sd, std::string_view service_type,
-                  CompletionToken &&token, bool unicast = false)
+                  CompletionToken &&token, response_mode mode = response_mode::multicast)
 {
     return asio::async_initiate<
         CompletionToken,
         void(std::error_code, std::vector<resolved_service>)>(
-        [&sd, unicast](auto handler, std::string svc_type)
+        [&sd, mode](auto handler, std::string svc_type)
         {
             auto work = asio::make_work_guard(handler);
             sd.async_browse(std::move(svc_type),
@@ -45,7 +45,7 @@ auto async_browse(basic_service_discovery<P> &sd, std::string_view service_type,
                             {
                                 mdnspp::dispatch_completion(std::move(h), std::move(w), ec, std::move(services));
                             },
-                            unicast);
+                            mode);
         },
         token,
         std::string(service_type));

@@ -3,6 +3,7 @@
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/socket_options.h"
 #include "mdnspp/detail/compat.h"
 
 #include <deque>
@@ -55,6 +56,20 @@ public:
             ec = std::make_error_code(std::errc::address_not_available);
     }
 
+    explicit MockSocket(mock_executor &, const socket_options &opts)
+        : m_opts{opts}
+    {
+    }
+
+    explicit MockSocket(mock_executor &, const socket_options &opts, std::error_code &ec)
+        : m_opts{opts}
+    {
+        if(s_fail_on_construct)
+            ec = std::make_error_code(std::errc::address_not_available);
+    }
+
+    const socket_options &options() const noexcept { return m_opts; }
+
     // Failure injection: set before construction to trigger error in (executor, ec) constructor.
     static void set_fail_on_construct(bool v) noexcept { s_fail_on_construct = v; }
     static bool fail_on_construct() noexcept { return s_fail_on_construct; }
@@ -100,6 +115,7 @@ public:
 private:
     std::queue<std::pair<std::vector<std::byte>, endpoint>> m_receive_queue;
     std::vector<sent_packet> m_sent_packets;
+    socket_options m_opts{};
 
     static inline bool s_fail_on_construct{false};
 };

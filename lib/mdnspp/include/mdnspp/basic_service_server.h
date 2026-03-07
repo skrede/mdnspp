@@ -5,6 +5,7 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
+#include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
@@ -32,6 +33,8 @@ namespace mdnspp {
 // Lifecycle:
 //   1. basic_service_server(ex, info)          — direct constructor (throwing)
 //      basic_service_server(ex, info, ec)      — non-throwing overload (ec set on failure)
+//      basic_service_server(ex, opts, info)    — socket_options constructor (throwing)
+//      basic_service_server(ex, opts, info, ec) — socket_options non-throwing overload
 //   2. async_start([on_done])                  — arms recv_loop; returns immediately
 //                                                on_done fires with error_code{} when stop() is called
 //   3. stop()                                  — idempotent; fires completion handler, cancels timer,
@@ -47,8 +50,8 @@ public:
     using timer_type = typename P::timer_type;
 
     /// Optional callback invoked when an incoming query is received and parsed.
-    /// Parameters: qtype requested, sender endpoint, whether unicast was requested.
-    using query_callback = detail::move_only_function<void(const endpoint &sender, dns_type type, bool unicast)>;
+    /// Parameters: sender endpoint, qtype requested, response mode (unicast or multicast).
+    using query_callback = detail::move_only_function<void(const endpoint &sender, dns_type type, response_mode mode)>;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
@@ -139,6 +142,50 @@ public:
     basic_service_server(executor_type ex, service_info info, std::error_code &ec)
         : m_executor(ex)
         , m_socket(ex, ec)
+        , m_response_timer(ex)
+        , m_recv_timer(ex)
+        , m_info(std::move(info))
+        , m_rng(std::random_device{}())
+        , m_loop(nullptr)
+        , m_stopped(false)
+    {
+    }
+
+    // Throwing constructor with socket_options.
+    explicit basic_service_server(executor_type ex, const socket_options &opts,
+                                  service_info info, query_callback on_query = {})
+        : m_executor(ex)
+        , m_socket(ex, opts)
+        , m_response_timer(ex)
+        , m_recv_timer(ex)
+        , m_info(std::move(info))
+        , m_on_query(std::move(on_query))
+        , m_rng(std::random_device{}())
+        , m_loop(nullptr)
+        , m_stopped(false)
+    {
+    }
+
+    // Non-throwing constructors with socket_options.
+    basic_service_server(executor_type ex, const socket_options &opts,
+                         service_info info, query_callback on_query,
+                         std::error_code &ec)
+        : m_executor(ex)
+        , m_socket(ex, opts, ec)
+        , m_response_timer(ex)
+        , m_recv_timer(ex)
+        , m_info(std::move(info))
+        , m_on_query(std::move(on_query))
+        , m_rng(std::random_device{}())
+        , m_loop(nullptr)
+        , m_stopped(false)
+    {
+    }
+
+    basic_service_server(executor_type ex, const socket_options &opts,
+                         service_info info, std::error_code &ec)
+        : m_executor(ex)
+        , m_socket(ex, opts, ec)
         , m_response_timer(ex)
         , m_recv_timer(ex)
         , m_info(std::move(info))
@@ -278,10 +325,12 @@ private:
         // RFC 6762 section 5.4: QU bit is the top bit of QCLASS.
         // If set, the querier requests a unicast response directly to its address.
         // Otherwise, respond via multicast so all listeners benefit.
-        bool unicast_response = (qclass & 0x8000) != 0;
+        auto response_mode = (qclass & 0x8000) != 0
+                                 ? response_mode::unicast
+                                 : response_mode::multicast;
 
         if(m_on_query)
-            m_on_query(sender, qtype, unicast_response);
+            m_on_query(sender, qtype, response_mode);
 
         // RFC 6762 section 6: random delay 20-500ms before responding via multicast.
         // Unicast responses may be sent immediately.
@@ -289,7 +338,7 @@ private:
         int delay_ms = dist(m_rng);
 
         // Choose destination: unicast back to querier, or multicast to the group
-        endpoint dest = unicast_response
+        endpoint dest = response_mode == response_mode::unicast
                             ? sender
                             : endpoint{"224.0.0.251", 5353};
 

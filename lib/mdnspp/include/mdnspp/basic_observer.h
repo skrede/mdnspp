@@ -4,6 +4,7 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
@@ -27,6 +28,8 @@ namespace mdnspp {
 // Lifecycle:
 //   1. basic_observer(ex, on_record)       — direct constructor (throwing)
 //      basic_observer(ex, on_record, ec)   — non-throwing overload (ec set on failure)
+//      basic_observer(ex, opts, on_record) — socket_options constructor (throwing)
+//      basic_observer(ex, opts, on_record, ec) — socket_options non-throwing overload
 //   2. async_observe([on_done])            — arms recv_loop; returns immediately
 //                                            on_done fires with error_code{} when stop() is called
 //   3. stop()                              — idempotent; sets stop flag, fires completion handler
@@ -96,6 +99,26 @@ public:
     // ec is the last parameter, matching ASIO convention.
     basic_observer(executor_type ex, record_callback on_record, std::error_code &ec)
         : m_socket(ex, ec)
+        , m_timer(ex)
+        , m_on_record(std::move(on_record))
+        , m_loop(nullptr)
+        , m_stopped(false)
+    {
+    }
+
+    // Throwing constructor with socket_options.
+    explicit basic_observer(executor_type ex, const socket_options &opts, record_callback on_record = {})
+        : m_socket(ex, opts)
+        , m_timer(ex)
+        , m_on_record(std::move(on_record))
+        , m_loop(nullptr)
+        , m_stopped(false)
+    {
+    }
+
+    // Non-throwing constructor with socket_options.
+    basic_observer(executor_type ex, const socket_options &opts, record_callback on_record, std::error_code &ec)
+        : m_socket(ex, opts, ec)
         , m_timer(ex)
         , m_on_record(std::move(on_record))
         , m_loop(nullptr)

@@ -1,6 +1,7 @@
 // tests/concept_conformance_test.cpp
 
 #include "mdnspp/policy.h"
+#include "mdnspp/socket_options.h"
 #include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/basic_observer.h"
 #include "mdnspp/records.h"
@@ -9,6 +10,10 @@
 static_assert(mdnspp::Policy<mdnspp::testing::MockPolicy>, "MockPolicy must satisfy Policy — check executor_type, socket_type, timer_type");
 static_assert(mdnspp::SocketLike<mdnspp::testing::MockSocket>, "MockSocket must satisfy SocketLike — check async_receive/send/close signatures");
 static_assert(mdnspp::TimerLike<mdnspp::testing::MockTimer>, "MockTimer must satisfy TimerLike — check expires_after/async_wait/cancel signatures");
+static_assert(std::constructible_from<mdnspp::testing::MockSocket, mdnspp::testing::mock_executor&, const mdnspp::socket_options&>,
+              "MockSocket must be constructible from (executor, socket_options)");
+static_assert(std::constructible_from<mdnspp::testing::MockSocket, mdnspp::testing::mock_executor&, const mdnspp::socket_options&, std::error_code&>,
+              "MockSocket must be constructible from (executor, socket_options, error_code)");
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -114,6 +119,20 @@ TEST_CASE("post accepts move-only callable", "[concept][conformance][post]")
     MockPolicy::post(ex, [p = std::move(ptr), &result] { result = *p; });
     ex.drain_posted();
     REQUIRE(result == 42);
+}
+
+TEST_CASE("MockSocket constructible with socket_options", "[concept][conformance]")
+{
+    mdnspp::testing::mock_executor ex;
+    mdnspp::socket_options opts{};
+
+    mdnspp::testing::MockSocket s1{ex, opts};
+    REQUIRE(s1.options().interface_address.empty());
+
+    std::error_code ec;
+    mdnspp::testing::MockSocket s2{ex, opts, ec};
+    REQUIRE_FALSE(ec);
+    REQUIRE(s2.options().interface_address.empty());
 }
 
 TEST_CASE("observer error_code constructor path", "[observer][error_code]")

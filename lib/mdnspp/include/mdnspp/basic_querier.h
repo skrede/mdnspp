@@ -4,6 +4,7 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
@@ -99,6 +100,40 @@ public:
     {
     }
 
+    // Throwing constructor with socket_options.
+    explicit basic_querier(executor_type ex, const socket_options &opts,
+                           std::chrono::milliseconds silence_timeout,
+                           record_callback on_record = {})
+        : m_socket(ex, opts)
+        , m_timer(ex)
+        , m_silence_timeout(silence_timeout)
+        , m_on_record(std::move(on_record))
+        , m_loop(nullptr)
+    {
+    }
+
+    // Non-throwing constructors with socket_options.
+    basic_querier(executor_type ex, const socket_options &opts,
+                  std::chrono::milliseconds silence_timeout,
+                  record_callback on_record, std::error_code &ec)
+        : m_socket(ex, opts, ec)
+        , m_timer(ex)
+        , m_silence_timeout(silence_timeout)
+        , m_on_record(std::move(on_record))
+        , m_loop(nullptr)
+    {
+    }
+
+    basic_querier(executor_type ex, const socket_options &opts,
+                  std::chrono::milliseconds silence_timeout,
+                  std::error_code &ec)
+        : m_socket(ex, opts, ec)
+        , m_timer(ex)
+        , m_silence_timeout(silence_timeout)
+        , m_loop(nullptr)
+    {
+    }
+
     // Accessors — basic_querier owns socket and timer directly.
     const socket_type &socket() const noexcept { return m_socket; }
     socket_type &socket() noexcept { return m_socket; }
@@ -106,15 +141,15 @@ public:
     timer_type &timer() noexcept { return m_timer; }
 
     // Plain callback overload — used by NativePolicy, MockPolicy, and ASIO adapter users.
-    // When unicast is true the QU bit (RFC 6762 §5.4) is set, requesting a
-    // direct unicast response from the responder instead of a multicast reply.
+    // When mode is response_mode::unicast the QU bit (RFC 6762 §5.4) is set,
+    // requesting a direct unicast response from the responder instead of a multicast reply.
     void async_query(std::string_view name, dns_type qtype, completion_handler on_done,
-                     bool unicast = false)
+                     response_mode mode = response_mode::multicast)
     {
         assert(m_loop == nullptr); // one query per lifetime
         if(on_done)
             m_on_completion = std::move(on_done);
-        do_query(std::string(name), qtype, unicast);
+        do_query(std::string(name), qtype, mode);
     }
 
     // Access accumulated results (populated during io.run()).
@@ -139,7 +174,8 @@ private:
     // Common query body — assumes m_on_completion is already set.
     // Sets up m_query_name, sends DNS query, creates and starts recv_loop.
     // Must only be called once per lifetime (m_loop must be null on entry).
-    void do_query(std::string qname, dns_type qtype, bool unicast = false)
+    void do_query(std::string qname, dns_type qtype,
+                  response_mode mode = response_mode::multicast)
     {
         assert(m_loop == nullptr); // one query per lifetime
         m_results.clear();
@@ -149,7 +185,7 @@ private:
             m_query_name.pop_back();
 
         // Build and send DNS query for the requested name and qtype
-        auto query_bytes = detail::build_dns_query(m_query_name, qtype, unicast);
+        auto query_bytes = detail::build_dns_query(m_query_name, qtype, mode);
         m_socket.send(endpoint{"224.0.0.251", 5353},
                       std::span<const std::byte>(query_bytes));
 

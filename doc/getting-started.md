@@ -18,7 +18,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(mdnspp)
 
-target_link_libraries(my_app PRIVATE mdnspp::core)
+target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 ```
 
 This pulls mdnspp and links the DefaultPolicy target, which provides native
@@ -28,7 +28,7 @@ socket and timer implementations with no external dependencies.
 
 ```cmake
 find_package(mdnspp CONFIG REQUIRED)
-target_link_libraries(my_app PRIVATE mdnspp::core)
+target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 ```
 
 See [CMake Integration](cmake-integration.md) for installation instructions and
@@ -52,7 +52,7 @@ int main()
     mdnspp::context ctx;
 
     mdnspp::service_discovery sd{ctx, std::chrono::seconds(3),
-        [](const mdnspp::mdns_record_variant &rec, mdnspp::endpoint sender)
+        [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&](const auto &r) {
                 std::cout << sender << " -> " << r << "\n";

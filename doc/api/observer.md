@@ -52,6 +52,18 @@ basic_observer(executor_type ex, record_callback on_record, std::error_code& ec)
 
 Same as the throwing constructor, but sets `ec` instead of throwing on failure. The `ec` parameter is last, following ASIO convention.
 
+### With socket_options
+
+```cpp
+explicit basic_observer(executor_type ex, const socket_options& opts,
+                        record_callback on_record = {});
+
+basic_observer(executor_type ex, const socket_options& opts,
+               record_callback on_record, std::error_code& ec);
+```
+
+Same as the corresponding constructors above, but passes `opts` to the underlying socket for network interface selection, multicast TTL, and loopback control. See [Socket Options](../socket-options.md).
+
 ## Methods
 
 ### async_observe
@@ -149,3 +161,4 @@ int main()
 - [querier](querier.md) -- send a query and collect matching records
 - [service_discovery](service_discovery.md) -- discover services by type
 - [resolved_service](resolved_service.md) -- aggregated service view
+- [Socket Options](../socket-options.md) -- network interface selection, multicast TTL, loopback control

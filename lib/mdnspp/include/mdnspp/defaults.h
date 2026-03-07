@@ -21,6 +21,8 @@
 
 #include "mdnspp/basic_querier.h"
 #include "mdnspp/basic_observer.h"
+#include "mdnspp/socket_options.h"
+#include "mdnspp/network_interface.h"
 #include "mdnspp/basic_service_server.h"
 #include "mdnspp/basic_service_discovery.h"
 

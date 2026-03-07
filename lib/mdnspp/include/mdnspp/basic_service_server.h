@@ -236,21 +236,32 @@ public:
     }
 
     // stop() -- idempotent; fires on_ready with operation_canceled if still probing/announcing,
-    // then fires on_done, cancels timer, destroys recv_loop.
+    // then fires on_done.
+    //
+    // Does NOT cancel timers or reset the recv_loop here -- this is critical for
+    // callback-safe stop. stop() may be called from a thread other than the executor,
+    // and modifying asio objects cross-thread is a data race. The recv_loop remains
+    // alive until ~basic_service_server() destroys it via member destruction, ensuring
+    // that any in-progress callback chain can complete without accessing a dangling loop.
     void stop()
     {
         if(m_stopped.exchange(true, std::memory_order_acq_rel))
             return; // already stopped
 
         // RFC 6762 section 10.1: send goodbye packet (TTL=0) when shutting down
-        // from live or announcing state. Best-effort UDP, no async completion needed.
+        // from live or announcing state. Best-effort UDP -- ignore errors since
+        // the socket may already be closed or the network unavailable.
         if(m_opts.send_goodbye &&
            (m_state == server_state::live || m_state == server_state::announcing))
         {
-            auto goodbye = detail::build_dns_response(m_info, dns_type::any, 0);
-            if(!goodbye.empty())
-                m_socket.send(endpoint{"224.0.0.251", 5353},
-                              std::span<const std::byte>(goodbye));
+            try
+            {
+                auto goodbye = detail::build_dns_response(m_info, dns_type::any, 0);
+                if(!goodbye.empty())
+                    m_socket.send(endpoint{"224.0.0.251", 5353},
+                                  std::span<const std::byte>(goodbye));
+            }
+            catch(...) {}
         }
 
         if(m_state == server_state::probing || m_state == server_state::announcing)
@@ -264,9 +275,6 @@ public:
 
         if(auto h = std::exchange(m_on_completion, nullptr); h)
             h(std::error_code{});
-
-        m_response_timer.cancel();
-        m_loop.reset();
     }
 
     // update_service_info() -- posts a service info replacement to the event loop.

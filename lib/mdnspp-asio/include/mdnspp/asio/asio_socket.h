@@ -147,8 +147,10 @@ public:
 
     void send(const mdnspp::endpoint &dest, std::span<const std::byte> data)
     {
-        asio::ip::udp::endpoint ep(asio::ip::make_address(dest.address), dest.port);
-        m_socket.send_to(asio::buffer(data.data(), data.size()), ep);
+        std::error_code ec;
+        asio::ip::udp::endpoint ep(asio::ip::make_address(dest.address, ec), dest.port);
+        if(!ec)
+            m_socket.send_to(asio::buffer(data.data(), data.size()), ep, 0, ec);
     }
 
     void close()

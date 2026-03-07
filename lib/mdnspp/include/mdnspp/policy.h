@@ -26,10 +26,11 @@ struct always_false : std::false_type
 
 // SocketLike<S>: satisfied by any type that provides the mDNS socket interface.
 template <typename S>
-concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::function<void(const endpoint &, std::span<std::byte>)> handler)
+concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, std::function<void(const endpoint &, std::span<std::byte>)> handler)
 {
     { s.async_receive(handler) } -> std::same_as<void>;
     { s.send(ep, send_data) } -> std::same_as<void>;
+    { s.send(ep, send_data, ec) } -> std::same_as<void>;
     { s.close() } -> std::same_as<void>;
 };
 

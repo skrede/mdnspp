@@ -135,6 +135,39 @@ TEST_CASE("MockSocket constructible with socket_options", "[concept][conformance
     REQUIRE(s2.options().interface_address.empty());
 }
 
+TEST_CASE("MockSocket ec send records packet on success", "[concept][error_code][send]")
+{
+    mock_executor ex;
+    MockSocket sock{ex};
+    const std::byte payload[] = {std::byte{0x01}, std::byte{0x02}};
+    mdnspp::endpoint dest{"224.0.0.251", 5353};
+    std::error_code ec;
+    sock.send(dest, std::span<const std::byte>{payload}, ec);
+    REQUIRE_FALSE(ec);
+    REQUIRE(sock.sent_packets().size() == 1);
+    REQUIRE(sock.sent_packets()[0].dest.address == "224.0.0.251");
+    REQUIRE(sock.sent_packets()[0].data.size() == 2);
+}
+
+TEST_CASE("MockSocket ec send failure injection", "[concept][error_code][send]")
+{
+    mock_executor ex;
+    MockSocket sock{ex};
+    const std::byte payload[] = {std::byte{0x01}};
+    mdnspp::endpoint dest{"224.0.0.251", 5353};
+    std::error_code ec;
+
+    MockSocket::set_fail_on_send(true);
+    sock.send(dest, std::span<const std::byte>{payload}, ec);
+    REQUIRE(ec == std::make_error_code(std::errc::network_unreachable));
+    REQUIRE(sock.sent_packets().empty());
+
+    MockSocket::set_fail_on_send(false);
+    sock.send(dest, std::span<const std::byte>{payload}, ec);
+    REQUIRE_FALSE(ec);
+    REQUIRE(sock.sent_packets().size() == 1);
+}
+
 TEST_CASE("observer error_code constructor path", "[observer][error_code]")
 {
     MockSocket::set_fail_on_construct(true);

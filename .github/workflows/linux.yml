@@ -51,14 +51,18 @@ jobs:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
         run: |
-          cmake_args="-DMDNSPP_BUILD_TESTS=ON -DMDNSPP_BUILD_EXAMPLES=ON -DMDNSPP_ENABLE_ASIO_POLICY=ON"
           if [ "${{ matrix.coverage }}" = "true" ]; then
             cmake . -B build -DCMAKE_BUILD_TYPE=Debug \
               -DCMAKE_CXX_FLAGS="--coverage" \
               -DCMAKE_C_FLAGS="--coverage" \
-              $cmake_args
+              -DMDNSPP_BUILD_TESTS=ON \
+              -DMDNSPP_BUILD_EXAMPLES=OFF \
+              -DMDNSPP_ENABLE_ASIO_POLICY=ON
           else
-            cmake . -B build -DCMAKE_BUILD_TYPE=Release $cmake_args
+            cmake . -B build -DCMAKE_BUILD_TYPE=Release \
+              -DMDNSPP_BUILD_TESTS=ON \
+              -DMDNSPP_BUILD_EXAMPLES=ON \
+              -DMDNSPP_ENABLE_ASIO_POLICY=ON
           fi
 
       - name: Build
@@ -73,10 +77,9 @@ jobs:
           gcovr build \
             --root . \
             --gcov-executable "${{ matrix.gcov_executable }}" \
-            --exclude 'tests/' \
-            --exclude 'example/' \
+            --filter 'lib/mdnspp/' \
+            --filter 'lib/mdnspp-asio/' \
             --exclude 'lib/mdnspp-testing/' \
-            --exclude 'build/_deps/' \
             --gcov-ignore-errors=source_not_found \
             --xml coverage.xml
 

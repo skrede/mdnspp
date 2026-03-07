@@ -233,6 +233,7 @@ SCENARIO("async_observe fires completion callback on stop", "[observer][async]")
             AND_WHEN("stop() is called")
             {
                 obs.stop();
+                ex.drain_posted();
 
                 THEN("the completion callback fires with error_code{}")
                 {
@@ -289,6 +290,7 @@ SCENARIO("async_observe completion handler fires exactly once on double stop", "
         {
             obs.stop();
             obs.stop();
+            ex.drain_posted();
 
             THEN("the completion callback fires exactly once")
             {

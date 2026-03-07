@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <cassert>
 #include <utility>
@@ -40,13 +41,18 @@ public:
     /// Receives error_code (always success for normal completion) and the accumulated results.
     using completion_handler = detail::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
 
+    /// Error handler invoked on fire-and-forget send failures.
+    using error_handler = detail::move_only_function<void(std::error_code, std::string_view)>;
+
     // Non-copyable (owns recv_loop by unique_ptr)
     basic_querier(const basic_querier &) = delete;
     basic_querier &operator=(const basic_querier &) = delete;
 
     // Movable only before async_query() is called (m_loop must be null).
     basic_querier(basic_querier &&other) noexcept
-        : m_socket(std::move(other.m_socket))
+        : m_alive(std::move(other.m_alive))
+        , m_executor(other.m_executor)
+        , m_socket(std::move(other.m_socket))
         , m_timer(std::move(other.m_timer))
         , m_delay_timer(std::move(other.m_delay_timer))
         , m_silence_timeout(other.m_silence_timeout)
@@ -58,15 +64,18 @@ public:
         , m_query_mode(other.m_query_mode)
         , m_duplicate_seen(other.m_duplicate_seen)
         , m_query_sent(other.m_query_sent)
+        , m_stopped(other.m_stopped.load(std::memory_order_acquire))
     {
         assert(other.m_loop == nullptr); // source must not have been started
+        other.m_stopped.store(true, std::memory_order_release);
     }
 
     basic_querier &operator=(basic_querier &&) = delete;
 
     ~basic_querier()
     {
-        m_loop.reset(); // destroyed before m_socket/m_timer (reverse declaration order)
+        m_alive.reset(); // invalidate sentinel -- posted lambda becomes no-op
+        stop();          // idempotent via atomic flag
     }
 
     // Throwing constructor — constructs socket and timer from executor.
@@ -75,7 +84,8 @@ public:
     explicit basic_querier(executor_type ex,
                            std::chrono::milliseconds silence_timeout,
                            record_callback on_record = {})
-        : m_socket(ex)
+        : m_executor(ex)
+        , m_socket(ex)
         , m_timer(ex)
         , m_delay_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -89,7 +99,8 @@ public:
                   std::chrono::milliseconds silence_timeout,
                   record_callback on_record,
                   std::error_code &ec)
-        : m_socket(ex, ec)
+        : m_executor(ex)
+        , m_socket(ex, ec)
         , m_timer(ex)
         , m_delay_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -101,7 +112,8 @@ public:
     basic_querier(executor_type ex,
                   std::chrono::milliseconds silence_timeout,
                   std::error_code &ec)
-        : m_socket(ex, ec)
+        : m_executor(ex)
+        , m_socket(ex, ec)
         , m_timer(ex)
         , m_delay_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -113,7 +125,8 @@ public:
     explicit basic_querier(executor_type ex, const socket_options &opts,
                            std::chrono::milliseconds silence_timeout,
                            record_callback on_record = {})
-        : m_socket(ex, opts)
+        : m_executor(ex)
+        , m_socket(ex, opts)
         , m_timer(ex)
         , m_delay_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -126,7 +139,8 @@ public:
     basic_querier(executor_type ex, const socket_options &opts,
                   std::chrono::milliseconds silence_timeout,
                   record_callback on_record, std::error_code &ec)
-        : m_socket(ex, opts, ec)
+        : m_executor(ex)
+        , m_socket(ex, opts, ec)
         , m_timer(ex)
         , m_delay_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -138,7 +152,8 @@ public:
     basic_querier(executor_type ex, const socket_options &opts,
                   std::chrono::milliseconds silence_timeout,
                   std::error_code &ec)
-        : m_socket(ex, opts, ec)
+        : m_executor(ex)
+        , m_socket(ex, opts, ec)
         , m_timer(ex)
         , m_delay_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -173,16 +188,30 @@ public:
         return m_results;
     }
 
-    // Early termination — stops the recv_loop and fires the completion handler.
+    /// Sets the error handler invoked on fire-and-forget send failures.
+    void on_error(error_handler handler) { m_on_error = std::move(handler); }
+
+    // Early termination — posts teardown to executor thread, ensuring all
+    // state mutations happen on the executor (no cross-thread data race).
     void stop()
     {
-        m_delay_timer.cancel();
-        if(m_loop)
+        if(m_stopped.exchange(true, std::memory_order_acq_rel))
+            return;
+
+        auto guard = std::weak_ptr<bool>(m_alive);
+        P::post(m_executor, [this, guard]()
         {
-            m_loop->stop();
-            if(auto h = std::exchange(m_on_completion, nullptr); h)
-                h(std::error_code{}, m_results);
-        }
+            if(!guard.lock()) return;
+
+            m_delay_timer.cancel();
+
+            if(m_loop)
+            {
+                m_loop->stop();
+                if(auto h = std::exchange(m_on_completion, nullptr); h)
+                    h(std::error_code{}, m_results);
+            }
+        });
     }
 
 private:
@@ -211,8 +240,10 @@ private:
         auto send_query = [this]()
         {
             auto query_bytes = detail::build_dns_query(m_query_name, m_query_type, m_query_mode);
+            std::error_code ec;
             m_socket.send(endpoint{"224.0.0.251", 5353},
-                          std::span<const std::byte>(query_bytes));
+                          std::span<const std::byte>(query_bytes), ec);
+            if(ec && m_on_error) m_on_error(ec, "query send");
             m_query_sent = true;
         };
 
@@ -226,6 +257,9 @@ private:
             // on_packet: check for duplicate queries during delay, then walk frame
             [this](const endpoint &sender, std::span<std::byte> data) -> bool
             {
+                if(m_stopped.load(std::memory_order_acquire))
+                    return false;
+
                 auto cdata = std::span<const std::byte>(data.data(), data.size());
 
                 // Duplicate question suppression (RFC 6762 section 7.3):
@@ -336,12 +370,15 @@ private:
         }
     }
 
+    std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
+    executor_type m_executor;
     socket_type m_socket;
     timer_type m_timer;
     timer_type m_delay_timer;
     std::chrono::milliseconds m_silence_timeout;
     record_callback m_on_record;
     completion_handler m_on_completion;
+    error_handler m_on_error;
     std::string m_query_name;
     std::unique_ptr<recv_loop<P>> m_loop;
     std::vector<mdns_record_variant> m_results;
@@ -350,6 +387,7 @@ private:
     bool m_duplicate_seen{false};
     bool m_query_sent{false};
     std::vector<std::byte> m_encoded_query_name;
+    std::atomic<bool> m_stopped{false};
 };
 
 }

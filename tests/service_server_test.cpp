@@ -71,17 +71,6 @@ static std::vector<std::byte> make_ptr_query(std::string_view service_type)
     return build_dns_query(service_type, dns_type::ptr);
 }
 
-static std::vector<std::byte> make_a_query(std::string_view hostname)
-{
-    return build_dns_query(hostname, dns_type::a);
-}
-
-// Builds a DNS query with the QU bit set (QCLASS = 0x8001).
-// RFC 6762 section 5.4: QU bit requests unicast response.
-static std::vector<std::byte> make_qu_query(std::string_view name, dns_type qtype)
-{
-    return build_dns_query(name, qtype, response_mode::unicast);
-}
 
 // Advances a server from probing through announcing to live state.
 // Probing: 1 fire (initial delay) + 2 fires (probes 2 and 3) + 1 fire (conflict window) = 4
@@ -1230,6 +1219,651 @@ SCENARIO("response sent to multicast by default, unicast when QU bit set", "[ser
         THEN("the server compiles and constructs with on_query callback")
         {
             REQUIRE(server.socket().queue_empty());
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Goodbye packet tests
+// ---------------------------------------------------------------------------
+
+// Helper: checks if a sent packet is a goodbye (all record TTLs are 0).
+static bool is_goodbye_packet(const std::vector<std::byte> &pkt)
+{
+    if(pkt.size() < 12)
+        return false;
+
+    bool has_records = false;
+    bool all_zero_ttl = true;
+    walk_dns_frame(std::span<const std::byte>(pkt), endpoint{}, [&](mdns_record_variant rv)
+    {
+        has_records = true;
+        std::visit([&](const auto &rec)
+        {
+            if(rec.ttl != 0)
+                all_zero_ttl = false;
+        }, rv);
+    });
+    return has_records && all_zero_ttl;
+}
+
+// Helper: count goodbye packets in a socket's sent_packets list.
+static unsigned count_goodbye_packets(const std::vector<sent_packet> &packets)
+{
+    unsigned count = 0;
+    for(const auto &sp : packets)
+    {
+        if(is_goodbye_packet(sp.data))
+            ++count;
+    }
+    return count;
+}
+
+SCENARIO("Server sends goodbye packet on stop when live", "[goodbye]")
+{
+    GIVEN("a server that has been advanced to live state")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+
+        WHEN("stop() is called")
+        {
+            server.stop();
+
+            THEN("a goodbye packet with TTL=0 is sent")
+            {
+                auto goodbye_count = count_goodbye_packets(server.socket().sent_packets());
+                REQUIRE(goodbye_count == 1);
+            }
+
+            THEN("the goodbye packet contains PTR, SRV, A records with TTL=0")
+            {
+                const auto &packets = server.socket().sent_packets();
+                // Find the goodbye packet
+                for(const auto &sp : packets)
+                {
+                    if(is_goodbye_packet(sp.data))
+                    {
+                        auto records = parse_response(sp.data);
+                        bool has_ptr = false, has_srv = false, has_a = false;
+                        for(const auto &rv : records)
+                        {
+                            if(std::holds_alternative<record_ptr>(rv)) has_ptr = true;
+                            if(std::holds_alternative<record_srv>(rv)) has_srv = true;
+                            if(std::holds_alternative<record_a>(rv)) has_a = true;
+                        }
+                        REQUIRE(has_ptr);
+                        REQUIRE(has_srv);
+                        REQUIRE(has_a);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+}
+
+SCENARIO("Server does NOT send goodbye when stopped during probing", "[goodbye][probing]")
+{
+    GIVEN("a server that has been started but not advanced past probing")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        server.async_start();
+        // Fire only the initial delay timer, still in probing
+        server.timer().fire();
+
+        WHEN("stop() is called during probing")
+        {
+            server.stop();
+
+            THEN("no goodbye packet is sent")
+            {
+                auto goodbye_count = count_goodbye_packets(server.socket().sent_packets());
+                REQUIRE(goodbye_count == 0);
+            }
+        }
+    }
+}
+
+SCENARIO("Server skips goodbye when send_goodbye is false", "[goodbye][opt-out]")
+{
+    GIVEN("a server with send_goodbye=false that has been advanced to live")
+    {
+        mock_executor ex;
+        service_options opts;
+        opts.send_goodbye = false;
+        basic_service_server<MockPolicy> server{ex, make_test_service(), std::move(opts)};
+        server.async_start();
+        advance_to_live(server);
+
+        WHEN("stop() is called")
+        {
+            server.stop();
+
+            THEN("no goodbye packet is sent")
+            {
+                auto goodbye_count = count_goodbye_packets(server.socket().sent_packets());
+                REQUIRE(goodbye_count == 0);
+            }
+        }
+    }
+}
+
+SCENARIO("Goodbye sent at most once on double stop", "[goodbye][idempotent]")
+{
+    GIVEN("a server that has been advanced to live state")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+
+        WHEN("stop() is called twice")
+        {
+            server.stop();
+            server.stop();
+
+            THEN("exactly one goodbye packet is sent")
+            {
+                auto goodbye_count = count_goodbye_packets(server.socket().sent_packets());
+                REQUIRE(goodbye_count == 1);
+            }
+        }
+    }
+}
+
+SCENARIO("Server sends goodbye when stopped during announcing", "[goodbye][announcing]")
+{
+    GIVEN("a server that has completed probing but is still announcing")
+    {
+        mock_executor ex;
+        service_options opts;
+        opts.announce_count = 3; // need 3 announcements
+        basic_service_server<MockPolicy> server{ex, make_test_service(), std::move(opts)};
+        server.async_start();
+
+        // Complete probing: 4 timer fires
+        for(unsigned i = 0; i < 4; ++i)
+            server.timer().fire();
+
+        // Fire only 1 additional announcement timer (out of announce_count-1=2 needed)
+        // State should be announcing
+        server.timer().fire();
+
+        WHEN("stop() is called during announcing")
+        {
+            server.stop();
+
+            THEN("a goodbye packet is sent")
+            {
+                auto goodbye_count = count_goodbye_packets(server.socket().sent_packets());
+                REQUIRE(goodbye_count == 1);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Multi-question, aggregation, delay, and NSEC tests
+// ---------------------------------------------------------------------------
+
+// Helper: build a DNS query packet with multiple questions.
+// Each question is a tuple of {name, qtype, qu_bit}.
+struct question_entry
+{
+    std::string_view name;
+    dns_type qtype;
+    bool qu_bit;
+};
+
+static std::vector<std::byte> make_multi_question_query(std::initializer_list<question_entry> questions)
+{
+    std::vector<std::byte> packet;
+    packet.reserve(12 + 256 * questions.size());
+
+    // DNS header
+    push_u16_be(packet, 0x0000); // id
+    push_u16_be(packet, 0x0000); // flags (standard query)
+    push_u16_be(packet, static_cast<uint16_t>(questions.size())); // qdcount
+    push_u16_be(packet, 0x0000); // ancount
+    push_u16_be(packet, 0x0000); // nscount
+    push_u16_be(packet, 0x0000); // arcount
+
+    for(const auto &q : questions)
+    {
+        auto encoded = encode_dns_name(q.name);
+        packet.insert(packet.end(), encoded.begin(), encoded.end());
+        push_u16_be(packet, std::to_underlying(q.qtype));
+        push_u16_be(packet, q.qu_bit ? uint16_t{0x8001} : uint16_t{0x0001});
+    }
+
+    return packet;
+}
+
+// Helper: count multicast response packets sent after live (excludes probes and announcements).
+// Probes have flags=0x0000, announcements and responses both have flags=0x8400.
+// We count response packets sent to 224.0.0.251:5353 after a given starting index.
+static unsigned count_multicast_responses_after(const std::vector<sent_packet> &packets, size_t start_index)
+{
+    unsigned count = 0;
+    for(size_t i = start_index; i < packets.size(); ++i)
+    {
+        if(packets[i].dest == endpoint{"224.0.0.251", 5353} && packets[i].data.size() >= 12)
+        {
+            uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(packets[i].data[2])) << 8) |
+                static_cast<uint16_t>(static_cast<uint8_t>(packets[i].data[3]));
+            if(flags == 0x8400)
+                ++count;
+        }
+    }
+    return count;
+}
+
+SCENARIO("Multi-question query produces combined response", "[multi-question]")
+{
+    GIVEN("a live service server")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a multi-question query with PTR and SRV is injected")
+        {
+            auto query = make_multi_question_query({
+                {"_http._tcp.local.", dns_type::ptr, false},
+                {"MyService._http._tcp.local.", dns_type::srv, false}
+            });
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+
+            AND_WHEN("the response timer fires")
+            {
+                server.timer().fire();
+
+                THEN("a combined response is sent with both PTR and SRV records")
+                {
+                    REQUIRE_FALSE(server.socket().sent_packets().empty());
+                    const auto &pkt = server.socket().sent_packets().back();
+                    auto records = parse_response(pkt.data);
+
+                    bool has_ptr = false, has_srv = false;
+                    for(const auto &rv : records)
+                    {
+                        if(std::holds_alternative<record_ptr>(rv)) has_ptr = true;
+                        if(std::holds_alternative<record_srv>(rv)) has_srv = true;
+                    }
+                    REQUIRE(has_ptr);
+                    REQUIRE(has_srv);
+                }
+            }
+        }
+    }
+}
+
+SCENARIO("Unmatched questions are silently skipped", "[multi-question][skip]")
+{
+    GIVEN("a live service server")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a query with one matching and one non-matching question is injected")
+        {
+            auto query = make_multi_question_query({
+                {"_http._tcp.local.", dns_type::ptr, false},
+                {"_other._tcp.local.", dns_type::ptr, false}
+            });
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.timer().fire();
+
+            THEN("the response contains only our PTR record, no crash")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                const auto &pkt = server.socket().sent_packets().back();
+                auto records = parse_response(pkt.data);
+
+                bool has_our_ptr = false;
+                bool has_other_ptr = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<record_ptr>(rv))
+                    {
+                        const auto &ptr = std::get<record_ptr>(rv);
+                        if(ptr.ptr_name.find("MyService") != std::string::npos)
+                            has_our_ptr = true;
+                        if(ptr.ptr_name.find("_other") != std::string::npos)
+                            has_other_ptr = true;
+                    }
+                }
+                REQUIRE(has_our_ptr);
+                REQUIRE_FALSE(has_other_ptr);
+            }
+        }
+    }
+}
+
+SCENARIO("All-QU queries get unicast response, mixed get multicast", "[multi-question][qu]")
+{
+    GIVEN("a live service server")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a single-question QU query is injected")
+        {
+            auto query = make_multi_question_query({
+                {"_http._tcp.local.", dns_type::ptr, true}
+            });
+            endpoint sender{"10.0.0.1", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+
+            THEN("the response is sent directly to the sender (unicast)")
+            {
+                // Unicast responses are sent immediately, no timer needed
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                REQUIRE(server.socket().sent_packets().back().dest == sender);
+            }
+        }
+
+        WHEN("a two-question query with mixed QU bits is injected")
+        {
+            auto query = make_multi_question_query({
+                {"_http._tcp.local.", dns_type::ptr, true},
+                {"MyService._http._tcp.local.", dns_type::srv, false}
+            });
+            endpoint sender{"10.0.0.1", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.timer().fire();
+
+            THEN("the response is sent to multicast (any non-QU forces multicast)")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                REQUIRE(server.socket().sent_packets().back().dest == endpoint{"224.0.0.251", 5353});
+            }
+        }
+    }
+}
+
+SCENARIO("Response delay timer is armed for multicast queries", "[delay]")
+{
+    GIVEN("a live service server")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a multicast PTR query is injected")
+        {
+            auto query = build_dns_query("_http._tcp.local.", dns_type::ptr, response_mode::multicast);
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+
+            THEN("the response timer is armed (response not sent immediately)")
+            {
+                REQUIRE(server.timer().has_pending());
+                REQUIRE(server.socket().sent_packets().empty());
+
+                AND_WHEN("the timer fires")
+                {
+                    server.timer().fire();
+
+                    THEN("the response is sent")
+                    {
+                        REQUIRE_FALSE(server.socket().sent_packets().empty());
+                    }
+                }
+            }
+
+            THEN("the timer delay is within 20-120ms")
+            {
+                auto d = server.timer().last_duration();
+                REQUIRE(d >= std::chrono::milliseconds(20));
+                REQUIRE(d <= std::chrono::milliseconds(120));
+            }
+        }
+    }
+}
+
+SCENARIO("New queries merge into pending response", "[aggregation]")
+{
+    GIVEN("a live service server")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a PTR query is injected, then an SRV query before the timer fires")
+        {
+            auto ptr_query = build_dns_query("_http._tcp.local.", dns_type::ptr, response_mode::multicast);
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(ptr_query));
+
+            // Timer is now armed; inject second query before firing
+            auto srv_query = build_dns_query("MyService._http._tcp.local.", dns_type::srv, response_mode::multicast);
+            server.socket().inject_receive(sender, std::move(srv_query));
+
+            // Fire timer once
+            server.timer().fire();
+
+            THEN("exactly one multicast response is sent containing both PTR and SRV")
+            {
+                auto resp_count = count_multicast_responses_after(server.socket().sent_packets(), 0);
+                REQUIRE(resp_count == 1);
+
+                const auto &pkt = server.socket().sent_packets().back();
+                auto records = parse_response(pkt.data);
+
+                bool has_ptr = false, has_srv = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<record_ptr>(rv)) has_ptr = true;
+                    if(std::holds_alternative<record_srv>(rv)) has_srv = true;
+                }
+                REQUIRE(has_ptr);
+                REQUIRE(has_srv);
+            }
+        }
+    }
+}
+
+SCENARIO("Subsequent queries do not reset timer", "[aggregation][timer-no-reset]")
+{
+    GIVEN("a live service server")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a PTR query is injected, then another query, then timer fires once")
+        {
+            auto q1 = build_dns_query("_http._tcp.local.", dns_type::ptr, response_mode::multicast);
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(q1));
+
+            auto q2 = build_dns_query("MyService._http._tcp.local.", dns_type::srv, response_mode::multicast);
+            server.socket().inject_receive(sender, std::move(q2));
+
+            // Fire timer once -- should send exactly one response
+            server.timer().fire();
+
+            THEN("exactly one multicast response was sent")
+            {
+                auto resp_count = count_multicast_responses_after(server.socket().sent_packets(), 0);
+                REQUIRE(resp_count == 1);
+            }
+
+            AND_THEN("no further pending timer exists")
+            {
+                REQUIRE_FALSE(server.timer().has_pending());
+            }
+        }
+    }
+}
+
+SCENARIO("Unicast queries skip aggregation", "[aggregation][unicast-bypass]")
+{
+    GIVEN("a live service server")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a QU (unicast) PTR query is injected")
+        {
+            auto query = build_dns_query("_http._tcp.local.", dns_type::ptr, response_mode::unicast);
+            endpoint sender{"10.0.0.1", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+
+            THEN("the response is sent immediately to the sender (no timer)")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                REQUIRE(server.socket().sent_packets().back().dest == sender);
+            }
+
+            AND_THEN("aggregation state remains unarmed")
+            {
+                // A subsequent multicast query should arm the timer fresh
+                auto mc_query = build_dns_query("_http._tcp.local.", dns_type::ptr, response_mode::multicast);
+                server.socket().inject_receive(sender, std::move(mc_query));
+                REQUIRE(server.timer().has_pending());
+            }
+        }
+    }
+}
+
+SCENARIO("NSEC in Additional for unmatched type", "[nsec]")
+{
+    GIVEN("a live service server with IPv4 only (no IPv6)")
+    {
+        mock_executor ex;
+        auto info = make_test_service();
+        info.address_ipv6 = std::nullopt; // no IPv6
+        basic_service_server<MockPolicy> server{ex, std::move(info)};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("an AAAA query for our hostname is injected")
+        {
+            auto query = build_dns_query("myhost.local.", dns_type::aaaa, response_mode::multicast);
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.timer().fire();
+
+            THEN("the response contains an NSEC record in Additional")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                const auto &pkt = server.socket().sent_packets().back().data;
+                REQUIRE(pkt.size() >= 12);
+
+                // Check arcount > 0 (NSEC is in Additional)
+                uint16_t arcount = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[10])) << 8) |
+                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[11]));
+                REQUIRE(arcount >= 1);
+
+                // Parse and verify NSEC record exists
+                // Walk the raw packet bytes to find NSEC type (47)
+                bool found_nsec = false;
+                auto cdata = std::span<const std::byte>(pkt.data(), pkt.size());
+                size_t offset = 12;
+
+                // Skip questions
+                uint16_t qdcount = read_u16_be(pkt.data() + 4);
+                for(uint16_t i = 0; i < qdcount; ++i)
+                {
+                    skip_dns_name(cdata, offset);
+                    offset += 4;
+                }
+
+                // Walk all RRs
+                uint16_t ancount = read_u16_be(pkt.data() + 6);
+                uint16_t nscount = read_u16_be(pkt.data() + 8);
+                uint32_t rr_total = static_cast<uint32_t>(ancount) + nscount + arcount;
+                for(uint32_t rr = 0; rr < rr_total; ++rr)
+                {
+                    if(!skip_dns_name(cdata, offset) || offset + 10 > pkt.size())
+                        break;
+                    uint16_t rtype = read_u16_be(pkt.data() + offset);
+                    offset += 2;
+                    offset += 2; // rclass
+                    offset += 4; // ttl
+                    uint16_t rdlen = read_u16_be(pkt.data() + offset);
+                    offset += 2;
+                    if(rtype == std::to_underlying(dns_type::nsec))
+                        found_nsec = true;
+                    offset += rdlen;
+                }
+                REQUIRE(found_nsec);
+            }
+        }
+    }
+}
+
+SCENARIO("No NSEC in announcements", "[nsec][announce]")
+{
+    GIVEN("a service server that is advancing through announcing")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+
+        THEN("none of the announcement packets contain NSEC records")
+        {
+            for(const auto &sp : server.socket().sent_packets())
+            {
+                if(sp.data.size() < 12) continue;
+
+                // Check for NSEC (type 47) in each packet
+                auto cdata = std::span<const std::byte>(sp.data.data(), sp.data.size());
+                size_t offset = 12;
+
+                uint16_t qdcount = read_u16_be(sp.data.data() + 4);
+                for(uint16_t i = 0; i < qdcount; ++i)
+                {
+                    if(!skip_dns_name(cdata, offset)) break;
+                    offset += 4;
+                }
+
+                uint16_t ancount = read_u16_be(sp.data.data() + 6);
+                uint16_t nscount = read_u16_be(sp.data.data() + 8);
+                uint16_t arcount = read_u16_be(sp.data.data() + 10);
+                uint32_t rr_total = static_cast<uint32_t>(ancount) + nscount + arcount;
+
+                for(uint32_t rr = 0; rr < rr_total; ++rr)
+                {
+                    if(!skip_dns_name(cdata, offset) || offset + 10 > sp.data.size())
+                        break;
+                    uint16_t rtype = read_u16_be(sp.data.data() + offset);
+                    REQUIRE(rtype != std::to_underlying(dns_type::nsec));
+                    offset += 2;
+                    offset += 2; // rclass
+                    offset += 4; // ttl
+                    uint16_t rdlen = read_u16_be(sp.data.data() + offset);
+                    offset += 2;
+                    offset += rdlen;
+                }
+            }
         }
     }
 }

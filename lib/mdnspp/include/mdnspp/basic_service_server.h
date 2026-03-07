@@ -79,6 +79,9 @@ public:
         , m_probe_count(other.m_probe_count)
         , m_announce_count(other.m_announce_count)
         , m_conflict_attempt(other.m_conflict_attempt)
+        , m_pending_armed(other.m_pending_armed)
+        , m_pending_qtype(other.m_pending_qtype)
+        , m_pending_needs_nsec(other.m_pending_needs_nsec)
         , m_stopped(other.m_stopped.load(std::memory_order_acquire))
     {
         // Source must not have been started -- loop must be null
@@ -107,6 +110,9 @@ public:
         m_probe_count = other.m_probe_count;
         m_announce_count = other.m_announce_count;
         m_conflict_attempt = other.m_conflict_attempt;
+        m_pending_armed = other.m_pending_armed;
+        m_pending_qtype = other.m_pending_qtype;
+        m_pending_needs_nsec = other.m_pending_needs_nsec;
         m_stopped.store(other.m_stopped.load(std::memory_order_acquire),
                         std::memory_order_release);
         other.m_stopped.store(true, std::memory_order_release);
@@ -224,6 +230,17 @@ public:
         if(m_stopped.exchange(true, std::memory_order_acq_rel))
             return; // already stopped
 
+        // RFC 6762 section 10.1: send goodbye packet (TTL=0) when shutting down
+        // from live or announcing state. Best-effort UDP, no async completion needed.
+        if(m_opts.send_goodbye &&
+           (m_state == server_state::live || m_state == server_state::announcing))
+        {
+            auto goodbye = detail::build_dns_response(m_info, dns_type::any, 0);
+            if(!goodbye.empty())
+                m_socket.send(endpoint{"224.0.0.251", 5353},
+                              std::span<const std::byte>(goodbye));
+        }
+
         if(m_state == server_state::probing || m_state == server_state::announcing)
         {
             if(auto h = std::exchange(m_on_ready, nullptr); h)
@@ -231,6 +248,7 @@ public:
         }
 
         m_state = server_state::stopped;
+        m_pending_armed = false;
 
         if(auto h = std::exchange(m_on_completion, nullptr); h)
             h(std::error_code{});
@@ -436,6 +454,36 @@ private:
             || match(m_info.hostname);
     }
 
+    // Returns true if the wire-encoded DNS name at data[name_start..name_end)
+    // matches any name this server is authoritative for.
+    bool query_matches_at(std::span<const std::byte> data, size_t name_start, size_t name_end) const
+    {
+        auto qname = data.subspan(name_start, name_end - name_start);
+        auto match = [&](std::string_view name)
+        {
+            auto encoded = detail::encode_dns_name(name);
+            return std::ranges::equal(qname, std::span<const std::byte>(encoded));
+        };
+        return match(m_info.service_type)
+            || match(m_info.service_name)
+            || match(m_info.hostname);
+    }
+
+    // Returns true if the service_info has a record of the given type.
+    bool has_record_type(dns_type qtype) const
+    {
+        switch(qtype)
+        {
+        case dns_type::a:    return m_info.address_ipv4.has_value();
+        case dns_type::aaaa: return m_info.address_ipv6.has_value();
+        case dns_type::ptr:
+        case dns_type::srv:
+        case dns_type::txt:  return true;
+        case dns_type::any:  return true;
+        default:             return false;
+        }
+    }
+
     // Checks if an incoming DNS response contains records matching our probed names.
     bool response_conflicts(std::span<std::byte> data) const
     {
@@ -492,64 +540,181 @@ private:
         if(m_state != server_state::live)
             return;
 
-        // Parse QTYPE from the DNS query:
-        //   Bytes 0-11: DNS header
-        //   Byte 4-5:   qdcount
-        //   Byte 12+:   question section -- name (variable), then qtype(2), qclass(2)
         if(data.size() < 12)
             return;
 
+        auto cdata = std::span<const std::byte>(data.data(), data.size());
         const std::byte *buf = data.data();
 
-        // Extract qdcount (offset 4, big-endian 2 bytes)
         uint16_t qdcount = detail::read_u16_be(buf + 4);
         if(qdcount == 0)
             return;
 
-        // Skip past question name to reach QTYPE
+        // Iterate all questions, accumulating matched qtypes and response mode.
+        dns_type accumulated_qtype = dns_type::none;
+        auto resp_mode = response_mode::unicast; // default; switches to multicast if any non-QU
+        bool any_matched = false;
+        bool needs_nsec = false;
+
         size_t offset = 12;
-        if(!detail::skip_dns_name(
-            std::span<const std::byte>(data.data(), data.size()), offset))
+        for(uint16_t i = 0; i < qdcount; ++i)
+        {
+            size_t name_start = offset;
+            if(!detail::skip_dns_name(cdata, offset))
+                break;
+            size_t name_end = offset;
+
+            if(offset + 4 > data.size())
+                break;
+
+            dns_type qtype = static_cast<dns_type>(detail::read_u16_be(buf + offset));
+            uint16_t qclass = detail::read_u16_be(buf + offset + 2);
+            offset += 4;
+
+            if(!query_matches_at(cdata, name_start, name_end))
+                continue;
+
+            // Matched question -- accumulate qtype
+            if(!any_matched)
+            {
+                accumulated_qtype = qtype;
+                any_matched = true;
+            }
+            else if(accumulated_qtype != qtype)
+            {
+                accumulated_qtype = dns_type::any;
+            }
+
+            // Check if this specific type is unmatched (for NSEC)
+            if(qtype != dns_type::any && !has_record_type(qtype))
+                needs_nsec = true;
+
+            // QU/multicast: if ANY matching question has QU bit cleared, use multicast
+            if((qclass & 0x8000) == 0)
+                resp_mode = response_mode::multicast;
+        }
+
+        if(!any_matched)
             return;
-
-        // Need 4 bytes for QTYPE(2) + QCLASS(2)
-        if(offset + 4 > data.size())
-            return;
-
-        // Only respond to queries that match our service/hostname
-        if(!query_matches(data, offset))
-            return;
-
-        dns_type qtype = static_cast<dns_type>(detail::read_u16_be(buf + offset));
-        uint16_t qclass = detail::read_u16_be(buf + offset + 2);
-
-        // RFC 6762 section 5.4: QU bit is the top bit of QCLASS.
-        auto resp_mode = (qclass & 0x8000) != 0
-                             ? response_mode::unicast
-                             : response_mode::multicast;
 
         if(m_opts.on_query)
-            m_opts.on_query(sender, qtype, resp_mode);
+            m_opts.on_query(sender, accumulated_qtype, resp_mode);
 
-        // RFC 6762 section 6: random delay 20-500ms before responding via multicast.
-        // Unicast responses may be sent immediately.
-        std::uniform_int_distribution dist(20, 500);
-        int delay_ms = dist(m_rng);
+        // Build the response packet
+        auto build_response_packet = [&](dns_type qtype_to_send) -> std::vector<std::byte>
+        {
+            auto response = detail::build_dns_response(m_info, qtype_to_send);
 
-        // Choose destination: unicast back to querier, or multicast to the group
-        endpoint dest = resp_mode == response_mode::unicast
-                            ? sender
-                            : endpoint{"224.0.0.251", 5353};
-
-        // Arm response timer with delay; capture dest and qtype by value
-        m_response_timer.expires_after(std::chrono::milliseconds(delay_ms));
-        m_response_timer.async_wait(
-            [this, dest, qtype](std::error_code ec)
+            // Append NSEC for unmatched specific types (not for ANY)
+            if(needs_nsec && qtype_to_send != dns_type::any)
             {
-                if(ec || m_stopped.load(std::memory_order_acquire))
-                    return;
-                send_response(dest, qtype);
-            });
+                if(response.empty())
+                {
+                    // Build a minimal response with just NSEC in Additional
+                    response.clear();
+                    detail::push_u16_be(response, 0x0000); // id
+                    detail::push_u16_be(response, 0x8400); // flags
+                    detail::push_u16_be(response, 0x0000); // qdcount
+                    detail::push_u16_be(response, 0x0000); // ancount
+                    detail::push_u16_be(response, 0x0000); // nscount
+                    detail::push_u16_be(response, 0x0001); // arcount = 1
+
+                    auto owner_name = detail::encode_dns_name(m_info.hostname);
+                    detail::response_detail::append_nsec_rr(response, owner_name, m_info, 4500);
+                }
+                else
+                {
+                    // Append NSEC to Additional section and update arcount
+                    auto owner_name = detail::encode_dns_name(m_info.hostname);
+                    detail::response_detail::append_nsec_rr(response, owner_name, m_info, 4500);
+                    uint16_t arcount = detail::read_u16_be(response.data() + 10);
+                    ++arcount;
+                    response[10] = static_cast<std::byte>(static_cast<uint8_t>(arcount >> 8));
+                    response[11] = static_cast<std::byte>(static_cast<uint8_t>(arcount & 0xFF));
+                }
+            }
+
+            return response;
+        };
+
+        // Unicast: send immediately, skip aggregation
+        if(resp_mode == response_mode::unicast)
+        {
+            auto response = build_response_packet(accumulated_qtype);
+            if(!response.empty())
+                m_socket.send(sender, std::span<const std::byte>(response));
+            return;
+        }
+
+        // Multicast with aggregation
+        if(!m_pending_armed)
+        {
+            m_pending_armed = true;
+            m_pending_qtype = accumulated_qtype;
+            m_pending_needs_nsec = needs_nsec;
+
+            // RFC 6762 section 6: random delay 20-120ms before responding via multicast
+            std::uniform_int_distribution dist(20, 120);
+            int delay_ms = dist(m_rng);
+
+            m_response_timer.expires_after(std::chrono::milliseconds(delay_ms));
+            m_response_timer.async_wait(
+                [this](std::error_code ec)
+                {
+                    if(ec || m_stopped.load(std::memory_order_acquire))
+                        return;
+                    if(m_state != server_state::live)
+                        return;
+
+                    auto qtype = m_pending_qtype;
+                    bool nsec_needed = m_pending_needs_nsec;
+                    m_pending_armed = false;
+                    m_pending_qtype = dns_type::none;
+                    m_pending_needs_nsec = false;
+
+                    auto response = detail::build_dns_response(m_info, qtype);
+
+                    // Append NSEC for unmatched specific types
+                    if(nsec_needed && qtype != dns_type::any)
+                    {
+                        if(response.empty())
+                        {
+                            // Build minimal response with NSEC in Additional
+                            detail::push_u16_be(response, 0x0000);
+                            detail::push_u16_be(response, 0x8400);
+                            detail::push_u16_be(response, 0x0000);
+                            detail::push_u16_be(response, 0x0000);
+                            detail::push_u16_be(response, 0x0000);
+                            detail::push_u16_be(response, 0x0001);
+
+                            auto owner = detail::encode_dns_name(m_info.hostname);
+                            detail::response_detail::append_nsec_rr(response, owner, m_info, 4500);
+                        }
+                        else
+                        {
+                            auto owner = detail::encode_dns_name(m_info.hostname);
+                            detail::response_detail::append_nsec_rr(response, owner, m_info, 4500);
+                            uint16_t arcount = detail::read_u16_be(response.data() + 10);
+                            ++arcount;
+                            response[10] = static_cast<std::byte>(static_cast<uint8_t>(arcount >> 8));
+                            response[11] = static_cast<std::byte>(static_cast<uint8_t>(arcount & 0xFF));
+                        }
+                    }
+
+                    if(!response.empty())
+                        m_socket.send(endpoint{"224.0.0.251", 5353},
+                                      std::span<const std::byte>(response));
+                });
+        }
+        else
+        {
+            // Merge into pending: if different type, escalate to ANY
+            if(m_pending_qtype != accumulated_qtype)
+                m_pending_qtype = dns_type::any;
+            if(needs_nsec)
+                m_pending_needs_nsec = true;
+            // Do NOT reset the timer
+        }
     }
 
     // Builds and sends a DNS response to dest for the given qtype.
@@ -586,6 +751,9 @@ private:
     unsigned m_probe_count{0};
     unsigned m_announce_count{0};
     unsigned m_conflict_attempt{0};
+    bool m_pending_armed{false};
+    dns_type m_pending_qtype{dns_type::none};
+    bool m_pending_needs_nsec{false};
     std::atomic<bool> m_stopped;
 };
 

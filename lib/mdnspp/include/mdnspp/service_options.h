@@ -19,6 +19,7 @@ struct service_options
     detail::move_only_function<void(const endpoint &sender, dns_type type, response_mode mode)> on_query{};
     unsigned announce_count{2};
     std::chrono::milliseconds announce_interval{1000};
+    bool send_goodbye{true};
 };
 
 }

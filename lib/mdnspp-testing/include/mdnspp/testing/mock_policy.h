@@ -94,6 +94,25 @@ public:
             m_receive_queue.pop();
             handler(std::move(sender), std::span<std::byte>(packet));
         }
+        else
+        {
+            m_pending_receive = std::move(handler);
+        }
+    }
+
+    // Inject a packet during live state: enqueue and trigger the pending receive handler.
+    // Use this when the server is already running and the recv_loop chain has stalled.
+    void inject_receive(endpoint from, std::vector<std::byte> packet)
+    {
+        if(m_pending_receive)
+        {
+            auto h = std::exchange(m_pending_receive, nullptr);
+            h(std::move(from), std::span<std::byte>(packet));
+        }
+        else
+        {
+            enqueue(std::move(packet), std::move(from));
+        }
     }
 
     void send(const endpoint &dest, std::span<const std::byte> data)
@@ -114,6 +133,7 @@ public:
 
 private:
     std::queue<std::pair<std::vector<std::byte>, endpoint>> m_receive_queue;
+    std::function<void(const endpoint &, std::span<std::byte>)> m_pending_receive;
     std::vector<sent_packet> m_sent_packets;
     socket_options m_opts{};
 

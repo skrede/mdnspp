@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DNS_WIRE_H
 
 #include "mdnspp/parse.h"
+#include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
 
@@ -11,6 +12,7 @@
 #include <span>
 #include <string>
 #include <vector>
+#include <variant>
 #include <cstddef>
 #include <cstdint>
 #include <sstream>
@@ -492,6 +494,121 @@ inline std::vector<std::byte> build_probe_query(const service_info &info)
     response_detail::append_dns_rr(packet, name_service, dns_type::srv, 120, rdata_srv);
 
     return packet;
+}
+
+// Serializes an mdns_record_variant as a DNS resource record into buf.
+// Used for known-answer suppression (RFC 6762 section 7.1): records are
+// appended to the Answer section of a query packet. No cache-flush bit.
+inline void append_known_answer(std::vector<std::byte> &buf, const mdns_record_variant &rec)
+{
+    std::visit([&buf](const auto &r)
+    {
+        auto name = encode_dns_name(r.name);
+
+        using T = std::decay_t<decltype(r)>;
+
+        if constexpr(std::is_same_v<T, record_ptr>)
+        {
+            auto rdata = encode_dns_name(r.ptr_name);
+            response_detail::append_dns_rr(buf, name, dns_type::ptr, r.ttl, rdata);
+        }
+        else if constexpr(std::is_same_v<T, record_srv>)
+        {
+            std::vector<std::byte> rdata;
+            push_u16_be(rdata, r.priority);
+            push_u16_be(rdata, r.weight);
+            push_u16_be(rdata, r.port);
+            auto target = encode_dns_name(r.srv_name);
+            rdata.insert(rdata.end(), target.begin(), target.end());
+            response_detail::append_dns_rr(buf, name, dns_type::srv, r.ttl, rdata);
+        }
+        else if constexpr(std::is_same_v<T, record_a>)
+        {
+            auto rdata = response_detail::encode_ipv4(r.address_string);
+            if(!rdata.empty())
+                response_detail::append_dns_rr(buf, name, dns_type::a, r.ttl, rdata);
+        }
+        else if constexpr(std::is_same_v<T, record_aaaa>)
+        {
+            auto rdata = response_detail::encode_ipv6(r.address_string);
+            if(!rdata.empty())
+                response_detail::append_dns_rr(buf, name, dns_type::aaaa, r.ttl, rdata);
+        }
+        else if constexpr(std::is_same_v<T, record_txt>)
+        {
+            auto rdata = response_detail::encode_txt_records(r.entries);
+            response_detail::append_dns_rr(buf, name, dns_type::txt, r.ttl, rdata);
+        }
+    }, rec);
+}
+
+// Builds a DNS query with known-answer records appended in the Answer section
+// (RFC 6762 section 7.1). The header ancount is updated to reflect the number
+// of known answers actually serialized.
+inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qtype,
+                                              std::span<const mdns_record_variant> known_answers,
+                                              response_mode mode = response_mode::multicast)
+{
+    auto packet = build_dns_query(name, qtype, mode);
+
+    uint16_t ancount = 0;
+    for(const auto &ka : known_answers)
+    {
+        size_t before = packet.size();
+        append_known_answer(packet, ka);
+        if(packet.size() > before)
+            ++ancount;
+    }
+
+    // Update header ancount (bytes 6-7)
+    packet[6] = static_cast<std::byte>(static_cast<uint8_t>(ancount >> 8));
+    packet[7] = static_cast<std::byte>(static_cast<uint8_t>(ancount & 0xFF));
+
+    return packet;
+}
+
+}
+
+namespace mdnspp {
+
+// Service type information parsed from a DNS-SD PTR name.
+struct service_type_info
+{
+    std::string service_type; // full: "_http._tcp.local" or "_http._tcp.local."
+    std::string type_name;    // "_http"
+    std::string protocol;     // "_tcp"
+    std::string domain;       // "local"
+};
+
+// Parses a DNS-SD service type name (e.g. "_http._tcp.local") into components.
+// Expects at least three dot-separated labels: type, protocol, domain.
+inline service_type_info parse_service_type(std::string_view name)
+{
+    // Strip trailing dot if present
+    if(!name.empty() && name.back() == '.')
+        name.remove_suffix(1);
+
+    service_type_info info;
+    info.service_type = std::string(name);
+
+    // Split on dots
+    size_t first_dot = name.find('.');
+    if(first_dot == std::string_view::npos)
+        return info;
+
+    info.type_name = std::string(name.substr(0, first_dot));
+
+    size_t second_dot = name.find('.', first_dot + 1);
+    if(second_dot == std::string_view::npos)
+    {
+        info.protocol = std::string(name.substr(first_dot + 1));
+        return info;
+    }
+
+    info.protocol = std::string(name.substr(first_dot + 1, second_dot - first_dot - 1));
+    info.domain = std::string(name.substr(second_dot + 1));
+
+    return info;
 }
 
 }

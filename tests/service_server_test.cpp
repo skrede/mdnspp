@@ -1867,3 +1867,274 @@ SCENARIO("No NSEC in announcements", "[nsec][announce]")
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Known-answer suppression, meta-query, and subtype tests
+// ---------------------------------------------------------------------------
+
+// Helper: build a DNS query with a known-answer section.
+// Constructs a query for qname/qtype followed by one answer RR.
+static std::vector<std::byte> make_query_with_known_answer(
+    std::string_view qname, dns_type qtype,
+    std::string_view answer_name, dns_type answer_rtype, uint32_t answer_ttl,
+    const std::vector<std::byte> &answer_rdata)
+{
+    std::vector<std::byte> packet;
+
+    // Header: id=0, flags=0, qdcount=1, ancount=1, nscount=0, arcount=0
+    push_u16_be(packet, 0x0000);
+    push_u16_be(packet, 0x0000);
+    push_u16_be(packet, 0x0001); // qdcount
+    push_u16_be(packet, 0x0001); // ancount
+    push_u16_be(packet, 0x0000);
+    push_u16_be(packet, 0x0000);
+
+    // Question section
+    auto encoded_qname = encode_dns_name(qname);
+    packet.insert(packet.end(), encoded_qname.begin(), encoded_qname.end());
+    push_u16_be(packet, std::to_underlying(qtype));
+    push_u16_be(packet, 0x0001); // qclass=IN (multicast)
+
+    // Answer section
+    auto encoded_answer = encode_dns_name(answer_name);
+    response_detail::append_dns_rr(packet, encoded_answer, answer_rtype, answer_ttl, answer_rdata, false);
+
+    return packet;
+}
+
+SCENARIO("known-answer suppression skips records with TTL >= 50%", "[known-answer-suppression]")
+{
+    GIVEN("a live service server")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a PTR query with known answer TTL=3000 (>2250) is injected")
+        {
+            // Build PTR rdata pointing to service_name
+            auto ptr_rdata = encode_dns_name("MyService._http._tcp.local.");
+
+            auto query = make_query_with_known_answer(
+                "_http._tcp.local.", dns_type::ptr,
+                "_http._tcp.local.", dns_type::ptr, 3000,
+                ptr_rdata);
+
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.timer().fire();
+
+            THEN("the response does not contain a PTR record (suppressed)")
+            {
+                // Either no response at all, or response without PTR
+                bool has_ptr = false;
+                for(const auto &sp : server.socket().sent_packets())
+                {
+                    auto records = parse_response(sp.data);
+                    for(const auto &rv : records)
+                    {
+                        if(std::holds_alternative<record_ptr>(rv))
+                            has_ptr = true;
+                    }
+                }
+                REQUIRE_FALSE(has_ptr);
+            }
+        }
+    }
+}
+
+SCENARIO("suppress_known_answers=false sends full response", "[known-answer-suppression][disable]")
+{
+    GIVEN("a live service server with suppress_known_answers=false")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_info(),
+            service_options{.suppress_known_answers = false}};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a PTR query with known answer TTL=3000 is injected")
+        {
+            auto ptr_rdata = encode_dns_name("MyService._http._tcp.local.");
+
+            auto query = make_query_with_known_answer(
+                "_http._tcp.local.", dns_type::ptr,
+                "_http._tcp.local.", dns_type::ptr, 3000,
+                ptr_rdata);
+
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.timer().fire();
+
+            THEN("the response DOES contain a PTR record (suppression disabled)")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                const auto &pkt = server.socket().sent_packets().back();
+                auto records = parse_response(pkt.data);
+
+                bool has_ptr = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<record_ptr>(rv))
+                        has_ptr = true;
+                }
+                REQUIRE(has_ptr);
+            }
+        }
+    }
+}
+
+SCENARIO("server responds to meta-query with PTR to service type", "[meta-query]")
+{
+    GIVEN("a live service server")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a PTR query for _services._dns-sd._udp.local. is injected")
+        {
+            auto query = build_dns_query("_services._dns-sd._udp.local.", dns_type::ptr, response_mode::multicast);
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+
+            THEN("a response is sent with PTR record pointing to service type")
+            {
+                // Meta-query response is sent immediately (not deferred through aggregation)
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+
+                bool found_meta_ptr = false;
+                for(const auto &sp : server.socket().sent_packets())
+                {
+                    auto records = parse_response(sp.data);
+                    for(const auto &rv : records)
+                    {
+                        if(std::holds_alternative<record_ptr>(rv))
+                        {
+                            const auto &ptr = std::get<record_ptr>(rv);
+                            // PTR name should be _services._dns-sd._udp.local
+                            // ptr_name should be the service type (without trailing dot)
+                            if(ptr.name.find("_services._dns-sd._udp") != std::string::npos &&
+                               ptr.ptr_name.find("_http._tcp") != std::string::npos)
+                            {
+                                found_meta_ptr = true;
+                            }
+                        }
+                    }
+                }
+                REQUIRE(found_meta_ptr);
+            }
+        }
+    }
+}
+
+SCENARIO("respond_to_meta_queries=false suppresses meta response", "[meta-query][disable]")
+{
+    GIVEN("a live service server with respond_to_meta_queries=false")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_info(),
+            service_options{.respond_to_meta_queries = false}};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a PTR query for _services._dns-sd._udp.local. is injected")
+        {
+            auto query = build_dns_query("_services._dns-sd._udp.local.", dns_type::ptr, response_mode::multicast);
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+
+            THEN("no response is sent for the meta-query")
+            {
+                REQUIRE(server.socket().sent_packets().empty());
+            }
+        }
+    }
+}
+
+SCENARIO("server responds to subtype PTR query", "[subtype]")
+{
+    GIVEN("a live service server with subtypes")
+    {
+        mock_executor ex;
+        auto info = make_test_info();
+        info.subtypes = {"_printer"};
+        basic_service_server<MockPolicy> server{ex, std::move(info)};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("a PTR query for _printer._sub._http._tcp.local. is injected")
+        {
+            auto query = build_dns_query("_printer._sub._http._tcp.local.", dns_type::ptr, response_mode::multicast);
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+
+            THEN("a response is sent with PTR record pointing to service instance name")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+
+                bool found_subtype_ptr = false;
+                for(const auto &sp : server.socket().sent_packets())
+                {
+                    auto records = parse_response(sp.data);
+                    for(const auto &rv : records)
+                    {
+                        if(std::holds_alternative<record_ptr>(rv))
+                        {
+                            const auto &ptr = std::get<record_ptr>(rv);
+                            if(ptr.name.find("_printer._sub._http._tcp") != std::string::npos &&
+                               ptr.ptr_name.find("MyService") != std::string::npos)
+                            {
+                                found_subtype_ptr = true;
+                            }
+                        }
+                    }
+                }
+                REQUIRE(found_subtype_ptr);
+            }
+        }
+    }
+}
+
+SCENARIO("announce_subtypes=true includes subtype PTR in announcements", "[subtype][announce]")
+{
+    GIVEN("a service server with subtypes and announce_subtypes=true")
+    {
+        mock_executor ex;
+        auto info = make_test_info();
+        info.subtypes = {"_printer"};
+        basic_service_server<MockPolicy> server{ex, std::move(info),
+            service_options{.announce_subtypes = true}};
+        server.async_start();
+        advance_to_live(server);
+
+        THEN("announcement packets include subtype PTR records")
+        {
+            bool found_subtype_ptr = false;
+            for(const auto &sp : server.socket().sent_packets())
+            {
+                auto records = parse_response(sp.data);
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<record_ptr>(rv))
+                    {
+                        const auto &ptr = std::get<record_ptr>(rv);
+                        if(ptr.name.find("_printer._sub._http._tcp") != std::string::npos &&
+                           ptr.ptr_name.find("MyService") != std::string::npos)
+                        {
+                            found_subtype_ptr = true;
+                        }
+                    }
+                }
+            }
+            REQUIRE(found_subtype_ptr);
+        }
+    }
+}

@@ -20,6 +20,9 @@ struct service_options
     unsigned announce_count{2};
     std::chrono::milliseconds announce_interval{1000};
     bool send_goodbye{true};
+    bool suppress_known_answers{true};
+    bool respond_to_meta_queries{true};
+    bool announce_subtypes{false};
 };
 
 }

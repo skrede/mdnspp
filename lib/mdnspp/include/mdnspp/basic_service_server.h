@@ -20,9 +20,11 @@
 #include <chrono>
 #include <atomic>
 #include <span>
+#include <string>
 #include <cstdint>
 #include <cassert>
 #include <system_error>
+#include <string_view>
 #include <utility>
 
 namespace mdnspp {
@@ -82,6 +84,11 @@ public:
         , m_pending_armed(other.m_pending_armed)
         , m_pending_qtype(other.m_pending_qtype)
         , m_pending_needs_nsec(other.m_pending_needs_nsec)
+        , m_pending_suppress_ptr(other.m_pending_suppress_ptr)
+        , m_pending_suppress_srv(other.m_pending_suppress_srv)
+        , m_pending_suppress_a(other.m_pending_suppress_a)
+        , m_pending_suppress_aaaa(other.m_pending_suppress_aaaa)
+        , m_pending_suppress_txt(other.m_pending_suppress_txt)
         , m_stopped(other.m_stopped.load(std::memory_order_acquire))
     {
         // Source must not have been started -- loop must be null
@@ -113,6 +120,11 @@ public:
         m_pending_armed = other.m_pending_armed;
         m_pending_qtype = other.m_pending_qtype;
         m_pending_needs_nsec = other.m_pending_needs_nsec;
+        m_pending_suppress_ptr = other.m_pending_suppress_ptr;
+        m_pending_suppress_srv = other.m_pending_suppress_srv;
+        m_pending_suppress_a = other.m_pending_suppress_a;
+        m_pending_suppress_aaaa = other.m_pending_suppress_aaaa;
+        m_pending_suppress_txt = other.m_pending_suppress_txt;
         m_stopped.store(other.m_stopped.load(std::memory_order_acquire),
                         std::memory_order_release);
         other.m_stopped.store(true, std::memory_order_release);
@@ -515,6 +527,79 @@ private:
         return conflict;
     }
 
+    // Strips trailing dot from a string_view for name comparison.
+    static constexpr auto strip_dot(std::string_view s) -> std::string_view
+    {
+        if(!s.empty() && s.back() == '.')
+            return s.substr(0, s.size() - 1);
+        return s;
+    }
+
+    // Returns the meta-query name for DNS-SD service type enumeration.
+    static constexpr std::string_view meta_query_name{"_services._dns-sd._udp.local."};
+
+    // Checks whether a wire-encoded DNS name at data[name_start..name_end) matches
+    // the DNS-SD meta-query name (_services._dns-sd._udp.local.).
+    bool matches_meta_query(std::span<const std::byte> data, size_t name_start, size_t name_end) const
+    {
+        auto qname = data.subspan(name_start, name_end - name_start);
+        auto encoded = detail::encode_dns_name(meta_query_name);
+        return std::ranges::equal(qname, std::span<const std::byte>(encoded));
+    }
+
+    // Checks whether a wire-encoded DNS name matches any of the server's subtype query names.
+    // Returns the matching subtype label, or empty string_view if no match.
+    std::string_view matches_subtype_query(std::span<const std::byte> data, size_t name_start, size_t name_end) const
+    {
+        auto qname = data.subspan(name_start, name_end - name_start);
+        for(const auto &sub : m_info.subtypes)
+        {
+            auto subtype_name = sub + "._sub." + std::string(strip_dot(m_info.service_type)) + ".";
+            auto encoded = detail::encode_dns_name(subtype_name);
+            if(std::ranges::equal(qname, std::span<const std::byte>(encoded)))
+                return sub;
+        }
+        return {};
+    }
+
+    // Builds a meta-query response: PTR record pointing from _services._dns-sd._udp.local.
+    // to the server's service_type.
+    std::vector<std::byte> build_meta_query_response() const
+    {
+        std::vector<std::byte> packet;
+        detail::push_u16_be(packet, 0x0000); // id
+        detail::push_u16_be(packet, 0x8400); // flags: QR=1, AA=1
+        detail::push_u16_be(packet, 0x0000); // qdcount
+        detail::push_u16_be(packet, 0x0001); // ancount = 1
+        detail::push_u16_be(packet, 0x0000); // nscount
+        detail::push_u16_be(packet, 0x0000); // arcount
+
+        auto owner = detail::encode_dns_name(meta_query_name);
+        auto rdata = detail::encode_dns_name(m_info.service_type);
+        detail::response_detail::append_dns_rr(packet, owner, dns_type::ptr, 4500, rdata, false);
+
+        return packet;
+    }
+
+    // Builds a subtype PTR response: PTR record pointing from subtype query name to service instance.
+    std::vector<std::byte> build_subtype_response(std::string_view subtype_label) const
+    {
+        std::vector<std::byte> packet;
+        detail::push_u16_be(packet, 0x0000);
+        detail::push_u16_be(packet, 0x8400);
+        detail::push_u16_be(packet, 0x0000);
+        detail::push_u16_be(packet, 0x0001);
+        detail::push_u16_be(packet, 0x0000);
+        detail::push_u16_be(packet, 0x0000);
+
+        auto subtype_name = std::string(subtype_label) + "._sub." + std::string(strip_dot(m_info.service_type)) + ".";
+        auto owner = detail::encode_dns_name(subtype_name);
+        auto rdata = detail::encode_dns_name(m_info.service_name);
+        detail::response_detail::append_dns_rr(packet, owner, dns_type::ptr, 4500, rdata, false);
+
+        return packet;
+    }
+
     // Called by recv_loop on every incoming packet.
     void on_query(const endpoint &sender, std::span<std::byte> data)
     {
@@ -555,6 +640,8 @@ private:
         auto resp_mode = response_mode::unicast; // default; switches to multicast if any non-QU
         bool any_matched = false;
         bool needs_nsec = false;
+        bool meta_matched = false;
+        std::string matched_subtype;
 
         size_t offset = 12;
         for(uint16_t i = 0; i < qdcount; ++i)
@@ -570,6 +657,29 @@ private:
             dns_type qtype = static_cast<dns_type>(detail::read_u16_be(buf + offset));
             uint16_t qclass = detail::read_u16_be(buf + offset + 2);
             offset += 4;
+
+            // Check meta-query
+            if(m_opts.respond_to_meta_queries && qtype == dns_type::ptr &&
+               matches_meta_query(cdata, name_start, name_end))
+            {
+                meta_matched = true;
+                if((qclass & 0x8000) == 0)
+                    resp_mode = response_mode::multicast;
+                continue;
+            }
+
+            // Check subtype query
+            if(qtype == dns_type::ptr)
+            {
+                auto sub = matches_subtype_query(cdata, name_start, name_end);
+                if(!sub.empty())
+                {
+                    matched_subtype = sub;
+                    if((qclass & 0x8000) == 0)
+                        resp_mode = response_mode::multicast;
+                    continue;
+                }
+            }
 
             if(!query_matches_at(cdata, name_start, name_end))
                 continue;
@@ -594,15 +704,140 @@ private:
                 resp_mode = response_mode::multicast;
         }
 
+        if(!any_matched && !meta_matched && matched_subtype.empty())
+            return;
+
+        // ---------------------------------------------------------------
+        // Known-answer suppression (RFC 6762 section 7.1)
+        // Parse the Answer section to find records the querier already knows.
+        // ---------------------------------------------------------------
+        constexpr uint32_t default_ttl = 4500;
+        constexpr uint32_t kas_threshold = default_ttl / 2; // 2250
+
+        bool suppress_ptr = false;
+        bool suppress_srv = false;
+        bool suppress_a = false;
+        bool suppress_aaaa = false;
+        bool suppress_txt = false;
+
+        if(m_opts.suppress_known_answers && any_matched)
+        {
+            uint16_t ancount = detail::read_u16_be(buf + 6);
+            for(uint16_t i = 0; i < ancount; ++i)
+            {
+                auto name_result = detail::read_dns_name(cdata, offset);
+                if(!name_result.has_value())
+                    break;
+
+                if(!detail::skip_dns_name(cdata, offset))
+                    break;
+
+                if(offset + 10 > data.size())
+                    break;
+
+                dns_type rtype = static_cast<dns_type>(detail::read_u16_be(buf + offset));
+                offset += 2;
+                offset += 2; // rclass
+                uint32_t ttl = detail::read_u32_be(buf + offset);
+                offset += 4;
+                uint16_t rdlength = detail::read_u16_be(buf + offset);
+                offset += 2;
+                offset += rdlength;
+
+                if(offset > data.size())
+                    break;
+
+                // Compare the answer name against our authoritative names
+                auto sn = strip_dot(m_info.service_name);
+                auto st = strip_dot(m_info.service_type);
+                auto hn = strip_dot(m_info.hostname);
+                const auto &ans_name = *name_result;
+
+                bool name_matches = (ans_name == sn || ans_name == st || ans_name == hn);
+                if(name_matches && ttl >= kas_threshold)
+                {
+                    switch(rtype)
+                    {
+                    case dns_type::ptr:  suppress_ptr = true; break;
+                    case dns_type::srv:  suppress_srv = true; break;
+                    case dns_type::a:    suppress_a = true; break;
+                    case dns_type::aaaa: suppress_aaaa = true; break;
+                    case dns_type::txt:  suppress_txt = true; break;
+                    default: break;
+                    }
+                }
+            }
+        }
+
+        auto is_all_suppressed = [&]() -> bool
+        {
+            if(!m_opts.suppress_known_answers)
+                return false;
+            // Only suppress if at least one record type would actually be sent
+            // and ALL of those are suppressed
+            bool any_would_send = false;
+
+            bool would_send_ptr = (accumulated_qtype == dns_type::ptr || accumulated_qtype == dns_type::any);
+            bool would_send_srv = (accumulated_qtype == dns_type::srv || accumulated_qtype == dns_type::any);
+            bool would_send_a = (accumulated_qtype == dns_type::a || accumulated_qtype == dns_type::any) && m_info.address_ipv4.has_value();
+            bool would_send_aaaa = (accumulated_qtype == dns_type::aaaa || accumulated_qtype == dns_type::any) && m_info.address_ipv6.has_value();
+            bool would_send_txt = (accumulated_qtype == dns_type::txt || accumulated_qtype == dns_type::any);
+
+            if(would_send_ptr) { any_would_send = true; if(!suppress_ptr) return false; }
+            if(would_send_srv) { any_would_send = true; if(!suppress_srv) return false; }
+            if(would_send_a) { any_would_send = true; if(!suppress_a) return false; }
+            if(would_send_aaaa) { any_would_send = true; if(!suppress_aaaa) return false; }
+            if(would_send_txt) { any_would_send = true; if(!suppress_txt) return false; }
+            return any_would_send;
+        };
+
+        if(m_opts.on_query && any_matched)
+            m_opts.on_query(sender, accumulated_qtype, resp_mode);
+
+        // Handle meta-query response (separate from normal response)
+        if(meta_matched)
+        {
+            auto meta_response = build_meta_query_response();
+            if(resp_mode == response_mode::unicast)
+                m_socket.send(sender, std::span<const std::byte>(meta_response));
+            else
+                m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(meta_response));
+        }
+
+        // Handle subtype PTR response (separate from normal response)
+        if(!matched_subtype.empty())
+        {
+            auto sub_response = build_subtype_response(matched_subtype);
+            if(resp_mode == response_mode::unicast)
+                m_socket.send(sender, std::span<const std::byte>(sub_response));
+            else
+                m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response));
+        }
+
         if(!any_matched)
             return;
 
-        if(m_opts.on_query)
-            m_opts.on_query(sender, accumulated_qtype, resp_mode);
+        // If all records are suppressed by known-answer, skip response entirely
+        if(is_all_suppressed())
+            return;
 
-        // Build the response packet
+        // Build the response packet with suppression applied
         auto build_response_packet = [&](dns_type qtype_to_send) -> std::vector<std::byte>
         {
+            // For specific type queries, check if that type is suppressed
+            if(m_opts.suppress_known_answers && qtype_to_send != dns_type::any)
+            {
+                switch(qtype_to_send)
+                {
+                case dns_type::ptr:  if(suppress_ptr) return {}; break;
+                case dns_type::srv:  if(suppress_srv) return {}; break;
+                case dns_type::a:    if(suppress_a) return {}; break;
+                case dns_type::aaaa: if(suppress_aaaa) return {}; break;
+                case dns_type::txt:  if(suppress_txt) return {}; break;
+                default: break;
+                }
+            }
+
             auto response = detail::build_dns_response(m_info, qtype_to_send);
 
             // Append NSEC for unmatched specific types (not for ANY)
@@ -652,6 +887,11 @@ private:
             m_pending_armed = true;
             m_pending_qtype = accumulated_qtype;
             m_pending_needs_nsec = needs_nsec;
+            m_pending_suppress_ptr = suppress_ptr;
+            m_pending_suppress_srv = suppress_srv;
+            m_pending_suppress_a = suppress_a;
+            m_pending_suppress_aaaa = suppress_aaaa;
+            m_pending_suppress_txt = suppress_txt;
 
             // RFC 6762 section 6: random delay 20-120ms before responding via multicast
             std::uniform_int_distribution dist(20, 120);
@@ -668,9 +908,36 @@ private:
 
                     auto qtype = m_pending_qtype;
                     bool nsec_needed = m_pending_needs_nsec;
+                    bool s_ptr = m_pending_suppress_ptr;
+                    bool s_srv = m_pending_suppress_srv;
+                    bool s_a = m_pending_suppress_a;
+                    bool s_aaaa = m_pending_suppress_aaaa;
+                    bool s_txt = m_pending_suppress_txt;
                     m_pending_armed = false;
                     m_pending_qtype = dns_type::none;
                     m_pending_needs_nsec = false;
+                    m_pending_suppress_ptr = false;
+                    m_pending_suppress_srv = false;
+                    m_pending_suppress_a = false;
+                    m_pending_suppress_aaaa = false;
+                    m_pending_suppress_txt = false;
+
+                    // Check suppression for specific-type queries
+                    if(m_opts.suppress_known_answers && qtype != dns_type::any)
+                    {
+                        bool suppressed = false;
+                        switch(qtype)
+                        {
+                        case dns_type::ptr:  suppressed = s_ptr; break;
+                        case dns_type::srv:  suppressed = s_srv; break;
+                        case dns_type::a:    suppressed = s_a; break;
+                        case dns_type::aaaa: suppressed = s_aaaa; break;
+                        case dns_type::txt:  suppressed = s_txt; break;
+                        default: break;
+                        }
+                        if(suppressed)
+                            return;
+                    }
 
                     auto response = detail::build_dns_response(m_info, qtype);
 
@@ -729,11 +996,22 @@ private:
 
     // Sends an unsolicited announcement with all records (PTR, SRV, TXT, A/AAAA)
     // to the multicast group. RFC 6762 section 8.4.
+    // When announce_subtypes is true, also sends subtype PTR records.
     void send_announcement()
     {
         auto response = detail::build_dns_response(m_info, dns_type::any);
         if(!response.empty())
             m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(response));
+
+        if(m_opts.announce_subtypes)
+        {
+            for(const auto &sub : m_info.subtypes)
+            {
+                auto sub_response = build_subtype_response(sub);
+                if(!sub_response.empty())
+                    m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response));
+            }
+        }
     }
 
     std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
@@ -754,6 +1032,11 @@ private:
     bool m_pending_armed{false};
     dns_type m_pending_qtype{dns_type::none};
     bool m_pending_needs_nsec{false};
+    bool m_pending_suppress_ptr{false};
+    bool m_pending_suppress_srv{false};
+    bool m_pending_suppress_a{false};
+    bool m_pending_suppress_aaaa{false};
+    bool m_pending_suppress_txt{false};
     std::atomic<bool> m_stopped;
 };
 

@@ -2,7 +2,8 @@
 // Unit tests for detail::read_dns_name — RFC 1035 §4.1.4 name decompression
 // with RFC 9267 safety guarantees (backward-only pointers, hop limit, name length limit).
 // Also covers build_dns_response, encode_ipv4/ipv6, encode_txt_records,
-// encode_dns_name, and skip_dns_name edge cases.
+// encode_dns_name, skip_dns_name edge cases, known-answer query building,
+// and parse_service_type.
 
 #include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/records.h"
@@ -1099,6 +1100,124 @@ SCENARIO("append_nsec_rr produces a parseable NSEC resource record", "[nsec][bit
                 auto expected_bitmap = build_nsec_bitmap(info);
                 REQUIRE(rdlength == owner_name.size() + expected_bitmap.size());
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Known-answer query building tests
+// ---------------------------------------------------------------------------
+
+using mdnspp::detail::build_dns_query;
+using mdnspp::detail::append_known_answer;
+using mdnspp::detail::push_u16_be;
+
+SCENARIO("build_dns_query with known answers includes Answer section", "[dns_wire][known_answer]")
+{
+    GIVEN("a PTR record as a known answer")
+    {
+        mdnspp::record_ptr ptr;
+        ptr.name = "_http._tcp.local";
+        ptr.ttl = 4500;
+        ptr.ptr_name = "MyService._http._tcp.local";
+
+        std::vector<mdnspp::mdns_record_variant> known = {ptr};
+
+        WHEN("build_dns_query is called with the known answer")
+        {
+            auto pkt = build_dns_query("_http._tcp.local", mdnspp::dns_type::ptr,
+                                       std::span<const mdnspp::mdns_record_variant>(known));
+
+            THEN("the header ancount is 1")
+            {
+                REQUIRE(pkt.size() >= 12);
+                uint16_t ancount = read_u16_be(pkt.data() + 6);
+                REQUIRE(ancount == 1);
+            }
+
+            THEN("the packet is longer than a basic query")
+            {
+                auto basic = build_dns_query("_http._tcp.local", mdnspp::dns_type::ptr);
+                REQUIRE(pkt.size() > basic.size());
+            }
+
+            THEN("walk_dns_frame can parse the known-answer PTR record")
+            {
+                // To parse as a response frame, we need QR=1 in flags.
+                // Modify flags to make it parseable by walk_dns_frame.
+                auto parseable = pkt;
+                // Set qdcount=0 so walk_dns_frame skips question section
+                // Actually walk_dns_frame skips questions by count, so let's
+                // just verify the answer section by manually checking.
+                auto records = parse_wire(pkt);
+                // walk_dns_frame skips questions by qdcount, then reads ancount RRs.
+                // Our packet has qdcount=1 and ancount=1, so it will skip the question
+                // and parse the answer section.
+                bool found_ptr = false;
+                for(const auto &rv : records)
+                {
+                    if(auto *p = std::get_if<mdnspp::record_ptr>(&rv))
+                    {
+                        found_ptr = true;
+                        REQUIRE(p->ptr_name == "MyService._http._tcp.local");
+                    }
+                }
+                REQUIRE(found_ptr);
+            }
+        }
+    }
+}
+
+SCENARIO("build_dns_query with empty known answers matches basic overload", "[dns_wire][known_answer]")
+{
+    GIVEN("an empty known-answers span")
+    {
+        std::span<const mdnspp::mdns_record_variant> empty;
+
+        WHEN("both overloads are called for the same query")
+        {
+            auto basic = build_dns_query("_http._tcp.local", mdnspp::dns_type::ptr);
+            auto with_empty = build_dns_query("_http._tcp.local", mdnspp::dns_type::ptr, empty);
+
+            THEN("the output is byte-for-byte identical")
+            {
+                REQUIRE(basic == with_empty);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// parse_service_type tests
+// ---------------------------------------------------------------------------
+
+using mdnspp::parse_service_type;
+
+SCENARIO("parse_service_type splits PTR name into components", "[dns_wire][parse_service_type]")
+{
+    GIVEN("the service type _http._tcp.local")
+    {
+        auto info = parse_service_type("_http._tcp.local");
+
+        THEN("type_name is _http, protocol is _tcp, domain is local")
+        {
+            REQUIRE(info.type_name == "_http");
+            REQUIRE(info.protocol == "_tcp");
+            REQUIRE(info.domain == "local");
+            REQUIRE(info.service_type == "_http._tcp.local");
+        }
+    }
+
+    GIVEN("the service type _ipp._tcp.local. with trailing dot")
+    {
+        auto info = parse_service_type("_ipp._tcp.local.");
+
+        THEN("trailing dot is stripped and components are correct")
+        {
+            REQUIRE(info.type_name == "_ipp");
+            REQUIRE(info.protocol == "_tcp");
+            REQUIRE(info.domain == "local");
+            REQUIRE(info.service_type == "_ipp._tcp.local");
         }
     }
 }

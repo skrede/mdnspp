@@ -36,6 +36,7 @@ struct service_info
     std::optional<std::string> address_ipv4; // e.g. "192.168.1.10"
     std::optional<std::string> address_ipv6; // e.g. "fe80::1"
     std::vector<service_txt> txt_records;    // RFC 6763 key/value or key-only entries
+    std::vector<std::string> subtypes;      // e.g. {"_printer"} for subtype enumeration
 };
 
 }

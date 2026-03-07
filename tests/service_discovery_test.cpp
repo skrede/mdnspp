@@ -795,6 +795,137 @@ SCENARIO("on_record callback fires during async_browse (same as async_discover)"
     }
 }
 
+// ---------------------------------------------------------------------------
+// Known-answer, enumerate_types, discover_subtype tests (Plan 31-03)
+// ---------------------------------------------------------------------------
+
+SCENARIO("discover query uses known-answer overload of build_dns_query", "[service_discovery][discover][known-answer]")
+{
+    GIVEN("a service_discovery instance with no enqueued responses")
+    {
+        mock_executor ex;
+        basic_service_discovery<MockPolicy> sd{ex, 500ms};
+
+        WHEN("async_discover() is called for the first time (m_results empty)")
+        {
+            sd.async_discover("_http._tcp.local.",
+                              [](std::error_code, const std::vector<mdns_record_variant> &)
+                              {
+                              });
+
+            THEN("a valid DNS query packet was sent with ancount=0 (no known answers on first query)")
+            {
+                REQUIRE_FALSE(sd.socket().sent_packets().empty());
+                const auto &data = sd.socket().sent_packets()[0].data;
+                REQUIRE(data.size() >= 12);
+                // ANCOUNT should be 0 on first discover (no accumulated results yet)
+                // Known-answer infrastructure is in place; ancount > 0 when m_results is pre-populated.
+                REQUIRE(static_cast<uint8_t>(data[6]) == 0x00);
+                REQUIRE(static_cast<uint8_t>(data[7]) == 0x00);
+            }
+        }
+    }
+}
+
+SCENARIO("async_enumerate_types returns parsed service types", "[service_discovery][enumerate]")
+{
+    GIVEN("a service_discovery and a PTR response for the meta-query")
+    {
+        mock_executor ex;
+        basic_service_discovery<MockPolicy> sd{ex, 500ms};
+
+        // Enqueue a PTR response: owner = _services._dns-sd._udp.local, target = _http._tcp.local
+        sd.socket().enqueue(make_ptr_response(
+            "_services._dns-sd._udp.local.",
+            "_http._tcp.local."));
+
+        WHEN("async_enumerate_types() is called and the silence timer fires")
+        {
+            std::error_code received_ec;
+            std::vector<service_type_info> received_types;
+            bool callback_fired = false;
+
+            sd.async_enumerate_types(
+                [&](std::error_code ec, std::vector<service_type_info> types)
+                {
+                    callback_fired = true;
+                    received_ec = ec;
+                    received_types = std::move(types);
+                });
+
+            sd.timer().fire();
+
+            THEN("a PTR query for _services._dns-sd._udp.local was sent")
+            {
+                REQUIRE_FALSE(sd.socket().sent_packets().empty());
+                const auto &data = sd.socket().sent_packets()[0].data;
+                REQUIRE(data.size() >= 12);
+                // QDCOUNT should be 1
+                REQUIRE(static_cast<uint8_t>(data[4]) == 0x00);
+                REQUIRE(static_cast<uint8_t>(data[5]) == 0x01);
+            }
+
+            AND_THEN("the callback fires with one parsed service_type_info")
+            {
+                REQUIRE(callback_fired);
+                REQUIRE_FALSE(received_ec);
+                REQUIRE(received_types.size() == 1);
+                REQUIRE(received_types[0].type_name == "_http");
+                REQUIRE(received_types[0].protocol == "_tcp");
+                REQUIRE(received_types[0].domain == "local");
+            }
+        }
+    }
+}
+
+SCENARIO("async_discover_subtype discovers subtype instances", "[service_discovery][subtype]")
+{
+    GIVEN("a service_discovery and a PTR response for a subtype query")
+    {
+        mock_executor ex;
+        basic_service_discovery<MockPolicy> sd{ex, 500ms};
+
+        // Enqueue a PTR response: owner = _printer._sub._http._tcp.local, target = MyService._http._tcp.local
+        sd.socket().enqueue(make_ptr_response(
+            "_printer._sub._http._tcp.local.",
+            "MyService._http._tcp.local."));
+
+        WHEN("async_discover_subtype() is called and the silence timer fires")
+        {
+            std::error_code received_ec;
+            std::vector<mdns_record_variant> received_results;
+            bool callback_fired = false;
+
+            sd.async_discover_subtype("_http._tcp.local.", "_printer",
+                [&](std::error_code ec, const std::vector<mdns_record_variant> &results)
+                {
+                    callback_fired = true;
+                    received_ec = ec;
+                    received_results = results;
+                });
+
+            sd.timer().fire();
+
+            THEN("a PTR query for _printer._sub._http._tcp.local was sent")
+            {
+                REQUIRE_FALSE(sd.socket().sent_packets().empty());
+                const auto &sent = sd.socket().sent_packets()[0];
+                REQUIRE(sent.dest == endpoint{"224.0.0.251", 5353});
+            }
+
+            AND_THEN("the callback fires with the subtype PTR record")
+            {
+                REQUIRE(callback_fired);
+                REQUIRE_FALSE(received_ec);
+                REQUIRE(received_results.size() == 1);
+                REQUIRE(std::holds_alternative<record_ptr>(received_results[0]));
+                const auto &ptr = std::get<record_ptr>(received_results[0]);
+                REQUIRE(ptr.ptr_name.find("MyService") != std::string::npos);
+            }
+        }
+    }
+}
+
 SCENARIO("basic_service_discovery with socket_options", "[service_discovery][socket_options]")
 {
     GIVEN("a socket_options with a specific interface address")

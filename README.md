@@ -1,4 +1,4 @@
-# mdnspp
+# mDNSpp
 
 [![Linux](https://github.com/skrede/mdnspp/actions/workflows/linux.yml/badge.svg?branch=master)](https://github.com/skrede/mdnspp/actions/workflows/linux.yml)
 [![macOS](https://github.com/skrede/mdnspp/actions/workflows/macos.yml/badge.svg?branch=master)](https://github.com/skrede/mdnspp/actions/workflows/macos.yml)

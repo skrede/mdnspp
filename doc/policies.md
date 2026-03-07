@@ -234,6 +234,28 @@ Appends to a deque for deterministic testing. Drain posted work with
 running service server from any thread. Application code can also use it
 directly for custom thread-safe operations on the executor.
 
+## Server Lifecycle
+
+When using `basic_service_server`, the server progresses through a defined
+state machine after `async_start()` is called:
+
+- **idle** -- constructed but not yet started.
+- **probing** -- sends 3 probe queries at 250 ms intervals (with a random
+  0--250 ms initial delay) to verify name uniqueness (RFC 6762 section 8.1).
+  Any conflicting response triggers the `service_options::on_conflict`
+  callback.
+- **announcing** -- sends a configurable burst of unsolicited announcements
+  (`announce_count` packets at `announce_interval` intervals, default 2
+  packets at 1 second) per RFC 6762 section 8.3.
+- **live** -- the server responds to matching queries with RFC 6762-delayed
+  responses (20--120 ms random delay for multicast). The `on_ready` handler
+  fires at this point.
+- **stopped** -- `stop()` was called or conflict resolution failed. Goodbye
+  packets are sent if `service_options::send_goodbye` is `true`.
+
+See [`service_options`](api/service_options.md) for controlling probing,
+announcing, goodbye, and conflict resolution behavior.
+
 ## Choosing a policy
 
 | Need | Use | CMake target |

@@ -4,6 +4,7 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/service_type.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/resolved_service.h"
 

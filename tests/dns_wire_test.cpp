@@ -626,7 +626,7 @@ SCENARIO("encode_ipv6 encodes valid IPv6 addresses", "[response_detail][encode_i
 {
     GIVEN("the loopback address ::1")
     {
-        auto result = mdnspp::detail::response_detail::encode_ipv6("::1");
+        auto result = mdnspp::detail::encode_ipv6("::1");
         THEN("it returns 16 bytes")
         {
             REQUIRE(result.size() == 16);
@@ -635,7 +635,7 @@ SCENARIO("encode_ipv6 encodes valid IPv6 addresses", "[response_detail][encode_i
 
     GIVEN("a link-local address fe80::1")
     {
-        auto result = mdnspp::detail::response_detail::encode_ipv6("fe80::1");
+        auto result = mdnspp::detail::encode_ipv6("fe80::1");
         THEN("it returns 16 bytes")
         {
             REQUIRE(result.size() == 16);
@@ -647,7 +647,7 @@ SCENARIO("encode_ipv4 returns empty for bad octet", "[response_detail][encode_ip
 {
     GIVEN("an IPv4 address with an octet > 255")
     {
-        auto result = mdnspp::detail::response_detail::encode_ipv4("999.0.0.1");
+        auto result = mdnspp::detail::encode_ipv4("999.0.0.1");
         THEN("it returns an empty vector")
         {
             REQUIRE(result.empty());
@@ -659,7 +659,7 @@ SCENARIO("encode_ipv4 returns empty for wrong number of octets", "[response_deta
 {
     GIVEN("an IPv4 address with only 3 octets")
     {
-        auto result = mdnspp::detail::response_detail::encode_ipv4("1.2.3");
+        auto result = mdnspp::detail::encode_ipv4("1.2.3");
         THEN("it returns an empty vector")
         {
             REQUIRE(result.empty());
@@ -678,7 +678,7 @@ SCENARIO("encode_txt_records handles entry with value, entry without value, and 
             mdnspp::service_txt{"big", long_value},
         };
 
-        auto result = mdnspp::detail::response_detail::encode_txt_records(entries);
+        auto result = mdnspp::detail::encode_txt_records(entries);
 
         THEN("the result is non-empty")
         {
@@ -978,8 +978,8 @@ SCENARIO("build_probe_query produces valid probe packet with question and author
 // NSEC bitmap and record tests
 // ---------------------------------------------------------------------------
 
-using mdnspp::detail::response_detail::build_nsec_bitmap;
-using mdnspp::detail::response_detail::append_nsec_rr;
+using mdnspp::detail::build_nsec_bitmap;
+using mdnspp::detail::append_nsec_rr;
 
 SCENARIO("build_nsec_bitmap with IPv4 only sets A, PTR, TXT, SRV bits", "[nsec][bitmap]")
 {

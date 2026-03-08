@@ -597,7 +597,7 @@ private:
 
         auto owner = detail::encode_dns_name(meta_query_name);
         auto rdata = detail::encode_dns_name(m_info.service_type);
-        detail::response_detail::append_dns_rr(packet, owner, dns_type::ptr, 4500, rdata, false);
+        detail::append_dns_rr(packet, owner, dns_type::ptr, 4500, rdata, false);
 
         return packet;
     }
@@ -616,7 +616,7 @@ private:
         auto subtype_name = std::string(subtype_label) + "._sub." + std::string(strip_dot(m_info.service_type)) + ".";
         auto owner = detail::encode_dns_name(subtype_name);
         auto rdata = detail::encode_dns_name(m_info.service_name);
-        detail::response_detail::append_dns_rr(packet, owner, dns_type::ptr, 4500, rdata, false);
+        detail::append_dns_rr(packet, owner, dns_type::ptr, 4500, rdata, false);
 
         return packet;
     }
@@ -880,13 +880,13 @@ private:
                     detail::push_u16_be(response, 0x0001); // arcount = 1
 
                     auto owner_name = detail::encode_dns_name(m_info.hostname);
-                    detail::response_detail::append_nsec_rr(response, owner_name, m_info, 4500);
+                    detail::append_nsec_rr(response, owner_name, m_info, 4500);
                 }
                 else
                 {
                     // Append NSEC to Additional section and update arcount
                     auto owner_name = detail::encode_dns_name(m_info.hostname);
-                    detail::response_detail::append_nsec_rr(response, owner_name, m_info, 4500);
+                    detail::append_nsec_rr(response, owner_name, m_info, 4500);
                     uint16_t arcount = detail::read_u16_be(response.data() + 10);
                     ++arcount;
                     response[10] = static_cast<std::byte>(static_cast<uint8_t>(arcount >> 8));
@@ -984,12 +984,12 @@ private:
                             detail::push_u16_be(response, 0x0001);
 
                             auto owner = detail::encode_dns_name(m_info.hostname);
-                            detail::response_detail::append_nsec_rr(response, owner, m_info, 4500);
+                            detail::append_nsec_rr(response, owner, m_info, 4500);
                         }
                         else
                         {
                             auto owner = detail::encode_dns_name(m_info.hostname);
-                            detail::response_detail::append_nsec_rr(response, owner, m_info, 4500);
+                            detail::append_nsec_rr(response, owner, m_info, 4500);
                             uint16_t arcount = detail::read_u16_be(response.data() + 10);
                             ++arcount;
                             response[10] = static_cast<std::byte>(static_cast<uint8_t>(arcount >> 8));

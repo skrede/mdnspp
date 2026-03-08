@@ -1900,7 +1900,7 @@ static std::vector<std::byte> make_query_with_known_answer(
 
     // Answer section
     auto encoded_answer = encode_dns_name(answer_name);
-    response_detail::append_dns_rr(packet, encoded_answer, answer_rtype, answer_ttl, answer_rdata, false);
+    append_dns_rr(packet, encoded_answer, answer_rtype, answer_ttl, answer_rdata, false);
 
     return packet;
 }

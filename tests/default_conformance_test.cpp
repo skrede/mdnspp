@@ -461,7 +461,7 @@ TEST_CASE("All four public types instantiate with DefaultPolicy", "[native][poli
     try
     {
         mdnspp::basic_observer<mdnspp::DefaultPolicy> obs{
-            ctx,
+            ctx, {},
             [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
             {
             }

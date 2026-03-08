@@ -89,7 +89,8 @@ SCENARIO("async_observe with callback fires when stop() is called", "[completion
     try
     {
         auto obs = std::make_shared<mdnspp::basic_observer<mdnspp::AsioPolicy>>(
-            io, [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
+            io, mdnspp::socket_options{},
+            [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
             {
             });
 
@@ -197,13 +198,14 @@ SCENARIO("async_browse with deferred does not initiate I/O until launched", "[co
     }
 }
 
-SCENARIO("async_observe completion handler dispatched on correct executor — TSan clean", "[completion_token][tsan][observer]")
+SCENARIO("async_observe completion handler dispatched on correct executor -- TSan clean", "[completion_token][tsan][observer]")
 {
     asio::io_context io;
     try
     {
         auto obs = std::make_shared<mdnspp::basic_observer<mdnspp::AsioPolicy>>(
-            io, [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
+            io, mdnspp::socket_options{},
+            [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
             {
             });
 
@@ -237,7 +239,8 @@ SCENARIO("async_observe with use_awaitable suspends until stop", "[completion_to
     try
     {
         auto obs = std::make_shared<mdnspp::basic_observer<mdnspp::AsioPolicy>>(
-            io, [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
+            io, mdnspp::socket_options{},
+            [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
             {
             });
 

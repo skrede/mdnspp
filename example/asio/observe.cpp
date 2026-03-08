@@ -14,7 +14,7 @@ int main()
     asio::io_context io;
 
     mdnspp::basic_observer<mdnspp::AsioPolicy> obs{
-        io,
+        io, {},
         [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&sender](const auto &r)

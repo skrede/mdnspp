@@ -1,7 +1,6 @@
 #ifndef HPP_GUARD_MDNSPP_BASIC_SERVICE_SERVER_H
 #define HPP_GUARD_MDNSPP_BASIC_SERVICE_SERVER_H
 
-#include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/mdns_error.h"
@@ -12,20 +11,19 @@
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/detail/dns_enums.h"
-#include "mdnspp/detail/recv_loop.h"
+#include "mdnspp/detail/basic_mdns_peer_base.h"
 
-#include <algorithm>
+#include <span>
+#include <string>
 #include <memory>
 #include <random>
 #include <chrono>
-#include <atomic>
-#include <span>
-#include <string>
 #include <cstdint>
 #include <cassert>
-#include <system_error>
-#include <string_view>
 #include <utility>
+#include <algorithm>
+#include <string_view>
+#include <system_error>
 
 namespace mdnspp {
 
@@ -35,7 +33,7 @@ namespace mdnspp {
 //   P -- Policy: provides executor_type, socket_type, timer_type
 //
 // Lifecycle:
-//   1. Construct with (ex, info, opts) or (ex, sock_opts, info, opts)
+//   1. Construct with (ex, info, opts, sock_opts) or non-throwing overload
 //   2. async_start(on_ready, on_done) -- begins probe -> announce -> live sequence
 //      on_ready fires with error_code{} when live, or probe_conflict on conflict
 //      on_done fires with error_code{} when stop() is called
@@ -44,12 +42,15 @@ namespace mdnspp {
 //   4. ~basic_service_server() -- calls stop() for RAII safety
 
 template <Policy P>
-class basic_service_server
+class basic_service_server : detail::basic_mdns_peer_base<P>
 {
+    using base = detail::basic_mdns_peer_base<P>;
+
 public:
-    using executor_type = typename P::executor_type;
-    using socket_type = typename P::socket_type;
-    using timer_type = typename P::timer_type;
+    using typename base::executor_type;
+    using typename base::socket_type;
+    using typename base::timer_type;
+    using base::socket;
 
     /// Optional callback invoked when an incoming query is received and parsed.
     /// Parameters: sender endpoint, qtype requested, response mode (unicast or multicast).
@@ -70,17 +71,14 @@ public:
     // Movable only before async_start() is called (m_loop must be null).
     // Moving a started server is a logic error.
     basic_service_server(basic_service_server &&other) noexcept
-        : m_alive(std::move(other.m_alive))
-        , m_executor(other.m_executor)
-        , m_socket(std::move(other.m_socket))
+        : base(std::move(other))
         , m_response_timer(std::move(other.m_response_timer))
-        , m_recv_timer(std::move(other.m_recv_timer))
         , m_info(std::move(other.m_info))
         , m_opts(std::move(other.m_opts))
         , m_on_ready(std::move(other.m_on_ready))
         , m_on_completion(std::move(other.m_on_completion))
+        , m_on_error(std::move(other.m_on_error))
         , m_rng(std::move(other.m_rng))
-        , m_loop(std::move(other.m_loop))
         , m_state(other.m_state)
         , m_probe_count(other.m_probe_count)
         , m_announce_count(other.m_announce_count)
@@ -93,30 +91,32 @@ public:
         , m_pending_suppress_a(other.m_pending_suppress_a)
         , m_pending_suppress_aaaa(other.m_pending_suppress_aaaa)
         , m_pending_suppress_txt(other.m_pending_suppress_txt)
-        , m_stopped(other.m_stopped.load(std::memory_order_acquire))
     {
-        // Source must not have been started -- loop must be null
-        assert(other.m_loop == nullptr);
-        other.m_stopped.store(true, std::memory_order_release);
     }
 
     basic_service_server &operator=(basic_service_server &&other) noexcept
     {
         if(this == &other)
             return *this;
-        assert(m_loop == nullptr);       // this server must not be started
+        assert(this->m_loop == nullptr);       // this server must not be started
         assert(other.m_loop == nullptr); // source must not be started
-        m_alive = std::move(other.m_alive);
-        m_executor = other.m_executor;
-        m_socket = std::move(other.m_socket);
+        // Move base members via a placement trick is not possible with private
+        // inheritance, so we move each accessible member individually.
+        this->m_alive = std::move(other.m_alive);
+        this->m_executor = other.m_executor;
+        this->m_socket = std::move(other.m_socket);
+        this->m_timer = std::move(other.m_timer);
+        this->m_loop = std::move(other.m_loop);
+        this->m_stopped.store(other.m_stopped.load(std::memory_order_acquire),
+                              std::memory_order_release);
+        other.m_stopped.store(true, std::memory_order_release);
         m_response_timer = std::move(other.m_response_timer);
-        m_recv_timer = std::move(other.m_recv_timer);
         m_info = std::move(other.m_info);
         m_opts = std::move(other.m_opts);
         m_on_ready = std::move(other.m_on_ready);
         m_on_completion = std::move(other.m_on_completion);
+        m_on_error = std::move(other.m_on_error);
         m_rng = std::move(other.m_rng);
-        m_loop = std::move(other.m_loop);
         m_state = other.m_state;
         m_probe_count = other.m_probe_count;
         m_announce_count = other.m_announce_count;
@@ -129,99 +129,36 @@ public:
         m_pending_suppress_a = other.m_pending_suppress_a;
         m_pending_suppress_aaaa = other.m_pending_suppress_aaaa;
         m_pending_suppress_txt = other.m_pending_suppress_txt;
-        m_stopped.store(other.m_stopped.load(std::memory_order_acquire),
-                        std::memory_order_release);
-        other.m_stopped.store(true, std::memory_order_release);
         return *this;
     }
 
     ~basic_service_server()
     {
-        m_alive.reset(); // invalidate sentinel first
-        stop();          // then stop (discards pending work via event loop)
+        this->m_alive.reset(); // invalidate sentinel first
+        stop();                // then stop (discards pending work via event loop)
     }
 
-    // Throwing constructors
+    // Throwing constructor
     explicit basic_service_server(executor_type ex, service_info info,
-                                  service_options opts = {})
-        : m_executor(ex)
-        , m_socket(ex)
+                                  service_options opts = {},
+                                  socket_options sock_opts = {})
+        : base(ex, sock_opts)
         , m_response_timer(ex)
-        , m_recv_timer(ex)
         , m_info(std::move(info))
         , m_opts(std::move(opts))
         , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
     {
     }
 
-    explicit basic_service_server(executor_type ex, const socket_options &sock_opts,
-                                  service_info info, service_options opts = {})
-        : m_executor(ex)
-        , m_socket(ex, sock_opts)
-        , m_response_timer(ex)
-        , m_recv_timer(ex)
-        , m_info(std::move(info))
-        , m_opts(std::move(opts))
-        , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
-    {
-    }
-
-    // Non-throwing constructors
-    basic_service_server(executor_type ex, service_info info, std::error_code &ec)
-        : m_executor(ex)
-        , m_socket(ex, ec)
-        , m_response_timer(ex)
-        , m_recv_timer(ex)
-        , m_info(std::move(info))
-        , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
-    {
-    }
-
+    // Non-throwing constructor
     basic_service_server(executor_type ex, service_info info,
-                         service_options opts, std::error_code &ec)
-        : m_executor(ex)
-        , m_socket(ex, ec)
-        , m_response_timer(ex)
-        , m_recv_timer(ex)
-        , m_info(std::move(info))
-        , m_opts(std::move(opts))
-        , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
-    {
-    }
-
-    basic_service_server(executor_type ex, const socket_options &sock_opts,
-                         service_info info, std::error_code &ec)
-        : m_executor(ex)
-        , m_socket(ex, sock_opts, ec)
-        , m_response_timer(ex)
-        , m_recv_timer(ex)
-        , m_info(std::move(info))
-        , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
-    {
-    }
-
-    basic_service_server(executor_type ex, const socket_options &sock_opts,
-                         service_info info, service_options opts,
+                         service_options opts, socket_options sock_opts,
                          std::error_code &ec)
-        : m_executor(ex)
-        , m_socket(ex, sock_opts, ec)
+        : base(ex, sock_opts, ec)
         , m_response_timer(ex)
-        , m_recv_timer(ex)
         , m_info(std::move(info))
         , m_opts(std::move(opts))
         , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
     {
     }
 
@@ -250,7 +187,7 @@ public:
     // goodbye must complete before that invalidation.
     void stop()
     {
-        if(m_stopped.exchange(true, std::memory_order_acq_rel))
+        if(this->m_stopped.exchange(true, std::memory_order_acq_rel))
             return;
 
         // Best-effort goodbye on caller thread -- non-throwing via ec overload.
@@ -260,13 +197,13 @@ public:
             std::error_code ec;
             auto goodbye = detail::build_dns_response(m_info, dns_type::any, 0);
             if(!goodbye.empty())
-                m_socket.send(endpoint{"224.0.0.251", 5353},
+                this->m_socket.send(endpoint{"224.0.0.251", 5353},
                               std::as_bytes(std::span(goodbye)), ec);
             if(ec && m_on_error) m_on_error(ec, "goodbye send");
         }
 
-        auto guard = std::weak_ptr<bool>(m_alive);
-        P::post(m_executor, [this, guard]()
+        auto guard = std::weak_ptr<bool>(this->m_alive);
+        P::post(this->m_executor, [this, guard]()
         {
             if(!guard.lock()) return;
 
@@ -280,8 +217,8 @@ public:
             m_pending_armed = false;
             m_response_timer.cancel();
 
-            if(m_loop)
-                m_loop->stop();
+            if(this->m_loop)
+                this->m_loop->stop();
 
             if(auto h = std::exchange(m_on_completion, nullptr); h)
                 h(std::error_code{});
@@ -295,24 +232,25 @@ public:
     // Thread-safe: may be called from any thread.
     void update_service_info(service_info new_info)
     {
-        assert(!m_stopped.load(std::memory_order_acquire)); // must be running
-        auto guard = std::weak_ptr<bool>(m_alive);
-        P::post(m_executor, [this, guard, info = std::move(new_info)]() mutable
+        assert(!this->m_stopped.load(std::memory_order_acquire)); // must be running
+        auto guard = std::weak_ptr<bool>(this->m_alive);
+        P::post(this->m_executor, [this, guard, info = std::move(new_info)]() mutable
         {
             if(!guard.lock()) return;
-            if(m_stopped.load(std::memory_order_acquire)) return;
+            if(this->m_stopped.load(std::memory_order_acquire)) return;
             m_info = std::move(info);
             m_announce_count = 0;
             send_update_announce();
         });
     }
 
-    const socket_type &socket() const noexcept { return m_socket; }
-    socket_type &socket() noexcept { return m_socket; }
+    // Server-specific timer accessors:
+    // timer() returns the response timer (used for probing/announcing/response delays)
+    // recv_timer() returns the base timer (used by recv_loop)
     const timer_type &timer() const noexcept { return m_response_timer; }
     timer_type &timer() noexcept { return m_response_timer; }
-    const timer_type &recv_timer() const noexcept { return m_recv_timer; }
-    timer_type &recv_timer() noexcept { return m_recv_timer; }
+    const timer_type &recv_timer() const noexcept { return base::timer(); }
+    timer_type &recv_timer() noexcept { return base::timer(); }
 
 private:
     enum class server_state : uint8_t { idle, probing, announcing, live, stopped };
@@ -320,9 +258,9 @@ private:
     // Common start body -- creates recv_loop and begins probing.
     void do_start()
     {
-        m_loop = std::make_unique<recv_loop<P>>(
-            m_socket,
-            m_recv_timer,
+        this->m_loop = std::make_unique<recv_loop<P>>(
+            this->m_socket,
+            this->m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
             [this](const endpoint &sender, std::span<std::byte> data) -> bool
             {
@@ -335,7 +273,7 @@ private:
             });
 
         start_probing();
-        m_loop->start();
+        this->m_loop->start();
     }
 
     // Begins the probing sequence: random delay 0-250ms, then 3 probes at 250ms intervals.
@@ -350,7 +288,7 @@ private:
         m_response_timer.async_wait([this](std::error_code ec)
         {
             if(ec || m_state != server_state::probing) return;
-            if(m_stopped.load(std::memory_order_acquire)) return;
+            if(this->m_stopped.load(std::memory_order_acquire)) return;
             send_probe();
         });
     }
@@ -359,11 +297,11 @@ private:
     void send_probe()
     {
         if(m_state != server_state::probing) return;
-        if(m_stopped.load(std::memory_order_acquire)) return;
+        if(this->m_stopped.load(std::memory_order_acquire)) return;
 
         auto probe = detail::build_probe_query(m_info);
         std::error_code ec;
-        m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(probe), ec);
+        this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(probe), ec);
         if(ec && m_on_error) m_on_error(ec, "probe send");
         ++m_probe_count;
 
@@ -374,7 +312,7 @@ private:
             m_response_timer.async_wait([this](std::error_code ec)
             {
                 if(ec || m_state != server_state::probing) return;
-                if(m_stopped.load(std::memory_order_acquire)) return;
+                if(this->m_stopped.load(std::memory_order_acquire)) return;
                 send_probe();
             });
         }
@@ -385,7 +323,7 @@ private:
             m_response_timer.async_wait([this](std::error_code ec)
             {
                 if(ec || m_state != server_state::probing) return;
-                if(m_stopped.load(std::memory_order_acquire)) return;
+                if(this->m_stopped.load(std::memory_order_acquire)) return;
                 start_announcing();
             });
         }
@@ -403,7 +341,7 @@ private:
     void send_announce()
     {
         if(m_state != server_state::announcing) return;
-        if(m_stopped.load(std::memory_order_acquire)) return;
+        if(this->m_stopped.load(std::memory_order_acquire)) return;
 
         send_announcement();
         ++m_announce_count;
@@ -414,7 +352,7 @@ private:
             m_response_timer.async_wait([this](std::error_code ec)
             {
                 if(ec || m_state != server_state::announcing) return;
-                if(m_stopped.load(std::memory_order_acquire)) return;
+                if(this->m_stopped.load(std::memory_order_acquire)) return;
                 send_announce();
             });
         }
@@ -446,7 +384,7 @@ private:
 
         // No callback or callback returned false -- fail
         m_state = server_state::stopped;
-        m_stopped.store(true, std::memory_order_release);
+        this->m_stopped.store(true, std::memory_order_release);
         if(auto h = std::exchange(m_on_ready, nullptr); h)
             h(mdns_error::probe_conflict);
     }
@@ -454,7 +392,7 @@ private:
     // Sends update announcements as a burst (for update_service_info).
     void send_update_announce()
     {
-        if(m_stopped.load(std::memory_order_acquire)) return;
+        if(this->m_stopped.load(std::memory_order_acquire)) return;
         if(m_state != server_state::live) return;
 
         send_announcement();
@@ -465,7 +403,7 @@ private:
             m_response_timer.expires_after(m_opts.announce_interval);
             m_response_timer.async_wait([this](std::error_code ec)
             {
-                if(ec || m_stopped.load(std::memory_order_acquire)) return;
+                if(ec || this->m_stopped.load(std::memory_order_acquire)) return;
                 if(m_state != server_state::live) return;
                 send_update_announce();
             });
@@ -528,14 +466,14 @@ private:
             {
                 // Strip trailing dot from record_name for comparison if needed.
                 // service_name etc. have trailing dots. walk_dns_frame produces names without trailing dot.
-                auto strip_dot = [](std::string_view s) -> std::string_view
+                auto strip = [](std::string_view s) -> std::string_view
                 {
                     if(!s.empty() && s.back() == '.')
                         return s.substr(0, s.size() - 1);
                     return s;
                 };
-                auto sn = strip_dot(m_info.service_name);
-                auto hn = strip_dot(m_info.hostname);
+                auto sn = strip(m_info.service_name);
+                auto hn = strip(m_info.hostname);
                 if(record_name == sn || record_name == hn)
                     conflict = true;
             };
@@ -624,7 +562,7 @@ private:
     // Called by recv_loop on every incoming packet.
     void on_query(const endpoint &sender, std::span<std::byte> data)
     {
-        if(m_stopped.load(std::memory_order_acquire))
+        if(this->m_stopped.load(std::memory_order_acquire))
             return;
 
         // During probing: check for conflicting responses, drop everything
@@ -821,9 +759,9 @@ private:
             auto meta_response = build_meta_query_response();
             std::error_code ec;
             if(resp_mode == response_mode::unicast)
-                m_socket.send(sender, std::span<const std::byte>(meta_response), ec);
+                this->m_socket.send(sender, std::span<const std::byte>(meta_response), ec);
             else
-                m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(meta_response), ec);
+                this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(meta_response), ec);
             if(ec && m_on_error) m_on_error(ec, "meta-query response send");
         }
 
@@ -833,9 +771,9 @@ private:
             auto sub_response = build_subtype_response(matched_subtype);
             std::error_code ec;
             if(resp_mode == response_mode::unicast)
-                m_socket.send(sender, std::span<const std::byte>(sub_response), ec);
+                this->m_socket.send(sender, std::span<const std::byte>(sub_response), ec);
             else
-                m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response), ec);
+                this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response), ec);
             if(ec && m_on_error) m_on_error(ec, "subtype response send");
         }
 
@@ -904,7 +842,7 @@ private:
             if(!response.empty())
             {
                 std::error_code ec;
-                m_socket.send(sender, std::span<const std::byte>(response), ec);
+                this->m_socket.send(sender, std::span<const std::byte>(response), ec);
                 if(ec && m_on_error) m_on_error(ec, "response send");
             }
             return;
@@ -930,7 +868,7 @@ private:
             m_response_timer.async_wait(
                 [this](std::error_code ec)
                 {
-                    if(ec || m_stopped.load(std::memory_order_acquire))
+                    if(ec || this->m_stopped.load(std::memory_order_acquire))
                         return;
                     if(m_state != server_state::live)
                         return;
@@ -1000,7 +938,7 @@ private:
                     if(!response.empty())
                     {
                         std::error_code ec;
-                        m_socket.send(endpoint{"224.0.0.251", 5353},
+                        this->m_socket.send(endpoint{"224.0.0.251", 5353},
                                       std::span<const std::byte>(response), ec);
                         if(ec && m_on_error) m_on_error(ec, "response send");
                     }
@@ -1025,7 +963,7 @@ private:
             return;
 
         std::error_code ec;
-        m_socket.send(dest, std::span<const std::byte>(response), ec);
+        this->m_socket.send(dest, std::span<const std::byte>(response), ec);
         if(ec && m_on_error) m_on_error(ec, "response send");
     }
 
@@ -1038,7 +976,7 @@ private:
         if(!response.empty())
         {
             std::error_code ec;
-            m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(response), ec);
+            this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(response), ec);
             if(ec && m_on_error) m_on_error(ec, "announcement send");
         }
 
@@ -1050,25 +988,20 @@ private:
                 if(!sub_response.empty())
                 {
                     std::error_code ec;
-                    m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response), ec);
+                    this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response), ec);
                     if(ec && m_on_error) m_on_error(ec, "announcement send");
                 }
             }
         }
     }
 
-    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
-    executor_type m_executor;
-    socket_type m_socket;
     timer_type m_response_timer;
-    timer_type m_recv_timer;
     service_info m_info;
     service_options m_opts;
     completion_handler m_on_ready;
     completion_handler m_on_completion;
     error_handler m_on_error;
     std::mt19937 m_rng;
-    std::unique_ptr<recv_loop<P>> m_loop;
     server_state m_state{server_state::idle};
     unsigned m_probe_count{0};
     unsigned m_announce_count{0};
@@ -1081,7 +1014,6 @@ private:
     bool m_pending_suppress_a{false};
     bool m_pending_suppress_aaaa{false};
     bool m_pending_suppress_txt{false};
-    std::atomic<bool> m_stopped;
 };
 
 }

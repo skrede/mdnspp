@@ -40,13 +40,13 @@ static_assert(std::is_constructible_v<mdnspp::service_server, mdnspp::DefaultCon
 
 // --- SOCK-01: New socket_options constructors exist ---
 
-static_assert(std::is_constructible_v<mdnspp::observer, mdnspp::DefaultContext &, const mdnspp::socket_options &>,
+static_assert(std::is_constructible_v<mdnspp::observer, mdnspp::DefaultContext &, mdnspp::socket_options>,
               "observer must be constructible with socket_options");
-static_assert(std::is_constructible_v<mdnspp::querier, mdnspp::DefaultContext &, const mdnspp::socket_options &, std::chrono::milliseconds>,
+static_assert(std::is_constructible_v<mdnspp::querier, mdnspp::DefaultContext &, std::chrono::milliseconds, mdnspp::socket_options>,
               "querier must be constructible with socket_options");
-static_assert(std::is_constructible_v<mdnspp::service_discovery, mdnspp::DefaultContext &, const mdnspp::socket_options &, std::chrono::milliseconds>,
+static_assert(std::is_constructible_v<mdnspp::service_discovery, mdnspp::DefaultContext &, std::chrono::milliseconds, mdnspp::socket_options>,
               "service_discovery must be constructible with socket_options");
-static_assert(std::is_constructible_v<mdnspp::service_server, mdnspp::DefaultContext &, const mdnspp::socket_options &, mdnspp::service_info>,
+static_assert(std::is_constructible_v<mdnspp::service_server, mdnspp::DefaultContext &, mdnspp::service_info, mdnspp::service_options, mdnspp::socket_options>,
               "service_server must be constructible with socket_options");
 
 int main()

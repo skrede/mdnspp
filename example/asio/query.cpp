@@ -24,7 +24,7 @@ int main(int argc, char *argv[])
 
     mdnspp::basic_querier<mdnspp::AsioPolicy> q{
         io,
-        std::chrono::seconds(3),
+        std::chrono::seconds(3), {},
         [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&sender](const auto &r)

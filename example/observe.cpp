@@ -11,7 +11,7 @@ int main()
     int count = 0;
 
     mdnspp::observer obs{
-        ctx,
+        ctx, {},
         [&](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&](const auto &r)

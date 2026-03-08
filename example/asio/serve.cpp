@@ -3,9 +3,8 @@
 // Usage: ./mdnspp_example_asio_serve
 
 #include <mdnspp/asio.h>
-#include <mdnspp/basic_service_server.h>
 #include <mdnspp/service_info.h>
-#include <mdnspp/detail/dns_enums.h>
+#include <mdnspp/basic_service_server.h>
 
 #include <iostream>
 

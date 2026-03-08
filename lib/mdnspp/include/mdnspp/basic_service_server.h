@@ -119,7 +119,9 @@ public:
     ~basic_service_server()
     {
         this->m_alive.reset(); // invalidate sentinel first
-        stop();                // then stop (discards pending work via event loop)
+        if(this->m_loop)
+            this->m_loop->stop(); // synchronously close socket/timer before members die
+        stop();                   // then stop (posts teardown; guard will fail safely)
     }
 
     // Throwing constructor

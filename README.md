@@ -113,7 +113,7 @@ int main()
 
     mdnspp::service_discovery sd{
         ctx,
-        std::chrono::seconds(3),
+        std::chrono::seconds(3), {},
         [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&](const auto &r)
@@ -163,7 +163,7 @@ int main()
     mdnspp::querier q
     {
         ctx,
-        std::chrono::seconds(3),
+        std::chrono::seconds(3), {},
         [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&](const auto &r)
@@ -213,7 +213,7 @@ int main()
 
     mdnspp::observer obs
     {
-        ctx,
+        ctx, {},
         [&](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&](const auto &r)
@@ -221,7 +221,7 @@ int main()
                 std::cout << sender << " -> " << r << "\n";
             }, rec);
 
-            if(++count >= 100)
+            if(++count >= 10)
                 obs.stop();
         }
     };

@@ -2,9 +2,7 @@
 // When another device on the network claims the same name, the on_conflict callback
 // renames the service and retries probing up to 3 times.
 
-#include "mdnspp/defaults.h"
-#include "mdnspp/service_info.h"
-#include "mdnspp/service_options.h"
+#include <mdnspp/defaults.h>
 
 #include <iostream>
 

@@ -3,8 +3,6 @@
 // Auto-stops after 30 seconds.
 
 #include <mdnspp/defaults.h>
-#include <mdnspp/service_info.h>
-#include <mdnspp/detail/dns_enums.h>
 
 #include <iostream>
 #include <thread>

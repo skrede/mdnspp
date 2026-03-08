@@ -19,6 +19,7 @@
 #include <cassert>
 #include <utility>
 #include <algorithm>
+#include <functional>
 #include <string_view>
 #include <system_error>
 
@@ -198,35 +199,54 @@ public:
     }
 
 private:
-    // Common browse body -- assumes m_on_browse_completion is already set.
-    // Mirrors do_discover() exactly; silence callback calls aggregate(m_results)
-    // instead of firing the discover handler.
-    // Must only be called once per lifetime (m_browse_loop must be null on entry).
-    void do_browse(std::string svc_type, response_mode mode = response_mode::multicast)
+    void do_discover(std::string svc_type, response_mode mode)
     {
-        assert(m_browse_loop == nullptr); // one browse per lifetime
+        assert(this->m_loop == nullptr);
+        do_query(std::move(svc_type), mode, this->m_loop, [this]()
+        {
+            this->m_loop->stop();
+            if(auto h = std::exchange(m_on_completion, nullptr); h)
+                h(std::error_code{}, m_results);
+        });
+    }
+
+    void do_browse(std::string svc_type, response_mode mode)
+    {
+        assert(m_browse_loop == nullptr);
+        do_query(std::move(svc_type), mode, m_browse_loop, [this]()
+        {
+            m_browse_loop->stop();
+            m_services = mdnspp::aggregate(m_results);
+            if(auto h = std::exchange(m_on_browse_completion, nullptr); h)
+                h(std::error_code{}, m_services);
+        });
+    }
+
+    // Shared implementation for do_discover and do_browse.
+    // Clears results, strips trailing dot, sends PTR query, creates recv_loop
+    // with shared on_packet handler, and starts the loop.
+    void do_query(std::string svc_type, response_mode mode,
+                  std::unique_ptr<recv_loop<P>> &target_loop,
+                  std::function<void()> on_silence_fn)
+    {
         m_results.clear();
         m_service_type = std::move(svc_type);
         if(!m_service_type.empty() && m_service_type.back() == '.')
             m_service_type.pop_back();
 
-        // Build and send DNS PTR query (qtype = 12) -- same as do_discover()
-        // Includes known answers (m_results) per RFC 6762 section 7.1
         auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr,
                                                    std::span<const mdns_record_variant>(m_results), mode);
         {
             std::error_code ec;
             this->m_socket.send(endpoint{"224.0.0.251", 5353},
                           std::span<const std::byte>(query_bytes), ec);
-            if(ec && m_on_error) m_on_error(ec, "browse send");
+            if(ec && m_on_error) m_on_error(ec, "query send");
         }
 
-        m_browse_loop = std::make_unique<recv_loop<P>>(
+        target_loop = std::make_unique<recv_loop<P>>(
             this->m_socket,
             this->m_timer,
             m_silence_timeout,
-            // on_packet: identical to do_discover() -- accumulates into m_results,
-            // fires m_on_record per relevant record.
             [this](const endpoint &sender, std::span<std::byte> data) -> bool
             {
                 std::vector<mdns_record_variant> batch;
@@ -239,81 +259,6 @@ private:
                     });
 
                 bool relevant = std::any_of(batch.begin(), batch.end(),
-                                            [this](const mdns_record_variant &rec)
-                                            {
-                                                return std::visit([this](const auto &r)
-                                                {
-                                                    return r.name == m_service_type;
-                                                }, rec);
-                                            });
-
-                if(relevant)
-                {
-                    if(m_on_record)
-                    {
-                        for(const auto &rec : batch)
-                            m_on_record(sender, rec);
-                    }
-                    m_results.insert(m_results.end(),
-                                     std::make_move_iterator(batch.begin()),
-                                     std::make_move_iterator(batch.end()));
-                }
-                return relevant;
-            },
-            // on_silence: aggregate raw records into resolved_service values, fire handler
-            [this]()
-            {
-                m_browse_loop->stop();
-                m_services = mdnspp::aggregate(m_results);
-                if(auto h = std::exchange(m_on_browse_completion, nullptr); h)
-                    h(std::error_code{}, m_services);
-            });
-
-        m_browse_loop->start();
-    }
-
-    // Sets up m_service_type, sends DNS query, creates and starts recv_loop.
-    // Must only be called once per lifetime (m_loop must be null on entry).
-    void do_discover(std::string svc_type, response_mode mode = response_mode::multicast)
-    {
-        assert(this->m_loop == nullptr); // one discover per lifetime
-        m_results.clear();
-        m_service_type = std::move(svc_type);
-        // Strip trailing dot so the name matches read_dns_name output (no trailing dot)
-        if(!m_service_type.empty() && m_service_type.back() == '.')
-            m_service_type.pop_back();
-
-        // Build and send DNS PTR query (qtype = 12)
-        // Includes known answers (m_results) per RFC 6762 section 7.1
-        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr,
-                                                   std::span<const mdns_record_variant>(m_results), mode);
-        {
-            std::error_code ec;
-            this->m_socket.send(endpoint{"224.0.0.251", 5353},
-                          std::span<const std::byte>(query_bytes), ec);
-            if(ec && m_on_error) m_on_error(ec, "discover send");
-        }
-
-        this->m_loop = std::make_unique<recv_loop<P>>(
-            this->m_socket,
-            this->m_timer,
-            m_silence_timeout,
-            // on_packet: walk frame into temp, keep all records from packets
-            // that contain at least one record matching the queried service type.
-            // Returns true (reset timer) only for relevant packets.
-            [this](const endpoint &sender, std::span<std::byte> data) -> bool
-            {
-                std::vector<mdns_record_variant> batch;
-                detail::walk_dns_frame(
-                    std::span<const std::byte>(data.data(), data.size()),
-                    sender,
-                    [&batch](mdns_record_variant rec)
-                    {
-                        batch.push_back(std::move(rec));
-                    });
-
-                bool relevant = std::any_of(
-                    batch.begin(), batch.end(),
                     [this](const mdns_record_variant &rec)
                     {
                         return std::visit([this](const auto &r)
@@ -335,15 +280,9 @@ private:
                 }
                 return relevant;
             },
-            // on_silence: stop the loop and fire the completion handler with results
-            [this]()
-            {
-                this->m_loop->stop();
-                if(auto h = std::exchange(m_on_completion, nullptr); h)
-                    h(std::error_code{}, m_results);
-            });
+            std::move(on_silence_fn));
 
-        this->m_loop->start();
+        target_loop->start();
     }
 
     // Sets up the meta-query for DNS-SD service type enumeration (RFC 6763 section 9).

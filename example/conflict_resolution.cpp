@@ -1,6 +1,6 @@
 // Demonstrates service name conflict resolution using service_options::on_conflict.
-// When another device on the network claims the same name, the on_conflict callback
-// renames the service and retries probing up to 3 times.
+// Two servers with the same name are started simultaneously. When they detect
+// each other's probes, the on_conflict callback renames the service and retries.
 
 #include <mdnspp/defaults.h>
 
@@ -10,50 +10,65 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_info info{
-        .service_name = "MyApp._http._tcp.local.",
-        .service_type = "_http._tcp.local.",
-        .hostname     = "myhost.local.",
-        .port         = 8080,
-        .address_ipv4 = "192.168.1.69",
-        .address_ipv6 = {},
-        .txt_records  = {{"path", "/index.html"}},
-        .subtypes     = {},
-    };
-
-    mdnspp::service_options opts;
-    opts.on_conflict = [](const std::string &conflicting_name,
-                          std::string &new_name,
-                          unsigned attempt) -> bool
+    auto make_info = []()
     {
-        if(attempt >= 3)
-            return false; // give up after 3 retries
-
-        new_name = conflicting_name;
-        // Insert attempt number before the service type suffix
-        auto pos = new_name.find("._http");
-        if(pos != std::string::npos)
-            new_name.insert(pos, " (" + std::to_string(attempt + 1) + ")");
-
-        std::cout << "Conflict on \"" << conflicting_name
-                  << "\", retrying as \"" << new_name << "\"\n";
-        return true;
+        return mdnspp::service_info{
+            .service_name = "MyApp._http._tcp.local.",
+            .service_type = "_http._tcp.local.",
+            .hostname     = "myhost.local.",
+            .port         = 8080,
+            .address_ipv4 = "192.168.1.69",
+            .address_ipv6 = {},
+            .txt_records  = {{"path", "/spandex.html"}},
+            .subtypes     = {},
+        };
     };
 
-    mdnspp::service_server srv{ctx, std::move(info), std::move(opts)};
+    auto make_opts = [](const std::string &label)
+    {
+        mdnspp::service_options opts;
+        opts.on_conflict = [label](const std::string &conflicting_name,
+                                   std::string &new_name,
+                                   unsigned attempt) -> bool
+        {
+            if(attempt >= 3)
+                return false;
 
-    srv.async_start(
-        [](std::error_code ec)
+            new_name = conflicting_name;
+            auto pos = new_name.find("._http");
+            if(pos != std::string::npos)
+                new_name.insert(pos, " (" + std::to_string(attempt + 1) + ")");
+
+            std::cout << "[" << label << "] Conflict on \"" << conflicting_name
+                      << "\", retrying as \"" << new_name << "\"\n";
+            return true;
+        };
+        return opts;
+    };
+
+    mdnspp::socket_options sock_opts;
+    sock_opts.multicast_loopback = mdnspp::loopback_mode::enabled;
+
+    mdnspp::service_server srv_a{ctx, make_info(), make_opts("A"), sock_opts};
+    mdnspp::service_server srv_b{ctx, make_info(), make_opts("B"), sock_opts};
+
+    int ready_count = 0;
+    auto on_ready = [&](const std::string &label)
+    {
+        return [&, label](std::error_code ec)
         {
             if(ec)
-                std::cerr << "Server failed: " << ec.message() << "\n";
+                std::cerr << "[" << label << "] Failed: " << ec.message() << "\n";
             else
-                std::cout << "Service is live\n";
-        },
-        [&ctx](std::error_code)
-        {
-            ctx.stop();
-        });
+                std::cout << "[" << label << "] Service is live\n";
+
+            if(++ready_count == 2)
+                ctx.stop();
+        };
+    };
+
+    srv_a.async_start(on_ready("A"));
+    srv_b.async_start(on_ready("B"));
 
     ctx.run();
 }

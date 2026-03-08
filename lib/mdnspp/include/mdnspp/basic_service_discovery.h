@@ -318,8 +318,13 @@ private:
                         {
                             if(ptr->name == "_services._dns-sd._udp.local")
                             {
-                                m_enumerated_types.push_back(
-                                    parse_service_type(ptr->ptr_name));
+                                auto info = parse_service_type(ptr->ptr_name);
+                                bool dup = std::any_of(m_enumerated_types.begin(),
+                                    m_enumerated_types.end(),
+                                    [&](const service_type_info &t)
+                                    { return t.service_type == info.service_type; });
+                                if(!dup)
+                                    m_enumerated_types.push_back(std::move(info));
                                 found = true;
                             }
                         }

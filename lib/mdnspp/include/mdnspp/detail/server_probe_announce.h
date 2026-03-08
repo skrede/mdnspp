@@ -20,6 +20,7 @@ struct probe_announce_state
     unsigned probe_count{0};
     unsigned announce_count{0};
     unsigned conflict_attempt{0};
+    uint16_t probe_id{0}; // random ID written into our probe queries to filter loopback
 };
 
 inline bool should_send_probe(const probe_announce_state &s)

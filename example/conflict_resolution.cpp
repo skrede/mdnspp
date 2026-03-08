@@ -16,7 +16,9 @@ int main()
         .hostname     = "myhost.local.",
         .port         = 8080,
         .address_ipv4 = "192.168.1.69",
+        .address_ipv6 = {},
         .txt_records  = {{"path", "/index.html"}},
+        .subtypes     = {},
     };
 
     mdnspp::service_options opts;

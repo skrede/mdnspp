@@ -390,6 +390,45 @@ private:
         return conflict;
     }
 
+    void send_to(response_mode mode, const endpoint &sender,
+                  std::span<const std::byte> packet, std::string_view context)
+    {
+        std::error_code ec;
+        if(mode == response_mode::unicast)
+            this->m_socket.send(sender, packet, ec);
+        else
+            this->m_socket.send(endpoint{"224.0.0.251", 5353}, packet, ec);
+        if(ec && m_on_error) m_on_error(ec, context);
+    }
+
+    void schedule_multicast_response(const detail::query_match_result &qmr,
+                                     const detail::suppression_mask &suppression)
+    {
+        bool was_armed = m_pending.armed;
+        m_pending.merge(qmr.accumulated_qtype, qmr.needs_nsec, suppression);
+        if(was_armed)
+            return; // timer already running, merge is enough
+
+        // RFC 6762 section 6: random delay 20-120ms before responding via multicast
+        std::uniform_int_distribution dist(20, 120);
+        m_response_timer.expires_after(std::chrono::milliseconds(dist(m_rng)));
+        m_response_timer.async_wait([this](std::error_code ec)
+        {
+            if(ec || this->m_stopped.load(std::memory_order_acquire))
+                return;
+            if(m_pa_state.state != server_state::live)
+                return;
+
+            auto response = detail::build_response_with_nsec(m_info, m_pending.qtype,
+                                                             m_pending.needs_nsec,
+                                                             m_pending.suppression,
+                                                             m_opts.suppress_known_answers);
+            m_pending.reset();
+            if(!response.empty())
+                send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "response send");
+        });
+    }
+
     // Called by recv_loop on every incoming packet.
     void on_query(const endpoint &sender, std::span<std::byte> data)
     {
@@ -399,118 +438,58 @@ private:
         // During probing: check for conflicting responses
         if(m_pa_state.state == server_state::probing)
         {
-            if(data.size() >= 12)
+            if(data.size() >= 12 && (detail::read_u16_be(data.data() + 2) & 0x8000))
             {
-                uint16_t flags = detail::read_u16_be(data.data() + 2);
-                if(flags & 0x8000)
-                {
-                    if(response_conflicts(data))
-                        handle_conflict();
-                }
+                if(response_conflicts(data))
+                    handle_conflict();
             }
             return;
         }
 
-        // Drop queries during announcing
         if(m_pa_state.state != server_state::live)
             return;
 
         auto cdata = std::span<const std::byte>(data.data(), data.size());
-
-        // Match questions
         auto qmr = detail::match_queries(cdata, m_info, m_opts);
         if(!qmr.any_matched && !qmr.meta_matched && qmr.matched_subtype.empty())
             return;
 
-        // Known-answer suppression
         detail::suppression_mask suppression;
         if(m_opts.suppress_known_answers && qmr.any_matched)
             suppression = detail::parse_known_answers(cdata, qmr.offset_after_questions, m_info);
 
-        // Fire query callback
         if(m_opts.on_query && qmr.any_matched)
             m_opts.on_query(sender, qmr.accumulated_qtype, qmr.mode);
 
-        // Handle meta-query response
         if(qmr.meta_matched)
         {
-            auto meta_response = detail::build_meta_query_response(m_info);
-            std::error_code ec;
-            if(qmr.mode == response_mode::unicast)
-                this->m_socket.send(sender, std::span<const std::byte>(meta_response), ec);
-            else
-                this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(meta_response), ec);
-            if(ec && m_on_error) m_on_error(ec, "meta-query response send");
+            auto pkt = detail::build_meta_query_response(m_info);
+            send_to(qmr.mode, sender, std::span<const std::byte>(pkt), "meta-query response send");
         }
 
-        // Handle subtype PTR response
         if(!qmr.matched_subtype.empty())
         {
-            auto sub_response = detail::build_subtype_response(qmr.matched_subtype, m_info);
-            std::error_code ec;
-            if(qmr.mode == response_mode::unicast)
-                this->m_socket.send(sender, std::span<const std::byte>(sub_response), ec);
-            else
-                this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response), ec);
-            if(ec && m_on_error) m_on_error(ec, "subtype response send");
+            auto pkt = detail::build_subtype_response(qmr.matched_subtype, m_info);
+            send_to(qmr.mode, sender, std::span<const std::byte>(pkt), "subtype response send");
         }
 
         if(!qmr.any_matched)
             return;
 
-        // Check full suppression
         if(m_opts.suppress_known_answers && detail::all_suppressed(suppression, qmr.accumulated_qtype, m_info))
             return;
 
-        // Unicast: send immediately
         if(qmr.mode == response_mode::unicast)
         {
-            auto response = detail::build_response_with_nsec(m_info, qmr.accumulated_qtype,
-                                                             qmr.needs_nsec, suppression,
-                                                             m_opts.suppress_known_answers);
-            if(!response.empty())
-            {
-                std::error_code ec;
-                this->m_socket.send(sender, std::span<const std::byte>(response), ec);
-                if(ec && m_on_error) m_on_error(ec, "response send");
-            }
+            auto pkt = detail::build_response_with_nsec(m_info, qmr.accumulated_qtype,
+                                                        qmr.needs_nsec, suppression,
+                                                        m_opts.suppress_known_answers);
+            if(!pkt.empty())
+                send_to(response_mode::unicast, sender, std::span<const std::byte>(pkt), "response send");
             return;
         }
 
-        // Multicast with aggregation
-        if(!m_pending.armed)
-        {
-            m_pending.merge(qmr.accumulated_qtype, qmr.needs_nsec, suppression);
-
-            // RFC 6762 section 6: random delay 20-120ms before responding via multicast
-            std::uniform_int_distribution dist(20, 120);
-            m_response_timer.expires_after(std::chrono::milliseconds(dist(m_rng)));
-            m_response_timer.async_wait([this](std::error_code ec)
-            {
-                if(ec || this->m_stopped.load(std::memory_order_acquire))
-                    return;
-                if(m_pa_state.state != server_state::live)
-                    return;
-
-                auto response = detail::build_response_with_nsec(m_info, m_pending.qtype,
-                                                                 m_pending.needs_nsec,
-                                                                 m_pending.suppression,
-                                                                 m_opts.suppress_known_answers);
-                m_pending.reset();
-
-                if(!response.empty())
-                {
-                    std::error_code ec2;
-                    this->m_socket.send(endpoint{"224.0.0.251", 5353},
-                                  std::span<const std::byte>(response), ec2);
-                    if(ec2 && m_on_error) m_on_error(ec2, "response send");
-                }
-            });
-        }
-        else
-        {
-            m_pending.merge(qmr.accumulated_qtype, qmr.needs_nsec, suppression);
-        }
+        schedule_multicast_response(qmr, suppression);
     }
 
     // Sends an unsolicited announcement with all records (PTR, SRV, TXT, A/AAAA)
@@ -520,23 +499,15 @@ private:
     {
         auto response = detail::build_dns_response(m_info, dns_type::any);
         if(!response.empty())
-        {
-            std::error_code ec;
-            this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(response), ec);
-            if(ec && m_on_error) m_on_error(ec, "announcement send");
-        }
+            send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "announcement send");
 
         if(m_opts.announce_subtypes)
         {
             for(const auto &sub : m_info.subtypes)
             {
-                auto sub_response = detail::build_subtype_response(sub, m_info);
-                if(!sub_response.empty())
-                {
-                    std::error_code ec;
-                    this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response), ec);
-                    if(ec && m_on_error) m_on_error(ec, "announcement send");
-                }
+                auto pkt = detail::build_subtype_response(sub, m_info);
+                if(!pkt.empty())
+                    send_to(response_mode::multicast, {}, std::span<const std::byte>(pkt), "announcement send");
             }
         }
     }

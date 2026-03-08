@@ -15,7 +15,7 @@ int main()
 
     mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{
         io,
-        std::chrono::seconds(3),
+        std::chrono::seconds(3), {},
         [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&sender](const auto &r)

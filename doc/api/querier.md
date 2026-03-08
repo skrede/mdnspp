@@ -34,6 +34,7 @@ using socket_type        = typename P::socket_type;
 using timer_type         = typename P::timer_type;
 using record_callback    = std::move_only_function<void(const endpoint&, const mdns_record_variant&)>;
 using completion_handler = std::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
+using error_handler     = detail::move_only_function<void(std::error_code, std::string_view)>;
 ```
 
 ## Constructors
@@ -43,43 +44,25 @@ using completion_handler = std::move_only_function<void(std::error_code, std::ve
 ```cpp
 explicit basic_querier(executor_type ex,
                        std::chrono::milliseconds silence_timeout,
+                       socket_options opts = {},
                        record_callback on_record = {});
 ```
 
-Constructs the querier from an executor, a silence timeout, and an optional per-record callback. The `silence_timeout` determines how long to wait after the last relevant packet before completing. Throws on socket construction failure.
+Constructs the querier from an executor, a silence timeout, optional socket options, and an optional per-record callback. The `silence_timeout` determines how long to wait after the last relevant packet before completing. The `opts` parameter controls network interface selection, multicast TTL, and loopback (see [Socket Options](../socket-options.md)). Throws on socket construction failure.
+
+Note: `socket_options` sits between the silence timeout and the callback. To pass a callback without custom socket options, use `q{ex, timeout, {}, callback}`.
 
 ### Non-throwing
 
 ```cpp
 basic_querier(executor_type ex,
               std::chrono::milliseconds silence_timeout,
+              socket_options opts,
               record_callback on_record,
               std::error_code& ec);
-
-basic_querier(executor_type ex,
-              std::chrono::milliseconds silence_timeout,
-              std::error_code& ec);
 ```
 
-Same as the throwing constructor, but sets `ec` instead of throwing on failure.
-
-### With socket_options
-
-```cpp
-explicit basic_querier(executor_type ex, const socket_options& opts,
-                       std::chrono::milliseconds silence_timeout,
-                       record_callback on_record = {});
-
-basic_querier(executor_type ex, const socket_options& opts,
-              std::chrono::milliseconds silence_timeout,
-              record_callback on_record, std::error_code& ec);
-
-basic_querier(executor_type ex, const socket_options& opts,
-              std::chrono::milliseconds silence_timeout,
-              std::error_code& ec);
-```
-
-Same as the corresponding constructors above, but passes `opts` to the underlying socket for network interface selection, multicast TTL, and loopback control. The `opts` parameter is always second, before `silence_timeout`. See [Socket Options](../socket-options.md).
+Same as the throwing constructor, but sets `ec` instead of throwing on failure. All parameters must be provided explicitly (no defaults).
 
 ## Methods
 
@@ -113,6 +96,14 @@ void stop();
 ```
 
 Cancels the delay timer and stops the receive loop. Fires the completion handler with the results accumulated so far.
+
+### on_error
+
+```cpp
+void on_error(error_handler handler);
+```
+
+Sets a handler invoked when a fire-and-forget send operation fails. The handler receives the error code and a context string identifying the send site (e.g. `"query send"`). Without a handler, send errors are silently ignored.
 
 ### results
 
@@ -179,7 +170,7 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::querier q{ctx, std::chrono::seconds(3),
+    mdnspp::querier q{ctx, std::chrono::seconds(3), {},
         [](const mdnspp::endpoint& sender, const mdnspp::mdns_record_variant& rec)
         {
             std::visit([&](const auto& r) {

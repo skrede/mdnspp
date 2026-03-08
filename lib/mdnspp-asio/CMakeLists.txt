@@ -22,7 +22,10 @@ target_compile_options(mdnspp_asio INTERFACE
 )
 
 target_link_libraries(mdnspp_asio INTERFACE mdnspp::mdnspp)
-target_compile_definitions(mdnspp_asio INTERFACE MDNSPP_ENABLE_ASIO_POLICY)
+target_compile_definitions(mdnspp_asio INTERFACE
+    MDNSPP_ENABLE_ASIO_POLICY
+    $<$<PLATFORM_ID:Windows>:_WIN32_WINNT=0x0601>
+)
 
 install(FILES
     ${INCLUDE_DIRECTORY}/mdnspp/asio.h

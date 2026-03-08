@@ -563,7 +563,7 @@ SCENARIO("service_server non-throwing constructor sets ec on success", "[service
 
         WHEN("basic_service_server<MockPolicy> is constructed with the ec overload")
         {
-            basic_service_server<MockPolicy> server{ex, make_test_info(), ec};
+            basic_service_server<MockPolicy> server{ex, make_test_info(), {}, {}, ec};
 
             THEN("ec is clear and the server is usable")
             {
@@ -767,7 +767,7 @@ SCENARIO("basic_service_server with socket_options", "[service_server][socket_op
 
         WHEN("basic_service_server<MockPolicy> is constructed with socket_options")
         {
-            basic_service_server<MockPolicy> server{ex, opts, make_test_info()};
+            basic_service_server<MockPolicy> server{ex, make_test_info(), {}, opts};
 
             THEN("the socket stores the options")
             {
@@ -1186,7 +1186,7 @@ SCENARIO("constructor with socket_options and service_options", "[service_server
 
         WHEN("server is constructed with both option types")
         {
-            basic_service_server<MockPolicy> server{ex, sock_opts, make_test_info(), service_options{.announce_count = 3}};
+            basic_service_server<MockPolicy> server{ex, make_test_info(), service_options{.announce_count = 3}, sock_opts};
 
             THEN("the server is constructed successfully")
             {
@@ -1900,7 +1900,7 @@ static std::vector<std::byte> make_query_with_known_answer(
 
     // Answer section
     auto encoded_answer = encode_dns_name(answer_name);
-    response_detail::append_dns_rr(packet, encoded_answer, answer_rtype, answer_ttl, answer_rdata, false);
+    append_dns_rr(packet, encoded_answer, answer_rtype, answer_ttl, answer_rdata, false);
 
     return packet;
 }

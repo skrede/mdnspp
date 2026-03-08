@@ -439,7 +439,7 @@ SCENARIO("querier non-throwing constructor sets ec on success", "[querier][creat
 
         WHEN("basic_querier<MockPolicy> is constructed with the ec overload")
         {
-            basic_querier<MockPolicy> q{ex, 500ms, ec};
+            basic_querier<MockPolicy> q{ex, 500ms, {}, {}, ec};
 
             THEN("ec is clear and the querier is usable")
             {
@@ -499,11 +499,11 @@ SCENARIO("basic_querier with socket_options", "[querier][socket_options]")
     GIVEN("a socket_options with multicast_ttl = 100")
     {
         mock_executor ex;
-        socket_options opts{.multicast_ttl = 100};
+        socket_options opts{.multicast_ttl = uint8_t{100}};
 
         WHEN("basic_querier<MockPolicy> is constructed with socket_options")
         {
-            basic_querier<MockPolicy> q{ex, opts, 500ms};
+            basic_querier<MockPolicy> q{ex, 500ms, opts};
 
             THEN("the socket stores the options with ttl = 100")
             {

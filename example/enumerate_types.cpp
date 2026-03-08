@@ -2,7 +2,7 @@
 // enumeration (RFC 6763 section 9). Queries _services._dns-sd._udp.local. and
 // prints each discovered type's components.
 
-#include "mdnspp/defaults.h"
+#include <mdnspp/defaults.h>
 
 #include <iostream>
 

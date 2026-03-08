@@ -80,7 +80,7 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::observer obs{ctx,
+    mdnspp::observer obs{ctx, {},
         [&](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&](const auto &r) {
@@ -106,7 +106,7 @@ mdnspp::context ctx;
 
 mdnspp::service_server http_srv{ctx, http_info};
 mdnspp::service_server ssh_srv{ctx, ssh_info};
-mdnspp::observer       obs{ctx, on_record};
+mdnspp::observer       obs{ctx, {}, on_record};
 
 http_srv.async_start();
 ssh_srv.async_start();

@@ -3,8 +3,6 @@
 // Auto-stops after 30 seconds.
 
 #include <mdnspp/defaults.h>
-#include <mdnspp/service_info.h>
-#include <mdnspp/detail/dns_enums.h>
 
 #include <iostream>
 #include <thread>
@@ -21,6 +19,7 @@ int main()
         .address_ipv4 = "192.168.1.69",
         .address_ipv6 = {},
         .txt_records  = {{"path", "/index.html"}},
+        .subtypes     = {},
     };
 
     mdnspp::service_info ssh_info{
@@ -31,6 +30,7 @@ int main()
         .address_ipv4 = "192.168.1.69",
         .address_ipv6 = {},
         .txt_records  = {},
+        .subtypes     = {},
     };
 
     mdnspp::service_server http_srv{

@@ -51,11 +51,11 @@ SCENARIO("service_server stop() from separate thread is data-race-free", "[servi
             {
                 std::this_thread::sleep_for(std::chrono::milliseconds(50));
                 server->stop();
-                server.reset();
 
                 THEN("the io_context thread joins cleanly with no crash or hang")
                 {
                     io_thread.join();
+                    server.reset();
                     // Reaching here without TSan error = pass.
                     // When compiled with -fsanitize=thread, any data race in stop()
                     // causes a non-zero exit and test failure before this line.
@@ -101,12 +101,13 @@ SCENARIO("concurrent update_service_info is TSan-clean", "[service_server][tsan]
 
             // Run io_context on main thread with a deadline timer to stop after 200ms
             asio::steady_timer deadline(io, std::chrono::milliseconds(200));
-            deadline.async_wait([&server](std::error_code) { server->stop(); server.reset(); });
+            deadline.async_wait([&server](std::error_code) { server->stop(); });
             io.run();
 
             THEN("the background thread joins cleanly with no data race")
             {
                 update_thread.join();
+                server.reset();
                 // Reaching here without TSan error = pass.
                 REQUIRE(true);
             }
@@ -144,8 +145,8 @@ SCENARIO("service_server double stop is safe under concurrency", "[service_serve
             THEN("both threads join cleanly and no TSan race is reported")
             {
                 stop_thread.join();
-                server.reset();
                 io_thread.join();
+                server.reset();
                 // Double-stop under concurrency without TSan race = pass.
                 // The atomic<bool> m_stopped flag must protect all shared state.
                 REQUIRE(true);

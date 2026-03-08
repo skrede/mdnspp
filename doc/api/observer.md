@@ -32,6 +32,7 @@ using socket_type        = typename P::socket_type;
 using timer_type         = typename P::timer_type;
 using record_callback    = std::move_only_function<void(const endpoint&, const mdns_record_variant&)>;
 using completion_handler = std::move_only_function<void(std::error_code)>;
+using error_handler     = detail::move_only_function<void(std::error_code, std::string_view)>;
 ```
 
 ## Constructors
@@ -39,30 +40,22 @@ using completion_handler = std::move_only_function<void(std::error_code)>;
 ### Throwing
 
 ```cpp
-explicit basic_observer(executor_type ex, record_callback on_record = {});
+explicit basic_observer(executor_type ex, socket_options opts = {},
+                        record_callback on_record = {});
 ```
 
-Constructs the observer from an executor (or context). Throws on socket construction failure (e.g. bind error). The `on_record` callback is invoked once per parsed DNS record with the record variant and the sender endpoint.
+Constructs the observer from an executor (or context). The `opts` parameter controls network interface selection, multicast TTL, and loopback (see [Socket Options](../socket-options.md)). Throws on socket construction failure (e.g. bind error). The `on_record` callback is invoked once per parsed DNS record with the record variant and the sender endpoint.
+
+Note: `socket_options` sits between the executor and the callback. To pass a callback without custom socket options, use `obs{ex, {}, callback}`.
 
 ### Non-throwing
 
 ```cpp
-basic_observer(executor_type ex, record_callback on_record, std::error_code& ec);
-```
-
-Same as the throwing constructor, but sets `ec` instead of throwing on failure. The `ec` parameter is last, following ASIO convention.
-
-### With socket_options
-
-```cpp
-explicit basic_observer(executor_type ex, const socket_options& opts,
-                        record_callback on_record = {});
-
-basic_observer(executor_type ex, const socket_options& opts,
+basic_observer(executor_type ex, socket_options opts,
                record_callback on_record, std::error_code& ec);
 ```
 
-Same as the corresponding constructors above, but passes `opts` to the underlying socket for network interface selection, multicast TTL, and loopback control. See [Socket Options](../socket-options.md).
+Same as the throwing constructor, but sets `ec` instead of throwing on failure. All parameters must be provided explicitly (no defaults).
 
 ## Methods
 
@@ -83,6 +76,14 @@ void stop();
 ```
 
 Idempotent. Fires the completion handler with a default-constructed `std::error_code`, then sets the internal stop flag. The receive loop remains alive until the destructor runs, ensuring in-progress callbacks complete safely.
+
+### on_error
+
+```cpp
+void on_error(error_handler handler);
+```
+
+Sets a handler invoked when a fire-and-forget send operation fails. The handler receives the error code and a context string identifying the send site. Without a handler, send errors are silently ignored.
 
 ### Accessors
 
@@ -136,7 +137,7 @@ int main()
     mdnspp::context ctx;
     int count = 0;
 
-    mdnspp::observer obs{ctx,
+    mdnspp::observer obs{ctx, {},
         [&](const mdnspp::endpoint& sender, const mdnspp::mdns_record_variant& rec)
         {
             std::visit([&](const auto& r) {

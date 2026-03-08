@@ -141,7 +141,7 @@ SCENARIO("observer delivers DNS records from a single packet to the callback", "
         std::vector<endpoint> received_senders;
 
         basic_observer<MockPolicy> obs{
-            ex,
+            ex, {},
             [&](const endpoint &ep, const mdns_record_variant &rec)
             {
                 received_records.push_back(rec);
@@ -182,7 +182,7 @@ SCENARIO("observer delivers records from multiple packets", "[observer][multiple
         std::vector<mdns_record_variant> received_records;
 
         basic_observer<MockPolicy> obs{
-            ex,
+            ex, {},
             [&](const endpoint &, const mdns_record_variant &rec)
             {
                 received_records.push_back(rec);
@@ -213,7 +213,7 @@ SCENARIO("async_observe fires completion callback on stop", "[observer][async]")
         mock_executor ex;
 
         basic_observer<MockPolicy> obs{
-            ex,
+            ex, {},
             [](const endpoint &, const mdns_record_variant &)
             {
             }
@@ -252,7 +252,7 @@ SCENARIO("stop() is idempotent — second call is a no-op", "[observer][stop-ide
         mock_executor ex;
 
         basic_observer<MockPolicy> obs{
-            ex,
+            ex, {},
             [](const endpoint &, const mdns_record_variant &)
             {
             }
@@ -279,7 +279,7 @@ SCENARIO("async_observe completion handler fires exactly once on double stop", "
         int completion_count = 0;
 
         basic_observer<MockPolicy> obs{
-            ex,
+            ex, {},
             [](const endpoint &, const mdns_record_variant &)
             {
             }
@@ -308,7 +308,7 @@ SCENARIO("observer can be created, started, and stopped without any packet deliv
         int callback_count = 0;
 
         basic_observer<MockPolicy> obs{
-            ex,
+            ex, {},
             [&](const endpoint &, const mdns_record_variant &) { ++callback_count; }
         };
 
@@ -335,11 +335,11 @@ SCENARIO("stop() called from within the record callback does not deadlock", "[ob
         int callback_count = 0;
 
         basic_observer<MockPolicy> obs{
-            ex,
+            ex, {},
             [&](const endpoint &, const mdns_record_variant &)
             {
                 ++callback_count;
-                // Call stop() from within the callback — must not deadlock
+                // Call stop() from within the callback -- must not deadlock
                 if(obs_ptr)
                     obs_ptr->stop();
             }
@@ -370,7 +370,7 @@ SCENARIO("observer non-throwing constructor sets ec on success", "[observer][cre
         WHEN("basic_observer<MockPolicy> is constructed with the ec overload")
         {
             basic_observer<MockPolicy> obs{
-                ex,
+                ex, {},
                 [](const endpoint &, const mdns_record_variant &)
                 {
                 },
@@ -392,7 +392,7 @@ SCENARIO("observer is move-constructible before async_observe", "[observer][move
     {
         mock_executor ex;
         basic_observer<MockPolicy> obs{
-            ex,
+            ex, {},
             [](const endpoint &, const mdns_record_variant &)
             {
             }
@@ -422,7 +422,7 @@ SCENARIO("observer skips malformed packets without crashing", "[observer][malfor
         int callback_count = 0;
 
         basic_observer<MockPolicy> obs{
-            ex,
+            ex, {},
             [&](const endpoint &, const mdns_record_variant &) { ++callback_count; }
         };
         obs.socket().enqueue(malformed);
@@ -443,7 +443,7 @@ SCENARIO("basic_observer with socket_options", "[observer][socket_options]")
     GIVEN("a socket_options with a specific interface address")
     {
         mock_executor ex;
-        socket_options opts{.interface_address = "10.0.0.1", .multicast_ttl = 64};
+        socket_options opts{.interface_address = "10.0.0.1", .multicast_ttl = uint8_t{64}};
 
         WHEN("basic_observer<MockPolicy> is constructed with socket_options")
         {

@@ -11,7 +11,7 @@ int main()
 
     mdnspp::service_discovery sd{
         ctx,
-        std::chrono::seconds(3),
+        std::chrono::seconds(3), {},
         [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&](const auto &r)

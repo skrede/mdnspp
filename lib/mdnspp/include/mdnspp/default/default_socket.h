@@ -87,11 +87,7 @@ public:
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_port = htons(dest.port);
-#ifdef _WIN32
-        addr.sin_addr.s_addr = ::inet_addr(dest.address.c_str());
-#else
         ::inet_pton(AF_INET, dest.address.c_str(), &addr.sin_addr);
-#endif
 
 #ifdef _WIN32
         (void)::sendto(
@@ -118,11 +114,7 @@ public:
         sockaddr_in addr{};
         addr.sin_family = AF_INET;
         addr.sin_port = htons(dest.port);
-#ifdef _WIN32
-        addr.sin_addr.s_addr = ::inet_addr(dest.address.c_str());
-#else
         ::inet_pton(AF_INET, dest.address.c_str(), &addr.sin_addr);
-#endif
 
 #ifdef _WIN32
         auto result = ::sendto(
@@ -385,7 +377,7 @@ private:
     void join_multicast_or_throw()
     {
         ip_mreq mreq{};
-        mreq.imr_multiaddr.s_addr = ::inet_addr("224.0.0.251");
+        ::inet_pton(AF_INET, "224.0.0.251", &mreq.imr_multiaddr);
         mreq.imr_interface.s_addr = htonl(INADDR_ANY);
 
 #ifdef _WIN32
@@ -410,7 +402,7 @@ private:
     void join_multicast(std::error_code &ec)
     {
         ip_mreq mreq{};
-        mreq.imr_multiaddr.s_addr = ::inet_addr("224.0.0.251");
+        ::inet_pton(AF_INET, "224.0.0.251", &mreq.imr_multiaddr);
         mreq.imr_interface.s_addr = htonl(INADDR_ANY);
 
 #ifdef _WIN32
@@ -534,7 +526,7 @@ private:
         // 8. IP_ADD_MEMBERSHIP (same iface_addr — no split-brain)
         {
             ip_mreq mreq{};
-            mreq.imr_multiaddr.s_addr = ::inet_addr("224.0.0.251");
+            ::inet_pton(AF_INET, "224.0.0.251", &mreq.imr_multiaddr);
             mreq.imr_interface = iface_addr;
 
 #ifdef _WIN32
@@ -720,7 +712,7 @@ private:
         // 8. IP_ADD_MEMBERSHIP (same iface_addr — no split-brain)
         {
             ip_mreq mreq{};
-            mreq.imr_multiaddr.s_addr = ::inet_addr("224.0.0.251");
+            ::inet_pton(AF_INET, "224.0.0.251", &mreq.imr_multiaddr);
             mreq.imr_interface = iface_addr;
 
 #ifdef _WIN32

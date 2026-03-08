@@ -3,9 +3,8 @@
 // Usage: ./mdnspp_example_asio_serve
 
 #include <mdnspp/asio.h>
-#include <mdnspp/basic_service_server.h>
 #include <mdnspp/service_info.h>
-#include <mdnspp/detail/dns_enums.h>
+#include <mdnspp/basic_service_server.h>
 
 #include <iostream>
 
@@ -21,6 +20,7 @@ int main()
         .address_ipv4 = "192.168.1.69",
         .address_ipv6 = {},
         .txt_records  = {{"path", "/index.html"}},
+        .subtypes     = {},
     };
 
     mdnspp::basic_service_server<mdnspp::AsioPolicy> srv{

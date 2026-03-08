@@ -157,7 +157,7 @@ int main()
         .address_ipv4 = it->ipv4_address,
     };
 
-    mdnspp::service_server srv{ctx, opts, std::move(info)};
+    mdnspp::service_server srv{ctx, std::move(info), {}, opts};
     srv.async_start();
     ctx.run();
 }
@@ -184,7 +184,7 @@ mdnspp::context ctx;
 mdnspp::socket_options opts{.interface_address = "192.168.1.10"};
 
 mdnspp::observer obs{ctx, opts, on_record};
-mdnspp::querier  q{ctx, opts, std::chrono::seconds(3)};
+mdnspp::querier  q{ctx, std::chrono::seconds(3), opts};
 ```
 
 ### Using socket_options with AsioPolicy

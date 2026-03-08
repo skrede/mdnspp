@@ -1,7 +1,6 @@
 #ifndef HPP_GUARD_MDNSPP_BASIC_SERVICE_SERVER_H
 #define HPP_GUARD_MDNSPP_BASIC_SERVICE_SERVER_H
 
-#include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/mdns_error.h"
@@ -12,20 +11,22 @@
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/detail/dns_enums.h"
-#include "mdnspp/detail/recv_loop.h"
+#include "mdnspp/detail/basic_mdns_peer_base.h"
+#include "mdnspp/detail/server_query_match.h"
+#include "mdnspp/detail/server_known_answer.h"
+#include "mdnspp/detail/server_probe_announce.h"
+#include "mdnspp/detail/server_response_aggregation.h"
 
-#include <algorithm>
+#include <span>
+#include <string>
 #include <memory>
 #include <random>
 #include <chrono>
-#include <atomic>
-#include <span>
-#include <string>
 #include <cstdint>
 #include <cassert>
-#include <system_error>
-#include <string_view>
 #include <utility>
+#include <string_view>
+#include <system_error>
 
 namespace mdnspp {
 
@@ -35,7 +36,7 @@ namespace mdnspp {
 //   P -- Policy: provides executor_type, socket_type, timer_type
 //
 // Lifecycle:
-//   1. Construct with (ex, info, opts) or (ex, sock_opts, info, opts)
+//   1. Construct with (ex, info, opts, sock_opts) or non-throwing overload
 //   2. async_start(on_ready, on_done) -- begins probe -> announce -> live sequence
 //      on_ready fires with error_code{} when live, or probe_conflict on conflict
 //      on_done fires with error_code{} when stop() is called
@@ -44,12 +45,16 @@ namespace mdnspp {
 //   4. ~basic_service_server() -- calls stop() for RAII safety
 
 template <Policy P>
-class basic_service_server
+class basic_service_server : detail::basic_mdns_peer_base<P>
 {
+    using base = detail::basic_mdns_peer_base<P>;
+    using server_state = detail::server_state;
+
 public:
-    using executor_type = typename P::executor_type;
-    using socket_type = typename P::socket_type;
-    using timer_type = typename P::timer_type;
+    using typename base::executor_type;
+    using typename base::socket_type;
+    using typename base::timer_type;
+    using base::socket;
 
     /// Optional callback invoked when an incoming query is received and parsed.
     /// Parameters: sender endpoint, qtype requested, response mode (unicast or multicast).
@@ -70,158 +75,76 @@ public:
     // Movable only before async_start() is called (m_loop must be null).
     // Moving a started server is a logic error.
     basic_service_server(basic_service_server &&other) noexcept
-        : m_alive(std::move(other.m_alive))
-        , m_executor(other.m_executor)
-        , m_socket(std::move(other.m_socket))
+        : base(std::move(other))
         , m_response_timer(std::move(other.m_response_timer))
-        , m_recv_timer(std::move(other.m_recv_timer))
         , m_info(std::move(other.m_info))
         , m_opts(std::move(other.m_opts))
         , m_on_ready(std::move(other.m_on_ready))
         , m_on_completion(std::move(other.m_on_completion))
+        , m_on_error(std::move(other.m_on_error))
         , m_rng(std::move(other.m_rng))
-        , m_loop(std::move(other.m_loop))
-        , m_state(other.m_state)
-        , m_probe_count(other.m_probe_count)
-        , m_announce_count(other.m_announce_count)
-        , m_conflict_attempt(other.m_conflict_attempt)
-        , m_pending_armed(other.m_pending_armed)
-        , m_pending_qtype(other.m_pending_qtype)
-        , m_pending_needs_nsec(other.m_pending_needs_nsec)
-        , m_pending_suppress_ptr(other.m_pending_suppress_ptr)
-        , m_pending_suppress_srv(other.m_pending_suppress_srv)
-        , m_pending_suppress_a(other.m_pending_suppress_a)
-        , m_pending_suppress_aaaa(other.m_pending_suppress_aaaa)
-        , m_pending_suppress_txt(other.m_pending_suppress_txt)
-        , m_stopped(other.m_stopped.load(std::memory_order_acquire))
+        , m_pa_state(other.m_pa_state)
+        , m_pending(other.m_pending)
     {
-        // Source must not have been started -- loop must be null
-        assert(other.m_loop == nullptr);
-        other.m_stopped.store(true, std::memory_order_release);
     }
 
     basic_service_server &operator=(basic_service_server &&other) noexcept
     {
         if(this == &other)
             return *this;
-        assert(m_loop == nullptr);       // this server must not be started
+        assert(this->m_loop == nullptr);       // this server must not be started
         assert(other.m_loop == nullptr); // source must not be started
-        m_alive = std::move(other.m_alive);
-        m_executor = other.m_executor;
-        m_socket = std::move(other.m_socket);
+        // Move base members via a placement trick is not possible with private
+        // inheritance, so we move each accessible member individually.
+        this->m_alive = std::move(other.m_alive);
+        this->m_executor = other.m_executor;
+        this->m_socket = std::move(other.m_socket);
+        this->m_timer = std::move(other.m_timer);
+        this->m_loop = std::move(other.m_loop);
+        this->m_stopped.store(other.m_stopped.load(std::memory_order_acquire),
+                              std::memory_order_release);
+        other.m_stopped.store(true, std::memory_order_release);
         m_response_timer = std::move(other.m_response_timer);
-        m_recv_timer = std::move(other.m_recv_timer);
         m_info = std::move(other.m_info);
         m_opts = std::move(other.m_opts);
         m_on_ready = std::move(other.m_on_ready);
         m_on_completion = std::move(other.m_on_completion);
+        m_on_error = std::move(other.m_on_error);
         m_rng = std::move(other.m_rng);
-        m_loop = std::move(other.m_loop);
-        m_state = other.m_state;
-        m_probe_count = other.m_probe_count;
-        m_announce_count = other.m_announce_count;
-        m_conflict_attempt = other.m_conflict_attempt;
-        m_pending_armed = other.m_pending_armed;
-        m_pending_qtype = other.m_pending_qtype;
-        m_pending_needs_nsec = other.m_pending_needs_nsec;
-        m_pending_suppress_ptr = other.m_pending_suppress_ptr;
-        m_pending_suppress_srv = other.m_pending_suppress_srv;
-        m_pending_suppress_a = other.m_pending_suppress_a;
-        m_pending_suppress_aaaa = other.m_pending_suppress_aaaa;
-        m_pending_suppress_txt = other.m_pending_suppress_txt;
-        m_stopped.store(other.m_stopped.load(std::memory_order_acquire),
-                        std::memory_order_release);
-        other.m_stopped.store(true, std::memory_order_release);
+        m_pa_state = other.m_pa_state;
+        m_pending = other.m_pending;
         return *this;
     }
 
     ~basic_service_server()
     {
-        m_alive.reset(); // invalidate sentinel first
-        stop();          // then stop (discards pending work via event loop)
+        this->m_alive.reset(); // invalidate sentinel first
+        if(this->m_loop)
+            this->m_loop->stop(); // synchronously close socket/timer before members die
+        stop();                   // then stop (posts teardown; guard will fail safely)
     }
 
-    // Throwing constructors
+    // Throwing constructor
     explicit basic_service_server(executor_type ex, service_info info,
-                                  service_options opts = {})
-        : m_executor(ex)
-        , m_socket(ex)
+                                  service_options opts = {},
+                                  socket_options sock_opts = {})
+        : base(ex, sock_opts)
         , m_response_timer(ex)
-        , m_recv_timer(ex)
         , m_info(std::move(info))
         , m_opts(std::move(opts))
         , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
     {
     }
 
-    explicit basic_service_server(executor_type ex, const socket_options &sock_opts,
-                                  service_info info, service_options opts = {})
-        : m_executor(ex)
-        , m_socket(ex, sock_opts)
-        , m_response_timer(ex)
-        , m_recv_timer(ex)
-        , m_info(std::move(info))
-        , m_opts(std::move(opts))
-        , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
-    {
-    }
-
-    // Non-throwing constructors
-    basic_service_server(executor_type ex, service_info info, std::error_code &ec)
-        : m_executor(ex)
-        , m_socket(ex, ec)
-        , m_response_timer(ex)
-        , m_recv_timer(ex)
-        , m_info(std::move(info))
-        , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
-    {
-    }
-
+    // Non-throwing constructor
     basic_service_server(executor_type ex, service_info info,
-                         service_options opts, std::error_code &ec)
-        : m_executor(ex)
-        , m_socket(ex, ec)
-        , m_response_timer(ex)
-        , m_recv_timer(ex)
-        , m_info(std::move(info))
-        , m_opts(std::move(opts))
-        , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
-    {
-    }
-
-    basic_service_server(executor_type ex, const socket_options &sock_opts,
-                         service_info info, std::error_code &ec)
-        : m_executor(ex)
-        , m_socket(ex, sock_opts, ec)
-        , m_response_timer(ex)
-        , m_recv_timer(ex)
-        , m_info(std::move(info))
-        , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
-    {
-    }
-
-    basic_service_server(executor_type ex, const socket_options &sock_opts,
-                         service_info info, service_options opts,
+                         service_options opts, socket_options sock_opts,
                          std::error_code &ec)
-        : m_executor(ex)
-        , m_socket(ex, sock_opts, ec)
+        : base(ex, sock_opts, ec)
         , m_response_timer(ex)
-        , m_recv_timer(ex)
         , m_info(std::move(info))
         , m_opts(std::move(opts))
         , m_rng(std::random_device{}())
-        , m_loop(nullptr)
-        , m_stopped(false)
     {
     }
 
@@ -231,7 +154,7 @@ public:
     // Must only be called once; calling async_start() twice is a logic error.
     void async_start(completion_handler on_ready = {}, completion_handler on_done = {})
     {
-        assert(m_state == server_state::idle);
+        assert(m_pa_state.state == server_state::idle);
         if(on_ready)
             m_on_ready = std::move(on_ready);
         if(on_done)
@@ -250,38 +173,38 @@ public:
     // goodbye must complete before that invalidation.
     void stop()
     {
-        if(m_stopped.exchange(true, std::memory_order_acq_rel))
+        if(this->m_stopped.exchange(true, std::memory_order_acq_rel))
             return;
 
         // Best-effort goodbye on caller thread -- non-throwing via ec overload.
         if(m_opts.send_goodbye &&
-           (m_state == server_state::live || m_state == server_state::announcing))
+           (m_pa_state.state == server_state::live || m_pa_state.state == server_state::announcing))
         {
             std::error_code ec;
             auto goodbye = detail::build_dns_response(m_info, dns_type::any, 0);
             if(!goodbye.empty())
-                m_socket.send(endpoint{"224.0.0.251", 5353},
+                this->m_socket.send(endpoint{"224.0.0.251", 5353},
                               std::as_bytes(std::span(goodbye)), ec);
             if(ec && m_on_error) m_on_error(ec, "goodbye send");
         }
 
-        auto guard = std::weak_ptr<bool>(m_alive);
-        P::post(m_executor, [this, guard]()
+        auto guard = std::weak_ptr<bool>(this->m_alive);
+        P::post(this->m_executor, [this, guard]()
         {
             if(!guard.lock()) return;
 
-            if(m_state == server_state::probing || m_state == server_state::announcing)
+            if(m_pa_state.state == server_state::probing || m_pa_state.state == server_state::announcing)
             {
                 if(auto h = std::exchange(m_on_ready, nullptr); h)
                     h(std::make_error_code(std::errc::operation_canceled));
             }
 
-            m_state = server_state::stopped;
-            m_pending_armed = false;
+            m_pa_state.state = server_state::stopped;
+            m_pending.armed = false;
             m_response_timer.cancel();
 
-            if(m_loop)
-                m_loop->stop();
+            if(this->m_loop)
+                this->m_loop->stop();
 
             if(auto h = std::exchange(m_on_completion, nullptr); h)
                 h(std::error_code{});
@@ -295,34 +218,33 @@ public:
     // Thread-safe: may be called from any thread.
     void update_service_info(service_info new_info)
     {
-        assert(!m_stopped.load(std::memory_order_acquire)); // must be running
-        auto guard = std::weak_ptr<bool>(m_alive);
-        P::post(m_executor, [this, guard, info = std::move(new_info)]() mutable
+        assert(!this->m_stopped.load(std::memory_order_acquire)); // must be running
+        auto guard = std::weak_ptr<bool>(this->m_alive);
+        P::post(this->m_executor, [this, guard, info = std::move(new_info)]() mutable
         {
             if(!guard.lock()) return;
-            if(m_stopped.load(std::memory_order_acquire)) return;
+            if(this->m_stopped.load(std::memory_order_acquire)) return;
             m_info = std::move(info);
-            m_announce_count = 0;
+            m_pa_state.announce_count = 0;
             send_update_announce();
         });
     }
 
-    const socket_type &socket() const noexcept { return m_socket; }
-    socket_type &socket() noexcept { return m_socket; }
+    // Server-specific timer accessors:
+    // timer() returns the response timer (used for probing/announcing/response delays)
+    // recv_timer() returns the base timer (used by recv_loop)
     const timer_type &timer() const noexcept { return m_response_timer; }
     timer_type &timer() noexcept { return m_response_timer; }
-    const timer_type &recv_timer() const noexcept { return m_recv_timer; }
-    timer_type &recv_timer() noexcept { return m_recv_timer; }
+    const timer_type &recv_timer() const noexcept { return base::timer(); }
+    timer_type &recv_timer() noexcept { return base::timer(); }
 
 private:
-    enum class server_state : uint8_t { idle, probing, announcing, live, stopped };
-
     // Common start body -- creates recv_loop and begins probing.
     void do_start()
     {
-        m_loop = std::make_unique<recv_loop<P>>(
-            m_socket,
-            m_recv_timer,
+        this->m_loop = std::make_unique<recv_loop<P>>(
+            this->m_socket,
+            this->m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
             [this](const endpoint &sender, std::span<std::byte> data) -> bool
             {
@@ -335,99 +257,80 @@ private:
             });
 
         start_probing();
-        m_loop->start();
+        this->m_loop->start();
     }
 
-    // Begins the probing sequence: random delay 0-250ms, then 3 probes at 250ms intervals.
     void start_probing()
     {
-        m_state = server_state::probing;
-        m_probe_count = 0;
+        detail::begin_probing(m_pa_state);
 
         // Random delay 0-250ms before first probe (RFC 6762 section 8.1)
         std::uniform_int_distribution dist(0, 250);
         m_response_timer.expires_after(std::chrono::milliseconds(dist(m_rng)));
         m_response_timer.async_wait([this](std::error_code ec)
         {
-            if(ec || m_state != server_state::probing) return;
-            if(m_stopped.load(std::memory_order_acquire)) return;
+            if(ec || m_pa_state.state != server_state::probing) return;
+            if(this->m_stopped.load(std::memory_order_acquire)) return;
             send_probe();
         });
     }
 
-    // Sends a single probe query and schedules the next.
     void send_probe()
     {
-        if(m_state != server_state::probing) return;
-        if(m_stopped.load(std::memory_order_acquire)) return;
+        if(m_pa_state.state != server_state::probing) return;
+        if(this->m_stopped.load(std::memory_order_acquire)) return;
 
         auto probe = detail::build_probe_query(m_info);
         std::error_code ec;
-        m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(probe), ec);
+        this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(probe), ec);
         if(ec && m_on_error) m_on_error(ec, "probe send");
-        ++m_probe_count;
 
-        if(m_probe_count < 3)
+        bool more = detail::advance_probe(m_pa_state);
+        m_response_timer.expires_after(std::chrono::milliseconds(250));
+        m_response_timer.async_wait([this, more](std::error_code ec)
         {
-            // Schedule next probe at 250ms
-            m_response_timer.expires_after(std::chrono::milliseconds(250));
-            m_response_timer.async_wait([this](std::error_code ec)
-            {
-                if(ec || m_state != server_state::probing) return;
-                if(m_stopped.load(std::memory_order_acquire)) return;
+            if(ec || m_pa_state.state != server_state::probing) return;
+            if(this->m_stopped.load(std::memory_order_acquire)) return;
+            if(more)
                 send_probe();
-            });
-        }
-        else
-        {
-            // Wait 250ms after last probe for conflicts, then start announcing
-            m_response_timer.expires_after(std::chrono::milliseconds(250));
-            m_response_timer.async_wait([this](std::error_code ec)
-            {
-                if(ec || m_state != server_state::probing) return;
-                if(m_stopped.load(std::memory_order_acquire)) return;
+            else
                 start_announcing();
-            });
-        }
+        });
     }
 
-    // Begins the announcement burst after successful probing.
     void start_announcing()
     {
-        m_state = server_state::announcing;
-        m_announce_count = 0;
+        detail::begin_announcing(m_pa_state);
         send_announce();
     }
 
-    // Sends one announcement and schedules the next if needed.
     void send_announce()
     {
-        if(m_state != server_state::announcing) return;
-        if(m_stopped.load(std::memory_order_acquire)) return;
+        if(m_pa_state.state != server_state::announcing) return;
+        if(this->m_stopped.load(std::memory_order_acquire)) return;
 
         send_announcement();
-        ++m_announce_count;
+        bool more = detail::advance_announce(m_pa_state, m_opts.announce_count);
 
-        if(m_announce_count < m_opts.announce_count)
+        if(more)
         {
             m_response_timer.expires_after(m_opts.announce_interval);
             m_response_timer.async_wait([this](std::error_code ec)
             {
-                if(ec || m_state != server_state::announcing) return;
-                if(m_stopped.load(std::memory_order_acquire)) return;
+                if(ec || m_pa_state.state != server_state::announcing) return;
+                if(this->m_stopped.load(std::memory_order_acquire)) return;
                 send_announce();
             });
         }
         else
         {
             // Probe+announce complete -- server is live
-            m_state = server_state::live;
+            m_pa_state.state = server_state::live;
             if(auto h = std::exchange(m_on_ready, nullptr); h)
                 h(std::error_code{});
         }
     }
 
-    // Handles conflict detected during probing.
     void handle_conflict()
     {
         m_response_timer.cancel();
@@ -435,85 +338,39 @@ private:
         if(m_opts.on_conflict)
         {
             std::string new_name;
-            if(m_opts.on_conflict(m_info.service_name, new_name, m_conflict_attempt))
+            if(m_opts.on_conflict(m_info.service_name, new_name, m_pa_state.conflict_attempt))
             {
                 m_info.service_name = std::move(new_name);
-                ++m_conflict_attempt;
+                ++m_pa_state.conflict_attempt;
                 start_probing();
                 return;
             }
         }
 
         // No callback or callback returned false -- fail
-        m_state = server_state::stopped;
-        m_stopped.store(true, std::memory_order_release);
+        m_pa_state.state = server_state::stopped;
+        this->m_stopped.store(true, std::memory_order_release);
         if(auto h = std::exchange(m_on_ready, nullptr); h)
             h(mdns_error::probe_conflict);
     }
 
-    // Sends update announcements as a burst (for update_service_info).
     void send_update_announce()
     {
-        if(m_stopped.load(std::memory_order_acquire)) return;
-        if(m_state != server_state::live) return;
+        if(this->m_stopped.load(std::memory_order_acquire)) return;
+        if(m_pa_state.state != server_state::live) return;
 
         send_announcement();
-        ++m_announce_count;
+        bool more = detail::advance_announce(m_pa_state, m_opts.announce_count);
 
-        if(m_announce_count < m_opts.announce_count)
+        if(more)
         {
             m_response_timer.expires_after(m_opts.announce_interval);
             m_response_timer.async_wait([this](std::error_code ec)
             {
-                if(ec || m_stopped.load(std::memory_order_acquire)) return;
-                if(m_state != server_state::live) return;
+                if(ec || this->m_stopped.load(std::memory_order_acquire)) return;
+                if(m_pa_state.state != server_state::live) return;
                 send_update_announce();
             });
-        }
-    }
-
-    // Returns true if the wire-encoded DNS name at data[12..name_end) matches
-    // any name this server is authoritative for.
-    bool query_matches(std::span<const std::byte> data, size_t name_end) const
-    {
-        auto qname = data.subspan(12, name_end - 12);
-        auto match = [&](std::string_view name)
-        {
-            auto encoded = detail::encode_dns_name(name);
-            return std::ranges::equal(qname, std::span<const std::byte>(encoded));
-        };
-        return match(m_info.service_type)
-            || match(m_info.service_name)
-            || match(m_info.hostname);
-    }
-
-    // Returns true if the wire-encoded DNS name at data[name_start..name_end)
-    // matches any name this server is authoritative for.
-    bool query_matches_at(std::span<const std::byte> data, size_t name_start, size_t name_end) const
-    {
-        auto qname = data.subspan(name_start, name_end - name_start);
-        auto match = [&](std::string_view name)
-        {
-            auto encoded = detail::encode_dns_name(name);
-            return std::ranges::equal(qname, std::span<const std::byte>(encoded));
-        };
-        return match(m_info.service_type)
-            || match(m_info.service_name)
-            || match(m_info.hostname);
-    }
-
-    // Returns true if the service_info has a record of the given type.
-    bool has_record_type(dns_type qtype) const
-    {
-        switch(qtype)
-        {
-        case dns_type::a:    return m_info.address_ipv4.has_value();
-        case dns_type::aaaa: return m_info.address_ipv6.has_value();
-        case dns_type::ptr:
-        case dns_type::srv:
-        case dns_type::txt:  return true;
-        case dns_type::any:  return true;
-        default:             return false;
         }
     }
 
@@ -524,509 +381,117 @@ private:
         detail::walk_dns_frame(std::span<const std::byte>(data.data(), data.size()),
             endpoint{}, [&](mdns_record_variant rv)
         {
-            auto check_name = [&](std::string_view record_name)
-            {
-                // Strip trailing dot from record_name for comparison if needed.
-                // service_name etc. have trailing dots. walk_dns_frame produces names without trailing dot.
-                auto strip_dot = [](std::string_view s) -> std::string_view
-                {
-                    if(!s.empty() && s.back() == '.')
-                        return s.substr(0, s.size() - 1);
-                    return s;
-                };
-                auto sn = strip_dot(m_info.service_name);
-                auto hn = strip_dot(m_info.hostname);
-                if(record_name == sn || record_name == hn)
-                    conflict = true;
-            };
-
+            auto sn = detail::strip_dot(m_info.service_name);
+            auto hn = detail::strip_dot(m_info.hostname);
             std::visit([&](const auto &rec)
             {
-                check_name(rec.name);
+                if(rec.name == sn || rec.name == hn)
+                    conflict = true;
             }, rv);
         });
         return conflict;
     }
 
-    // Strips trailing dot from a string_view for name comparison.
-    static constexpr auto strip_dot(std::string_view s) -> std::string_view
+    void send_to(response_mode mode, const endpoint &sender,
+                  std::span<const std::byte> packet, std::string_view context)
     {
-        if(!s.empty() && s.back() == '.')
-            return s.substr(0, s.size() - 1);
-        return s;
+        std::error_code ec;
+        if(mode == response_mode::unicast)
+            this->m_socket.send(sender, packet, ec);
+        else
+            this->m_socket.send(endpoint{"224.0.0.251", 5353}, packet, ec);
+        if(ec && m_on_error) m_on_error(ec, context);
     }
 
-    // Returns the meta-query name for DNS-SD service type enumeration.
-    static constexpr std::string_view meta_query_name{"_services._dns-sd._udp.local."};
-
-    // Checks whether a wire-encoded DNS name at data[name_start..name_end) matches
-    // the DNS-SD meta-query name (_services._dns-sd._udp.local.).
-    bool matches_meta_query(std::span<const std::byte> data, size_t name_start, size_t name_end) const
+    void schedule_multicast_response(const detail::query_match_result &qmr,
+                                     const detail::suppression_mask &suppression)
     {
-        auto qname = data.subspan(name_start, name_end - name_start);
-        auto encoded = detail::encode_dns_name(meta_query_name);
-        return std::ranges::equal(qname, std::span<const std::byte>(encoded));
-    }
+        bool was_armed = m_pending.armed;
+        m_pending.merge(qmr.accumulated_qtype, qmr.needs_nsec, suppression);
+        if(was_armed)
+            return; // timer already running, merge is enough
 
-    // Checks whether a wire-encoded DNS name matches any of the server's subtype query names.
-    // Returns the matching subtype label, or empty string_view if no match.
-    std::string_view matches_subtype_query(std::span<const std::byte> data, size_t name_start, size_t name_end) const
-    {
-        auto qname = data.subspan(name_start, name_end - name_start);
-        for(const auto &sub : m_info.subtypes)
+        // RFC 6762 section 6: random delay 20-120ms before responding via multicast
+        std::uniform_int_distribution dist(20, 120);
+        m_response_timer.expires_after(std::chrono::milliseconds(dist(m_rng)));
+        m_response_timer.async_wait([this](std::error_code ec)
         {
-            auto subtype_name = sub + "._sub." + std::string(strip_dot(m_info.service_type)) + ".";
-            auto encoded = detail::encode_dns_name(subtype_name);
-            if(std::ranges::equal(qname, std::span<const std::byte>(encoded)))
-                return sub;
-        }
-        return {};
-    }
+            if(ec || this->m_stopped.load(std::memory_order_acquire))
+                return;
+            if(m_pa_state.state != server_state::live)
+                return;
 
-    // Builds a meta-query response: PTR record pointing from _services._dns-sd._udp.local.
-    // to the server's service_type.
-    std::vector<std::byte> build_meta_query_response() const
-    {
-        std::vector<std::byte> packet;
-        detail::push_u16_be(packet, 0x0000); // id
-        detail::push_u16_be(packet, 0x8400); // flags: QR=1, AA=1
-        detail::push_u16_be(packet, 0x0000); // qdcount
-        detail::push_u16_be(packet, 0x0001); // ancount = 1
-        detail::push_u16_be(packet, 0x0000); // nscount
-        detail::push_u16_be(packet, 0x0000); // arcount
-
-        auto owner = detail::encode_dns_name(meta_query_name);
-        auto rdata = detail::encode_dns_name(m_info.service_type);
-        detail::response_detail::append_dns_rr(packet, owner, dns_type::ptr, 4500, rdata, false);
-
-        return packet;
-    }
-
-    // Builds a subtype PTR response: PTR record pointing from subtype query name to service instance.
-    std::vector<std::byte> build_subtype_response(std::string_view subtype_label) const
-    {
-        std::vector<std::byte> packet;
-        detail::push_u16_be(packet, 0x0000);
-        detail::push_u16_be(packet, 0x8400);
-        detail::push_u16_be(packet, 0x0000);
-        detail::push_u16_be(packet, 0x0001);
-        detail::push_u16_be(packet, 0x0000);
-        detail::push_u16_be(packet, 0x0000);
-
-        auto subtype_name = std::string(subtype_label) + "._sub." + std::string(strip_dot(m_info.service_type)) + ".";
-        auto owner = detail::encode_dns_name(subtype_name);
-        auto rdata = detail::encode_dns_name(m_info.service_name);
-        detail::response_detail::append_dns_rr(packet, owner, dns_type::ptr, 4500, rdata, false);
-
-        return packet;
+            auto response = detail::build_response_with_nsec(m_info, m_pending.qtype,
+                                                             m_pending.needs_nsec,
+                                                             m_pending.suppression,
+                                                             m_opts.suppress_known_answers);
+            m_pending.reset();
+            if(!response.empty())
+                send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "response send");
+        });
     }
 
     // Called by recv_loop on every incoming packet.
     void on_query(const endpoint &sender, std::span<std::byte> data)
     {
-        if(m_stopped.load(std::memory_order_acquire))
+        if(this->m_stopped.load(std::memory_order_acquire))
             return;
 
-        // During probing: check for conflicting responses, drop everything
-        if(m_state == server_state::probing)
+        // During probing: check for conflicting responses
+        if(m_pa_state.state == server_state::probing)
         {
-            if(data.size() >= 12)
+            if(data.size() >= 12 && (detail::read_u16_be(data.data() + 2) & 0x8000))
             {
-                uint16_t flags = detail::read_u16_be(data.data() + 2);
-                if(flags & 0x8000) // QR=1, this is a response
-                {
-                    if(response_conflicts(data))
-                        handle_conflict();
-                }
+                if(response_conflicts(data))
+                    handle_conflict();
             }
             return;
         }
 
-        // Drop queries during announcing
-        if(m_state != server_state::live)
-            return;
-
-        if(data.size() < 12)
+        if(m_pa_state.state != server_state::live)
             return;
 
         auto cdata = std::span<const std::byte>(data.data(), data.size());
-        const std::byte *buf = data.data();
-
-        uint16_t qdcount = detail::read_u16_be(buf + 4);
-        if(qdcount == 0)
+        auto qmr = detail::match_queries(cdata, m_info, m_opts);
+        if(!qmr.any_matched && !qmr.meta_matched && qmr.matched_subtype.empty())
             return;
 
-        // Iterate all questions, accumulating matched qtypes and response mode.
-        dns_type accumulated_qtype = dns_type::none;
-        auto resp_mode = response_mode::unicast; // default; switches to multicast if any non-QU
-        bool any_matched = false;
-        bool needs_nsec = false;
-        bool meta_matched = false;
-        std::string matched_subtype;
+        detail::suppression_mask suppression;
+        if(m_opts.suppress_known_answers && qmr.any_matched)
+            suppression = detail::parse_known_answers(cdata, qmr.offset_after_questions, m_info);
 
-        size_t offset = 12;
-        for(uint16_t i = 0; i < qdcount; ++i)
+        if(m_opts.on_query && qmr.any_matched)
+            m_opts.on_query(sender, qmr.accumulated_qtype, qmr.mode);
+
+        if(qmr.meta_matched)
         {
-            size_t name_start = offset;
-            if(!detail::skip_dns_name(cdata, offset))
-                break;
-            size_t name_end = offset;
-
-            if(offset + 4 > data.size())
-                break;
-
-            dns_type qtype = static_cast<dns_type>(detail::read_u16_be(buf + offset));
-            uint16_t qclass = detail::read_u16_be(buf + offset + 2);
-            offset += 4;
-
-            // Check meta-query
-            if(m_opts.respond_to_meta_queries && qtype == dns_type::ptr &&
-               matches_meta_query(cdata, name_start, name_end))
-            {
-                meta_matched = true;
-                if((qclass & 0x8000) == 0)
-                    resp_mode = response_mode::multicast;
-                continue;
-            }
-
-            // Check subtype query
-            if(qtype == dns_type::ptr)
-            {
-                auto sub = matches_subtype_query(cdata, name_start, name_end);
-                if(!sub.empty())
-                {
-                    matched_subtype = sub;
-                    if((qclass & 0x8000) == 0)
-                        resp_mode = response_mode::multicast;
-                    continue;
-                }
-            }
-
-            if(!query_matches_at(cdata, name_start, name_end))
-                continue;
-
-            // Matched question -- accumulate qtype
-            if(!any_matched)
-            {
-                accumulated_qtype = qtype;
-                any_matched = true;
-            }
-            else if(accumulated_qtype != qtype)
-            {
-                accumulated_qtype = dns_type::any;
-            }
-
-            // Check if this specific type is unmatched (for NSEC)
-            if(qtype != dns_type::any && !has_record_type(qtype))
-                needs_nsec = true;
-
-            // QU/multicast: if ANY matching question has QU bit cleared, use multicast
-            if((qclass & 0x8000) == 0)
-                resp_mode = response_mode::multicast;
+            auto pkt = detail::build_meta_query_response(m_info);
+            send_to(qmr.mode, sender, std::span<const std::byte>(pkt), "meta-query response send");
         }
 
-        if(!any_matched && !meta_matched && matched_subtype.empty())
+        if(!qmr.matched_subtype.empty())
+        {
+            auto pkt = detail::build_subtype_response(qmr.matched_subtype, m_info);
+            send_to(qmr.mode, sender, std::span<const std::byte>(pkt), "subtype response send");
+        }
+
+        if(!qmr.any_matched)
             return;
 
-        // ---------------------------------------------------------------
-        // Known-answer suppression (RFC 6762 section 7.1)
-        // Parse the Answer section to find records the querier already knows.
-        // ---------------------------------------------------------------
-        constexpr uint32_t default_ttl = 4500;
-        constexpr uint32_t kas_threshold = default_ttl / 2; // 2250
-
-        bool suppress_ptr = false;
-        bool suppress_srv = false;
-        bool suppress_a = false;
-        bool suppress_aaaa = false;
-        bool suppress_txt = false;
-
-        if(m_opts.suppress_known_answers && any_matched)
-        {
-            uint16_t ancount = detail::read_u16_be(buf + 6);
-            for(uint16_t i = 0; i < ancount; ++i)
-            {
-                auto name_result = detail::read_dns_name(cdata, offset);
-                if(!name_result.has_value())
-                    break;
-
-                if(!detail::skip_dns_name(cdata, offset))
-                    break;
-
-                if(offset + 10 > data.size())
-                    break;
-
-                dns_type rtype = static_cast<dns_type>(detail::read_u16_be(buf + offset));
-                offset += 2;
-                offset += 2; // rclass
-                uint32_t ttl = detail::read_u32_be(buf + offset);
-                offset += 4;
-                uint16_t rdlength = detail::read_u16_be(buf + offset);
-                offset += 2;
-                offset += rdlength;
-
-                if(offset > data.size())
-                    break;
-
-                // Compare the answer name against our authoritative names
-                auto sn = strip_dot(m_info.service_name);
-                auto st = strip_dot(m_info.service_type);
-                auto hn = strip_dot(m_info.hostname);
-                const auto &ans_name = *name_result;
-
-                bool name_matches = (ans_name == sn || ans_name == st || ans_name == hn);
-                if(name_matches && ttl >= kas_threshold)
-                {
-                    switch(rtype)
-                    {
-                    case dns_type::ptr:  suppress_ptr = true; break;
-                    case dns_type::srv:  suppress_srv = true; break;
-                    case dns_type::a:    suppress_a = true; break;
-                    case dns_type::aaaa: suppress_aaaa = true; break;
-                    case dns_type::txt:  suppress_txt = true; break;
-                    default: break;
-                    }
-                }
-            }
-        }
-
-        auto is_all_suppressed = [&]() -> bool
-        {
-            if(!m_opts.suppress_known_answers)
-                return false;
-            // Only suppress if at least one record type would actually be sent
-            // and ALL of those are suppressed
-            bool any_would_send = false;
-
-            bool would_send_ptr = (accumulated_qtype == dns_type::ptr || accumulated_qtype == dns_type::any);
-            bool would_send_srv = (accumulated_qtype == dns_type::srv || accumulated_qtype == dns_type::any);
-            bool would_send_a = (accumulated_qtype == dns_type::a || accumulated_qtype == dns_type::any) && m_info.address_ipv4.has_value();
-            bool would_send_aaaa = (accumulated_qtype == dns_type::aaaa || accumulated_qtype == dns_type::any) && m_info.address_ipv6.has_value();
-            bool would_send_txt = (accumulated_qtype == dns_type::txt || accumulated_qtype == dns_type::any);
-
-            if(would_send_ptr) { any_would_send = true; if(!suppress_ptr) return false; }
-            if(would_send_srv) { any_would_send = true; if(!suppress_srv) return false; }
-            if(would_send_a) { any_would_send = true; if(!suppress_a) return false; }
-            if(would_send_aaaa) { any_would_send = true; if(!suppress_aaaa) return false; }
-            if(would_send_txt) { any_would_send = true; if(!suppress_txt) return false; }
-            return any_would_send;
-        };
-
-        if(m_opts.on_query && any_matched)
-            m_opts.on_query(sender, accumulated_qtype, resp_mode);
-
-        // Handle meta-query response (separate from normal response)
-        if(meta_matched)
-        {
-            auto meta_response = build_meta_query_response();
-            std::error_code ec;
-            if(resp_mode == response_mode::unicast)
-                m_socket.send(sender, std::span<const std::byte>(meta_response), ec);
-            else
-                m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(meta_response), ec);
-            if(ec && m_on_error) m_on_error(ec, "meta-query response send");
-        }
-
-        // Handle subtype PTR response (separate from normal response)
-        if(!matched_subtype.empty())
-        {
-            auto sub_response = build_subtype_response(matched_subtype);
-            std::error_code ec;
-            if(resp_mode == response_mode::unicast)
-                m_socket.send(sender, std::span<const std::byte>(sub_response), ec);
-            else
-                m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response), ec);
-            if(ec && m_on_error) m_on_error(ec, "subtype response send");
-        }
-
-        if(!any_matched)
+        if(m_opts.suppress_known_answers && detail::all_suppressed(suppression, qmr.accumulated_qtype, m_info))
             return;
 
-        // If all records are suppressed by known-answer, skip response entirely
-        if(is_all_suppressed())
-            return;
-
-        // Build the response packet with suppression applied
-        auto build_response_packet = [&](dns_type qtype_to_send) -> std::vector<std::byte>
+        if(qmr.mode == response_mode::unicast)
         {
-            // For specific type queries, check if that type is suppressed
-            if(m_opts.suppress_known_answers && qtype_to_send != dns_type::any)
-            {
-                switch(qtype_to_send)
-                {
-                case dns_type::ptr:  if(suppress_ptr) return {}; break;
-                case dns_type::srv:  if(suppress_srv) return {}; break;
-                case dns_type::a:    if(suppress_a) return {}; break;
-                case dns_type::aaaa: if(suppress_aaaa) return {}; break;
-                case dns_type::txt:  if(suppress_txt) return {}; break;
-                default: break;
-                }
-            }
-
-            auto response = detail::build_dns_response(m_info, qtype_to_send);
-
-            // Append NSEC for unmatched specific types (not for ANY)
-            if(needs_nsec && qtype_to_send != dns_type::any)
-            {
-                if(response.empty())
-                {
-                    // Build a minimal response with just NSEC in Additional
-                    response.clear();
-                    detail::push_u16_be(response, 0x0000); // id
-                    detail::push_u16_be(response, 0x8400); // flags
-                    detail::push_u16_be(response, 0x0000); // qdcount
-                    detail::push_u16_be(response, 0x0000); // ancount
-                    detail::push_u16_be(response, 0x0000); // nscount
-                    detail::push_u16_be(response, 0x0001); // arcount = 1
-
-                    auto owner_name = detail::encode_dns_name(m_info.hostname);
-                    detail::response_detail::append_nsec_rr(response, owner_name, m_info, 4500);
-                }
-                else
-                {
-                    // Append NSEC to Additional section and update arcount
-                    auto owner_name = detail::encode_dns_name(m_info.hostname);
-                    detail::response_detail::append_nsec_rr(response, owner_name, m_info, 4500);
-                    uint16_t arcount = detail::read_u16_be(response.data() + 10);
-                    ++arcount;
-                    response[10] = static_cast<std::byte>(static_cast<uint8_t>(arcount >> 8));
-                    response[11] = static_cast<std::byte>(static_cast<uint8_t>(arcount & 0xFF));
-                }
-            }
-
-            return response;
-        };
-
-        // Unicast: send immediately, skip aggregation
-        if(resp_mode == response_mode::unicast)
-        {
-            auto response = build_response_packet(accumulated_qtype);
-            if(!response.empty())
-            {
-                std::error_code ec;
-                m_socket.send(sender, std::span<const std::byte>(response), ec);
-                if(ec && m_on_error) m_on_error(ec, "response send");
-            }
+            auto pkt = detail::build_response_with_nsec(m_info, qmr.accumulated_qtype,
+                                                        qmr.needs_nsec, suppression,
+                                                        m_opts.suppress_known_answers);
+            if(!pkt.empty())
+                send_to(response_mode::unicast, sender, std::span<const std::byte>(pkt), "response send");
             return;
         }
 
-        // Multicast with aggregation
-        if(!m_pending_armed)
-        {
-            m_pending_armed = true;
-            m_pending_qtype = accumulated_qtype;
-            m_pending_needs_nsec = needs_nsec;
-            m_pending_suppress_ptr = suppress_ptr;
-            m_pending_suppress_srv = suppress_srv;
-            m_pending_suppress_a = suppress_a;
-            m_pending_suppress_aaaa = suppress_aaaa;
-            m_pending_suppress_txt = suppress_txt;
-
-            // RFC 6762 section 6: random delay 20-120ms before responding via multicast
-            std::uniform_int_distribution dist(20, 120);
-            int delay_ms = dist(m_rng);
-
-            m_response_timer.expires_after(std::chrono::milliseconds(delay_ms));
-            m_response_timer.async_wait(
-                [this](std::error_code ec)
-                {
-                    if(ec || m_stopped.load(std::memory_order_acquire))
-                        return;
-                    if(m_state != server_state::live)
-                        return;
-
-                    auto qtype = m_pending_qtype;
-                    bool nsec_needed = m_pending_needs_nsec;
-                    bool s_ptr = m_pending_suppress_ptr;
-                    bool s_srv = m_pending_suppress_srv;
-                    bool s_a = m_pending_suppress_a;
-                    bool s_aaaa = m_pending_suppress_aaaa;
-                    bool s_txt = m_pending_suppress_txt;
-                    m_pending_armed = false;
-                    m_pending_qtype = dns_type::none;
-                    m_pending_needs_nsec = false;
-                    m_pending_suppress_ptr = false;
-                    m_pending_suppress_srv = false;
-                    m_pending_suppress_a = false;
-                    m_pending_suppress_aaaa = false;
-                    m_pending_suppress_txt = false;
-
-                    // Check suppression for specific-type queries
-                    if(m_opts.suppress_known_answers && qtype != dns_type::any)
-                    {
-                        bool suppressed = false;
-                        switch(qtype)
-                        {
-                        case dns_type::ptr:  suppressed = s_ptr; break;
-                        case dns_type::srv:  suppressed = s_srv; break;
-                        case dns_type::a:    suppressed = s_a; break;
-                        case dns_type::aaaa: suppressed = s_aaaa; break;
-                        case dns_type::txt:  suppressed = s_txt; break;
-                        default: break;
-                        }
-                        if(suppressed)
-                            return;
-                    }
-
-                    auto response = detail::build_dns_response(m_info, qtype);
-
-                    // Append NSEC for unmatched specific types
-                    if(nsec_needed && qtype != dns_type::any)
-                    {
-                        if(response.empty())
-                        {
-                            // Build minimal response with NSEC in Additional
-                            detail::push_u16_be(response, 0x0000);
-                            detail::push_u16_be(response, 0x8400);
-                            detail::push_u16_be(response, 0x0000);
-                            detail::push_u16_be(response, 0x0000);
-                            detail::push_u16_be(response, 0x0000);
-                            detail::push_u16_be(response, 0x0001);
-
-                            auto owner = detail::encode_dns_name(m_info.hostname);
-                            detail::response_detail::append_nsec_rr(response, owner, m_info, 4500);
-                        }
-                        else
-                        {
-                            auto owner = detail::encode_dns_name(m_info.hostname);
-                            detail::response_detail::append_nsec_rr(response, owner, m_info, 4500);
-                            uint16_t arcount = detail::read_u16_be(response.data() + 10);
-                            ++arcount;
-                            response[10] = static_cast<std::byte>(static_cast<uint8_t>(arcount >> 8));
-                            response[11] = static_cast<std::byte>(static_cast<uint8_t>(arcount & 0xFF));
-                        }
-                    }
-
-                    if(!response.empty())
-                    {
-                        std::error_code ec;
-                        m_socket.send(endpoint{"224.0.0.251", 5353},
-                                      std::span<const std::byte>(response), ec);
-                        if(ec && m_on_error) m_on_error(ec, "response send");
-                    }
-                });
-        }
-        else
-        {
-            // Merge into pending: if different type, escalate to ANY
-            if(m_pending_qtype != accumulated_qtype)
-                m_pending_qtype = dns_type::any;
-            if(needs_nsec)
-                m_pending_needs_nsec = true;
-            // Do NOT reset the timer
-        }
-    }
-
-    // Builds and sends a DNS response to dest for the given qtype.
-    void send_response(const endpoint &dest, dns_type qtype)
-    {
-        auto response = detail::build_dns_response(m_info, qtype);
-        if(response.empty())
-            return;
-
-        std::error_code ec;
-        m_socket.send(dest, std::span<const std::byte>(response), ec);
-        if(ec && m_on_error) m_on_error(ec, "response send");
+        schedule_multicast_response(qmr, suppression);
     }
 
     // Sends an unsolicited announcement with all records (PTR, SRV, TXT, A/AAAA)
@@ -1036,52 +501,28 @@ private:
     {
         auto response = detail::build_dns_response(m_info, dns_type::any);
         if(!response.empty())
-        {
-            std::error_code ec;
-            m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(response), ec);
-            if(ec && m_on_error) m_on_error(ec, "announcement send");
-        }
+            send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "announcement send");
 
         if(m_opts.announce_subtypes)
         {
             for(const auto &sub : m_info.subtypes)
             {
-                auto sub_response = build_subtype_response(sub);
-                if(!sub_response.empty())
-                {
-                    std::error_code ec;
-                    m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(sub_response), ec);
-                    if(ec && m_on_error) m_on_error(ec, "announcement send");
-                }
+                auto pkt = detail::build_subtype_response(sub, m_info);
+                if(!pkt.empty())
+                    send_to(response_mode::multicast, {}, std::span<const std::byte>(pkt), "announcement send");
             }
         }
     }
 
-    std::shared_ptr<bool> m_alive = std::make_shared<bool>(true);
-    executor_type m_executor;
-    socket_type m_socket;
     timer_type m_response_timer;
-    timer_type m_recv_timer;
     service_info m_info;
     service_options m_opts;
     completion_handler m_on_ready;
     completion_handler m_on_completion;
     error_handler m_on_error;
     std::mt19937 m_rng;
-    std::unique_ptr<recv_loop<P>> m_loop;
-    server_state m_state{server_state::idle};
-    unsigned m_probe_count{0};
-    unsigned m_announce_count{0};
-    unsigned m_conflict_attempt{0};
-    bool m_pending_armed{false};
-    dns_type m_pending_qtype{dns_type::none};
-    bool m_pending_needs_nsec{false};
-    bool m_pending_suppress_ptr{false};
-    bool m_pending_suppress_srv{false};
-    bool m_pending_suppress_a{false};
-    bool m_pending_suppress_aaaa{false};
-    bool m_pending_suppress_txt{false};
-    std::atomic<bool> m_stopped;
+    detail::probe_announce_state m_pa_state;
+    detail::pending_response m_pending;
 };
 
 }

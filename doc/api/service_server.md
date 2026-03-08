@@ -32,6 +32,7 @@ using socket_type        = typename P::socket_type;
 using timer_type         = typename P::timer_type;
 using query_callback     = std::move_only_function<void(const endpoint&, dns_type, response_mode)>;
 using completion_handler = std::move_only_function<void(std::error_code)>;
+using error_handler     = detail::move_only_function<void(std::error_code, std::string_view)>;
 ```
 
 `query_callback` is retained as a type alias for the query notification signature. Set it via [`service_options::on_query`](service_options.md) rather than as a constructor parameter.
@@ -42,31 +43,21 @@ using completion_handler = std::move_only_function<void(std::error_code)>;
 
 ```cpp
 explicit basic_service_server(executor_type ex, service_info info,
-                              service_options opts = {});
-
-explicit basic_service_server(executor_type ex, const socket_options& sock_opts,
-                              service_info info, service_options opts = {});
+                              service_options opts = {},
+                              socket_options sock_opts = {});
 ```
 
-Constructs the server from an executor and a [`service_info`](#service_info) describing the service to announce. The optional [`service_options`](service_options.md) controls probing, announcing, goodbye, and query notification behavior. Throws on socket construction failure.
+Constructs the server from an executor and a [`service_info`](#service_info) describing the service to announce. The optional [`service_options`](service_options.md) controls probing, announcing, goodbye, and query notification behavior. The optional `sock_opts` controls network interface selection, multicast TTL, and loopback (see [Socket Options](../socket-options.md)). Throws on socket construction failure.
 
 ### Non-throwing
 
 ```cpp
-basic_service_server(executor_type ex, service_info info, std::error_code& ec);
-
 basic_service_server(executor_type ex, service_info info,
-                     service_options opts, std::error_code& ec);
-
-basic_service_server(executor_type ex, const socket_options& sock_opts,
-                     service_info info, std::error_code& ec);
-
-basic_service_server(executor_type ex, const socket_options& sock_opts,
-                     service_info info, service_options opts,
+                     service_options opts, socket_options sock_opts,
                      std::error_code& ec);
 ```
 
-Same as the throwing constructors, but sets `ec` instead of throwing on failure.
+Same as the throwing constructor, but sets `ec` instead of throwing on failure. All parameters must be provided explicitly (no defaults).
 
 ## Methods
 
@@ -93,6 +84,14 @@ void stop();
 ```
 
 Idempotent. Sends a goodbye packet (TTL=0) if `service_options::send_goodbye` is `true` and the server is in the live or announcing state. Fires `on_ready` with `operation_canceled` if still probing or announcing, then fires `on_done`. Cancels the response timer and destroys the receive loop. The destructor calls `stop()` automatically for RAII safety.
+
+### on_error
+
+```cpp
+void on_error(error_handler handler);
+```
+
+Sets a handler invoked when a fire-and-forget send operation fails (e.g. during probing, announcing, or response sending). The handler receives the error code and a context string identifying the send site (e.g. `"probe send"`, `"goodbye send"`). Without a handler, send errors are silently ignored.
 
 ### update_service_info
 

@@ -692,7 +692,7 @@ SCENARIO("service_discovery non-throwing constructor sets ec on success", "[serv
 
         WHEN("basic_service_discovery<MockPolicy> is constructed with the ec overload")
         {
-            basic_service_discovery<MockPolicy> sd{ex, 500ms, ec};
+            basic_service_discovery<MockPolicy> sd{ex, 500ms, {}, {}, ec};
 
             THEN("ec is clear and the service_discovery is usable")
             {
@@ -768,7 +768,7 @@ SCENARIO("on_record callback fires during async_browse (same as async_discover)"
 
         basic_service_discovery<MockPolicy> sd{
             ex,
-            500ms,
+            500ms, {},
             [&](const endpoint &, const mdns_record_variant &rec)
             {
                 captured_records.push_back(rec);
@@ -937,7 +937,7 @@ SCENARIO("basic_service_discovery with socket_options", "[service_discovery][soc
 
         WHEN("basic_service_discovery<MockPolicy> is constructed with socket_options")
         {
-            basic_service_discovery<MockPolicy> sd{ex, opts, 500ms};
+            basic_service_discovery<MockPolicy> sd{ex, 500ms, opts};
 
             THEN("the socket stores the options")
             {

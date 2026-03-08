@@ -1,7 +1,7 @@
 // Discovers services matching a specific subtype using DNS-SD subtype queries
 // (RFC 6763 section 7.1). Searches for "_printer" subtypes of "_http._tcp.local.".
 
-#include "mdnspp/defaults.h"
+#include <mdnspp/defaults.h>
 
 #include <iostream>
 

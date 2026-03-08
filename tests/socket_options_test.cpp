@@ -32,13 +32,13 @@ TEST_CASE("MockSocket stores socket_options", "[socket_options][mock]")
     socket_options opts{
         .interface_address = "192.168.1.1",
         .multicast_loopback = loopback_mode::disabled,
-        .multicast_ttl = 255
+        .multicast_ttl = uint8_t{255}
     };
 
     MockSocket mock{ex, opts};
     REQUIRE(mock.options().interface_address == "192.168.1.1");
     REQUIRE(mock.options().multicast_loopback == loopback_mode::disabled);
-    REQUIRE(mock.options().multicast_ttl == 255);
+    REQUIRE(mock.options().multicast_ttl == uint8_t{255});
 }
 
 TEST_CASE("MockSocket socket_options with error_code", "[socket_options][mock]")
@@ -66,6 +66,6 @@ TEST_CASE("MockSocket socket_options with error_code", "[socket_options][mock]")
 
 TEST_CASE("socket_options multicast_ttl value_or defaults to 255", "[socket_options]")
 {
-    REQUIRE(socket_options{}.multicast_ttl.value_or(255) == 255);
-    REQUIRE(socket_options{.multicast_ttl = 1}.multicast_ttl.value_or(255) == 1);
+    REQUIRE(socket_options{}.multicast_ttl.value_or(uint8_t{255}) == uint8_t{255});
+    REQUIRE(socket_options{.multicast_ttl = uint8_t{1}}.multicast_ttl.value_or(uint8_t{255}) == uint8_t{1});
 }

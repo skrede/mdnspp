@@ -443,7 +443,7 @@ SCENARIO("basic_observer with socket_options", "[observer][socket_options]")
     GIVEN("a socket_options with a specific interface address")
     {
         mock_executor ex;
-        socket_options opts{.interface_address = "10.0.0.1", .multicast_ttl = 64};
+        socket_options opts{.interface_address = "10.0.0.1", .multicast_ttl = uint8_t{64}};
 
         WHEN("basic_observer<MockPolicy> is constructed with socket_options")
         {

@@ -499,7 +499,7 @@ SCENARIO("basic_querier with socket_options", "[querier][socket_options]")
     GIVEN("a socket_options with multicast_ttl = 100")
     {
         mock_executor ex;
-        socket_options opts{.multicast_ttl = 100};
+        socket_options opts{.multicast_ttl = uint8_t{100}};
 
         WHEN("basic_querier<MockPolicy> is constructed with socket_options")
         {

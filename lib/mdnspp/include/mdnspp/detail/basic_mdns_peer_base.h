@@ -67,7 +67,7 @@ protected:
             return;
 
         auto guard = std::weak_ptr<bool>(m_alive);
-        P::post(m_executor, [this, guard, td = std::forward<F>(teardown)]()
+        P::post(m_executor, [guard, td = std::forward<F>(teardown)]()
         {
             if(!guard.lock()) return;
             td();

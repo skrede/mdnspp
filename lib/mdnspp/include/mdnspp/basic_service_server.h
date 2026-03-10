@@ -183,7 +183,7 @@ public:
             std::error_code ec;
             auto goodbye = detail::build_dns_response(m_info, dns_type::any, 0);
             if(!goodbye.empty())
-                this->m_socket.send(endpoint{"224.0.0.251", 5353},
+                this->m_socket.send(this->multicast_endpoint(),
                               std::as_bytes(std::span(goodbye)), ec);
             if(ec && m_on_error) m_on_error(ec, "goodbye send");
         }
@@ -291,7 +291,7 @@ private:
         probe[0] = static_cast<std::byte>(m_pa_state.probe_id >> 8);
         probe[1] = static_cast<std::byte>(m_pa_state.probe_id & 0xFF);
         std::error_code ec;
-        this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(probe), ec);
+        this->m_socket.send(this->multicast_endpoint(), std::span<const std::byte>(probe), ec);
         if(ec && m_on_error) m_on_error(ec, "probe send");
 
         bool more = detail::advance_probe(m_pa_state);
@@ -408,7 +408,7 @@ private:
         if(mode == response_mode::unicast)
             this->m_socket.send(sender, packet, ec);
         else
-            this->m_socket.send(endpoint{"224.0.0.251", 5353}, packet, ec);
+            this->m_socket.send(this->multicast_endpoint(), packet, ec);
         if(ec && m_on_error) m_on_error(ec, context);
     }
 

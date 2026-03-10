@@ -4,12 +4,13 @@
 // DefaultSocket — raw UDP multicast socket satisfying SocketLike.
 // No ASIO includes. POSIX/Linux primary, Windows via #ifdef guards.
 //
-// Joins the mDNS multicast group 224.0.0.251:5353 on construction.
+// Joins the multicast group from socket_options (default 224.0.0.251:5353) on construction.
 // Registers with DefaultContext for poll-based dispatch.
 
 #include "mdnspp/policy.h"
 #include "mdnspp/socket_options.h"
 
+#include "mdnspp/detail/validate_multicast.h"
 #include "mdnspp/default/default_context.h"
 
 #include <span>
@@ -34,8 +35,8 @@ class DefaultSocket
 {
 public:
     // Throwing constructor.
-    /// Opens a UDP socket, sets options, binds to :5353, joins 224.0.0.251,
-    /// and registers with the context for poll dispatch.
+    /// Opens a UDP socket, sets options, binds to the default mDNS port,
+    /// joins the default multicast group, and registers with the context for poll dispatch.
     explicit DefaultSocket(DefaultContext &ctx)
         : m_ctx{ctx}
     {
@@ -209,12 +210,13 @@ private:
         // 4. Non-blocking
         set_nonblocking_or_throw();
 
-        // 5. Bind to INADDR_ANY:5353
+        // 5. Bind to INADDR_ANY:5353 (default mDNS)
         {
+            socket_options default_opts;
             sockaddr_in addr{};
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = htonl(INADDR_ANY);
-            addr.sin_port = htons(5353);
+            addr.sin_port = htons(default_opts.multicast_group.port);
 
 #ifdef _WIN32
             if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
@@ -234,8 +236,11 @@ private:
 #endif
         }
 
-        // 6. Join multicast group 224.0.0.251 on INADDR_ANY
-        join_multicast_or_throw();
+        // 6. Join default multicast group on INADDR_ANY
+        {
+            socket_options default_opts;
+            join_multicast_or_throw(default_opts.multicast_group.address);
+        }
     }
 
     /// Non-throwing — sets ec and returns early on failure.
@@ -294,12 +299,13 @@ private:
             return;
         }
 
-        // 5. Bind to INADDR_ANY:5353
+        // 5. Bind to INADDR_ANY with default port
         {
+            socket_options default_opts;
             sockaddr_in addr{};
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = htonl(INADDR_ANY);
-            addr.sin_port = htons(5353);
+            addr.sin_port = htons(default_opts.multicast_group.port);
 
 #ifdef _WIN32
             if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
@@ -321,8 +327,11 @@ private:
 #endif
         }
 
-        // 6. Join multicast group 224.0.0.251
-        join_multicast(ec);
+        // 6. Join default multicast group
+        {
+            socket_options default_opts;
+            join_multicast(default_opts.multicast_group.address, ec);
+        }
         if(ec)
         {
             detail::close_socket(m_fd);
@@ -374,10 +383,10 @@ private:
     }
 
     /// throwing
-    void join_multicast_or_throw()
+    void join_multicast_or_throw(const std::string &group_address)
     {
         ip_mreq mreq{};
-        ::inet_pton(AF_INET, "224.0.0.251", &mreq.imr_multiaddr);
+        ::inet_pton(AF_INET, group_address.c_str(), &mreq.imr_multiaddr);
         mreq.imr_interface.s_addr = htonl(INADDR_ANY);
 
 #ifdef _WIN32
@@ -399,10 +408,10 @@ private:
     }
 
     /// non-throwing
-    void join_multicast(std::error_code &ec)
+    void join_multicast(const std::string &group_address, std::error_code &ec)
     {
         ip_mreq mreq{};
-        ::inet_pton(AF_INET, "224.0.0.251", &mreq.imr_multiaddr);
+        ::inet_pton(AF_INET, group_address.c_str(), &mreq.imr_multiaddr);
         mreq.imr_interface.s_addr = htonl(INADDR_ANY);
 
 #ifdef _WIN32
@@ -420,6 +429,9 @@ private:
     /// Throwing — interface-aware multicast configuration via socket_options.
     void open_and_configure(const socket_options &opts)
     {
+        // 0. Validate multicast group address
+        detail::validate_multicast_address(opts.multicast_group.address);
+
         // 1. Create UDP socket
         m_fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if(m_fd == detail::invalid_socket)
@@ -465,12 +477,12 @@ private:
         // 4. Non-blocking
         set_nonblocking_or_throw();
 
-        // 5. Bind to INADDR_ANY:5353
+        // 5. Bind to INADDR_ANY with configured port
         {
             sockaddr_in addr{};
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = htonl(INADDR_ANY);
-            addr.sin_port = htons(5353);
+            addr.sin_port = htons(opts.multicast_group.port);
 
 #ifdef _WIN32
             if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
@@ -526,7 +538,7 @@ private:
         // 8. IP_ADD_MEMBERSHIP (same iface_addr — no split-brain)
         {
             ip_mreq mreq{};
-            ::inet_pton(AF_INET, "224.0.0.251", &mreq.imr_multiaddr);
+            ::inet_pton(AF_INET, opts.multicast_group.address.c_str(), &mreq.imr_multiaddr);
             mreq.imr_interface = iface_addr;
 
 #ifdef _WIN32
@@ -596,6 +608,10 @@ private:
     {
         ec.clear();
 
+        // 0. Validate multicast group address
+        detail::validate_multicast_address(opts.multicast_group.address, ec);
+        if(ec) return;
+
         // 1. Create UDP socket
         m_fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
         if(m_fd == detail::invalid_socket)
@@ -647,12 +663,12 @@ private:
             return;
         }
 
-        // 5. Bind to INADDR_ANY:5353
+        // 5. Bind to INADDR_ANY with configured port
         {
             sockaddr_in addr{};
             addr.sin_family = AF_INET;
             addr.sin_addr.s_addr = htonl(INADDR_ANY);
-            addr.sin_port = htons(5353);
+            addr.sin_port = htons(opts.multicast_group.port);
 
 #ifdef _WIN32
             if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
@@ -712,7 +728,7 @@ private:
         // 8. IP_ADD_MEMBERSHIP (same iface_addr — no split-brain)
         {
             ip_mreq mreq{};
-            ::inet_pton(AF_INET, "224.0.0.251", &mreq.imr_multiaddr);
+            ::inet_pton(AF_INET, opts.multicast_group.address.c_str(), &mreq.imr_multiaddr);
             mreq.imr_interface = iface_addr;
 
 #ifdef _WIN32

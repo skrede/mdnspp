@@ -161,7 +161,7 @@ private:
         {
             auto query_bytes = detail::build_dns_query(m_query_name, m_query_type, m_query_mode);
             std::error_code ec;
-            this->m_socket.send(endpoint{"224.0.0.251", 5353},
+            this->m_socket.send(this->multicast_endpoint(),
                 std::span<const std::byte>(query_bytes), ec);
             if(ec && m_on_error)
                 m_on_error(ec, "query send");

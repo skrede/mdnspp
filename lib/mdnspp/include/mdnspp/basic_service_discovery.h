@@ -236,7 +236,7 @@ private:
                                                    std::span<const mdns_record_variant>(m_results), mode);
         {
             std::error_code ec;
-            this->m_socket.send(endpoint{"224.0.0.251", 5353},
+            this->m_socket.send(this->multicast_endpoint(),
                           std::span<const std::byte>(query_bytes), ec);
             if(ec && m_on_error) m_on_error(ec, "query send");
         }
@@ -295,7 +295,7 @@ private:
         auto query_bytes = detail::build_dns_query(meta_name, dns_type::ptr, mode);
         {
             std::error_code ec;
-            this->m_socket.send(endpoint{"224.0.0.251", 5353},
+            this->m_socket.send(this->multicast_endpoint(),
                           std::span<const std::byte>(query_bytes), ec);
             if(ec && m_on_error) m_on_error(ec, "enumerate send");
         }

@@ -48,6 +48,7 @@ make_test(server_query_match_test)
 make_test(server_known_answer_test)
 make_test(server_probe_announce_test)
 make_test(server_response_aggregation_test)
+make_test(record_cache_test)
 
 if (MDNSPP_ENABLE_ASIO_POLICY)
     function(make_asio_test TEST_FILE)

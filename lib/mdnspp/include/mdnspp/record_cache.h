@@ -14,6 +14,7 @@
 #include <vector>
 #include <cstdint>
 #include <utility>
+#include <optional>
 #include <functional>
 #include <string_view>
 #include <shared_mutex>
@@ -130,6 +131,7 @@ class record_cache
         bool cache_flush{false};
         uint32_t wire_ttl{0};
         time_point inserted_at{};
+        std::optional<time_point> flush_deadline{};
     };
 
     using key_type = detail::record_name_type;
@@ -157,7 +159,10 @@ public:
 
         std::unique_lock lock(m_mutex);
 
+        auto flush_origin = origin;
+
         auto [it, end] = m_entries.equal_range(key);
+        bool found = false;
         for (; it != end; ++it)
         {
             if (detail::record_identity_equal(it->second.record, rec))
@@ -166,17 +171,26 @@ public:
                 it->second.wire_ttl = effective_ttl;
                 it->second.cache_flush = flush;
                 it->second.origin = std::move(origin);
-                return;
+                it->second.flush_deadline.reset();
+                found = true;
+                break;
             }
         }
 
-        m_entries.emplace(std::move(key), internal_entry{
-            .record = std::move(rec),
-            .origin = std::move(origin),
-            .cache_flush = flush,
-            .wire_ttl = effective_ttl,
-            .inserted_at = Clock::now(),
-        });
+        if (!found)
+        {
+            m_entries.emplace(key, internal_entry{
+                .record = std::move(rec),
+                .origin = std::move(origin),
+                .cache_flush = flush,
+                .wire_ttl = effective_ttl,
+                .inserted_at = Clock::now(),
+            });
+        }
+
+        // RFC 6762 section 10.2: cache-flush handling
+        if (flush)
+            apply_cache_flush(key, flush_origin, lock);
     }
 
     auto find(std::string_view name, dns_type type) const -> std::vector<cache_entry>
@@ -240,9 +254,48 @@ public:
     }
 
 private:
+    void apply_cache_flush(const key_type &key, const endpoint &origin,
+                           std::unique_lock<std::shared_mutex> &lock)
+    {
+        auto now = Clock::now();
+        auto deadline = now + std::chrono::seconds(1);
+
+        std::vector<cache_entry> affected;
+        cache_entry authoritative;
+
+        auto [it, end] = m_entries.equal_range(key);
+        for (; it != end; ++it)
+        {
+            auto &entry = it->second;
+            if (entry.origin == origin)
+            {
+                if (entry.cache_flush)
+                    authoritative = to_cache_entry(entry, now);
+            }
+            else
+            {
+                if (!entry.flush_deadline || *entry.flush_deadline > deadline)
+                    entry.flush_deadline = deadline;
+
+                affected.push_back(to_cache_entry(entry, now));
+            }
+        }
+
+        if (!affected.empty() && m_options.on_cache_flush)
+        {
+            lock.unlock();
+            m_options.on_cache_flush(authoritative, std::move(affected));
+            lock.lock();
+        }
+    }
+
     static bool is_expired(const internal_entry &e, time_point now)
     {
-        return now >= e.inserted_at + std::chrono::seconds(e.wire_ttl);
+        if (now >= e.inserted_at + std::chrono::seconds(e.wire_ttl))
+            return true;
+        if (e.flush_deadline && now >= *e.flush_deadline)
+            return true;
+        return false;
     }
 
     static auto to_cache_entry(const internal_entry &e, time_point now) -> cache_entry

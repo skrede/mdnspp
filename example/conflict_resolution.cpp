@@ -9,15 +9,19 @@
 int main()
 {
     mdnspp::context ctx;
-    mdnspp::service_info info{
-        .service_name = "MyApp._http._tcp.local.",
-        .service_type = "_http._tcp.local.",
-        .hostname     = "myhost.local.",
-        .port         = 8080,
-        .address_ipv4 = "192.168.1.69",
-        .address_ipv6 = {},
-        .txt_records  = {{"path", "/index.html"}},
-        .subtypes     = {},
+
+    auto make_info = []()
+    {
+        return mdnspp::service_info{
+            .service_name = "MyApp._http._tcp.local.",
+            .service_type = "_http._tcp.local.",
+            .hostname = "myhost.local.",
+            .port = 8080,
+            .address_ipv4 = "192.168.1.69",
+            .address_ipv6 = {},
+            .txt_records = {{"path", "/spandex.html"}},
+            .subtypes = {},
+        };
     };
 
     auto make_opts = [](const std::string &label)
@@ -36,7 +40,7 @@ int main()
                 new_name.insert(pos, " (" + std::to_string(attempt + 1) + ")");
 
             std::cout << "[" << label << "] Conflict on \"" << conflicting_name
-                      << "\", retrying as \"" << new_name << "\"\n";
+                << "\", retrying as \"" << new_name << "\"\n";
             return true;
         };
         return opts;

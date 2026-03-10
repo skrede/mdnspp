@@ -24,7 +24,7 @@
 
 namespace mdnspp {
 
-template <Policy P>
+template<Policy P>
 class basic_querier : detail::basic_mdns_peer_base<P>
 {
     using base = detail::basic_mdns_peer_base<P>;
@@ -76,10 +76,7 @@ public:
     // Throwing constructor -- constructs socket and timer from executor.
     // Silence timeout determines how long to wait after the last relevant packet
     // before stopping the recv_loop.
-    explicit basic_querier(executor_type ex,
-                           std::chrono::milliseconds silence_timeout,
-                           socket_options opts = {},
-                           record_callback on_record = {})
+    explicit basic_querier(executor_type ex, std::chrono::milliseconds silence_timeout, socket_options opts = {}, record_callback on_record = {})
         : base(ex, opts)
         , m_delay_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -88,11 +85,7 @@ public:
     }
 
     // Non-throwing constructor -- ec is last (ASIO convention).
-    basic_querier(executor_type ex,
-                  std::chrono::milliseconds silence_timeout,
-                  socket_options opts,
-                  record_callback on_record,
-                  std::error_code &ec)
+    basic_querier(executor_type ex, std::chrono::milliseconds silence_timeout, socket_options opts, record_callback on_record, std::error_code &ec)
         : base(ex, opts, ec)
         , m_delay_timer(ex)
         , m_silence_timeout(silence_timeout)
@@ -107,8 +100,7 @@ public:
     // Plain callback overload -- used by NativePolicy, MockPolicy, and ASIO adapter users.
     // When mode is response_mode::unicast the QU bit (RFC 6762 section 5.4) is set,
     // requesting a direct unicast response from the responder instead of a multicast reply.
-    void async_query(std::string_view name, dns_type qtype, completion_handler on_done,
-                     response_mode mode = response_mode::multicast)
+    void async_query(std::string_view name, dns_type qtype, completion_handler on_done, response_mode mode = response_mode::multicast)
     {
         assert(this->m_loop == nullptr); // one query per lifetime
         if(on_done)
@@ -152,8 +144,7 @@ private:
     // per RFC 6762 section 5.2. During the delay window, incoming QM queries with
     // a matching question suppress the outgoing query (section 7.3).
     // For QU queries (unicast mode): sends immediately with no delay.
-    void do_query(std::string qname, dns_type qtype,
-                  response_mode mode = response_mode::multicast)
+    void do_query(std::string qname, dns_type qtype, response_mode mode = response_mode::multicast)
     {
         assert(this->m_loop == nullptr); // one query per lifetime
         m_results.clear();
@@ -171,8 +162,9 @@ private:
             auto query_bytes = detail::build_dns_query(m_query_name, m_query_type, m_query_mode);
             std::error_code ec;
             this->m_socket.send(endpoint{"224.0.0.251", 5353},
-                          std::span<const std::byte>(query_bytes), ec);
-            if(ec && m_on_error) m_on_error(ec, "query send");
+                std::span<const std::byte>(query_bytes), ec);
+            if(ec && m_on_error)
+                m_on_error(ec, "query send");
             m_query_sent = true;
         };
 
@@ -243,13 +235,13 @@ private:
                     });
 
                 bool relevant = std::any_of(batch.begin(), batch.end(),
-                                            [this](const mdns_record_variant &rec)
-                                            {
-                                                return std::visit([this](const auto &r)
-                                                {
-                                                    return r.name == m_query_name;
-                                                }, rec);
-                                            });
+                    [this](const mdns_record_variant &rec)
+                    {
+                        return std::visit([this](const auto &r)
+                        {
+                            return r.name == m_query_name;
+                        }, rec);
+                    });
 
                 if(relevant)
                 {
@@ -259,8 +251,8 @@ private:
                             m_on_record(sender, rec);
                     }
                     m_results.insert(m_results.end(),
-                                     std::make_move_iterator(batch.begin()),
-                                     std::make_move_iterator(batch.end()));
+                        std::make_move_iterator(batch.begin()),
+                        std::make_move_iterator(batch.end()));
                 }
                 return relevant;
             },

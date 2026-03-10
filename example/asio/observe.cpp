@@ -20,7 +20,7 @@ int main()
             std::visit([&sender](const auto &r)
             {
                 std::cout << sender.address << ":" << sender.port
-                    << " -> " << r << "\n";
+                    << " -> " << r  << std::endl;
             }, rec);
         }
     };

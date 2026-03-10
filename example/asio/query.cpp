@@ -24,13 +24,14 @@ int main(int argc, char *argv[])
 
     mdnspp::basic_querier<mdnspp::AsioPolicy> q{
         io,
-        std::chrono::seconds(3), {},
+        std::chrono::seconds(3),
+        {},
         [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&sender](const auto &r)
             {
                 std::cout << sender.address << ":" << sender.port
-                    << " -> " << r << "\n";
+                    << " -> " << r << std::endl;
             }, rec);
         }
     };
@@ -39,10 +40,10 @@ int main(int argc, char *argv[])
     {
         if(ec)
         {
-            std::cerr << "query error: " << ec.message() << "\n";
+            std::cerr << "query error: " << ec.message() << std::endl;
             return;
         }
-        std::cout << "Query complete -- " << results.size() << " record(s)\n";
+        std::cout << "Query complete -- " << results.size() << " record(s)" << std::endl;
     });
 
     io.run();

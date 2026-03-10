@@ -1,9 +1,13 @@
-FetchContent_Declare(
-    Catch2
-    GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-    GIT_TAG v3.7.1
-)
-FetchContent_MakeAvailable(Catch2)
+if (MDNSPP_FETCH_DEPENDENCIES)
+    FetchContent_Declare(
+        Catch2
+        GIT_REPOSITORY https://github.com/catchorg/Catch2.git
+        GIT_TAG v3.7.1
+    )
+    FetchContent_MakeAvailable(Catch2)
+else ()
+    find_package(Catch2 CONFIG REQUIRED)
+endif ()
 
 add_executable(infra_headers_compile_test compile/infra_headers_compile_test.cpp)
 target_link_libraries(infra_headers_compile_test PRIVATE mdnspp)
@@ -34,9 +38,9 @@ make_test(service_aggregation_test)
 make_test(dns_test)
 make_test(mdns_util_test)
 make_test(enumerate_interfaces_test)
-if(WIN32)
+if (WIN32)
     target_link_libraries(enumerate_interfaces_test PRIVATE iphlpapi)
-endif()
+endif ()
 make_test(endpoint_test)
 make_test(default_timer_test)
 make_test(default_conformance_test)

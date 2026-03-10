@@ -17,13 +17,13 @@ int main()
         {
             if(ec)
             {
-                std::cerr << "Subtype discovery error: " << ec.message() << "\n";
+                std::cerr << "Subtype discovery error: " << ec.message() << std::endl;
                 ctx.stop();
                 return;
             }
 
             std::cout << "Found " << results.size()
-                      << " record(s) for _printer subtype\n";
+                << " record(s) for _printer subtype" << std::endl;
             ctx.stop();
         });
 

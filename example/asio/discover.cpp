@@ -15,27 +15,28 @@ int main()
 
     mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{
         io,
-        std::chrono::seconds(3), {},
+        std::chrono::seconds(3),
+        {},
         [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&sender](const auto &r)
             {
                 std::cout << sender.address << ":" << sender.port
-                    << " -> " << r << "\n";
+                    << " -> " << r << std::endl;
             }, rec);
         }
     };
 
     mdnspp::async_discover(sd, "_http._tcp.local.",
-                           [](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)
-                           {
-                               if(ec)
-                               {
-                                   std::cerr << "discovery error: " << ec.message() << "\n";
-                                   return;
-                               }
-                               std::cout << "Discovery complete -- " << results.size() << " record(s)\n";
-                           });
+        [](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)
+        {
+            if(ec)
+            {
+                std::cerr << "discovery error: " << ec.message() << std::endl;
+                return;
+            }
+            std::cout << "Discovery complete -- " << results.size() << " record(s) << std::endl";
+        });
 
     io.run();
 }

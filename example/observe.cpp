@@ -16,7 +16,7 @@ int main()
         {
             std::visit([&](const auto &r)
             {
-                std::cout << sender << " -> " << r << "\n";
+                std::cout << sender << " -> " << r  << std::endl;
             }, rec);
 
             if(++count >= 10)

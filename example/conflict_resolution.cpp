@@ -40,7 +40,7 @@ int main()
                 new_name.insert(pos, " (" + std::to_string(attempt + 1) + ")");
 
             std::cout << "[" << label << "] Conflict on \"" << conflicting_name
-                << "\", retrying as \"" << new_name << "\"\n";
+                << "\", retrying as \"" << new_name << "\"" << std::endl;
             return true;
         };
         return opts;
@@ -58,9 +58,9 @@ int main()
         return [&, label](std::error_code ec)
         {
             if(ec)
-                std::cerr << "[" << label << "] Failed: " << ec.message() << "\n";
+                std::cerr << "[" << label << "] Failed: " << ec.message()  << std::endl;
             else
-                std::cout << "[" << label << "] Service is live\n";
+                std::cout << "[" << label << "] Service is live" << std::endl;
 
             if(++ready_count == 2)
                 ctx.stop();

@@ -17,15 +17,15 @@ int main()
         {
             if(ec)
             {
-                std::cerr << "Enumeration error: " << ec.message() << "\n";
+                std::cerr << "Enumeration error: " << ec.message() << std::endl;
                 ctx.stop();
                 return;
             }
 
-            std::cout << "Found " << types.size() << " service type(s):\n";
+            std::cout << "Found " << types.size() << " service type(s):" << std::endl;
             for(const auto &t : types)
                 std::cout << "  " << t.type_name << "." << t.protocol
-                          << "." << t.domain << "\n";
+                    << "." << t.domain << std::endl;
 
             ctx.stop();
         });

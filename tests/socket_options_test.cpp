@@ -1,3 +1,4 @@
+#include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/testing/mock_policy.h"
 
@@ -68,4 +69,27 @@ TEST_CASE("socket_options multicast_ttl value_or defaults to 255", "[socket_opti
 {
     REQUIRE(socket_options{}.multicast_ttl.value_or(uint8_t{255}) == uint8_t{255});
     REQUIRE(socket_options{.multicast_ttl = uint8_t{1}}.multicast_ttl.value_or(uint8_t{255}) == uint8_t{1});
+}
+
+TEST_CASE("Default socket_options has standard mDNS multicast_group", "[socket_options]")
+{
+    auto opts = socket_options{};
+    REQUIRE(opts.multicast_group == endpoint{"224.0.0.251", 5353});
+}
+
+TEST_CASE("socket_options multicast_group accepts custom values", "[socket_options]")
+{
+    auto opts = socket_options{.multicast_group = {"239.1.2.3", 5354}};
+    REQUIRE(opts.multicast_group.address == "239.1.2.3");
+    REQUIRE(opts.multicast_group.port == 5354);
+}
+
+TEST_CASE("socket_options multicast_group comparison uses operator<=>", "[socket_options]")
+{
+    endpoint default_ep{"224.0.0.251", 5353};
+    endpoint custom_ep{"239.1.2.3", 5354};
+
+    REQUIRE(socket_options{}.multicast_group == default_ep);
+    REQUIRE(socket_options{}.multicast_group != custom_ep);
+    REQUIRE(socket_options{.multicast_group = custom_ep}.multicast_group == custom_ep);
 }

@@ -25,6 +25,7 @@ struct record_ptr
     dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
+    bool cache_flush{false};
     std::string ptr_name;
 };
 
@@ -35,6 +36,7 @@ struct record_srv
     dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
+    bool cache_flush{false};
     uint16_t port{0};
     uint16_t weight{0};
     uint16_t priority{0};
@@ -48,6 +50,7 @@ struct record_a
     dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
+    bool cache_flush{false};
     std::string address_string; // "192.168.1.1" — no sockaddr_in
 };
 
@@ -58,6 +61,7 @@ struct record_aaaa
     dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
+    bool cache_flush{false};
     std::string address_string; // "fe80::1" — no sockaddr_in6
 };
 
@@ -68,6 +72,7 @@ struct record_txt
     dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
+    bool cache_flush{false};
     std::vector<service_txt> entries;
 };
 

@@ -27,6 +27,7 @@ jobs:
             -DMDNSPP_BUILD_TESTS=ON `
             -DMDNSPP_BUILD_EXAMPLES=ON `
             -DMDNSPP_ENABLE_ASIO_POLICY=ON `
+            -DMDNSPP_FETCH_DEPENDENCIES=ON `
             '-DCMAKE_CXX_FLAGS=/std:c++latest'
 
       - name: Build
@@ -45,6 +46,7 @@ jobs:
           cmake . -B build -A x64 `
             -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install" `
             -DMDNSPP_ENABLE_ASIO_POLICY=ON `
+            -DMDNSPP_FETCH_DEPENDENCIES=ON `
             '-DCMAKE_CXX_FLAGS=/std:c++latest'
 
       - name: Build and install

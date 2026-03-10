@@ -34,7 +34,8 @@ jobs:
           cmake . -B build -DCMAKE_BUILD_TYPE=Release \
             -DMDNSPP_BUILD_TESTS=ON \
             -DMDNSPP_BUILD_EXAMPLES=ON \
-            -DMDNSPP_ENABLE_ASIO_POLICY=ON
+            -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+            -DMDNSPP_FETCH_DEPENDENCIES=ON 
 
       - name: Build
         run: cmake --build build

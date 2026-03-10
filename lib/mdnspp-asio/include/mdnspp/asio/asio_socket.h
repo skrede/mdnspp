@@ -57,21 +57,42 @@ public:
         , m_sender_endpoint{}
     {
         detail::validate_multicast_address(opts.multicast_group.address);
-        const auto multicast_addr = asio::ip::make_address_v4(opts.multicast_group.address);
+        const auto multicast_addr = asio::ip::make_address(opts.multicast_group.address);
 
-        m_socket.open(asio::ip::udp::v4());
-        m_socket.set_option(asio::ip::udp::socket::reuse_address(true));
-        m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), opts.multicast_group.port));
-
-        if(!opts.interface_address.empty())
+        if(multicast_addr.is_v6())
         {
-            auto iface_addr = asio::ip::make_address_v4(opts.interface_address);
-            m_socket.set_option(asio::ip::multicast::outbound_interface(iface_addr));
-            m_socket.set_option(asio::ip::multicast::join_group(multicast_addr, iface_addr));
+            m_socket.open(asio::ip::udp::v6());
+            m_socket.set_option(asio::ip::udp::socket::reuse_address(true));
+            m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v6::any(), opts.multicast_group.port));
+
+            if(!opts.interface_address.empty())
+            {
+                auto iface_v6 = asio::ip::make_address_v6(opts.interface_address);
+                m_socket.set_option(asio::ip::multicast::outbound_interface(
+                    static_cast<unsigned int>(iface_v6.scope_id())));
+                m_socket.set_option(asio::ip::multicast::join_group(multicast_addr));
+            }
+            else
+            {
+                m_socket.set_option(asio::ip::multicast::join_group(multicast_addr));
+            }
         }
         else
         {
-            m_socket.set_option(asio::ip::multicast::join_group(multicast_addr));
+            m_socket.open(asio::ip::udp::v4());
+            m_socket.set_option(asio::ip::udp::socket::reuse_address(true));
+            m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), opts.multicast_group.port));
+
+            if(!opts.interface_address.empty())
+            {
+                auto iface_addr = asio::ip::make_address_v4(opts.interface_address);
+                m_socket.set_option(asio::ip::multicast::outbound_interface(iface_addr));
+                m_socket.set_option(asio::ip::multicast::join_group(multicast_addr.to_v4(), iface_addr));
+            }
+            else
+            {
+                m_socket.set_option(asio::ip::multicast::join_group(multicast_addr));
+            }
         }
 
         m_socket.set_option(asio::ip::multicast::hops(opts.multicast_ttl.value_or(255)));
@@ -90,29 +111,57 @@ public:
     {
         detail::validate_multicast_address(opts.multicast_group.address, ec);
         if(ec) return;
-        const auto multicast_addr = asio::ip::make_address_v4(opts.multicast_group.address, ec);
+        const auto multicast_addr = asio::ip::make_address(opts.multicast_group.address, ec);
         if(ec) return;
 
-        m_socket.open(asio::ip::udp::v4(), ec);
-        if(ec) return;
-        m_socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
-        if(ec) return;
-        m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), opts.multicast_group.port), ec);
-        if(ec) return;
-
-        if(!opts.interface_address.empty())
+        if(multicast_addr.is_v6())
         {
-            auto iface_addr = asio::ip::make_address_v4(opts.interface_address, ec);
+            m_socket.open(asio::ip::udp::v6(), ec);
             if(ec) return;
-            m_socket.set_option(asio::ip::multicast::outbound_interface(iface_addr), ec);
+            m_socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
             if(ec) return;
-            m_socket.set_option(asio::ip::multicast::join_group(multicast_addr, iface_addr), ec);
+            m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v6::any(), opts.multicast_group.port), ec);
             if(ec) return;
+
+            if(!opts.interface_address.empty())
+            {
+                auto iface_v6 = asio::ip::make_address_v6(opts.interface_address, ec);
+                if(ec) return;
+                m_socket.set_option(asio::ip::multicast::outbound_interface(
+                    static_cast<unsigned int>(iface_v6.scope_id())), ec);
+                if(ec) return;
+                m_socket.set_option(asio::ip::multicast::join_group(multicast_addr), ec);
+                if(ec) return;
+            }
+            else
+            {
+                m_socket.set_option(asio::ip::multicast::join_group(multicast_addr), ec);
+                if(ec) return;
+            }
         }
         else
         {
-            m_socket.set_option(asio::ip::multicast::join_group(multicast_addr), ec);
+            m_socket.open(asio::ip::udp::v4(), ec);
             if(ec) return;
+            m_socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
+            if(ec) return;
+            m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), opts.multicast_group.port), ec);
+            if(ec) return;
+
+            if(!opts.interface_address.empty())
+            {
+                auto iface_addr = asio::ip::make_address_v4(opts.interface_address, ec);
+                if(ec) return;
+                m_socket.set_option(asio::ip::multicast::outbound_interface(iface_addr), ec);
+                if(ec) return;
+                m_socket.set_option(asio::ip::multicast::join_group(multicast_addr.to_v4(), iface_addr), ec);
+                if(ec) return;
+            }
+            else
+            {
+                m_socket.set_option(asio::ip::multicast::join_group(multicast_addr), ec);
+                if(ec) return;
+            }
         }
 
         m_socket.set_option(asio::ip::multicast::hops(opts.multicast_ttl.value_or(255)), ec);

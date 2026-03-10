@@ -275,7 +275,7 @@ private:
     std::vector<socket_entry> m_sockets;
     std::vector<DefaultTimer*> m_timers;
     std::array<std::byte, 4096> m_recv_buf{};
-    sockaddr_in m_sender_addr{};
+    sockaddr_storage m_sender_addr{};
 
     // Stop-wakeup mechanism — platform-specific members.
 #if defined(__linux__)
@@ -513,10 +513,22 @@ private:
                 continue;
 #endif
 
-            char addr_str[INET_ADDRSTRLEN]{};
-            ::inet_ntop(AF_INET, &m_sender_addr.sin_addr, addr_str, sizeof(addr_str));
+            char addr_str[INET6_ADDRSTRLEN]{};
+            std::uint16_t port{};
 
-            auto port = ntohs(m_sender_addr.sin_port);
+            if(m_sender_addr.ss_family == AF_INET6)
+            {
+                auto &sa6 = *reinterpret_cast<sockaddr_in6 *>(&m_sender_addr);
+                ::inet_ntop(AF_INET6, &sa6.sin6_addr, addr_str, sizeof(addr_str));
+                port = ntohs(sa6.sin6_port);
+            }
+            else
+            {
+                auto &sa4 = *reinterpret_cast<sockaddr_in *>(&m_sender_addr);
+                ::inet_ntop(AF_INET, &sa4.sin_addr, addr_str, sizeof(addr_str));
+                port = ntohs(sa4.sin_port);
+            }
+
             endpoint ep{
                 .address = addr_str,
                 .port    = port,

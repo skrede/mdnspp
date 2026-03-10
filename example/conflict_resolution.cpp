@@ -9,19 +9,15 @@
 int main()
 {
     mdnspp::context ctx;
-
-    auto make_info = []()
-    {
-        return mdnspp::service_info{
-            .service_name = "MyApp._http._tcp.local.",
-            .service_type = "_http._tcp.local.",
-            .hostname     = "myhost.local.",
-            .port         = 8080,
-            .address_ipv4 = "192.168.1.69",
-            .address_ipv6 = {},
-            .txt_records  = {{"path", "/spandex.html"}},
-            .subtypes     = {},
-        };
+    mdnspp::service_info info{
+        .service_name = "MyApp._http._tcp.local.",
+        .service_type = "_http._tcp.local.",
+        .hostname     = "myhost.local.",
+        .port         = 8080,
+        .address_ipv4 = "192.168.1.69",
+        .address_ipv6 = {},
+        .txt_records  = {{"path", "/index.html"}},
+        .subtypes     = {},
     };
 
     auto make_opts = [](const std::string &label)

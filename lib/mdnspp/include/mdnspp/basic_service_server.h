@@ -449,7 +449,7 @@ private:
         // During probing: check for conflicting responses and simultaneous probes
         if(m_pa_state.state == server_state::probing)
         {
-            if(data.size() >= 12)
+            if(data.size() >= 12 && (detail::read_u16_be(data.data() + 2) & 0x8000))
             {
                 uint16_t flags = detail::read_u16_be(data.data() + 2);
                 if(flags & 0x8000)

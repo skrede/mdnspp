@@ -1,4 +1,4 @@
-if (MDNSPP_FETCH_DEPENDENCIES)
+if (MDNSPP_CMAKE_FETCH_DEPS)
     FetchContent_Declare(
         asio
         GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git

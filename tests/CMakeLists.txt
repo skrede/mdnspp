@@ -1,4 +1,4 @@
-if (MDNSPP_FETCH_DEPENDENCIES)
+if (MDNSPP_CMAKE_FETCH_DEPS)
     FetchContent_Declare(
         Catch2
         GIT_REPOSITORY https://github.com/catchorg/Catch2.git

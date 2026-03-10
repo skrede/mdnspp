@@ -51,12 +51,15 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3), {},
-        [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
-        {
-            std::visit([&](const auto &r) {
-                std::cout << sender << " -> " << r << "\n";
-            }, rec);
+    mdnspp::service_discovery sd{ctx,
+        mdnspp::query_options{
+            .on_record = [](const mdnspp::endpoint &sender,
+                            const mdnspp::mdns_record_variant &rec)
+            {
+                std::visit([&](const auto &r) {
+                    std::cout << sender << " -> " << r << "\n";
+                }, rec);
+            }
         }
     };
 
@@ -77,9 +80,10 @@ int main()
 `mdnspp::context` is the event loop. `ctx.run()` blocks until `ctx.stop()` is
 called -- without that call in the completion callback, the program hangs.
 
-The second constructor argument is a per-record callback invoked as records
-arrive. The lambda passed to `async_discover` is the completion callback,
-invoked once when discovery finishes (silence timeout or error).
+The `query_options` struct holds a per-record callback (invoked as records
+arrive) and a silence timeout (default 3 seconds). The lambda passed to
+`async_discover` is the completion callback, invoked once when discovery
+finishes (silence timeout or error).
 
 For resolved service instances (hostname, port, addresses) instead of raw
 records, use `async_browse` -- it returns `std::vector<resolved_service>`

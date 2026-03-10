@@ -15,12 +15,12 @@ int main()
     mdnspp::service_info info{
         .service_name = "MyApp._http._tcp.local.",
         .service_type = "_http._tcp.local.",
-        .hostname     = "myhost.local.",
-        .port         = 8080,
+        .hostname = "myhost.local.",
+        .port = 8080,
         .address_ipv4 = "192.168.1.69",
         .address_ipv6 = {},
-        .txt_records  = {{"path", "/index.html"}},
-        .subtypes     = {},
+        .txt_records = {{"path", "/index.html"}},
+        .subtypes = {},
     };
 
     mdnspp::basic_service_server<mdnspp::AsioPolicy> srv{
@@ -31,7 +31,7 @@ int main()
             {
                 std::cout << sender.address << ":" << sender.port
                     << " queried qtype=" << to_string(qtype)
-                    << " (" << to_string(mode) << ")\n";
+                    << " (" << to_string(mode) << ")" << std::endl;
             }
         }
     };
@@ -42,7 +42,7 @@ int main()
         srv.stop();
     });
 
-    std::cout << "Serving MyApp._http._tcp.local. on port 8080 (Ctrl-C to stop)\n";
+    std::cout << "Serving MyApp._http._tcp.local. on port 8080 (Ctrl-C to stop)" << std::endl;
     mdnspp::async_start(srv, [](std::error_code)
     {
     });

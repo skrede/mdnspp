@@ -4,6 +4,7 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_type.h"
+#include "mdnspp/query_options.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/resolved_service.h"
 
@@ -81,27 +82,24 @@ public:
     }
 
     // Throwing constructor -- constructs socket and timer from executor.
-    // Silence timeout determines how long to wait after the last relevant packet
-    // before stopping the recv_loop.
+    // query_options bundles the silence timeout and per-record callback.
     explicit basic_service_discovery(executor_type ex,
-                                     std::chrono::milliseconds silence_timeout,
-                                     socket_options opts = {},
-                                     record_callback on_record = {})
-        : base(ex, opts)
-        , m_silence_timeout(silence_timeout)
-        , m_on_record(std::move(on_record))
+                                     query_options opts = {},
+                                     socket_options sock_opts = {})
+        : base(ex, sock_opts)
+        , m_silence_timeout(opts.silence_timeout)
+        , m_on_record(std::move(opts.on_record))
     {
     }
 
     // Non-throwing constructor -- ec is last (ASIO convention).
     basic_service_discovery(executor_type ex,
-                            std::chrono::milliseconds silence_timeout,
-                            socket_options opts,
-                            record_callback on_record,
+                            query_options opts,
+                            socket_options sock_opts,
                             std::error_code &ec)
-        : base(ex, opts, ec)
-        , m_silence_timeout(silence_timeout)
-        , m_on_record(std::move(on_record))
+        : base(ex, sock_opts, ec)
+        , m_silence_timeout(opts.silence_timeout)
+        , m_on_record(std::move(opts.on_record))
     {
     }
 
@@ -318,8 +316,13 @@ private:
                         {
                             if(ptr->name == "_services._dns-sd._udp.local")
                             {
-                                m_enumerated_types.push_back(
-                                    parse_service_type(ptr->ptr_name));
+                                auto info = parse_service_type(ptr->ptr_name);
+                                bool dup = std::any_of(m_enumerated_types.begin(),
+                                    m_enumerated_types.end(),
+                                    [&](const service_type_info &t)
+                                    { return t.service_type == info.service_type; });
+                                if(!dup)
+                                    m_enumerated_types.push_back(std::move(info));
                                 found = true;
                             }
                         }

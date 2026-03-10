@@ -264,6 +264,12 @@ private:
     {
         detail::begin_probing(m_pa_state);
 
+        // Generate a random transaction ID for our probes so we can
+        // distinguish our own looped-back packets from another host's probes.
+        // Use a non-zero value; zero could collide with the mDNS default.
+        std::uniform_int_distribution<uint16_t> id_dist(1, 0xFFFF);
+        m_pa_state.probe_id = id_dist(m_rng);
+
         // Random delay 0-250ms before first probe (RFC 6762 section 8.1)
         std::uniform_int_distribution dist(0, 250);
         m_response_timer.expires_after(std::chrono::milliseconds(dist(m_rng)));
@@ -281,6 +287,9 @@ private:
         if(this->m_stopped.load(std::memory_order_acquire)) return;
 
         auto probe = detail::build_probe_query(m_info);
+        // Stamp our probe ID into the DNS header transaction ID (bytes 0-1)
+        probe[0] = static_cast<std::byte>(m_pa_state.probe_id >> 8);
+        probe[1] = static_cast<std::byte>(m_pa_state.probe_id & 0xFF);
         std::error_code ec;
         this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(probe), ec);
         if(ec && m_on_error) m_on_error(ec, "probe send");
@@ -437,13 +446,29 @@ private:
         if(this->m_stopped.load(std::memory_order_acquire))
             return;
 
-        // During probing: check for conflicting responses
+        // During probing: check for conflicting responses and simultaneous probes
         if(m_pa_state.state == server_state::probing)
         {
             if(data.size() >= 12 && (detail::read_u16_be(data.data() + 2) & 0x8000))
             {
-                if(response_conflicts(data))
-                    handle_conflict();
+                uint16_t flags = detail::read_u16_be(data.data() + 2);
+                if(flags & 0x8000)
+                {
+                    // Response from an authoritative owner of the name
+                    if(response_conflicts(data))
+                        handle_conflict();
+                }
+                else
+                {
+                    // Query -- check for simultaneous probe (RFC 6762 section 8.2).
+                    // A probe carries proposed records in the Authority section;
+                    // if it contains our name, another host is probing for the same name.
+                    // Skip our own looped-back probes by comparing the transaction ID.
+                    uint16_t id = detail::read_u16_be(data.data());
+                    uint16_t nscount = detail::read_u16_be(data.data() + 8);
+                    if(id != m_pa_state.probe_id && nscount > 0 && response_conflicts(data))
+                        handle_conflict();
+                }
             }
             return;
         }
@@ -496,12 +521,22 @@ private:
 
     // Sends an unsolicited announcement with all records (PTR, SRV, TXT, A/AAAA)
     // to the multicast group. RFC 6762 section 8.4.
+    // When respond_to_meta_queries is true, also includes the DNS-SD service type
+    // enumeration PTR record (_services._dns-sd._udp.local -> service_type)
+    // per RFC 6763 section 9.
     // When announce_subtypes is true, also sends subtype PTR records.
     void send_announcement()
     {
         auto response = detail::build_dns_response(m_info, dns_type::any);
         if(!response.empty())
             send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "announcement send");
+
+        if(m_opts.respond_to_meta_queries)
+        {
+            auto pkt = detail::build_meta_query_response(m_info);
+            if(!pkt.empty())
+                send_to(response_mode::multicast, {}, std::span<const std::byte>(pkt), "announcement send");
+        }
 
         if(m_opts.announce_subtypes)
         {

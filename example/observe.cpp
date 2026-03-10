@@ -11,17 +11,17 @@ int main()
     int count = 0;
 
     mdnspp::observer obs{
-        ctx, {},
-        [&](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
+        ctx,
+        mdnspp::observer_options{.on_record = [&](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&](const auto &r)
             {
-                std::cout << sender << " -> " << r << "\n";
+                std::cout << sender << " -> " << r  << std::endl;
             }, rec);
 
             if(++count >= 10)
                 obs.stop();
-        }
+        }}
     };
 
     obs.async_observe([&ctx](std::error_code) { ctx.stop(); });

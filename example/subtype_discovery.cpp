@@ -9,7 +9,7 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+    mdnspp::service_discovery sd{ctx};
 
     sd.async_discover_subtype("_http._tcp.local.", "_printer",
         [&ctx](std::error_code ec,
@@ -17,13 +17,13 @@ int main()
         {
             if(ec)
             {
-                std::cerr << "Subtype discovery error: " << ec.message() << "\n";
+                std::cerr << "Subtype discovery error: " << ec.message() << std::endl;
                 ctx.stop();
                 return;
             }
 
             std::cout << "Found " << results.size()
-                      << " record(s) for _printer subtype\n";
+                << " record(s) for _printer subtype" << std::endl;
             ctx.stop();
         });
 

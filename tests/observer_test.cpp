@@ -141,12 +141,12 @@ SCENARIO("observer delivers DNS records from a single packet to the callback", "
         std::vector<endpoint> received_senders;
 
         basic_observer<MockPolicy> obs{
-            ex, {},
-            [&](const endpoint &ep, const mdns_record_variant &rec)
+            ex,
+            observer_options{.on_record = [&](const endpoint &ep, const mdns_record_variant &rec)
             {
                 received_records.push_back(rec);
                 received_senders.push_back(ep);
-            }
+            }}
         };
 
         obs.socket().enqueue(
@@ -182,11 +182,11 @@ SCENARIO("observer delivers records from multiple packets", "[observer][multiple
         std::vector<mdns_record_variant> received_records;
 
         basic_observer<MockPolicy> obs{
-            ex, {},
-            [&](const endpoint &, const mdns_record_variant &rec)
+            ex,
+            observer_options{.on_record = [&](const endpoint &, const mdns_record_variant &rec)
             {
                 received_records.push_back(rec);
-            }
+            }}
         };
 
         obs.socket().enqueue(make_ptr_response("_http._tcp.local.", "First._http._tcp.local."));
@@ -213,10 +213,10 @@ SCENARIO("async_observe fires completion callback on stop", "[observer][async]")
         mock_executor ex;
 
         basic_observer<MockPolicy> obs{
-            ex, {},
-            [](const endpoint &, const mdns_record_variant &)
+            ex,
+            observer_options{.on_record = [](const endpoint &, const mdns_record_variant &)
             {
-            }
+            }}
         };
 
         WHEN("async_observe() is called with a completion callback")
@@ -252,10 +252,10 @@ SCENARIO("stop() is idempotent — second call is a no-op", "[observer][stop-ide
         mock_executor ex;
 
         basic_observer<MockPolicy> obs{
-            ex, {},
-            [](const endpoint &, const mdns_record_variant &)
+            ex,
+            observer_options{.on_record = [](const endpoint &, const mdns_record_variant &)
             {
-            }
+            }}
         };
 
         WHEN("async_observe() and then stop() are called twice")
@@ -279,10 +279,10 @@ SCENARIO("async_observe completion handler fires exactly once on double stop", "
         int completion_count = 0;
 
         basic_observer<MockPolicy> obs{
-            ex, {},
-            [](const endpoint &, const mdns_record_variant &)
+            ex,
+            observer_options{.on_record = [](const endpoint &, const mdns_record_variant &)
             {
-            }
+            }}
         };
         obs.async_observe([&](std::error_code) { ++completion_count; });
 
@@ -308,8 +308,8 @@ SCENARIO("observer can be created, started, and stopped without any packet deliv
         int callback_count = 0;
 
         basic_observer<MockPolicy> obs{
-            ex, {},
-            [&](const endpoint &, const mdns_record_variant &) { ++callback_count; }
+            ex,
+            observer_options{.on_record = [&](const endpoint &, const mdns_record_variant &) { ++callback_count; }}
         };
 
         WHEN("async_observe() and stop() are called on the empty observer")
@@ -335,14 +335,14 @@ SCENARIO("stop() called from within the record callback does not deadlock", "[ob
         int callback_count = 0;
 
         basic_observer<MockPolicy> obs{
-            ex, {},
-            [&](const endpoint &, const mdns_record_variant &)
+            ex,
+            observer_options{.on_record = [&](const endpoint &, const mdns_record_variant &)
             {
                 ++callback_count;
                 // Call stop() from within the callback -- must not deadlock
                 if(obs_ptr)
                     obs_ptr->stop();
-            }
+            }}
         };
         obs_ptr = &obs;
 
@@ -370,10 +370,11 @@ SCENARIO("observer non-throwing constructor sets ec on success", "[observer][cre
         WHEN("basic_observer<MockPolicy> is constructed with the ec overload")
         {
             basic_observer<MockPolicy> obs{
-                ex, {},
-                [](const endpoint &, const mdns_record_variant &)
+                ex,
+                observer_options{.on_record = [](const endpoint &, const mdns_record_variant &)
                 {
-                },
+                }},
+                {},
                 ec
             };
 
@@ -392,10 +393,10 @@ SCENARIO("observer is move-constructible before async_observe", "[observer][move
     {
         mock_executor ex;
         basic_observer<MockPolicy> obs{
-            ex, {},
-            [](const endpoint &, const mdns_record_variant &)
+            ex,
+            observer_options{.on_record = [](const endpoint &, const mdns_record_variant &)
             {
-            }
+            }}
         };
 
         WHEN("move-constructed into a new observer")
@@ -422,8 +423,8 @@ SCENARIO("observer skips malformed packets without crashing", "[observer][malfor
         int callback_count = 0;
 
         basic_observer<MockPolicy> obs{
-            ex, {},
-            [&](const endpoint &, const mdns_record_variant &) { ++callback_count; }
+            ex,
+            observer_options{.on_record = [&](const endpoint &, const mdns_record_variant &) { ++callback_count; }}
         };
         obs.socket().enqueue(malformed);
 
@@ -449,8 +450,8 @@ SCENARIO("basic_observer with socket_options", "[observer][socket_options]")
         {
             basic_observer<MockPolicy> obs{
                 ex,
-                opts,
-                [](const endpoint &, const mdns_record_variant &) {}
+                observer_options{.on_record = [](const endpoint &, const mdns_record_variant &) {}},
+                opts
             };
 
             THEN("the socket stores the options")

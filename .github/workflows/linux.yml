@@ -57,12 +57,14 @@ jobs:
               -DCMAKE_C_FLAGS="--coverage" \
               -DMDNSPP_BUILD_TESTS=ON \
               -DMDNSPP_BUILD_EXAMPLES=OFF \
-              -DMDNSPP_ENABLE_ASIO_POLICY=ON
+              -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+              -DMDNSPP_CMAKE_FETCH_DEPS=ON 
           else
             cmake . -B build -DCMAKE_BUILD_TYPE=Release \
               -DMDNSPP_BUILD_TESTS=ON \
               -DMDNSPP_BUILD_EXAMPLES=ON \
-              -DMDNSPP_ENABLE_ASIO_POLICY=ON
+              -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+              -DMDNSPP_CMAKE_FETCH_DEPS=ON 
           fi
 
       - name: Build
@@ -101,7 +103,8 @@ jobs:
         run: |
           cmake . -B build -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install \
-            -DMDNSPP_ENABLE_ASIO_POLICY=ON
+            -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+            -DMDNSPP_CMAKE_FETCH_DEPS=ON
           cmake --build build
           cmake --install build
 

@@ -14,15 +14,15 @@ int main()
     asio::io_context io;
 
     mdnspp::basic_observer<mdnspp::AsioPolicy> obs{
-        io, {},
-        [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
+        io,
+        mdnspp::observer_options{.on_record = [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&sender](const auto &r)
             {
                 std::cout << sender.address << ":" << sender.port
-                    << " -> " << r << "\n";
+                    << " -> " << r  << std::endl;
             }, rec);
-        }
+        }}
     };
 
     mdnspp::async_observe(obs, [](std::error_code)

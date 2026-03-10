@@ -10,22 +10,22 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+    mdnspp::service_discovery sd{ctx};
 
     sd.async_enumerate_types(
         [&ctx](std::error_code ec, std::vector<mdnspp::service_type_info> types)
         {
             if(ec)
             {
-                std::cerr << "Enumeration error: " << ec.message() << "\n";
+                std::cerr << "Enumeration error: " << ec.message() << std::endl;
                 ctx.stop();
                 return;
             }
 
-            std::cout << "Found " << types.size() << " service type(s):\n";
+            std::cout << "Found " << types.size() << " service type(s):" << std::endl;
             for(const auto &t : types)
                 std::cout << "  " << t.type_name << "." << t.protocol
-                          << "." << t.domain << "\n";
+                    << "." << t.domain << std::endl;
 
             ctx.stop();
         });

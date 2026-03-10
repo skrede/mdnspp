@@ -68,7 +68,7 @@ mdnspp::service_info info{
 int main()
 {
     mdnspp::context ctx;
-    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+    mdnspp::service_discovery sd{ctx};
 
     sd.async_enumerate_types(
         [&ctx](std::error_code ec, std::vector<mdnspp::service_type_info> types)
@@ -92,7 +92,7 @@ int main()
 int main()
 {
     mdnspp::context ctx;
-    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+    mdnspp::service_discovery sd{ctx};
 
     sd.async_discover_subtype("_http._tcp.local.", "_printer",
         [&ctx](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)

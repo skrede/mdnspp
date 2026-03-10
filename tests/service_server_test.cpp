@@ -1072,6 +1072,7 @@ SCENARIO("announcement burst sends announce_count announcements", "[service_serv
         service_options opts;
         opts.announce_count = 3;
         opts.announce_interval = std::chrono::milliseconds(500);
+        opts.respond_to_meta_queries = false;
 
         basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
 
@@ -1124,6 +1125,7 @@ SCENARIO("update_service_info sends announcement burst", "[service_server][updat
 
         service_options opts;
         opts.announce_count = 2;
+        opts.respond_to_meta_queries = false;
 
         basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
         server.async_start();

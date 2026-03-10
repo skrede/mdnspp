@@ -78,7 +78,7 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+    mdnspp::service_discovery sd{ctx};
 
     sd.async_browse("_http._tcp.local.",
         [&ctx](std::error_code ec, std::vector<mdnspp::resolved_service> services)

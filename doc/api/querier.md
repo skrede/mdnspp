@@ -43,22 +43,18 @@ using error_handler     = detail::move_only_function<void(std::error_code, std::
 
 ```cpp
 explicit basic_querier(executor_type ex,
-                       std::chrono::milliseconds silence_timeout,
-                       socket_options opts = {},
-                       record_callback on_record = {});
+                       query_options opts = {},
+                       socket_options sock_opts = {});
 ```
 
-Constructs the querier from an executor, a silence timeout, optional socket options, and an optional per-record callback. The `silence_timeout` determines how long to wait after the last relevant packet before completing. The `opts` parameter controls network interface selection, multicast TTL, and loopback (see [Socket Options](../socket-options.md)). Throws on socket construction failure.
-
-Note: `socket_options` sits between the silence timeout and the callback. To pass a callback without custom socket options, use `q{ex, timeout, {}, callback}`.
+Constructs the querier from an executor, optional [`query_options`](query_options.md) (per-record callback and silence timeout), and optional [`socket_options`](../socket-options.md) (network interface, multicast TTL, loopback). All options default to sensible values -- construct with just an executor for a 3-second silence timeout and no per-record callback. Throws on socket construction failure.
 
 ### Non-throwing
 
 ```cpp
 basic_querier(executor_type ex,
-              std::chrono::milliseconds silence_timeout,
-              socket_options opts,
-              record_callback on_record,
+              query_options opts,
+              socket_options sock_opts,
               std::error_code& ec);
 ```
 
@@ -170,12 +166,15 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::querier q{ctx, std::chrono::seconds(3), {},
-        [](const mdnspp::endpoint& sender, const mdnspp::mdns_record_variant& rec)
-        {
-            std::visit([&](const auto& r) {
-                std::cout << sender << " -> " << r << "\n";
-            }, rec);
+    mdnspp::querier q{ctx,
+        mdnspp::query_options{
+            .on_record = [](const mdnspp::endpoint& sender,
+                            const mdnspp::mdns_record_variant& rec)
+            {
+                std::visit([&](const auto& r) {
+                    std::cout << sender << " -> " << r << "\n";
+                }, rec);
+            }
         }
     };
 
@@ -196,6 +195,7 @@ int main()
 
 ## See Also
 
+- [query_options](query_options.md) -- per-record callback and silence timeout configuration
 - [observer](observer.md) -- passively listen to all mDNS traffic
 - [service_discovery](service_discovery.md) -- higher-level service browsing
 - [resolved_service](resolved_service.md) -- aggregated service view

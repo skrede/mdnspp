@@ -42,22 +42,18 @@ using error_handler     = detail::move_only_function<void(std::error_code, std::
 
 ```cpp
 explicit basic_service_discovery(executor_type ex,
-                                 std::chrono::milliseconds silence_timeout,
-                                 socket_options opts = {},
-                                 record_callback on_record = {});
+                                 query_options opts = {},
+                                 socket_options sock_opts = {});
 ```
 
-Constructs the service discovery from an executor, a silence timeout, optional socket options, and an optional per-record callback. The `silence_timeout` determines how long to wait after the last relevant packet before completing. The `opts` parameter controls network interface selection, multicast TTL, and loopback (see [Socket Options](../socket-options.md)). Throws on socket construction failure.
-
-Note: `socket_options` sits between the silence timeout and the callback. To pass a callback without custom socket options, use `sd{ex, timeout, {}, callback}`.
+Constructs the service discovery from an executor, optional [`query_options`](query_options.md) (per-record callback and silence timeout), and optional [`socket_options`](../socket-options.md) (network interface, multicast TTL, loopback). All options default to sensible values -- construct with just an executor for a 3-second silence timeout and no per-record callback. Throws on socket construction failure.
 
 ### Non-throwing
 
 ```cpp
 basic_service_discovery(executor_type ex,
-                        std::chrono::milliseconds silence_timeout,
-                        socket_options opts,
-                        record_callback on_record,
+                        query_options opts,
+                        socket_options sock_opts,
                         std::error_code& ec);
 ```
 
@@ -103,7 +99,7 @@ Must only be called once per lifetime. Uses a dedicated internal receive loop se
 
 ```cpp
 mdnspp::context ctx;
-mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+mdnspp::service_discovery sd{ctx};
 
 sd.async_enumerate_types(
     [&ctx](std::error_code ec, std::vector<mdnspp::service_type_info> types)
@@ -132,7 +128,7 @@ Subtype-filtered discovery (RFC 6763 section 7.1). Constructs the subtype query 
 
 ```cpp
 mdnspp::context ctx;
-mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+mdnspp::service_discovery sd{ctx};
 
 sd.async_discover_subtype("_http._tcp.local.", "_printer",
     [&ctx](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)
@@ -241,7 +237,7 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+    mdnspp::service_discovery sd{ctx};
 
     sd.async_browse("_http._tcp.local.",
         [&ctx](std::error_code ec, std::vector<mdnspp::resolved_service> services)
@@ -281,12 +277,15 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3), {},
-        [](const mdnspp::endpoint& sender, const mdnspp::mdns_record_variant& rec)
-        {
-            std::visit([&](const auto& r) {
-                std::cout << sender << " -> " << r << "\n";
-            }, rec);
+    mdnspp::service_discovery sd{ctx,
+        mdnspp::query_options{
+            .on_record = [](const mdnspp::endpoint& sender,
+                            const mdnspp::mdns_record_variant& rec)
+            {
+                std::visit([&](const auto& r) {
+                    std::cout << sender << " -> " << r << "\n";
+                }, rec);
+            }
         }
     };
 
@@ -309,6 +308,7 @@ int main()
 
 ## See Also
 
+- [query_options](query_options.md) -- per-record callback and silence timeout configuration
 - [resolved_service](resolved_service.md) -- the aggregated service type and `aggregate()` function
 - [querier](querier.md) -- lower-level query for any record type
 - [observer](observer.md) -- passively listen to all mDNS traffic

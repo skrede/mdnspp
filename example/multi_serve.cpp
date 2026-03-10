@@ -14,23 +14,23 @@ int main()
     mdnspp::service_info http_info{
         .service_name = "WebApp._http._tcp.local.",
         .service_type = "_http._tcp.local.",
-        .hostname     = "myhost.local.",
-        .port         = 8080,
+        .hostname = "myhost.local.",
+        .port = 8080,
         .address_ipv4 = "192.168.1.69",
         .address_ipv6 = {},
-        .txt_records  = {{"path", "/index.html"}},
-        .subtypes     = {},
+        .txt_records = {{"path", "/index.html"}},
+        .subtypes = {},
     };
 
     mdnspp::service_info ssh_info{
         .service_name = "MyHost._ssh._tcp.local.",
         .service_type = "_ssh._tcp.local.",
-        .hostname     = "myhost.local.",
-        .port         = 22,
+        .hostname = "myhost.local.",
+        .port = 22,
         .address_ipv4 = "192.168.1.69",
         .address_ipv6 = {},
-        .txt_records  = {},
-        .subtypes     = {},
+        .txt_records = {},
+        .subtypes = {},
     };
 
     mdnspp::service_server http_srv{
@@ -40,7 +40,7 @@ int main()
             .on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
             {
                 std::cout << "[http] " << sender << " queried qtype=" << to_string(qtype)
-                    << " (" << to_string(mode) << ")\n";
+                    << " (" << to_string(mode) << ")" << std::endl;
             }
         }
     };
@@ -52,7 +52,7 @@ int main()
             .on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
             {
                 std::cout << "[ssh]  " << sender << " queried qtype=" << to_string(qtype)
-                    << " (" << to_string(mode) << ")\n";
+                    << " (" << to_string(mode) << ")" << std::endl;
             }
         }
     };
@@ -63,7 +63,7 @@ int main()
         ctx.stop();
     });
 
-    std::cout << "Serving HTTP + SSH on shared context (30s then auto-stop)\n";
+    std::cout << "Serving HTTP + SSH on shared context (30s then auto-stop)" << std::endl;
     http_srv.async_start();
     ssh_srv.async_start();
     ctx.run();

@@ -10,7 +10,7 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+    mdnspp::service_discovery sd{ctx};
 
     sd.async_enumerate_types(
         [&ctx](std::error_code ec, std::vector<mdnspp::service_type_info> types)

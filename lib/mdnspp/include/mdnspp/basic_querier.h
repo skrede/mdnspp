@@ -3,6 +3,7 @@
 
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/query_options.h"
 #include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
@@ -74,22 +75,21 @@ public:
     }
 
     // Throwing constructor -- constructs socket and timer from executor.
-    // Silence timeout determines how long to wait after the last relevant packet
-    // before stopping the recv_loop.
-    explicit basic_querier(executor_type ex, std::chrono::milliseconds silence_timeout, socket_options opts = {}, record_callback on_record = {})
-        : base(ex, opts)
+    // query_options bundles the silence timeout and per-record callback.
+    explicit basic_querier(executor_type ex, query_options opts = {}, socket_options sock_opts = {})
+        : base(ex, sock_opts)
         , m_delay_timer(ex)
-        , m_silence_timeout(silence_timeout)
-        , m_on_record(std::move(on_record))
+        , m_silence_timeout(opts.silence_timeout)
+        , m_on_record(std::move(opts.on_record))
     {
     }
 
     // Non-throwing constructor -- ec is last (ASIO convention).
-    basic_querier(executor_type ex, std::chrono::milliseconds silence_timeout, socket_options opts, record_callback on_record, std::error_code &ec)
-        : base(ex, opts, ec)
+    basic_querier(executor_type ex, query_options opts, socket_options sock_opts, std::error_code &ec)
+        : base(ex, sock_opts, ec)
         , m_delay_timer(ex)
-        , m_silence_timeout(silence_timeout)
-        , m_on_record(std::move(on_record))
+        , m_silence_timeout(opts.silence_timeout)
+        , m_on_record(std::move(opts.on_record))
     {
     }
 

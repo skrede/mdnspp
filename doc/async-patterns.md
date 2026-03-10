@@ -43,13 +43,16 @@ int main()
 {
     asio::io_context io;
 
-    mdnspp::basic_observer<mdnspp::AsioPolicy> obs{io, {},
-        [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
-        {
-            std::visit([&](const auto &r) {
-                std::cout << sender.address << ":" << sender.port
-                    << " -> " << r << "\n";
-            }, rec);
+    mdnspp::basic_observer<mdnspp::AsioPolicy> obs{io,
+        mdnspp::observer_options{
+            .on_record = [](const mdnspp::endpoint &sender,
+                            const mdnspp::mdns_record_variant &rec)
+            {
+                std::visit([&](const auto &r) {
+                    std::cout << sender.address << ":" << sender.port
+                        << " -> " << r << "\n";
+                }, rec);
+            }
         }
     };
 
@@ -84,7 +87,7 @@ int main()
 {
     asio::io_context io;
 
-    mdnspp::basic_querier<mdnspp::AsioPolicy> q{io, std::chrono::seconds(3)};
+    mdnspp::basic_querier<mdnspp::AsioPolicy> q{io};
 
     std::future<std::vector<mdnspp::mdns_record_variant>> fut =
         mdnspp::async_query(q, "_http._tcp.local.", mdnspp::dns_type::ptr,
@@ -125,8 +128,7 @@ Spawn the coroutine with `asio::co_spawn`.
 
 asio::awaitable<void> discover(asio::io_context &io)
 {
-    mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{
-        io, std::chrono::seconds(3)};
+    mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{io};
 
     auto results = co_await mdnspp::async_discover(
         sd, "_http._tcp.local.", asio::use_awaitable);

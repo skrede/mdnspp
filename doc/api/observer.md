@@ -40,19 +40,20 @@ using error_handler     = detail::move_only_function<void(std::error_code, std::
 ### Throwing
 
 ```cpp
-explicit basic_observer(executor_type ex, socket_options opts = {},
-                        record_callback on_record = {});
+explicit basic_observer(executor_type ex,
+                        observer_options opts = {},
+                        socket_options sock_opts = {});
 ```
 
-Constructs the observer from an executor (or context). The `opts` parameter controls network interface selection, multicast TTL, and loopback (see [Socket Options](../socket-options.md)). Throws on socket construction failure (e.g. bind error). The `on_record` callback is invoked once per parsed DNS record with the record variant and the sender endpoint.
-
-Note: `socket_options` sits between the executor and the callback. To pass a callback without custom socket options, use `obs{ex, {}, callback}`.
+Constructs the observer from an executor (or context), optional [`observer_options`](observer_options.md) (per-record callback), and optional [`socket_options`](../socket-options.md) (network interface, multicast TTL, loopback). Throws on socket construction failure (e.g. bind error).
 
 ### Non-throwing
 
 ```cpp
-basic_observer(executor_type ex, socket_options opts,
-               record_callback on_record, std::error_code& ec);
+basic_observer(executor_type ex,
+               observer_options opts,
+               socket_options sock_opts,
+               std::error_code& ec);
 ```
 
 Same as the throwing constructor, but sets `ec` instead of throwing on failure. All parameters must be provided explicitly (no defaults).
@@ -137,15 +138,18 @@ int main()
     mdnspp::context ctx;
     int count = 0;
 
-    mdnspp::observer obs{ctx, {},
-        [&](const mdnspp::endpoint& sender, const mdnspp::mdns_record_variant& rec)
-        {
-            std::visit([&](const auto& r) {
-                std::cout << sender << " -> " << r << "\n";
-            }, rec);
+    mdnspp::observer obs{ctx,
+        mdnspp::observer_options{
+            .on_record = [&](const mdnspp::endpoint& sender,
+                             const mdnspp::mdns_record_variant& rec)
+            {
+                std::visit([&](const auto& r) {
+                    std::cout << sender << " -> " << r << "\n";
+                }, rec);
 
-            if (++count >= 5)
-                obs.stop();
+                if (++count >= 5)
+                    obs.stop();
+            }
         }
     };
 
@@ -159,6 +163,7 @@ int main()
 
 ## See Also
 
+- [observer_options](observer_options.md) -- per-record callback configuration
 - [querier](querier.md) -- send a query and collect matching records
 - [service_discovery](service_discovery.md) -- discover services by type
 - [resolved_service](resolved_service.md) -- aggregated service view

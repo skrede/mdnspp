@@ -80,13 +80,16 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::observer obs{ctx, {},
-        [&](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
-        {
-            std::visit([&](const auto &r) {
-                std::cout << sender << " -> " << r << "\n";
-            }, rec);
-            obs.stop(); // stop after first record
+    mdnspp::observer obs{ctx,
+        mdnspp::observer_options{
+            .on_record = [&](const mdnspp::endpoint &sender,
+                             const mdnspp::mdns_record_variant &rec)
+            {
+                std::visit([&](const auto &r) {
+                    std::cout << sender << " -> " << r << "\n";
+                }, rec);
+                obs.stop(); // stop after first record
+            }
         }
     };
 
@@ -106,7 +109,7 @@ mdnspp::context ctx;
 
 mdnspp::service_server http_srv{ctx, http_info};
 mdnspp::service_server ssh_srv{ctx, ssh_info};
-mdnspp::observer       obs{ctx, {}, on_record};
+mdnspp::observer       obs{ctx, mdnspp::observer_options{.on_record = on_record}};
 
 http_srv.async_start();
 ssh_srv.async_start();
@@ -151,7 +154,7 @@ int main()
 {
     asio::io_context io;
 
-    mdnspp::basic_querier<mdnspp::AsioPolicy> q{io, std::chrono::seconds(3)};
+    mdnspp::basic_querier<mdnspp::AsioPolicy> q{io};
 
     mdnspp::async_query(q, "_http._tcp.local.", mdnspp::dns_type::ptr,
         [](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)

@@ -82,8 +82,7 @@ opts.on_conflict = [](const std::string &name, std::string &new_name, unsigned a
 ### on_query
 
 Called when an incoming mDNS query matches the server's service name, type,
-or hostname while the server is in the live state. This is the same callback
-that was previously passed as a constructor parameter in older API versions.
+or hostname while the server is in the live state.
 
 **Default:** None (no notification on queries).
 

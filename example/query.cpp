@@ -12,14 +12,14 @@ int main()
     mdnspp::querier q
     {
         ctx,
-        std::chrono::seconds(3),
-        {},
-        [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
-        {
-            std::visit([&](const auto &r)
+        mdnspp::query_options{
+            .on_record = [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
             {
-                std::cout << sender << " -> " << r << std::endl;
-            }, rec);
+                std::visit([&](const auto &r)
+                {
+                    std::cout << sender << " -> " << r << std::endl;
+                }, rec);
+            }
         }
     };
 

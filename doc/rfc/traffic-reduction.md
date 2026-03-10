@@ -53,7 +53,7 @@ mechanisms without any special setup:
 int main()
 {
     mdnspp::context ctx;
-    mdnspp::querier q{ctx, std::chrono::seconds(3)};
+    mdnspp::querier q{ctx};
 
     // The 20-120ms QM delay and duplicate suppression happen automatically
     q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,

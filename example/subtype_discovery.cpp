@@ -9,7 +9,7 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+    mdnspp::service_discovery sd{ctx};
 
     sd.async_discover_subtype("_http._tcp.local.", "_printer",
         [&ctx](std::error_code ec,

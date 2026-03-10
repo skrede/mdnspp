@@ -183,8 +183,8 @@ as an optional constructor parameter:
 mdnspp::context ctx;
 mdnspp::socket_options opts{.interface_address = "192.168.1.10"};
 
-mdnspp::observer obs{ctx, opts, on_record};
-mdnspp::querier  q{ctx, std::chrono::seconds(3), opts};
+mdnspp::observer obs{ctx, mdnspp::observer_options{.on_record = on_record}, opts};
+mdnspp::querier  q{ctx, {}, opts};
 ```
 
 ### Using socket_options with AsioPolicy
@@ -195,7 +195,7 @@ The `basic_*` templates accept `socket_options` the same way:
 asio::io_context io;
 mdnspp::socket_options opts{.interface_address = "192.168.1.10"};
 
-mdnspp::basic_observer<mdnspp::AsioPolicy> obs{io, opts, on_record};
+mdnspp::basic_observer<mdnspp::AsioPolicy> obs{io, mdnspp::observer_options{.on_record = on_record}, opts};
 ```
 
 ## Known limitations

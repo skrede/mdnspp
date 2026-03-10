@@ -461,10 +461,10 @@ TEST_CASE("All four public types instantiate with DefaultPolicy", "[native][poli
     try
     {
         mdnspp::basic_observer<mdnspp::DefaultPolicy> obs{
-            ctx, {},
-            [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
+            ctx,
+            mdnspp::observer_options{.on_record = [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
             {
-            }
+            }}
         };
         SUCCEED("observer<DefaultPolicy> constructed");
     }
@@ -475,7 +475,7 @@ TEST_CASE("All four public types instantiate with DefaultPolicy", "[native][poli
 
     try
     {
-        mdnspp::basic_service_discovery<mdnspp::DefaultPolicy> sd{ctx, 500ms};
+        mdnspp::basic_service_discovery<mdnspp::DefaultPolicy> sd{ctx};
         SUCCEED("service_discovery<DefaultPolicy> constructed");
     }
     catch(const std::exception &e)
@@ -485,7 +485,7 @@ TEST_CASE("All four public types instantiate with DefaultPolicy", "[native][poli
 
     try
     {
-        mdnspp::basic_querier<mdnspp::DefaultPolicy> q{ctx, 500ms};
+        mdnspp::basic_querier<mdnspp::DefaultPolicy> q{ctx};
         SUCCEED("querier<DefaultPolicy> constructed");
     }
     catch(const std::exception &e)

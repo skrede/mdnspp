@@ -15,15 +15,15 @@ int main()
 
     mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{
         io,
-        std::chrono::seconds(3),
-        {},
-        [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
-        {
-            std::visit([&sender](const auto &r)
+        mdnspp::query_options{
+            .on_record = [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
             {
-                std::cout << sender.address << ":" << sender.port
-                    << " -> " << r << std::endl;
-            }, rec);
+                std::visit([&sender](const auto &r)
+                {
+                    std::cout << sender.address << ":" << sender.port
+                        << " -> " << r << std::endl;
+                }, rec);
+            }
         }
     };
 

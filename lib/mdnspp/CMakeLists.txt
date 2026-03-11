@@ -45,7 +45,7 @@ target_compile_options(mdnspp INTERFACE
 )
 
 if (WIN32)
-    target_link_libraries(mdnspp INTERFACE ws2_32)
+    target_link_libraries(mdnspp INTERFACE ws2_32 iphlpapi)
 endif ()
 
 install(TARGETS mdnspp

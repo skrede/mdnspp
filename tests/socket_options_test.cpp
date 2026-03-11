@@ -15,9 +15,9 @@ TEST_CASE("Default socket_options has empty interface_address", "[socket_options
     REQUIRE(socket_options{}.interface_address.empty());
 }
 
-TEST_CASE("Default socket_options has nullopt multicast_loopback", "[socket_options]")
+TEST_CASE("Default socket_options has loopback enabled", "[socket_options]")
 {
-    REQUIRE_FALSE(socket_options{}.multicast_loopback.has_value());
+    REQUIRE(socket_options{}.multicast_loopback == loopback_mode::enabled);
 }
 
 TEST_CASE("Default socket_options has nullopt multicast_ttl", "[socket_options]")

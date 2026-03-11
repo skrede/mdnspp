@@ -29,7 +29,7 @@ struct socket_options
 {
     std::string interface_address{};
     endpoint multicast_group{"224.0.0.251", 5353};
-    std::optional<loopback_mode> multicast_loopback{};
+    loopback_mode multicast_loopback{loopback_mode::enabled};
     std::optional<std::uint8_t> multicast_ttl{};
 };
 
@@ -42,7 +42,7 @@ struct socket_options
 |-------|------|---------|-------------|
 | `interface_address` | `std::string` | `""` (empty) | IPv4 address of the NIC to bind. Empty string means `INADDR_ANY` (all interfaces). |
 | `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. Change this to isolate mDNS traffic to a custom namespace. |
-| `multicast_loopback` | `std::optional<loopback_mode>` | `std::nullopt` | Whether multicast packets are looped back to the sending host. `std::nullopt` leaves the OS default. |
+| `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets are looped back to the sending host. Enabled by default so that services and clients on the same machine can communicate. |
 | `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | Multicast time-to-live. When `socket_options` is used, defaults to 255 per RFC 6762 Section 11. `std::nullopt` leaves the OS default. |
 
 ### loopback_mode enum

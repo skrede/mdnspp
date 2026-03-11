@@ -14,6 +14,7 @@
 #include "mdnspp/default/default_context.h"
 
 #include <span>
+#include <memory>
 #include <string>
 #include <cstddef>
 #include <cstring>
@@ -23,6 +24,7 @@
 #ifdef _WIN32
 #  include <winsock2.h>
 #  include <ws2tcpip.h>
+#  include <iphlpapi.h>
 #else
 #  include <net/if.h>
 #  include <ifaddrs.h>
@@ -205,7 +207,43 @@ private:
         if(addr.empty())
             return 0;
 #ifdef _WIN32
-        return ::if_nametoindex(addr.c_str());
+        ULONG buf_size = 15000;
+        std::unique_ptr<std::byte[]> buffer;
+        ULONG result = ERROR_BUFFER_OVERFLOW;
+
+        for(int attempts = 0; attempts < 3 && result == ERROR_BUFFER_OVERFLOW; ++attempts)
+        {
+            buffer = std::make_unique<std::byte[]>(buf_size);
+            result = GetAdaptersAddresses(AF_UNSPEC, 0, nullptr,
+                                          reinterpret_cast<PIP_ADAPTER_ADDRESSES>(buffer.get()), &buf_size);
+        }
+
+        if(result != NO_ERROR)
+            return 0;
+
+        for(auto *adapter = reinterpret_cast<PIP_ADAPTER_ADDRESSES>(buffer.get());
+            adapter != nullptr; adapter = adapter->Next)
+        {
+            for(auto *ua = adapter->FirstUnicastAddress; ua != nullptr; ua = ua->Next)
+            {
+                auto *sa = ua->Address.lpSockaddr;
+                char buf[INET6_ADDRSTRLEN]{};
+
+                if(sa->sa_family == AF_INET)
+                {
+                    auto *sin = reinterpret_cast<const sockaddr_in *>(sa);
+                    if(inet_ntop(AF_INET, &sin->sin_addr, buf, sizeof(buf)) && addr == buf)
+                        return adapter->Ipv6IfIndex ? adapter->Ipv6IfIndex : adapter->IfIndex;
+                }
+                else if(sa->sa_family == AF_INET6)
+                {
+                    auto *sin6 = reinterpret_cast<const sockaddr_in6 *>(sa);
+                    if(inet_ntop(AF_INET6, &sin6->sin6_addr, buf, sizeof(buf)) && addr == buf)
+                        return adapter->Ipv6IfIndex ? adapter->Ipv6IfIndex : adapter->IfIndex;
+                }
+            }
+        }
+        return 0;
 #else
         ifaddrs *addrs{};
         if(::getifaddrs(&addrs) != 0)
@@ -648,10 +686,9 @@ private:
 #endif
             }
 
-            // 10v6. IPV6_MULTICAST_LOOP (if specified)
-            if(opts.multicast_loopback.has_value())
+            // 10v6. IPV6_MULTICAST_LOOP
             {
-                const int val = (opts.multicast_loopback.value() == loopback_mode::enabled) ? 1 : 0;
+                const int val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
 #ifdef _WIN32
                 if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP,
                                 reinterpret_cast<const char*>(&val), sizeof(val)) == SOCKET_ERROR)
@@ -775,10 +812,9 @@ private:
 #endif
             }
 
-            // 10. IP_MULTICAST_LOOP (if specified)
-            if(opts.multicast_loopback.has_value())
+            // 10. IP_MULTICAST_LOOP
             {
-                const int val = (opts.multicast_loopback.value() == loopback_mode::enabled) ? 1 : 0;
+                const int val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
 #ifdef _WIN32
                 if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_LOOP,
                                 reinterpret_cast<const char*>(&val), sizeof(val)) == SOCKET_ERROR)
@@ -966,10 +1002,9 @@ private:
 #endif
             }
 
-            // 10v6. IPV6_MULTICAST_LOOP (if specified)
-            if(opts.multicast_loopback.has_value())
+            // 10v6. IPV6_MULTICAST_LOOP
             {
-                const int val = (opts.multicast_loopback.value() == loopback_mode::enabled) ? 1 : 0;
+                const int val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
 #ifdef _WIN32
                 if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP,
                                 reinterpret_cast<const char*>(&val), sizeof(val)) == SOCKET_ERROR)
@@ -1103,10 +1138,9 @@ private:
 #endif
             }
 
-            // 10. IP_MULTICAST_LOOP (if specified)
-            if(opts.multicast_loopback.has_value())
+            // 10. IP_MULTICAST_LOOP
             {
-                const int val = (opts.multicast_loopback.value() == loopback_mode::enabled) ? 1 : 0;
+                const int val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
 #ifdef _WIN32
                 if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_LOOP,
                                 reinterpret_cast<const char*>(&val), sizeof(val)) == SOCKET_ERROR)

@@ -97,9 +97,8 @@ public:
 
         m_socket.set_option(asio::ip::multicast::hops(opts.multicast_ttl.value_or(255)));
 
-        if(opts.multicast_loopback.has_value())
-            m_socket.set_option(asio::ip::multicast::enable_loopback(
-                opts.multicast_loopback.value() == loopback_mode::enabled));
+        m_socket.set_option(asio::ip::multicast::enable_loopback(
+            opts.multicast_loopback == loopback_mode::enabled));
 
         m_buffer.resize(4096);
     }
@@ -167,12 +166,9 @@ public:
         m_socket.set_option(asio::ip::multicast::hops(opts.multicast_ttl.value_or(255)), ec);
         if(ec) return;
 
-        if(opts.multicast_loopback.has_value())
-        {
-            m_socket.set_option(asio::ip::multicast::enable_loopback(
-                opts.multicast_loopback.value() == loopback_mode::enabled), ec);
-            if(ec) return;
-        }
+        m_socket.set_option(asio::ip::multicast::enable_loopback(
+            opts.multicast_loopback == loopback_mode::enabled), ec);
+        if(ec) return;
 
         m_buffer.resize(4096);
     }

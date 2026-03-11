@@ -15,7 +15,7 @@ struct socket_options
 {
     std::string interface_address{};
     endpoint multicast_group{"224.0.0.251", 5353};
-    std::optional<loopback_mode> multicast_loopback{};
+    loopback_mode multicast_loopback{loopback_mode::enabled};
     std::optional<std::uint8_t> multicast_ttl{};
 };
 

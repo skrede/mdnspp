@@ -46,14 +46,14 @@ public:
     explicit DefaultSocket(DefaultContext &ctx)
         : m_ctx{ctx}
     {
-        open_and_configure();
+        open_and_configure(socket_options{});
     }
 
     // Non-throwing constructor.
     explicit DefaultSocket(DefaultContext &ctx, std::error_code &ec)
         : m_ctx{ctx}
     {
-        open_and_configure(ec);
+        open_and_configure(socket_options{}, ec);
     }
 
     // Throwing constructor with socket_options.
@@ -270,185 +270,6 @@ private:
 #endif
     }
 
-    /// Throwing
-    void open_and_configure()
-    {
-        // 1. Create UDP socket
-        m_fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if(m_fd == detail::invalid_socket)
-        {
-#ifdef _WIN32
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "socket");
-#else
-            throw std::system_error(errno, std::generic_category(), "socket");
-#endif
-        }
-
-        // 2. SO_REUSEADDR
-        {
-            const int opt = 1;
-#ifdef _WIN32
-            if(::setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR,
-                            reinterpret_cast<const char*>(&opt), sizeof(opt)) == SOCKET_ERROR)
-            {
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                throw std::system_error(::WSAGetLastError(), std::system_category(), "setsockopt(SO_REUSEADDR)");
-            }
-#else
-            if(::setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-            {
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                throw std::system_error(errno, std::generic_category(), "setsockopt(SO_REUSEADDR)");
-            }
-#endif
-        }
-
-        // 3. SO_REUSEPORT (optional — warn on failure, do not throw)
-#if defined(SO_REUSEPORT)
-        {
-            const int opt = 1;
-            if(::setsockopt(m_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0)
-            {
-                // Non-fatal — log a warning but continue
-                // (stderr is acceptable here; library callers can suppress)
-            }
-        }
-#endif
-
-        // 4. Non-blocking
-        set_nonblocking_or_throw();
-
-        // 5. Bind to INADDR_ANY:5353 (default mDNS)
-        {
-            socket_options default_opts;
-            sockaddr_in addr{};
-            addr.sin_family = AF_INET;
-            addr.sin_addr.s_addr = htonl(INADDR_ANY);
-            addr.sin_port = htons(default_opts.multicast_group.port);
-
-#ifdef _WIN32
-            if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
-            {
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                throw std::system_error(::WSAGetLastError(), std::system_category(), "bind");
-            }
-#else
-            if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr),
-                      static_cast<socklen_t>(sizeof(addr))) < 0)
-            {
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                throw std::system_error(errno, std::generic_category(), "bind");
-            }
-#endif
-        }
-
-        // 6. Join default multicast group on INADDR_ANY
-        {
-            socket_options default_opts;
-            join_multicast_or_throw(default_opts.multicast_group.address);
-        }
-    }
-
-    /// Non-throwing — sets ec and returns early on failure.
-    void open_and_configure(std::error_code &ec)
-    {
-        ec.clear();
-
-        // 1. Create UDP socket
-        m_fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if(m_fd == detail::invalid_socket)
-        {
-#ifdef _WIN32
-            ec = std::error_code(::WSAGetLastError(), std::system_category());
-#else
-            ec = std::error_code(errno, std::generic_category());
-#endif
-            return;
-        }
-
-        // 2. SO_REUSEADDR
-        {
-            const int opt = 1;
-#ifdef _WIN32
-            if(::setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR,
-                            reinterpret_cast<const char*>(&opt), sizeof(opt)) == SOCKET_ERROR)
-            {
-                ec = std::error_code(::WSAGetLastError(), std::system_category());
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                return;
-            }
-#else
-            if(::setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-            {
-                ec = std::error_code(errno, std::generic_category());
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                return;
-            }
-#endif
-        }
-
-        // 3. SO_REUSEPORT (optional — warn on failure, do not set ec)
-#if defined(SO_REUSEPORT)
-        {
-            const int opt = 1;
-            (void)::setsockopt(m_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
-        }
-#endif
-
-        // 4. Non-blocking
-        if(!set_nonblocking(ec))
-        {
-            detail::close_socket(m_fd);
-            m_fd = detail::invalid_socket;
-            return;
-        }
-
-        // 5. Bind to INADDR_ANY with default port
-        {
-            socket_options default_opts;
-            sockaddr_in addr{};
-            addr.sin_family = AF_INET;
-            addr.sin_addr.s_addr = htonl(INADDR_ANY);
-            addr.sin_port = htons(default_opts.multicast_group.port);
-
-#ifdef _WIN32
-            if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
-            {
-                ec = std::error_code(::WSAGetLastError(), std::system_category());
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                return;
-            }
-#else
-            if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr),
-                      static_cast<socklen_t>(sizeof(addr))) < 0)
-            {
-                ec = std::error_code(errno, std::generic_category());
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                return;
-            }
-#endif
-        }
-
-        // 6. Join default multicast group
-        {
-            socket_options default_opts;
-            join_multicast(default_opts.multicast_group.address, ec);
-        }
-        if(ec)
-        {
-            detail::close_socket(m_fd);
-            m_fd = detail::invalid_socket;
-        }
-    }
-
     /// throwing
     void set_nonblocking_or_throw()
     {
@@ -493,49 +314,6 @@ private:
     }
 
     /// throwing
-    void join_multicast_or_throw(const std::string &group_address)
-    {
-        ip_mreq mreq{};
-        ::inet_pton(AF_INET, group_address.c_str(), &mreq.imr_multiaddr);
-        mreq.imr_interface.s_addr = htonl(INADDR_ANY);
-
-#ifdef _WIN32
-        if(::setsockopt(m_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
-                        reinterpret_cast<const char*>(&mreq), sizeof(mreq)) == SOCKET_ERROR)
-        {
-            detail::close_socket(m_fd);
-            m_fd = detail::invalid_socket;
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "setsockopt(IP_ADD_MEMBERSHIP)");
-        }
-#else
-        if(::setsockopt(m_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
-        {
-            detail::close_socket(m_fd);
-            m_fd = detail::invalid_socket;
-            throw std::system_error(errno, std::generic_category(), "setsockopt(IP_ADD_MEMBERSHIP)");
-        }
-#endif
-    }
-
-    /// non-throwing
-    void join_multicast(const std::string &group_address, std::error_code &ec)
-    {
-        ip_mreq mreq{};
-        ::inet_pton(AF_INET, group_address.c_str(), &mreq.imr_multiaddr);
-        mreq.imr_interface.s_addr = htonl(INADDR_ANY);
-
-#ifdef _WIN32
-        if(::setsockopt(m_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
-                        reinterpret_cast<const char*>(&mreq), sizeof(mreq)) == SOCKET_ERROR)
-        {
-            ec = std::error_code(::WSAGetLastError(), std::system_category());
-        }
-#else
-        if(::setsockopt(m_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
-            ec = std::error_code(errno, std::generic_category());
-#endif
-    }
-
     /// Throwing -- interface-aware multicast configuration via socket_options.
     void open_and_configure(const socket_options &opts)
     {

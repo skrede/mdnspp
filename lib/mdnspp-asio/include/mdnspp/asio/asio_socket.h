@@ -19,37 +19,12 @@ class AsioSocket
 {
 public:
     explicit AsioSocket(asio::io_context &io)
-        : m_socket(io)
-        , m_sender_endpoint{}
-    {
-        socket_options default_opts;
-        const auto multicast_addr = asio::ip::make_address(default_opts.multicast_group.address);
-
-        m_socket.open(asio::ip::udp::v4());
-        m_socket.set_option(asio::ip::udp::socket::reuse_address(true));
-        m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), default_opts.multicast_group.port));
-        m_socket.set_option(asio::ip::multicast::join_group(multicast_addr));
-        m_buffer.resize(4096);
-    }
+        : AsioSocket(io, socket_options{})
+    {}
 
     explicit AsioSocket(asio::io_context &io, std::error_code &ec)
-        : m_socket(io)
-        , m_sender_endpoint{}
-    {
-        socket_options default_opts;
-        const auto multicast_addr = asio::ip::make_address(default_opts.multicast_group.address, ec);
-        if(ec) return;
-
-        m_socket.open(asio::ip::udp::v4(), ec);
-        if(ec) return;
-        m_socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
-        if(ec) return;
-        m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), default_opts.multicast_group.port), ec);
-        if(ec) return;
-        m_socket.set_option(asio::ip::multicast::join_group(multicast_addr), ec);
-        if(ec) return;
-        m_buffer.resize(4096);
-    }
+        : AsioSocket(io, socket_options{}, ec)
+    {}
 
     // Throwing constructor with socket_options.
     explicit AsioSocket(asio::io_context &io, const socket_options &opts)

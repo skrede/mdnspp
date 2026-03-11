@@ -702,6 +702,10 @@ private:
 
     void do_watch(std::string svc_type)
     {
+        // Strip trailing dot so the key matches read_dns_name output (no trailing dot).
+        if(!svc_type.empty() && svc_type.back() == '.')
+            svc_type.pop_back();
+
         m_watches.try_emplace(std::move(svc_type));
 
         // If the monitor is already running, re-arm the scheduler so the new
@@ -712,6 +716,9 @@ private:
 
     void do_unwatch(std::string svc_type)
     {
+        if(!svc_type.empty() && svc_type.back() == '.')
+            svc_type.pop_back();
+
         if(!m_watches.contains(svc_type))
             return;
 

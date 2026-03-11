@@ -8,6 +8,7 @@
 #include "mdnspp/record_cache.h"
 #include "mdnspp/cache_options.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/callback_types.h"
 #include "mdnspp/monitor_options.h"
 #include "mdnspp/resolved_service.h"
 
@@ -21,7 +22,7 @@
 #include "mdnspp/detail/basic_mdns_peer_base.h"
 
 #include <span>
-#include <atomic>
+#include <mutex>
 #include <chrono>
 #include <memory>
 #include <random>
@@ -30,6 +31,7 @@
 #include <cstdint>
 #include <utility>
 #include <algorithm>
+#include <string_view>
 #include <system_error>
 #include <unordered_map>
 #include <unordered_set>
@@ -128,7 +130,7 @@ public:
     /// @p on_done fires once when stop() is called. May be @c nullptr.
     ///
     /// Calling async_start() more than once is a logic error.
-    void async_start(detail::move_only_function<void(std::error_code)> on_done = {})
+    void async_start(monitor_completion_handler on_done = {})
     {
         m_on_done = std::move(on_done);
 
@@ -175,10 +177,10 @@ public:
     ///
     /// Re-watching a previously unwatched type starts fresh: backoff resets and
     /// on_found fires again on rediscovery.
-    void watch(std::string service_type)
+    void watch(std::string_view service_type)
     {
         auto guard = std::weak_ptr<bool>(this->m_alive);
-        P::post(this->m_executor, [this, guard, svc = std::move(service_type)]() mutable
+        P::post(this->m_executor, [this, guard, svc = std::string(service_type)]() mutable
         {
             if(!guard.lock()) return;
             do_watch(std::move(svc));
@@ -191,10 +193,10 @@ public:
     /// service of this type, then purges their cache entries and backoff state.
     ///
     /// Thread-safe: posts to executor thread.
-    void unwatch(std::string service_type)
+    void unwatch(std::string_view service_type)
     {
         auto guard = std::weak_ptr<bool>(this->m_alive);
-        P::post(this->m_executor, [this, guard, svc = std::move(service_type)]() mutable
+        P::post(this->m_executor, [this, guard, svc = std::string(service_type)]() mutable
         {
             if(!guard.lock()) return;
             do_unwatch(std::move(svc));
@@ -203,11 +205,16 @@ public:
 
     /// Return a snapshot of all currently-resolved services.
     ///
-    /// Lock-free on the reader side (atomic shared_ptr load). Always returns a
-    /// consistent, immutable vector. Empty before any services are discovered.
+    /// Thread-safe via a mutex-guarded shared_ptr copy (the lock is held only
+    /// long enough to copy the pointer). Always returns a consistent, immutable
+    /// vector. Empty before any services are discovered.
     std::vector<resolved_service> services() const
     {
-        auto snap = m_services_snapshot.load(std::memory_order_acquire);
+        std::shared_ptr<const std::vector<resolved_service>> snap;
+        {
+            std::lock_guard lock(m_snapshot_mutex);
+            snap = m_services_snapshot;
+        }
         if(snap)
             return *snap;
         return {};
@@ -220,10 +227,10 @@ public:
     /// way to trigger a query.
     ///
     /// Thread-safe: posts to executor thread.
-    void query_service_type(std::string service_type)
+    void query_service_type(std::string_view service_type)
     {
         auto guard = std::weak_ptr<bool>(this->m_alive);
-        P::post(this->m_executor, [this, guard, svc = std::move(service_type)]() mutable
+        P::post(this->m_executor, [this, guard, svc = std::string(service_type)]() mutable
         {
             if(!guard.lock()) return;
             send_ptr_query(svc);
@@ -233,10 +240,10 @@ public:
     /// Send immediate SRV and A/AAAA queries for a specific service instance.
     ///
     /// Thread-safe: posts to executor thread.
-    void query_service_instance(std::string instance_name)
+    void query_service_instance(std::string_view instance_name)
     {
         auto guard = std::weak_ptr<bool>(this->m_alive);
-        P::post(this->m_executor, [this, guard, inst = std::move(instance_name)]() mutable
+        P::post(this->m_executor, [this, guard, inst = std::string(instance_name)]() mutable
         {
             if(!guard.lock()) return;
             send_instance_queries(inst);
@@ -990,9 +997,10 @@ private:
             snap.push_back(std::move(entry));
         }
 
-        m_services_snapshot.store(
-            std::make_shared<const std::vector<resolved_service>>(std::move(snap)),
-            std::memory_order_release);
+        {
+            std::lock_guard lock(m_snapshot_mutex);
+            m_services_snapshot = std::make_shared<const std::vector<resolved_service>>(std::move(snap));
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -1006,7 +1014,7 @@ private:
     monitor_options m_opts;
 
     /// Callback fired when the monitor is fully stopped (via stop()).
-    detail::move_only_function<void(std::error_code)> m_on_done;
+    monitor_completion_handler m_on_done;
 
     /// TTL-aware cache for all received mDNS records.
     record_cache<Clock> m_cache;
@@ -1041,10 +1049,11 @@ private:
     /// Used to distinguish loss_reason::goodbye from loss_reason::timeout.
     std::unordered_set<std::string> m_goodbye_instances;
 
-    /// Lock-free snapshot for services(). Updated atomically on the executor
-    /// thread after every state change. Readers obtain a reference-counted
-    /// view without holding any lock.
-    std::atomic<std::shared_ptr<const std::vector<resolved_service>>> m_services_snapshot;
+    /// Mutex-guarded snapshot for services(). Updated on the executor thread
+    /// after every state change. Readers hold the mutex only long enough to
+    /// copy the shared_ptr; the vector itself is read outside the lock.
+    mutable std::mutex m_snapshot_mutex;
+    std::shared_ptr<const std::vector<resolved_service>> m_services_snapshot;
 };
 
 }

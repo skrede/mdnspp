@@ -20,12 +20,13 @@ Included transitively by `#include <mdnspp/defaults.h>`.
 ## query_options struct
 
 ```cpp
+#include <mdnspp/callback_types.h>
+
 namespace mdnspp {
 
 struct query_options
 {
-    using record_callback = detail::move_only_function<
-        void(const endpoint &, const mdns_record_variant &)>;
+    using record_callback = mdnspp::record_callback;
 
     record_callback on_record{};
     std::chrono::milliseconds silence_timeout{3000};
@@ -33,6 +34,8 @@ struct query_options
 
 }
 ```
+
+`record_callback` is defined in `<mdnspp/callback_types.h>` (included transitively).
 
 ## Fields
 

@@ -6,6 +6,7 @@
 #include "mdnspp/service_type.h"
 #include "mdnspp/query_options.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/callback_types.h"
 #include "mdnspp/resolved_service.h"
 
 #include "mdnspp/detail/compat.h"
@@ -39,17 +40,17 @@ public:
     using base::timer;
 
     /// Optional callback invoked per record as results arrive during discovery.
-    using record_callback = detail::move_only_function<void(const endpoint &, const mdns_record_variant &)>;
+    using record_callback = mdnspp::record_callback;
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.
-    using completion_handler = detail::move_only_function<void(std::error_code, const std::vector<mdns_record_variant> &)>;
+    using completion_handler = mdnspp::discovery_completion_handler;
 
     /// Completion callback for async_enumerate_types.
     using enumerate_handler = detail::move_only_function<void(std::error_code, std::vector<service_type_info>)>;
 
     /// Error handler invoked on fire-and-forget send failures.
-    using error_handler = detail::move_only_function<void(std::error_code, std::string_view)>;
+    using error_handler = mdnspp::error_handler;
 
     // Non-copyable (owns recv_loop by unique_ptr)
     basic_service_discovery(const basic_service_discovery &) = delete;

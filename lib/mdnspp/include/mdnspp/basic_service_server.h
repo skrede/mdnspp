@@ -6,6 +6,7 @@
 #include "mdnspp/mdns_error.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/callback_types.h"
 #include "mdnspp/service_options.h"
 
 #include "mdnspp/detail/compat.h"
@@ -64,11 +65,11 @@ public:
 
     /// Completion callback fired once when stop() is called or on_ready event occurs.
     /// Receives error_code.
-    using completion_handler = detail::move_only_function<void(std::error_code)>;
+    using completion_handler = mdnspp::server_completion_handler;
 
     /// Error handler invoked on fire-and-forget send failures.
     /// Receives the error_code and a context string identifying the send site.
-    using error_handler = detail::move_only_function<void(std::error_code, std::string_view)>;
+    using error_handler = mdnspp::error_handler;
 
     // Non-copyable
     basic_service_server(const basic_service_server &) = delete;
@@ -644,7 +645,7 @@ private:
         // Pass time_point::max() as 'now': the timer firing IS the ready signal.
         // take_if_ready's time guard is redundant here but kept for robustness.
         auto merged = m_tc_acc.take_if_ready(sender,
-                                             std::chrono::steady_clock::time_point::max(), tc_wait);
+                                             (std::chrono::steady_clock::time_point::max)(), tc_wait);
         if(!merged.has_value())
             return;
 

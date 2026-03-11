@@ -55,7 +55,7 @@ a(std::span<const std::byte> buffer, const record_metadata &meta)
     r.length = static_cast<uint32_t>(meta.record_length);
     r.sender_address = meta.sender.address;
     r.cache_flush = meta.cache_flush;
-    r.address_string = mdnspp::ip_address_to_string(addr);
+    r.address_string = detail::ip_address_to_string(addr);
 
     return r;
 }
@@ -80,7 +80,7 @@ aaaa(std::span<const std::byte> buffer, const record_metadata &meta)
     r.length = static_cast<uint32_t>(meta.record_length);
     r.sender_address = meta.sender.address;
     r.cache_flush = meta.cache_flush;
-    r.address_string = mdnspp::ip_address_to_string(addr);
+    r.address_string = detail::ip_address_to_string(addr);
 
     return r;
 }

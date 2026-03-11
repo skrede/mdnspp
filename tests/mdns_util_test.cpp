@@ -8,7 +8,7 @@
 #include <cstring>
 #include <string>
 
-using mdnspp::ip_address_to_string;
+using mdnspp::detail::ip_address_to_string;
 
 SCENARIO("ip_address_to_string formats sockaddr_in6 with :: compression", "[mdns_util][ipv6]")
 {

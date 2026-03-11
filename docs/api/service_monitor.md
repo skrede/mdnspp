@@ -92,7 +92,7 @@ Idempotent. Cancels all timers and the receive loop. Fires `on_done` with `std::
 ### watch
 
 ```cpp
-void watch(std::string service_type);
+void watch(std::string_view service_type);
 ```
 
 Registers interest in a service type (e.g., `"_http._tcp.local."`). In `discover` mode the monitor immediately begins issuing PTR queries for this type with exponential backoff. Re-watching a previously unwatched type starts fresh: backoff resets and `on_found` fires again on rediscovery.
@@ -106,7 +106,7 @@ Registers interest in a service type (e.g., `"_http._tcp.local."`). In `discover
 ### unwatch
 
 ```cpp
-void unwatch(std::string service_type);
+void unwatch(std::string_view service_type);
 ```
 
 Deregisters interest in a service type. Fires `on_lost(service, loss_reason::unwatched)` for every currently-tracked service of this type, then purges their cache entries and backoff state.
@@ -123,16 +123,16 @@ Deregisters interest in a service type. Fires `on_lost(service, loss_reason::unw
 std::vector<resolved_service> services() const;
 ```
 
-Returns a snapshot of all currently-resolved services. Lock-free on the reader side (atomic `shared_ptr` load). Always returns a consistent, immutable vector. Empty before any services are discovered.
+Returns a snapshot of all currently-resolved services. Thread-safe via a mutex-guarded `shared_ptr` copy (the lock is held only long enough to copy the pointer). Always returns a consistent, immutable vector. Empty before any services are discovered.
 
 The returned [`resolved_service`](resolved_service.md) values include `wire_ttl` and `ttl_remaining` populated from the SRV record's cached entry, reflecting how much TTL remains at the time `services()` is called.
 
-**Thread-safety:** May be called from any thread without holding any lock.
+**Thread-safety:** May be called from any thread.
 
 ### query_service_type
 
 ```cpp
-void query_service_type(std::string service_type);
+void query_service_type(std::string_view service_type);
 ```
 
 Sends an immediate PTR query for a service type, bypassing backoff. Available in all `monitor_mode` values. In `discover` mode this supplements the automatic schedule; in `observe` and `ttl_refresh` modes it is the only way to trigger a discovery query.
@@ -142,7 +142,7 @@ Sends an immediate PTR query for a service type, bypassing backoff. Available in
 ### query_service_instance
 
 ```cpp
-void query_service_instance(std::string instance_name);
+void query_service_instance(std::string_view instance_name);
 ```
 
 Sends immediate SRV and A/AAAA queries for a specific service instance. Useful when an instance is known by name but its address records have not yet been received.

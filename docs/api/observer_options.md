@@ -18,18 +18,21 @@ Included transitively by `#include <mdnspp/defaults.h>`.
 ## observer_options struct
 
 ```cpp
+#include <mdnspp/callback_types.h>
+
 namespace mdnspp {
 
 struct observer_options
 {
-    using record_callback = detail::move_only_function<
-        void(const endpoint &, const mdns_record_variant &)>;
+    using record_callback = mdnspp::record_callback;
 
     record_callback on_record{};
 };
 
 }
 ```
+
+`record_callback` is defined in `<mdnspp/callback_types.h>` (included transitively).
 
 ## Fields
 

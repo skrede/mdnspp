@@ -7,7 +7,7 @@
 #include <string>
 #include <cstdint>
 
-namespace mdnspp {
+namespace mdnspp::detail {
 
 inline std::string ip_address_to_string(const sockaddr *addr, size_t addrlen)
 {

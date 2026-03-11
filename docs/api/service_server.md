@@ -27,12 +27,17 @@ using service_server = basic_service_server<DefaultPolicy>;
 ## Type Aliases
 
 ```cpp
-using executor_type      = typename P::executor_type;
-using socket_type        = typename P::socket_type;
-using timer_type         = typename P::timer_type;
-using query_callback     = std::move_only_function<void(const endpoint&, dns_type, response_mode)>;
-using completion_handler = std::move_only_function<void(std::error_code)>;
-using error_handler     = detail::move_only_function<void(std::error_code, std::string_view)>;
+using executor_type  = typename P::executor_type;
+using socket_type    = typename P::socket_type;
+using timer_type     = typename P::timer_type;
+using query_callback = detail::move_only_function<void(const endpoint&, dns_type, response_mode)>;
+```
+
+Callback types are defined in `<mdnspp/callback_types.h>` (included transitively):
+
+```cpp
+using completion_handler = mdnspp::server_completion_handler; // void(std::error_code)
+using error_handler      = mdnspp::error_handler;             // void(std::error_code, std::string_view)
 ```
 
 `query_callback` is retained as a type alias for the query notification signature. Set it via [`service_options::on_query`](service_options.md) rather than as a constructor parameter.

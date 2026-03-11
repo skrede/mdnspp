@@ -140,7 +140,7 @@ Each `resolved_service` in the snapshot has `wire_ttl` (the original TTL from
 the wire) and `ttl_remaining` (time until the SRV record expires) populated.
 
 The snapshot is safe to read from any thread without holding any lock -- it
-uses an atomic `shared_ptr` swap internally.
+uses a mutex-guarded `shared_ptr` swap internally.
 
 ### Query scheduling
 

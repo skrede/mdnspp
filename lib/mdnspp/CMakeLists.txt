@@ -14,6 +14,7 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/basic_querier.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_observer.h
     ${INCLUDE_DIRECTORY}/mdnspp/socket_options.h
+    ${INCLUDE_DIRECTORY}/mdnspp/callback_types.h
     ${INCLUDE_DIRECTORY}/mdnspp/cache_entry.h
     ${INCLUDE_DIRECTORY}/mdnspp/record_cache.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_options.h
@@ -49,7 +50,6 @@ endif ()
 
 install(TARGETS mdnspp
     EXPORT mdnsppTargets
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 )
 
 install(FILES ${PUBLIC_HEADERS}

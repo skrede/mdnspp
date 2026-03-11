@@ -1,13 +1,13 @@
 add_executable(mdnspp_example_service_monitor_01_basic 01_basic.cpp)
-target_link_libraries(mdnspp_example_service_monitor_01_basic mdnspp::mdnspp)
+target_link_libraries(mdnspp_example_service_monitor_01_basic PRIVATE mdnspp::mdnspp)
 
 add_executable(mdnspp_example_service_monitor_02_custom_group 02_custom_group.cpp)
-target_link_libraries(mdnspp_example_service_monitor_02_custom_group mdnspp::mdnspp)
+target_link_libraries(mdnspp_example_service_monitor_02_custom_group PRIVATE mdnspp::mdnspp)
 
 add_executable(mdnspp_example_service_monitor_04_observe_mode 04_observe_mode.cpp)
-target_link_libraries(mdnspp_example_service_monitor_04_observe_mode mdnspp::mdnspp)
+target_link_libraries(mdnspp_example_service_monitor_04_observe_mode PRIVATE mdnspp::mdnspp)
 
 if(MDNSPP_ENABLE_ASIO_POLICY)
     add_executable(mdnspp_example_service_monitor_03_asio_callback 03_asio_callback.cpp)
-    target_link_libraries(mdnspp_example_service_monitor_03_asio_callback mdnspp::mdnspp mdnspp::asio)
+    target_link_libraries(mdnspp_example_service_monitor_03_asio_callback PRIVATE mdnspp::mdnspp mdnspp::asio)
 endif()

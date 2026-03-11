@@ -27,13 +27,18 @@ using service_discovery = basic_service_discovery<DefaultPolicy>;
 ## Type Aliases
 
 ```cpp
-using executor_type      = typename P::executor_type;
-using socket_type        = typename P::socket_type;
-using timer_type         = typename P::timer_type;
-using record_callback    = std::move_only_function<void(const endpoint&, const mdns_record_variant&)>;
-using completion_handler = std::move_only_function<void(std::error_code, const std::vector<mdns_record_variant>&)>;
-using enumerate_handler  = std::move_only_function<void(std::error_code, std::vector<service_type_info>)>;
-using error_handler     = detail::move_only_function<void(std::error_code, std::string_view)>;
+using executor_type     = typename P::executor_type;
+using socket_type       = typename P::socket_type;
+using timer_type        = typename P::timer_type;
+using enumerate_handler = detail::move_only_function<void(std::error_code, std::vector<service_type_info>)>;
+```
+
+Callback types are defined in `<mdnspp/callback_types.h>` (included transitively):
+
+```cpp
+using record_callback    = mdnspp::record_callback;              // void(const endpoint&, const mdns_record_variant&)
+using completion_handler = mdnspp::discovery_completion_handler; // void(std::error_code, const std::vector<mdns_record_variant>&)
+using error_handler      = mdnspp::error_handler;                // void(std::error_code, std::string_view)
 ```
 
 ## Constructors

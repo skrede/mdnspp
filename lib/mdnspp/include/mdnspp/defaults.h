@@ -24,6 +24,7 @@
 #include "mdnspp/socket_options.h"
 #include "mdnspp/network_interface.h"
 #include "mdnspp/basic_service_server.h"
+#include "mdnspp/basic_service_monitor.h"
 #include "mdnspp/basic_service_discovery.h"
 
 #include "mdnspp/default/default_policy.h"
@@ -41,6 +42,9 @@ using service_discovery = basic_service_discovery<DefaultPolicy>;
 
 /// Convenience alias — mDNS service responder with the default platform policy.
 using service_server = basic_service_server<DefaultPolicy>;
+
+/// Convenience alias — continuous mDNS service monitor with the default platform policy.
+using service_monitor = basic_service_monitor<DefaultPolicy>;
 
 /// Convenience alias — the default event-loop context (run(), stop(), restart()).
 using context = DefaultContext;

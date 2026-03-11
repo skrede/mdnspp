@@ -4,6 +4,7 @@
 #include "mdnspp/records.h"
 
 #include <span>
+#include <chrono>
 #include <ranges>
 #include <string>
 #include <vector>
@@ -34,6 +35,12 @@ struct resolved_service
     std::vector<service_txt> txt_entries;
     std::vector<std::string> ipv4_addresses;
     std::vector<std::string> ipv6_addresses;
+    /// Time until the SRV anchor record expires (computed from wire TTL at last
+    /// observation). Zero in one-shot aggregate() results; populated by the
+    /// continuous service monitor.
+    std::chrono::nanoseconds ttl_remaining{};
+    /// Wire TTL of the SRV record in seconds. Zero for one-shot results.
+    uint32_t wire_ttl{0};
 };
 
 // aggregate() — correlate a flat sequence of mDNS records into resolved_service values.

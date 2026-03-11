@@ -14,6 +14,10 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/basic_querier.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_observer.h
     ${INCLUDE_DIRECTORY}/mdnspp/socket_options.h
+    ${INCLUDE_DIRECTORY}/mdnspp/cache_entry.h
+    ${INCLUDE_DIRECTORY}/mdnspp/record_cache.h
+    ${INCLUDE_DIRECTORY}/mdnspp/mdns_options.h
+    ${INCLUDE_DIRECTORY}/mdnspp/cache_options.h
     ${INCLUDE_DIRECTORY}/mdnspp/monitor_options.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_options.h
     ${INCLUDE_DIRECTORY}/mdnspp/observer_options.h

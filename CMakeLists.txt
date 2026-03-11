@@ -20,7 +20,7 @@ include(CMakePackageConfigHelpers)
 add_subdirectory(lib)
 
 if (${MDNSPP_BUILD_EXAMPLES})
-    add_subdirectory(example)
+    add_subdirectory(examples)
 endif ()
 
 if (${MDNSPP_BUILD_TESTS})

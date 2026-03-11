@@ -1,0 +1,6 @@
+add_subdirectory(observer)
+add_subdirectory(querier)
+add_subdirectory(service_discovery)
+add_subdirectory(service_server)
+add_subdirectory(service_monitor)
+add_subdirectory(record_cache)

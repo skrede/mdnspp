@@ -1,0 +1,13 @@
+add_executable(mdnspp_example_service_server_01_basic 01_basic.cpp)
+target_link_libraries(mdnspp_example_service_server_01_basic mdnspp::mdnspp)
+
+add_executable(mdnspp_example_service_server_02_multi_serve 02_multi_serve.cpp)
+target_link_libraries(mdnspp_example_service_server_02_multi_serve mdnspp::mdnspp)
+
+add_executable(mdnspp_example_service_server_03_conflict_resolution 03_conflict_resolution.cpp)
+target_link_libraries(mdnspp_example_service_server_03_conflict_resolution mdnspp::mdnspp)
+
+if(MDNSPP_ENABLE_ASIO_POLICY)
+    add_executable(mdnspp_example_service_server_04_asio_start 04_asio_start.cpp)
+    target_link_libraries(mdnspp_example_service_server_04_asio_start mdnspp::mdnspp mdnspp::asio)
+endif()

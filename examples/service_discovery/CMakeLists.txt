@@ -1,0 +1,13 @@
+add_executable(mdnspp_example_service_discovery_01_basic 01_basic.cpp)
+target_link_libraries(mdnspp_example_service_discovery_01_basic mdnspp::mdnspp)
+
+add_executable(mdnspp_example_service_discovery_02_subtype 02_subtype.cpp)
+target_link_libraries(mdnspp_example_service_discovery_02_subtype mdnspp::mdnspp)
+
+add_executable(mdnspp_example_service_discovery_03_enumerate_types 03_enumerate_types.cpp)
+target_link_libraries(mdnspp_example_service_discovery_03_enumerate_types mdnspp::mdnspp)
+
+if(MDNSPP_ENABLE_ASIO_POLICY)
+    add_executable(mdnspp_example_service_discovery_04_asio_callback 04_asio_callback.cpp)
+    target_link_libraries(mdnspp_example_service_discovery_04_asio_callback mdnspp::mdnspp mdnspp::asio)
+endif()

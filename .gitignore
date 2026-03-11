@@ -58,6 +58,7 @@ cmake-build-*
 
 build*/
 build_*/
+Testing/
 .claude/
 .gemini/
 .planning/

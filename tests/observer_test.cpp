@@ -375,6 +375,7 @@ SCENARIO("observer non-throwing constructor sets ec on success", "[observer][cre
                 {
                 }},
                 {},
+                {},
                 ec
             };
 

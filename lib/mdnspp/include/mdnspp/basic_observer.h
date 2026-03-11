@@ -83,8 +83,9 @@ public:
     // Throwing constructor -- constructs socket and timer from executor.
     // Throws on construction failure (e.g. socket bind error).
     explicit basic_observer(executor_type ex, observer_options opts = {},
-                            socket_options sock_opts = {})
-        : base(ex, sock_opts)
+                            socket_options sock_opts = {},
+                            mdns_options mdns_opts = {})
+        : base(ex, sock_opts, std::move(mdns_opts))
         , m_on_record(std::move(opts.on_record))
     {
     }
@@ -92,8 +93,9 @@ public:
     // Non-throwing constructor -- sets ec on failure instead of throwing.
     // ec is the last parameter, matching ASIO convention.
     basic_observer(executor_type ex, observer_options opts,
-                   socket_options sock_opts, std::error_code &ec)
-        : base(ex, sock_opts, ec)
+                   socket_options sock_opts, mdns_options mdns_opts,
+                   std::error_code &ec)
+        : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_on_record(std::move(opts.on_record))
     {
     }

@@ -76,8 +76,10 @@ public:
 
     // Throwing constructor -- constructs socket and timer from executor.
     // query_options bundles the silence timeout and per-record callback.
-    explicit basic_querier(executor_type ex, query_options opts = {}, socket_options sock_opts = {})
-        : base(ex, sock_opts)
+    explicit basic_querier(executor_type ex, query_options opts = {},
+                           socket_options sock_opts = {},
+                           mdns_options mdns_opts = {})
+        : base(ex, sock_opts, std::move(mdns_opts))
         , m_delay_timer(ex)
         , m_silence_timeout(opts.silence_timeout)
         , m_on_record(std::move(opts.on_record))
@@ -85,8 +87,9 @@ public:
     }
 
     // Non-throwing constructor -- ec is last (ASIO convention).
-    basic_querier(executor_type ex, query_options opts, socket_options sock_opts, std::error_code &ec)
-        : base(ex, sock_opts, ec)
+    basic_querier(executor_type ex, query_options opts, socket_options sock_opts,
+                  mdns_options mdns_opts, std::error_code &ec)
+        : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_delay_timer(ex)
         , m_silence_timeout(opts.silence_timeout)
         , m_on_record(std::move(opts.on_record))

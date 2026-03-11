@@ -180,6 +180,7 @@ TEST_CASE("observer error_code constructor path", "[observer][error_code]")
         {
         }},
         {},
+        {},
         ec
     };
     REQUIRE(ec);

@@ -692,7 +692,7 @@ SCENARIO("service_discovery non-throwing constructor sets ec on success", "[serv
 
         WHEN("basic_service_discovery<MockPolicy> is constructed with the ec overload")
         {
-            basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}, {}, ec};
+            basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}, {}, {}, ec};
 
             THEN("ec is clear and the service_discovery is usable")
             {

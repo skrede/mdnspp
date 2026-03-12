@@ -6,6 +6,7 @@
 #include "mdnspp/service_type.h"
 #include "mdnspp/query_options.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/callback_types.h"
 #include "mdnspp/resolved_service.h"
 
 #include "mdnspp/detail/compat.h"
@@ -39,17 +40,17 @@ public:
     using base::timer;
 
     /// Optional callback invoked per record as results arrive during discovery.
-    using record_callback = detail::move_only_function<void(const endpoint &, const mdns_record_variant &)>;
+    using record_callback = mdnspp::record_callback;
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.
-    using completion_handler = detail::move_only_function<void(std::error_code, const std::vector<mdns_record_variant> &)>;
+    using completion_handler = mdnspp::discovery_completion_handler;
 
     /// Completion callback for async_enumerate_types.
     using enumerate_handler = detail::move_only_function<void(std::error_code, std::vector<service_type_info>)>;
 
     /// Error handler invoked on fire-and-forget send failures.
-    using error_handler = detail::move_only_function<void(std::error_code, std::string_view)>;
+    using error_handler = mdnspp::error_handler;
 
     // Non-copyable (owns recv_loop by unique_ptr)
     basic_service_discovery(const basic_service_discovery &) = delete;
@@ -85,8 +86,9 @@ public:
     // query_options bundles the silence timeout and per-record callback.
     explicit basic_service_discovery(executor_type ex,
                                      query_options opts = {},
-                                     socket_options sock_opts = {})
-        : base(ex, sock_opts)
+                                     socket_options sock_opts = {},
+                                     mdns_options mdns_opts = {})
+        : base(ex, sock_opts, std::move(mdns_opts))
         , m_silence_timeout(opts.silence_timeout)
         , m_on_record(std::move(opts.on_record))
     {
@@ -96,8 +98,9 @@ public:
     basic_service_discovery(executor_type ex,
                             query_options opts,
                             socket_options sock_opts,
+                            mdns_options mdns_opts,
                             std::error_code &ec)
-        : base(ex, sock_opts, ec)
+        : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_silence_timeout(opts.silence_timeout)
         , m_on_record(std::move(opts.on_record))
     {
@@ -228,15 +231,13 @@ private:
                   std::function<void()> on_silence_fn)
     {
         m_results.clear();
-        m_service_type = std::move(svc_type);
-        if(!m_service_type.empty() && m_service_type.back() == '.')
-            m_service_type.pop_back();
+        m_service_type = dns_name(std::move(svc_type));
 
         auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr,
                                                    std::span<const mdns_record_variant>(m_results), mode);
         {
             std::error_code ec;
-            this->m_socket.send(endpoint{"224.0.0.251", 5353},
+            this->m_socket.send(this->multicast_endpoint(),
                           std::span<const std::byte>(query_bytes), ec);
             if(ec && m_on_error) m_on_error(ec, "query send");
         }
@@ -295,7 +296,7 @@ private:
         auto query_bytes = detail::build_dns_query(meta_name, dns_type::ptr, mode);
         {
             std::error_code ec;
-            this->m_socket.send(endpoint{"224.0.0.251", 5353},
+            this->m_socket.send(this->multicast_endpoint(),
                           std::span<const std::byte>(query_bytes), ec);
             if(ec && m_on_error) m_on_error(ec, "enumerate send");
         }
@@ -314,7 +315,7 @@ private:
                     {
                         if(auto *ptr = std::get_if<record_ptr>(&rec))
                         {
-                            if(ptr->name == "_services._dns-sd._udp.local")
+                            if(ptr->name == "_services._dns-sd._udp.local.")
                             {
                                 auto info = parse_service_type(ptr->ptr_name);
                                 bool dup = std::any_of(m_enumerated_types.begin(),
@@ -345,7 +346,7 @@ private:
     detail::move_only_function<void(std::error_code, std::vector<resolved_service>)> m_on_browse_completion;
     enumerate_handler m_on_enumerate_completion;
     error_handler m_on_error;
-    std::string m_service_type;
+    dns_name m_service_type;
     std::unique_ptr<recv_loop<P>> m_browse_loop;
     std::unique_ptr<recv_loop<P>> m_enumerate_loop;
     std::vector<mdns_record_variant> m_results;

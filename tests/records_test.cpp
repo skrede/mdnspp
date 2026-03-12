@@ -24,7 +24,7 @@ TEST_CASE("record_ptr streams correctly", "[records][operator<<]")
     REQUIRE(s.contains("192.168.1.10"));
     REQUIRE(s.contains("PTR"));
     REQUIRE(s.contains("_http._tcp.local."));
-    REQUIRE(s.contains("MyService._http._tcp.local."));
+    REQUIRE(s.contains("myservice._http._tcp.local."));
     REQUIRE(s.contains("120"));
 }
 

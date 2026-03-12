@@ -1,0 +1,8 @@
+add_executable(mdnspp_discovery_01_basic 01_basic.cpp)
+target_link_libraries(mdnspp_discovery_01_basic PRIVATE mdnspp::mdnspp)
+
+add_executable(mdnspp_discovery_02_subtype 02_subtype.cpp)
+target_link_libraries(mdnspp_discovery_02_subtype PRIVATE mdnspp::mdnspp)
+
+add_executable(mdnspp_discovery_03_enumerate_types 03_enumerate_types.cpp)
+target_link_libraries(mdnspp_discovery_03_enumerate_types PRIVATE mdnspp::mdnspp)

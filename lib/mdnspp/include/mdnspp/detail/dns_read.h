@@ -93,8 +93,8 @@ inline bool skip_dns_name(std::span<const std::byte> buf, size_t &offset)
 //   - Assembled name must not exceed 255 bytes (RFC 1035 §3.1).
 //   - Labels are transcribed as raw bytes (no IDN/punycode — mDNS names are ASCII).
 //
-// The result string uses dotted-label notation without a trailing dot
-// (e.g. "_http._tcp.local"). The root name (\x00) returns an empty string.
+// The result string uses dotted-label FQDN notation with a trailing dot
+// (e.g. "_http._tcp.local."). The root name (\x00) returns an empty string.
 //
 // Returns detail::make_unexpected(mdns_error::parse_error) on any bounds violation,
 // pointer safety violation, or name-length overflow.
@@ -138,9 +138,13 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
             continue;
         }
 
-        // Root label — name is complete
+        // Root label — name is complete; append trailing dot for FQDN form
         if(label_len == 0)
+        {
+            if(!result.empty())
+                result += '.';
             return result;
+        }
 
         // Regular label: bounds-check, then append
         size_t label_start = offset + 1;

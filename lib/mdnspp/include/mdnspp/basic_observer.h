@@ -5,6 +5,7 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/observer_options.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/callback_types.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
@@ -50,14 +51,14 @@ public:
     using base::socket;
     using base::timer;
 
-    using record_callback = detail::move_only_function<void(const endpoint &, const mdns_record_variant &)>;
+    using record_callback = mdnspp::record_callback;
 
     /// Completion callback fired once when stop() is called.
     /// Receives error_code (always success).
-    using completion_handler = detail::move_only_function<void(std::error_code)>;
+    using completion_handler = mdnspp::observer_completion_handler;
 
     /// Error handler invoked on fire-and-forget send failures.
-    using error_handler = detail::move_only_function<void(std::error_code, std::string_view)>;
+    using error_handler = mdnspp::error_handler;
 
     // Non-copyable, non-move-assignable
     basic_observer(const basic_observer &) = delete;
@@ -83,8 +84,9 @@ public:
     // Throwing constructor -- constructs socket and timer from executor.
     // Throws on construction failure (e.g. socket bind error).
     explicit basic_observer(executor_type ex, observer_options opts = {},
-                            socket_options sock_opts = {})
-        : base(ex, sock_opts)
+                            socket_options sock_opts = {},
+                            mdns_options mdns_opts = {})
+        : base(ex, sock_opts, std::move(mdns_opts))
         , m_on_record(std::move(opts.on_record))
     {
     }
@@ -92,8 +94,9 @@ public:
     // Non-throwing constructor -- sets ec on failure instead of throwing.
     // ec is the last parameter, matching ASIO convention.
     basic_observer(executor_type ex, observer_options opts,
-                   socket_options sock_opts, std::error_code &ec)
-        : base(ex, sock_opts, ec)
+                   socket_options sock_opts, mdns_options mdns_opts,
+                   std::error_code &ec)
+        : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_on_record(std::move(opts.on_record))
     {
     }

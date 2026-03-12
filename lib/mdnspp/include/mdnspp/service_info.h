@@ -27,9 +27,9 @@ namespace mdnspp {
 //   txt_records   — RFC 6763 TXT key/value pairs (key-only entries have no value)
 struct service_info
 {
-    std::string service_name; // e.g. "MyApp._http._tcp.local."
-    std::string service_type; // e.g. "_http._tcp.local."
-    std::string hostname;     // e.g. "myhost.local."
+    dns_name service_name; // e.g. "MyApp._http._tcp.local."
+    dns_name service_type; // e.g. "_http._tcp.local."
+    dns_name hostname;     // e.g. "myhost.local."
     uint16_t port{0};
     uint16_t priority{0};
     uint16_t weight{0};

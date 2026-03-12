@@ -17,6 +17,8 @@ struct service_options
 
     conflict_callback on_conflict{};
     detail::move_only_function<void(const endpoint &sender, dns_type type, response_mode mode)> on_query{};
+    /// Fired when TC continuation is processed: reports sender and number of accumulated continuation packets.
+    detail::move_only_function<void(const endpoint &sender, std::size_t continuation_count)> on_tc_continuation{};
     unsigned announce_count{2};
     std::chrono::milliseconds announce_interval{1000};
     bool send_goodbye{true};

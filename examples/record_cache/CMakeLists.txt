@@ -1,0 +1,5 @@
+add_executable(mdnspp_cache_01_standalone 01_standalone.cpp)
+target_link_libraries(mdnspp_cache_01_standalone PRIVATE mdnspp::mdnspp)
+
+add_executable(mdnspp_cache_02_ttl_expiry 02_ttl_expiry.cpp)
+target_link_libraries(mdnspp_cache_02_ttl_expiry PRIVATE mdnspp::mdnspp)

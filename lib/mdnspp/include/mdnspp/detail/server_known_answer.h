@@ -59,12 +59,11 @@ inline suppression_mask parse_known_answers(std::span<const std::byte> data, siz
         if(offset > data.size())
             break;
 
-        auto sn = strip_dot(info.service_name);
-        auto st = strip_dot(info.service_type);
-        auto hn = strip_dot(info.hostname);
-        const auto &ans_name = *name_result;
+        dns_name ans_name{*name_result};
 
-        bool name_matches = (ans_name == sn || ans_name == st || ans_name == hn);
+        bool name_matches = (ans_name == info.service_name
+                          || ans_name == info.service_type
+                          || ans_name == info.hostname);
         if(name_matches && ttl >= threshold)
         {
             switch(rtype)

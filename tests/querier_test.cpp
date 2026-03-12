@@ -439,7 +439,7 @@ SCENARIO("querier non-throwing constructor sets ec on success", "[querier][creat
 
         WHEN("basic_querier<MockPolicy> is constructed with the ec overload")
         {
-            basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}, {}, ec};
+            basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}, {}, {}, ec};
 
             THEN("ec is clear and the querier is usable")
             {

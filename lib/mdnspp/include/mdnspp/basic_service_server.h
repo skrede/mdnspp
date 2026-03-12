@@ -6,16 +6,19 @@
 #include "mdnspp/mdns_error.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/callback_types.h"
 #include "mdnspp/service_options.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/detail/dns_enums.h"
-#include "mdnspp/detail/basic_mdns_peer_base.h"
+#include "mdnspp/detail/tc_accumulator.h"
 #include "mdnspp/detail/server_query_match.h"
 #include "mdnspp/detail/server_known_answer.h"
+#include "mdnspp/detail/basic_mdns_peer_base.h"
 #include "mdnspp/detail/server_probe_announce.h"
 #include "mdnspp/detail/server_response_aggregation.h"
+#include "mdnspp/detail/duplicate_answer_suppression.h"
 
 #include <span>
 #include <string>
@@ -62,11 +65,11 @@ public:
 
     /// Completion callback fired once when stop() is called or on_ready event occurs.
     /// Receives error_code.
-    using completion_handler = detail::move_only_function<void(std::error_code)>;
+    using completion_handler = mdnspp::server_completion_handler;
 
     /// Error handler invoked on fire-and-forget send failures.
     /// Receives the error_code and a context string identifying the send site.
-    using error_handler = detail::move_only_function<void(std::error_code, std::string_view)>;
+    using error_handler = mdnspp::error_handler;
 
     // Non-copyable
     basic_service_server(const basic_service_server &) = delete;
@@ -77,6 +80,7 @@ public:
     basic_service_server(basic_service_server &&other) noexcept
         : base(std::move(other))
         , m_response_timer(std::move(other.m_response_timer))
+        , m_tc_timer(std::move(other.m_tc_timer))
         , m_info(std::move(other.m_info))
         , m_opts(std::move(other.m_opts))
         , m_on_ready(std::move(other.m_on_ready))
@@ -85,6 +89,8 @@ public:
         , m_rng(std::move(other.m_rng))
         , m_pa_state(other.m_pa_state)
         , m_pending(other.m_pending)
+        , m_tc_acc(std::move(other.m_tc_acc))
+        , m_dup_suppression(std::move(other.m_dup_suppression))
     {
     }
 
@@ -104,7 +110,9 @@ public:
         this->m_stopped.store(other.m_stopped.load(std::memory_order_acquire),
                               std::memory_order_release);
         other.m_stopped.store(true, std::memory_order_release);
+        this->m_mdns_opts = std::move(other.m_mdns_opts);
         m_response_timer = std::move(other.m_response_timer);
+        m_tc_timer = std::move(other.m_tc_timer);
         m_info = std::move(other.m_info);
         m_opts = std::move(other.m_opts);
         m_on_ready = std::move(other.m_on_ready);
@@ -113,6 +121,8 @@ public:
         m_rng = std::move(other.m_rng);
         m_pa_state = other.m_pa_state;
         m_pending = other.m_pending;
+        m_tc_acc = std::move(other.m_tc_acc);
+        m_dup_suppression = std::move(other.m_dup_suppression);
         return *this;
     }
 
@@ -127,9 +137,11 @@ public:
     // Throwing constructor
     explicit basic_service_server(executor_type ex, service_info info,
                                   service_options opts = {},
-                                  socket_options sock_opts = {})
-        : base(ex, sock_opts)
+                                  socket_options sock_opts = {},
+                                  mdns_options mdns_opts = {})
+        : base(ex, sock_opts, std::move(mdns_opts))
         , m_response_timer(ex)
+        , m_tc_timer(ex)
         , m_info(std::move(info))
         , m_opts(std::move(opts))
         , m_rng(std::random_device{}())
@@ -139,9 +151,10 @@ public:
     // Non-throwing constructor
     basic_service_server(executor_type ex, service_info info,
                          service_options opts, socket_options sock_opts,
-                         std::error_code &ec)
-        : base(ex, sock_opts, ec)
+                         mdns_options mdns_opts, std::error_code &ec)
+        : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_response_timer(ex)
+        , m_tc_timer(ex)
         , m_info(std::move(info))
         , m_opts(std::move(opts))
         , m_rng(std::random_device{}())
@@ -183,7 +196,7 @@ public:
             std::error_code ec;
             auto goodbye = detail::build_dns_response(m_info, dns_type::any, 0);
             if(!goodbye.empty())
-                this->m_socket.send(endpoint{"224.0.0.251", 5353},
+                this->m_socket.send(this->multicast_endpoint(),
                               std::as_bytes(std::span(goodbye)), ec);
             if(ec && m_on_error) m_on_error(ec, "goodbye send");
         }
@@ -202,6 +215,8 @@ public:
             m_pa_state.state = server_state::stopped;
             m_pending.armed = false;
             m_response_timer.cancel();
+            m_tc_timer.cancel();
+            m_tc_acc.clear();
 
             if(this->m_loop)
                 this->m_loop->stop();
@@ -232,9 +247,12 @@ public:
 
     // Server-specific timer accessors:
     // timer() returns the response timer (used for probing/announcing/response delays)
+    // tc_timer() returns the dedicated TC wait timer (RFC 6762 §6 truncated-response accumulation)
     // recv_timer() returns the base timer (used by recv_loop)
     const timer_type &timer() const noexcept { return m_response_timer; }
     timer_type &timer() noexcept { return m_response_timer; }
+    const timer_type &tc_timer() const noexcept { return m_tc_timer; }
+    timer_type &tc_timer() noexcept { return m_tc_timer; }
     const timer_type &recv_timer() const noexcept { return base::timer(); }
     timer_type &recv_timer() noexcept { return base::timer(); }
 
@@ -291,14 +309,14 @@ private:
         probe[0] = static_cast<std::byte>(m_pa_state.probe_id >> 8);
         probe[1] = static_cast<std::byte>(m_pa_state.probe_id & 0xFF);
         std::error_code ec;
-        this->m_socket.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(probe), ec);
+        this->m_socket.send(this->multicast_endpoint(), std::span<const std::byte>(probe), ec);
         if(ec && m_on_error) m_on_error(ec, "probe send");
 
         bool more = detail::advance_probe(m_pa_state);
         m_response_timer.expires_after(std::chrono::milliseconds(250));
-        m_response_timer.async_wait([this, more](std::error_code ec)
+        m_response_timer.async_wait([this, more](std::error_code wait_ec)
         {
-            if(ec || m_pa_state.state != server_state::probing) return;
+            if(wait_ec || m_pa_state.state != server_state::probing) return;
             if(this->m_stopped.load(std::memory_order_acquire)) return;
             if(more)
                 send_probe();
@@ -347,7 +365,7 @@ private:
         if(m_opts.on_conflict)
         {
             std::string new_name;
-            if(m_opts.on_conflict(m_info.service_name, new_name, m_pa_state.conflict_attempt))
+            if(m_opts.on_conflict(m_info.service_name.str(), new_name, m_pa_state.conflict_attempt))
             {
                 m_info.service_name = std::move(new_name);
                 ++m_pa_state.conflict_attempt;
@@ -390,11 +408,9 @@ private:
         detail::walk_dns_frame(std::span<const std::byte>(data.data(), data.size()),
             endpoint{}, [&](mdns_record_variant rv)
         {
-            auto sn = detail::strip_dot(m_info.service_name);
-            auto hn = detail::strip_dot(m_info.hostname);
             std::visit([&](const auto &rec)
             {
-                if(rec.name == sn || rec.name == hn)
+                if(rec.name == m_info.service_name || rec.name == m_info.hostname)
                     conflict = true;
             }, rv);
         });
@@ -408,7 +424,7 @@ private:
         if(mode == response_mode::unicast)
             this->m_socket.send(sender, packet, ec);
         else
-            this->m_socket.send(endpoint{"224.0.0.251", 5353}, packet, ec);
+            this->m_socket.send(this->multicast_endpoint(), packet, ec);
         if(ec && m_on_error) m_on_error(ec, context);
     }
 
@@ -430,14 +446,57 @@ private:
             if(m_pa_state.state != server_state::live)
                 return;
 
+            // RFC 6762 §7.4: merge duplicate suppression observations into suppression mask.
+            // Build the exact records we would send and check each against m_dup_suppression.
+            // Using the round-trip serialised+parsed form ensures identity equality matches.
+            static constexpr uint32_t srv_ttl = 4500;
+            auto combined = m_pending.suppression;
+            if(!m_dup_suppression.empty())
+            {
+                auto candidate_pkt = detail::build_dns_response(m_info, dns_type::any);
+                std::vector<mdns_record_variant> candidates;
+                detail::walk_dns_frame(
+                    std::span<const std::byte>(candidate_pkt.data(), candidate_pkt.size()),
+                    endpoint{},
+                    [&](mdns_record_variant rv) { candidates.push_back(std::move(rv)); });
+
+                for(const auto &rec : candidates)
+                {
+                    if(!m_dup_suppression.is_suppressed(rec, srv_ttl))
+                        continue;
+                    std::visit([&](const auto &r)
+                    {
+                        using T = std::decay_t<decltype(r)>;
+                        if constexpr (std::is_same_v<T, record_ptr>)   combined.ptr  = true;
+                        else if constexpr (std::is_same_v<T, record_srv>)  combined.srv  = true;
+                        else if constexpr (std::is_same_v<T, record_a>)    combined.a    = true;
+                        else if constexpr (std::is_same_v<T, record_aaaa>) combined.aaaa = true;
+                        else if constexpr (std::is_same_v<T, record_txt>)  combined.txt  = true;
+                    }, rec);
+                }
+            }
+            m_dup_suppression.reset();
+
             auto response = detail::build_response_with_nsec(m_info, m_pending.qtype,
                                                              m_pending.needs_nsec,
-                                                             m_pending.suppression,
+                                                             combined,
                                                              m_opts.suppress_known_answers);
             m_pending.reset();
             if(!response.empty())
                 send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "response send");
         });
+    }
+
+    // Parses the answer section of a DNS packet into a flat record list.
+    // Used for TC known-answer accumulation and duplicate suppression observation.
+    std::vector<mdns_record_variant> parse_answer_records(std::span<const std::byte> data)
+    {
+        std::vector<mdns_record_variant> records;
+        detail::walk_dns_frame(data, endpoint{}, [&](mdns_record_variant rv)
+        {
+            records.push_back(std::move(rv));
+        });
+        return records;
     }
 
     // Called by recv_loop on every incoming packet.
@@ -476,7 +535,59 @@ private:
         if(m_pa_state.state != server_state::live)
             return;
 
+        if(data.size() < 12)
+            return;
+
+        uint16_t flags = detail::read_u16_be(data.data() + 2);
+        bool is_response = (flags & 0x8000) != 0;
+        bool tc_set = (flags & 0x0200) != 0;
+
         auto cdata = std::span<const std::byte>(data.data(), data.size());
+
+        // RFC 6762 §7.4: observe multicast responses during 20-120ms response delay
+        // to suppress answers that another responder has already sent.
+        if(is_response)
+        {
+            auto answer_records = parse_answer_records(cdata);
+            for(const auto &rec : answer_records)
+            {
+                uint32_t observed_ttl = std::visit([](const auto &r) { return r.ttl; }, rec);
+                m_dup_suppression.observe(rec, observed_ttl);
+            }
+            return;
+        }
+
+        // RFC 6762 §6: TC (Truncated) bit set -- defer processing for 400-500ms
+        // to allow continuation packets to arrive from the same sender.
+        if(tc_set)
+        {
+            auto answer_records = parse_answer_records(cdata);
+            bool is_first = !m_tc_acc.has_pending(sender);
+            m_tc_acc.accumulate(sender, std::move(answer_records),
+                                this->m_mdns_opts.tc_wait_min);
+
+            if(is_first)
+            {
+                // Arm the TC timer only once per source (first packet).
+                std::uniform_int_distribution<int> dist(
+                    static_cast<int>(this->m_mdns_opts.tc_wait_min.count()),
+                    static_cast<int>(this->m_mdns_opts.tc_wait_max.count()));
+                auto tc_wait = std::chrono::milliseconds(dist(m_rng));
+
+                m_tc_timer.expires_after(tc_wait);
+                m_tc_timer.async_wait([this, sender, tc_wait](std::error_code ec)
+                {
+                    if(ec || this->m_stopped.load(std::memory_order_acquire))
+                        return;
+                    on_tc_wait_expired(sender, tc_wait);
+                });
+            }
+            return;
+        }
+
+        // Normal (non-TC) query processing.
+        // If the sender has pending TC entries, continue accumulating but also
+        // proceed immediately with what we have.
         auto qmr = detail::match_queries(cdata, m_info, m_opts);
         if(!qmr.any_matched && !qmr.meta_matched && qmr.matched_subtype.empty())
             return;
@@ -519,6 +630,63 @@ private:
         schedule_multicast_response(qmr, suppression);
     }
 
+    // Called when the TC wait timer fires for a given sender.
+    // Takes the accumulated known-answers from m_tc_acc and processes the stored
+    // query with the merged known-answer set.
+    void on_tc_wait_expired(const endpoint &sender, std::chrono::milliseconds tc_wait)
+    {
+        if(this->m_stopped.load(std::memory_order_acquire))
+            return;
+        if(m_pa_state.state != server_state::live)
+            return;
+
+        // Pass time_point::max() as 'now': the timer firing IS the ready signal.
+        // take_if_ready's time guard is redundant here but kept for robustness.
+        auto merged = m_tc_acc.take_if_ready(sender,
+                                             (std::chrono::steady_clock::time_point::max)(), tc_wait);
+        if(!merged.has_value())
+            return;
+
+        if(m_opts.on_tc_continuation)
+            m_opts.on_tc_continuation(sender, merged->size());
+
+        // Build a synthetic suppression mask from the merged known-answers.
+        // The merged records ARE the known-answer list accumulated over TC packets;
+        // treat them as suppression candidates for our service.
+        detail::suppression_mask suppression;
+        static constexpr uint32_t ka_threshold = 2250;
+        for(const auto &rec : *merged)
+        {
+            std::visit([&](const auto &r)
+            {
+                bool name_ok = (r.name == m_info.service_name
+                             || r.name == m_info.service_type
+                             || r.name == m_info.hostname);
+                if(name_ok && r.ttl >= ka_threshold)
+                {
+                    using T = std::decay_t<decltype(r)>;
+                    if constexpr (std::is_same_v<T, record_ptr>)   suppression.ptr  = true;
+                    else if constexpr (std::is_same_v<T, record_srv>)  suppression.srv  = true;
+                    else if constexpr (std::is_same_v<T, record_a>)    suppression.a    = true;
+                    else if constexpr (std::is_same_v<T, record_aaaa>) suppression.aaaa = true;
+                    else if constexpr (std::is_same_v<T, record_txt>)  suppression.txt  = true;
+                }
+            }, rec);
+        }
+
+        // Respond with dns_type::any using the merged suppression mask.
+        detail::query_match_result qmr;
+        qmr.any_matched = true;
+        qmr.accumulated_qtype = dns_type::any;
+        qmr.mode = response_mode::multicast;
+        qmr.needs_nsec = false;
+
+        if(m_opts.suppress_known_answers && detail::all_suppressed(suppression, dns_type::any, m_info))
+            return;
+
+        schedule_multicast_response(qmr, suppression);
+    }
+
     // Sends an unsolicited announcement with all records (PTR, SRV, TXT, A/AAAA)
     // to the multicast group. RFC 6762 section 8.4.
     // When respond_to_meta_queries is true, also includes the DNS-SD service type
@@ -550,6 +718,7 @@ private:
     }
 
     timer_type m_response_timer;
+    timer_type m_tc_timer;
     service_info m_info;
     service_options m_opts;
     completion_handler m_on_ready;
@@ -558,6 +727,8 @@ private:
     std::mt19937 m_rng;
     detail::probe_announce_state m_pa_state;
     detail::pending_response m_pending;
+    detail::tc_accumulator<> m_tc_acc;
+    detail::duplicate_suppression_state m_dup_suppression;
 };
 
 }

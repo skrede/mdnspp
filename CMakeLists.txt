@@ -7,6 +7,26 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 
+set(MDNSPP_WARNING_FLAGS
+    $<$<CXX_COMPILER_ID:MSVC>:/W4 /permissive- /utf-8>
+    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:
+        -fPIC
+        -Wall
+        -Wextra
+        -Wpedantic
+        -Wshadow
+        -Wconversion
+        -Wsign-conversion
+        -Wold-style-cast
+        -Wcast-align
+        -Woverloaded-virtual
+        -Wnon-virtual-dtor
+        -Wdouble-promotion
+        -Wimplicit-fallthrough
+        -Wformat=2
+    >
+)
+
 option(MDNSPP_BUILD_TESTS OFF)
 option(MDNSPP_BUILD_EXAMPLES OFF)
 
@@ -20,7 +40,7 @@ include(CMakePackageConfigHelpers)
 add_subdirectory(lib)
 
 if (${MDNSPP_BUILD_EXAMPLES})
-    add_subdirectory(example)
+    add_subdirectory(examples)
 endif ()
 
 if (${MDNSPP_BUILD_TESTS})

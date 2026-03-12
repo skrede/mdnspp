@@ -5,6 +5,7 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/query_options.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/callback_types.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
@@ -38,14 +39,14 @@ public:
     using base::timer;
 
     /// Optional callback invoked per record as results arrive during a query.
-    using record_callback = detail::move_only_function<void(const endpoint &, const mdns_record_variant &)>;
+    using record_callback = mdnspp::record_callback;
 
     /// Completion callback fired once when the silence timeout expires (or stop() is called).
     /// Receives error_code (always success for normal completion) and the accumulated results.
-    using completion_handler = detail::move_only_function<void(std::error_code, std::vector<mdns_record_variant>)>;
+    using completion_handler = mdnspp::querier_completion_handler;
 
     /// Error handler invoked on fire-and-forget send failures.
-    using error_handler = detail::move_only_function<void(std::error_code, std::string_view)>;
+    using error_handler = mdnspp::error_handler;
 
     // Non-copyable (owns recv_loop by unique_ptr)
     basic_querier(const basic_querier &) = delete;
@@ -76,8 +77,10 @@ public:
 
     // Throwing constructor -- constructs socket and timer from executor.
     // query_options bundles the silence timeout and per-record callback.
-    explicit basic_querier(executor_type ex, query_options opts = {}, socket_options sock_opts = {})
-        : base(ex, sock_opts)
+    explicit basic_querier(executor_type ex, query_options opts = {},
+                           socket_options sock_opts = {},
+                           mdns_options mdns_opts = {})
+        : base(ex, sock_opts, std::move(mdns_opts))
         , m_delay_timer(ex)
         , m_silence_timeout(opts.silence_timeout)
         , m_on_record(std::move(opts.on_record))
@@ -85,8 +88,9 @@ public:
     }
 
     // Non-throwing constructor -- ec is last (ASIO convention).
-    basic_querier(executor_type ex, query_options opts, socket_options sock_opts, std::error_code &ec)
-        : base(ex, sock_opts, ec)
+    basic_querier(executor_type ex, query_options opts, socket_options sock_opts,
+                  mdns_options mdns_opts, std::error_code &ec)
+        : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_delay_timer(ex)
         , m_silence_timeout(opts.silence_timeout)
         , m_on_record(std::move(opts.on_record))
@@ -148,20 +152,17 @@ private:
     {
         assert(this->m_loop == nullptr); // one query per lifetime
         m_results.clear();
-        m_query_name = std::move(qname);
+        m_query_name = dns_name(std::move(qname));
         m_query_type = qtype;
         m_query_mode = mode;
         m_duplicate_seen = false;
         m_query_sent = false;
-        // Strip trailing dot so the name matches read_dns_name output (no trailing dot)
-        if(!m_query_name.empty() && m_query_name.back() == '.')
-            m_query_name.pop_back();
 
         auto send_query = [this]()
         {
             auto query_bytes = detail::build_dns_query(m_query_name, m_query_type, m_query_mode);
             std::error_code ec;
-            this->m_socket.send(endpoint{"224.0.0.251", 5353},
+            this->m_socket.send(this->multicast_endpoint(),
                 std::span<const std::byte>(query_bytes), ec);
             if(ec && m_on_error)
                 m_on_error(ec, "query send");
@@ -215,7 +216,7 @@ private:
                             {
                                 // Compare encoded name
                                 auto incoming_name = detail::read_dns_name(cdata, name_start);
-                                if(incoming_name.has_value() && *incoming_name == m_query_name)
+                                if(incoming_name.has_value() && m_query_name == dns_name{*incoming_name})
                                 {
                                     m_duplicate_seen = true;
                                     m_delay_timer.cancel();
@@ -296,7 +297,7 @@ private:
     record_callback m_on_record;
     completion_handler m_on_completion;
     error_handler m_on_error;
-    std::string m_query_name;
+    dns_name m_query_name;
     std::vector<mdns_record_variant> m_results;
     dns_type m_query_type{dns_type::none};
     response_mode m_query_mode{response_mode::multicast};

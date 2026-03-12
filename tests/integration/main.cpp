@@ -19,6 +19,7 @@ static_assert(std::is_class_v<mdnspp::querier>);
 static_assert(std::is_class_v<mdnspp::observer>);
 static_assert(std::is_class_v<mdnspp::service_discovery>);
 static_assert(std::is_class_v<mdnspp::service_server>);
+static_assert(std::is_class_v<mdnspp::service_monitor>);
 static_assert(std::is_class_v<mdnspp::context>);
 
 // Validate that basic_querier<DefaultPolicy> is instantiable (template correctness check).

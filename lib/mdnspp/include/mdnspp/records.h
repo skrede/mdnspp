@@ -1,6 +1,7 @@
 #ifndef HPP_GUARD_MDNSPP_RECORDS_H
 #define HPP_GUARD_MDNSPP_RECORDS_H
 
+#include "mdnspp/dns_name.h"
 #include "mdnspp/detail/dns_enums.h"
 
 #include <string>
@@ -20,54 +21,59 @@ struct service_txt
 
 struct record_ptr
 {
-    std::string name;
+    dns_name name;
     uint32_t ttl{0};
     dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
-    std::string ptr_name;
+    bool cache_flush{false};
+    dns_name ptr_name;
 };
 
 struct record_srv
 {
-    std::string name;
+    dns_name name;
     uint32_t ttl{0};
     dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
+    bool cache_flush{false};
     uint16_t port{0};
     uint16_t weight{0};
     uint16_t priority{0};
-    std::string srv_name;
+    dns_name srv_name;
 };
 
 struct record_a
 {
-    std::string name;
+    dns_name name;
     uint32_t ttl{0};
     dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
+    bool cache_flush{false};
     std::string address_string; // "192.168.1.1" — no sockaddr_in
 };
 
 struct record_aaaa
 {
-    std::string name;
+    dns_name name;
     uint32_t ttl{0};
     dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
+    bool cache_flush{false};
     std::string address_string; // "fe80::1" — no sockaddr_in6
 };
 
 struct record_txt
 {
-    std::string name;
+    dns_name name;
     uint32_t ttl{0};
     dns_class rclass{dns_class::none};
     uint32_t length{0};
     std::string sender_address;
+    bool cache_flush{false};
     std::vector<service_txt> entries;
 };
 

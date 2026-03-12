@@ -139,7 +139,7 @@ inline std::vector<std::byte> build_subtype_response(std::string_view subtype_la
     push_u16_be(packet, 0x0000);
     push_u16_be(packet, 0x0000);
 
-    auto subtype_name = std::string(subtype_label) + "._sub." + std::string(strip_dot(info.service_type)) + ".";
+    auto subtype_name = std::string(subtype_label) + "._sub." + info.service_type.str();
     auto owner = encode_dns_name(subtype_name);
     auto rdata = encode_dns_name(info.service_name);
     append_dns_rr(packet, owner, dns_type::ptr, 4500, rdata, false);

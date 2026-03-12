@@ -1,0 +1,8 @@
+add_executable(mdnspp_monitor_01_basic 01_basic.cpp)
+target_link_libraries(mdnspp_monitor_01_basic PRIVATE mdnspp::mdnspp)
+
+add_executable(mdnspp_monitor_02_custom_group 02_custom_group.cpp)
+target_link_libraries(mdnspp_monitor_02_custom_group PRIVATE mdnspp::mdnspp)
+
+add_executable(mdnspp_monitor_03_observe_mode 03_observe_mode.cpp)
+target_link_libraries(mdnspp_monitor_03_observe_mode PRIVATE mdnspp::mdnspp)

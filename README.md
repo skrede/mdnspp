@@ -17,7 +17,7 @@
 - **Thread-safe service updates** -- safely modify the records of running mDNS service server from any thread.
 - **Policy-based architecture** -- swap socket/timer/executor implementations at compile time.
 - **Optional ASIO support** -- networking and completion token support (callbacks, futures, coroutines, and deferred operations).
-- **RFC 6762/6763 compliance** -- probing, goodbye packets, known-answer suppression, traffic reduction, and [DNS-SD](doc/rfc/README.md).
+- **RFC 6762/6763 compliance** -- probing, goodbye packets, known-answer suppression, traffic reduction, and [DNS-SD](docs/rfc/README.md).
 
 ## Quick Start
 
@@ -328,18 +328,18 @@ target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 # or: target_link_libraries(my_app PRIVATE mdnspp::asio)
 ```
 
-For `find_package`, building from source, and all available CMake targets, see the [CMake Integration](doc/cmake-integration.md) guide.
+For `find_package`, building from source, and all available CMake targets, see the [CMake Integration](docs/cmake-integration.md) guide.
 
 ## Documentation
 
-- [Getting Started](doc/getting-started.md) -- Install mdnspp and run your first query or service announcement
-- [Policies](doc/policies.md) -- Understand DefaultPolicy, AsioPolicy, and MockPolicy
-- [Socket Options](doc/socket-options.md) -- Network interface selection, multicast TTL, and loopback control
-- [Async Patterns](doc/async-patterns.md) -- ASIO completion tokens: callbacks, futures, coroutines, deferred
-- [CMake Integration](doc/cmake-integration.md) -- FetchContent, find_package, and building from source
-- [Service Options](doc/api/service_options.md) -- Conflict resolution, goodbye, announcement tuning
-- [RFC Compliance](doc/rfc/README.md) -- RFC 6762/6763 conformance status and feature documentation
-- [API Reference](doc/api/)
+- [Getting Started](docs/getting-started.md) -- Install mdnspp and run your first query or service announcement
+- [Policies](docs/policies.md) -- Understand DefaultPolicy, AsioPolicy, and MockPolicy
+- [Socket Options](docs/socket-options.md) -- Network interface selection, multicast TTL, and loopback control
+- [Async Patterns](docs/async-patterns.md) -- ASIO completion tokens: callbacks, futures, coroutines, deferred
+- [CMake Integration](docs/cmake-integration.md) -- FetchContent, find_package, and building from source
+- [Service Options](docs/api/service_options.md) -- Conflict resolution, goodbye, announcement tuning
+- [RFC Compliance](docs/rfc/README.md) -- RFC 6762/6763 conformance status and feature documentation
+- [API Reference](docs/api/)
 
 ## License
 

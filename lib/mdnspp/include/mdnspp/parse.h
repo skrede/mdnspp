@@ -21,6 +21,7 @@ struct record_metadata
     uint32_t ttl{0};
     dns_class rclass{dns_class::none};
     dns_type rtype{dns_type::none};
+    bool cache_flush{false};
     size_t name_offset{0};
     size_t record_offset{0};
     size_t record_length{0};
@@ -53,7 +54,8 @@ a(std::span<const std::byte> buffer, const record_metadata &meta)
     r.rclass = meta.rclass;
     r.length = static_cast<uint32_t>(meta.record_length);
     r.sender_address = meta.sender.address;
-    r.address_string = mdnspp::ip_address_to_string(addr);
+    r.cache_flush = meta.cache_flush;
+    r.address_string = detail::ip_address_to_string(addr);
 
     return r;
 }
@@ -77,7 +79,8 @@ aaaa(std::span<const std::byte> buffer, const record_metadata &meta)
     r.rclass = meta.rclass;
     r.length = static_cast<uint32_t>(meta.record_length);
     r.sender_address = meta.sender.address;
-    r.address_string = mdnspp::ip_address_to_string(addr);
+    r.cache_flush = meta.cache_flush;
+    r.address_string = detail::ip_address_to_string(addr);
 
     return r;
 }
@@ -97,6 +100,7 @@ ptr(std::span<const std::byte> buffer, const record_metadata &meta)
     r.rclass = meta.rclass;
     r.length = static_cast<uint32_t>(meta.record_length);
     r.sender_address = meta.sender.address;
+    r.cache_flush = meta.cache_flush;
     r.ptr_name = std::move(*ptr_name);
 
     return r;
@@ -125,6 +129,7 @@ srv(std::span<const std::byte> buffer, const record_metadata &meta)
     r.rclass = meta.rclass;
     r.length = static_cast<uint32_t>(meta.record_length);
     r.sender_address = meta.sender.address;
+    r.cache_flush = meta.cache_flush;
     r.priority = priority;
     r.weight = weight;
     r.port = port;
@@ -145,6 +150,7 @@ txt(std::span<const std::byte> buffer, const record_metadata &meta)
     r.rclass = meta.rclass;
     r.length = static_cast<uint32_t>(meta.record_length);
     r.sender_address = meta.sender.address;
+    r.cache_flush = meta.cache_flush;
 
     size_t pos = meta.record_offset;
     const size_t end = meta.record_offset + meta.record_length;

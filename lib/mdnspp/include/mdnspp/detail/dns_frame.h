@@ -81,7 +81,8 @@ void walk_dns_frame(std::span<const std::byte> data, const endpoint &sender, Cal
         record_metadata meta;
         meta.sender = sender;
         meta.ttl = ttl;
-        meta.rclass = static_cast<dns_class>(rclass & 0x7FFF); // strip cache-flush bit
+        meta.cache_flush = (rclass & 0x8000) != 0;
+        meta.rclass = static_cast<dns_class>(rclass & 0x7FFF);
         meta.rtype = rtype;
         meta.name_offset = name_offset;
         meta.record_offset = record_offset;

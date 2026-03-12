@@ -26,6 +26,8 @@ static_assert(std::is_class_v<mdnspp::service_server>,
               "mdnspp::service_server must be a class type (alias for basic_service_server<DefaultPolicy>)");
 static_assert(std::is_class_v<mdnspp::context>,
               "mdnspp::context must be a class type (alias for DefaultContext)");
+static_assert(std::is_class_v<mdnspp::service_monitor>,
+              "mdnspp::service_monitor must be a class type (alias for basic_service_monitor<DefaultPolicy>)");
 
 // --- POLY-03: Existing constructors without socket_options still compile ---
 

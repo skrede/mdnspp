@@ -65,7 +65,7 @@ Same as the throwing constructor, but sets `ec` instead of throwing on failure. 
 ### async_start
 
 ```cpp
-void async_start(detail::move_only_function<void(std::error_code)> on_done = {});
+void async_start(monitor_completion_handler on_done = {});
 ```
 
 Begins receiving mDNS multicast traffic and, depending on the configured [`monitor_mode`](monitor_options.md#monitor_mode), issues automatic discovery queries for watched service types.

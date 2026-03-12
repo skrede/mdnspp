@@ -315,7 +315,7 @@ private:
                     {
                         if(auto *ptr = std::get_if<record_ptr>(&rec))
                         {
-                            if(ptr->name == "_services._dns-sd._udp.local")
+                            if(ptr->name == "_services._dns-sd._udp.local.")
                             {
                                 auto info = parse_service_type(ptr->ptr_name);
                                 bool dup = std::any_of(m_enumerated_types.begin(),

@@ -26,15 +26,12 @@ set(PUBLIC_HEADERS
 add_library(mdnspp_asio INTERFACE)
 add_library(mdnspp::asio ALIAS mdnspp_asio)
 
-target_include_directories(mdnspp_asio INTERFACE
+target_include_directories(mdnspp_asio SYSTEM INTERFACE
     $<BUILD_INTERFACE:${asio_SOURCE_DIR}/asio/include>
+)
+target_include_directories(mdnspp_asio INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
-)
-
-target_compile_options(mdnspp_asio INTERFACE
-    $<$<CXX_COMPILER_ID:MSVC>:/W4 /utf-8>
-    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-fPIC -Wall -Wextra>
 )
 
 target_link_libraries(mdnspp_asio INTERFACE mdnspp::mdnspp)

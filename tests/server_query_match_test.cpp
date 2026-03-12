@@ -101,25 +101,25 @@ TEST_CASE("query_name_matches", "[server_query_match]")
     {
         auto encoded = wire_name("_http._tcp.local.");
         // Name occupies [0..encoded.size())
-        CHECK(query_name_matches(std::span(encoded), 0, encoded.size(), info));
+        CHECK(query_name_matches(std::span(encoded), 0, info));
     }
 
     SECTION("returns true for service_name match")
     {
         auto encoded = wire_name("MyApp._http._tcp.local.");
-        CHECK(query_name_matches(std::span(encoded), 0, encoded.size(), info));
+        CHECK(query_name_matches(std::span(encoded), 0, info));
     }
 
     SECTION("returns true for hostname match")
     {
         auto encoded = wire_name("myhost.local.");
-        CHECK(query_name_matches(std::span(encoded), 0, encoded.size(), info));
+        CHECK(query_name_matches(std::span(encoded), 0, info));
     }
 
     SECTION("returns false for non-matching name")
     {
         auto encoded = wire_name("other._http._tcp.local.");
-        CHECK_FALSE(query_name_matches(std::span(encoded), 0, encoded.size(), info));
+        CHECK_FALSE(query_name_matches(std::span(encoded), 0, info));
     }
 }
 
@@ -128,13 +128,13 @@ TEST_CASE("matches_meta_query", "[server_query_match]")
     SECTION("returns true for _services._dns-sd._udp.local.")
     {
         auto encoded = wire_name("_services._dns-sd._udp.local.");
-        CHECK(matches_meta_query(std::span(encoded), 0, encoded.size()));
+        CHECK(matches_meta_query(std::span(encoded), 0));
     }
 
     SECTION("returns false for other names")
     {
         auto encoded = wire_name("_http._tcp.local.");
-        CHECK_FALSE(matches_meta_query(std::span(encoded), 0, encoded.size()));
+        CHECK_FALSE(matches_meta_query(std::span(encoded), 0));
     }
 }
 
@@ -145,14 +145,14 @@ TEST_CASE("matches_subtype_query", "[server_query_match]")
     SECTION("returns subtype label when subtype matches")
     {
         auto encoded = wire_name("_printer._sub._http._tcp.local.");
-        auto result = matches_subtype_query(std::span(encoded), 0, encoded.size(), info);
+        auto result = matches_subtype_query(std::span(encoded), 0, info);
         CHECK(result == "_printer");
     }
 
     SECTION("returns empty for non-matching subtype")
     {
         auto encoded = wire_name("_scanner._sub._http._tcp.local.");
-        auto result = matches_subtype_query(std::span(encoded), 0, encoded.size(), info);
+        auto result = matches_subtype_query(std::span(encoded), 0, info);
         CHECK(result.empty());
     }
 }

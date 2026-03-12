@@ -216,7 +216,7 @@ private:
                             {
                                 // Compare encoded name
                                 auto incoming_name = detail::read_dns_name(cdata, name_start);
-                                if(incoming_name.has_value() && *incoming_name == m_query_name)
+                                if(incoming_name.has_value() && m_query_name == dns_name{*incoming_name})
                                 {
                                     m_duplicate_seen = true;
                                     m_delay_timer.cancel();

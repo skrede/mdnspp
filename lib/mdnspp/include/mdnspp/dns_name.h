@@ -36,11 +36,41 @@ public:
         : m_name(normalize(name))
     {}
 
+    dns_name(const char *name) // NOLINT(google-explicit-constructor)
+        : m_name(normalize(std::string_view{name}))
+    {}
+
+    dns_name(const std::string &name) // NOLINT(google-explicit-constructor)
+        : m_name(normalize(name))
+    {}
+
+    dns_name(std::string &&name) // NOLINT(google-explicit-constructor)
+        : m_name(normalize(std::string_view{name}))
+    {}
+
     dns_name() = default;
 
-    dns_name &operator=(std::string_view name) // NOLINT(google-explicit-constructor)
+    dns_name &operator=(std::string_view name)
     {
         m_name = normalize(name);
+        return *this;
+    }
+
+    dns_name &operator=(const char *name)
+    {
+        m_name = normalize(std::string_view{name});
+        return *this;
+    }
+
+    dns_name &operator=(const std::string &name)
+    {
+        m_name = normalize(name);
+        return *this;
+    }
+
+    dns_name &operator=(std::string &&name)
+    {
+        m_name = normalize(std::string_view{name});
         return *this;
     }
 
@@ -53,6 +83,8 @@ public:
     const std::string &str() const noexcept { return m_name; }
 
     bool empty() const noexcept { return m_name.empty(); }
+    auto find(std::string_view sv, std::size_t pos = 0) const noexcept { return m_name.find(sv, pos); }
+    static constexpr auto npos = std::string::npos;
 
     bool operator==(const dns_name &) const = default;
     auto operator<=>(const dns_name &) const = default;
@@ -67,8 +99,8 @@ private:
 
         std::string result;
         result.reserve(sv.size() + 1);
-        for (unsigned char c : sv)
-            result.push_back(static_cast<char>(std::tolower(c)));
+        for (char c : sv)
+            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
 
         if (result.back() != '.')
             result.push_back('.');

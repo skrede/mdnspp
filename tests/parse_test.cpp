@@ -255,7 +255,7 @@ SCENARIO("parse::ptr parses a valid PTR record", "[parse][ptr]")
                 auto &r = std::get<record_ptr>(*result);
                 REQUIRE_FALSE(r.ptr_name.empty());
                 // The PTR name should contain "_http._tcp.local."
-                REQUIRE(r.ptr_name.find("_http") != std::string::npos);
+                REQUIRE(r.ptr_name.find("_http") != dns_name::npos);
             }
         }
     }
@@ -323,7 +323,7 @@ SCENARIO("parse::srv parses a valid SRV record", "[parse][srv]")
                 REQUIRE(r.priority == 0);
                 REQUIRE(r.weight == 0);
                 REQUIRE_FALSE(r.srv_name.empty());
-                REQUIRE(r.srv_name.find("host") != std::string::npos);
+                REQUIRE(r.srv_name.find("host") != dns_name::npos);
             }
         }
     }

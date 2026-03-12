@@ -314,9 +314,9 @@ private:
 
         bool more = detail::advance_probe(m_pa_state);
         m_response_timer.expires_after(std::chrono::milliseconds(250));
-        m_response_timer.async_wait([this, more](std::error_code ec)
+        m_response_timer.async_wait([this, more](std::error_code wait_ec)
         {
-            if(ec || m_pa_state.state != server_state::probing) return;
+            if(wait_ec || m_pa_state.state != server_state::probing) return;
             if(this->m_stopped.load(std::memory_order_acquire)) return;
             if(more)
                 send_probe();

@@ -193,7 +193,7 @@ TEST_CASE("unwatch: fires on_lost(unwatched) for each live service", "[monitor][
     mdnspp::monitor_options opts;
     opts.on_lost = [&](const mdnspp::resolved_service &svc, mdnspp::loss_reason reason)
     {
-        lost_names.push_back(svc.instance_name);
+        lost_names.push_back(svc.instance_name.str());
         lost_reasons.push_back(reason);
     };
     opts.on_found = [](const mdnspp::resolved_service &) {};
@@ -223,7 +223,7 @@ TEST_CASE("unwatch: fires on_lost(unwatched) for each live service", "[monitor][
     ex.drain_posted();
 
     REQUIRE(lost_names.size() == 1);
-    CHECK(lost_names[0] == "MyServer._http._tcp.local");
+    CHECK(lost_names[0] == "myserver._http._tcp.local.");
     REQUIRE(lost_reasons.size() == 1);
     CHECK(lost_reasons[0] == mdnspp::loss_reason::unwatched);
 }
@@ -548,7 +548,7 @@ TEST_CASE("on_lost fires with timeout when SRV record expires", "[monitor][MON-0
     opts.on_found = [](const mdnspp::resolved_service &) {};
     opts.on_lost  = [&](const mdnspp::resolved_service &svc, mdnspp::loss_reason reason)
     {
-        lost_names.push_back(svc.instance_name);
+        lost_names.push_back(svc.instance_name.str());
         lost_reasons.push_back(reason);
     };
 
@@ -579,7 +579,7 @@ TEST_CASE("on_lost fires with timeout when SRV record expires", "[monitor][MON-0
     ex.drain_posted();
 
     REQUIRE(lost_names.size() == 1);
-    CHECK(lost_names[0] == "Expiring._http._tcp.local");
+    CHECK(lost_names[0] == "expiring._http._tcp.local.");
     REQUIRE(lost_reasons.size() == 1);
     CHECK(lost_reasons[0] == mdnspp::loss_reason::timeout);
 }
@@ -600,7 +600,7 @@ TEST_CASE("on_lost fires with goodbye when SRV goodbye packet received", "[monit
     opts.on_found = [](const mdnspp::resolved_service &) {};
     opts.on_lost  = [&](const mdnspp::resolved_service &svc, mdnspp::loss_reason reason)
     {
-        lost_names.push_back(svc.instance_name);
+        lost_names.push_back(svc.instance_name.str());
         lost_reasons.push_back(reason);
     };
 
@@ -636,7 +636,7 @@ TEST_CASE("on_lost fires with goodbye when SRV goodbye packet received", "[monit
     ex.drain_posted();
 
     REQUIRE(lost_names.size() == 1);
-    CHECK(lost_names[0] == "GoodbyeSvc._http._tcp.local");
+    CHECK(lost_names[0] == "goodbyesvc._http._tcp.local.");
     REQUIRE(lost_reasons.size() == 1);
     CHECK(lost_reasons[0] == mdnspp::loss_reason::goodbye);
 }
@@ -965,7 +965,7 @@ TEST_CASE("scheduler: erase_expired called on every tick (drives loss detection)
     opts.on_found = [](const mdnspp::resolved_service &) {};
     opts.on_lost  = [&](const mdnspp::resolved_service &svc, mdnspp::loss_reason)
     {
-        lost_names.push_back(svc.instance_name);
+        lost_names.push_back(svc.instance_name.str());
     };
 
     mdnspp::mdns_options mdns_opts;
@@ -999,7 +999,7 @@ TEST_CASE("scheduler: erase_expired called on every tick (drives loss detection)
     ex.drain_posted();
 
     REQUIRE(lost_names.size() == 1);
-    CHECK(lost_names[0] == "SchedExp._http._tcp.local");
+    CHECK(lost_names[0] == "schedexp._http._tcp.local.");
 }
 
 // ---------------------------------------------------------------------------

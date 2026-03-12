@@ -139,7 +139,7 @@ SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response]
                     if(std::holds_alternative<record_ptr>(rv))
                     {
                         const auto &ptr = std::get<record_ptr>(rv);
-                        if(ptr.ptr_name.find("MyService") != std::string::npos)
+                        if(ptr.ptr_name.find("myservice") != dns_name::npos)
                             found_ptr = true;
                     }
                 }
@@ -628,7 +628,7 @@ SCENARIO("service_server ignores non-matching query", "[service_server][query][n
                                 if(std::holds_alternative<record_ptr>(rv))
                                 {
                                     const auto &ptr = std::get<record_ptr>(rv);
-                                    if(ptr.ptr_name.find("_wrong") != std::string::npos)
+                                    if(ptr.ptr_name.find("_wrong") != dns_name::npos)
                                         found_response_with_wrong_type = true;
                                 }
                             }
@@ -1543,9 +1543,9 @@ SCENARIO("Unmatched questions are silently skipped", "[multi-question][skip]")
                     if(std::holds_alternative<record_ptr>(rv))
                     {
                         const auto &ptr = std::get<record_ptr>(rv);
-                        if(ptr.ptr_name.find("MyService") != std::string::npos)
+                        if(ptr.ptr_name.find("myservice") != dns_name::npos)
                             has_our_ptr = true;
-                        if(ptr.ptr_name.find("_other") != std::string::npos)
+                        if(ptr.ptr_name.find("_other") != dns_name::npos)
                             has_other_ptr = true;
                     }
                 }
@@ -2024,8 +2024,8 @@ SCENARIO("server responds to meta-query with PTR to service type", "[meta-query]
                             const auto &ptr = std::get<record_ptr>(rv);
                             // PTR name should be _services._dns-sd._udp.local
                             // ptr_name should be the service type (without trailing dot)
-                            if(ptr.name.find("_services._dns-sd._udp") != std::string::npos &&
-                               ptr.ptr_name.find("_http._tcp") != std::string::npos)
+                            if(ptr.name.find("_services._dns-sd._udp") != dns_name::npos &&
+                               ptr.ptr_name.find("_http._tcp") != dns_name::npos)
                             {
                                 found_meta_ptr = true;
                             }
@@ -2094,8 +2094,8 @@ SCENARIO("server responds to subtype PTR query", "[subtype]")
                         if(std::holds_alternative<record_ptr>(rv))
                         {
                             const auto &ptr = std::get<record_ptr>(rv);
-                            if(ptr.name.find("_printer._sub._http._tcp") != std::string::npos &&
-                               ptr.ptr_name.find("MyService") != std::string::npos)
+                            if(ptr.name.find("_printer._sub._http._tcp") != dns_name::npos &&
+                               ptr.ptr_name.find("myservice") != dns_name::npos)
                             {
                                 found_subtype_ptr = true;
                             }
@@ -2131,8 +2131,8 @@ SCENARIO("announce_subtypes=true includes subtype PTR in announcements", "[subty
                     if(std::holds_alternative<record_ptr>(rv))
                     {
                         const auto &ptr = std::get<record_ptr>(rv);
-                        if(ptr.name.find("_printer._sub._http._tcp") != std::string::npos &&
-                           ptr.ptr_name.find("MyService") != std::string::npos)
+                        if(ptr.name.find("_printer._sub._http._tcp") != dns_name::npos &&
+                           ptr.ptr_name.find("myservice") != dns_name::npos)
                         {
                             found_subtype_ptr = true;
                         }

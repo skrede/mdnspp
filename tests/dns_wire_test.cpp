@@ -72,10 +72,10 @@ SCENARIO("read_dns_name decodes a simple uncompressed DNS name", "[dns_wire][rea
         {
             auto result = read_dns_name(std::span<const std::byte>(buf), 0);
 
-            THEN("it returns _http._tcp.local without a trailing dot")
+            THEN("it returns _http._tcp.local. as FQDN")
             {
                 REQUIRE(result.has_value());
-                REQUIRE(*result == "_http._tcp.local");
+                REQUIRE(*result == "_http._tcp.local.");
             }
         }
     }
@@ -111,10 +111,10 @@ SCENARIO("read_dns_name decodes a single-label name", "[dns_wire][read_dns_name]
         {
             auto result = read_dns_name(std::span<const std::byte>(buf), 0);
 
-            THEN("it returns host")
+            THEN("it returns host. as FQDN")
             {
                 REQUIRE(result.has_value());
-                REQUIRE(*result == "host");
+                REQUIRE(*result == "host.");
             }
         }
     }
@@ -149,10 +149,10 @@ SCENARIO("read_dns_name follows a backward compression pointer", "[dns_wire][rea
         {
             auto result = read_dns_name(std::span<const std::byte>(buf), 7);
 
-            THEN("it follows the pointer and assembles host.local")
+            THEN("it follows the pointer and assembles host.local.")
             {
                 REQUIRE(result.has_value());
-                REQUIRE(*result == "host.local");
+                REQUIRE(*result == "host.local.");
             }
         }
     }
@@ -180,10 +180,10 @@ SCENARIO("read_dns_name starts directly at a compression pointer", "[dns_wire][r
         {
             auto result = read_dns_name(std::span<const std::byte>(buf), 7);
 
-            THEN("it follows the pointer and returns local")
+            THEN("it follows the pointer and returns local.")
             {
                 REQUIRE(result.has_value());
-                REQUIRE(*result == "local");
+                REQUIRE(*result == "local.");
             }
         }
     }
@@ -359,10 +359,10 @@ SCENARIO("read_dns_name accepts a pointer chain of exactly 4 hops", "[dns_wire][
         {
             auto result = read_dns_name(std::span<const std::byte>(buf), 13);
 
-            THEN("it succeeds and returns local")
+            THEN("it succeeds and returns local.")
             {
                 REQUIRE(result.has_value());
-                REQUIRE(*result == "local");
+                REQUIRE(*result == "local.");
             }
         }
     }
@@ -967,8 +967,7 @@ SCENARIO("build_probe_query produces valid probe packet with question and author
                 auto result = mdnspp::detail::read_dns_name(
                     std::span<const std::byte>(pkt), 12);
                 REQUIRE(result.has_value());
-                // service_name is "MyService._http._tcp.local." — trailing dot stripped
-                REQUIRE(*result == "MyService._http._tcp.local");
+                REQUIRE(*result == "myservice._http._tcp.local.");
             }
         }
     }
@@ -1159,7 +1158,7 @@ SCENARIO("build_dns_query with known answers includes Answer section", "[dns_wir
                     if(auto *p = std::get_if<mdnspp::record_ptr>(&rv))
                     {
                         found_ptr = true;
-                        REQUIRE(p->ptr_name == "MyService._http._tcp.local");
+                        REQUIRE(p->ptr_name == "MyService._http._tcp.local.");
                     }
                 }
                 REQUIRE(found_ptr);

@@ -39,11 +39,6 @@ target_include_directories(mdnspp
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
 
-target_compile_options(mdnspp INTERFACE
-    $<$<CXX_COMPILER_ID:MSVC>:/W4 /utf-8>
-    $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-fPIC -Wall -Wextra>
-)
-
 if (WIN32)
     target_link_libraries(mdnspp INTERFACE ws2_32 iphlpapi)
 endif ()

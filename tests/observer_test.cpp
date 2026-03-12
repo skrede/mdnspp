@@ -161,7 +161,7 @@ SCENARIO("observer delivers DNS records from a single packet to the callback", "
                 REQUIRE(received_records.size() == 1);
                 REQUIRE(std::holds_alternative<record_ptr>(received_records[0]));
                 const auto &ptr = std::get<record_ptr>(received_records[0]);
-                REQUIRE(ptr.ptr_name.find("MyService") != std::string::npos);
+                REQUIRE(ptr.ptr_name.find("myservice") != dns_name::npos);
             }
 
             AND_THEN("the sender endpoint is delivered alongside the record")

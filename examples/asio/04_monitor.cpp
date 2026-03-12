@@ -1,4 +1,4 @@
-// Service monitoring with standalone ASIO event loop.
+// Service monitoring with AsioPolicy event loop.
 
 #include <mdnspp/asio.h>
 #include <mdnspp/monitor_options.h>

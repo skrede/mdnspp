@@ -1,7 +1,7 @@
 #include <mdnspp/defaults.h>
 
-#include <iostream>
 #include <thread>
+#include <iostream>
 
 // Announce two mDNS services sharing a single context using DefaultPolicy.
 // Demonstrates that multiple service_servers can coexist on one event loop.
@@ -39,8 +39,7 @@ int main()
         mdnspp::service_options{
             .on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
             {
-                std::cout << "[http] " << sender << " queried qtype=" << to_string(qtype)
-                    << " (" << to_string(mode) << ")" << std::endl;
+                std::cout << "[http] " << sender << " queried qtype=" << to_string(qtype) << " (" << to_string(mode) << ")" << std::endl;
             }
         }
     };
@@ -51,8 +50,7 @@ int main()
         mdnspp::service_options{
             .on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
             {
-                std::cout << "[ssh]  " << sender << " queried qtype=" << to_string(qtype)
-                    << " (" << to_string(mode) << ")" << std::endl;
+                std::cout << "[ssh]  " << sender << " queried qtype=" << to_string(qtype) << " (" << to_string(mode) << ")" << std::endl;
             }
         }
     };

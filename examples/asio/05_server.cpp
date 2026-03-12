@@ -33,15 +33,14 @@ int main()
         }
     };
 
-    asio::signal_set signals(io, SIGINT);
-    signals.async_wait([&srv](std::error_code, int)
+    asio::steady_timer timer(io, std::chrono::seconds(10));
+    timer.async_wait([&srv, &io](std::error_code)
     {
         srv.stop();
+        io.stop();
     });
 
     std::cout << "Serving MyApp._http._tcp.local. on port 8080 (Ctrl-C to stop)" << std::endl;
-    mdnspp::async_start(srv, [](std::error_code)
-    {
-    });
+    srv.async_start();
     io.run();
 }

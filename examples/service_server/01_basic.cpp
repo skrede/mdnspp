@@ -27,8 +27,7 @@ int main()
         mdnspp::service_options{
             .on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
             {
-                std::cout << sender << " queried qtype=" << to_string(qtype)
-                    << " (" << to_string(mode) << ")" << std::endl;
+                std::cout << sender << " queried qtype=" << to_string(qtype) << " (" << to_string(mode) << ")" << std::endl;
             }
         }
     };

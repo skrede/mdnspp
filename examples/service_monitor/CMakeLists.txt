@@ -4,10 +4,5 @@ target_link_libraries(mdnspp_example_service_monitor_01_basic PRIVATE mdnspp::md
 add_executable(mdnspp_example_service_monitor_02_custom_group 02_custom_group.cpp)
 target_link_libraries(mdnspp_example_service_monitor_02_custom_group PRIVATE mdnspp::mdnspp)
 
-add_executable(mdnspp_example_service_monitor_04_observe_mode 04_observe_mode.cpp)
-target_link_libraries(mdnspp_example_service_monitor_04_observe_mode PRIVATE mdnspp::mdnspp)
-
-if(MDNSPP_ENABLE_ASIO_POLICY)
-    add_executable(mdnspp_example_service_monitor_03_asio_callback 03_asio_monitor.cpp)
-    target_link_libraries(mdnspp_example_service_monitor_03_asio_callback PRIVATE mdnspp::mdnspp mdnspp::asio)
-endif()
+add_executable(mdnspp_example_service_monitor_03_observe_mode 03_observe_mode.cpp)
+target_link_libraries(mdnspp_example_service_monitor_03_observe_mode PRIVATE mdnspp::mdnspp)

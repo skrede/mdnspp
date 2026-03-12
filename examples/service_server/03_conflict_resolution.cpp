@@ -8,7 +8,6 @@
 int main()
 {
     mdnspp::context ctx;
-
     auto make_info = []()
     {
         return mdnspp::service_info{
@@ -26,9 +25,7 @@ int main()
     auto make_opts = [](const std::string &label)
     {
         mdnspp::service_options opts;
-        opts.on_conflict = [label](const std::string &conflicting_name,
-                                   std::string &new_name,
-                                   unsigned attempt) -> bool
+        opts.on_conflict = [label](const std::string &conflicting_name, std::string &new_name, unsigned attempt) -> bool
         {
             if(attempt >= 3)
                 return false;
@@ -38,8 +35,7 @@ int main()
             if(pos != std::string::npos)
                 new_name.insert(pos, " (" + std::to_string(attempt + 1) + ")");
 
-            std::cout << "[" << label << "] Conflict on \"" << conflicting_name
-                << "\", retrying as \"" << new_name << "\"" << std::endl;
+            std::cout << "[" << label << "] Conflict on \"" << conflicting_name << "\", retrying as \"" << new_name << "\"" << std::endl;
             return true;
         };
         return opts;

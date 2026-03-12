@@ -8,7 +8,6 @@
 
 // Query mDNS for a specific record type using AsioPolicy.
 // Prints each record to stdout, completes after silence timeout.
-// Usage: ./mdnspp_example_asio_query [name] [qtype]
 
 int main(int argc, char *argv[])
 {
@@ -27,10 +26,7 @@ int main(int argc, char *argv[])
         mdnspp::query_options{
             .on_record = [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
             {
-                std::visit([&sender](const auto &r)
-                {
-                    std::cout << sender.address << ":" << sender.port << " -> " << r << std::endl;
-                }, rec);
+                std::visit([&sender](const auto &r) { std::cout << sender.address << ":" << sender.port << " -> " << r << std::endl; }, rec);
             }
         }
     };

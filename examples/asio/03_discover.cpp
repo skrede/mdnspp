@@ -26,7 +26,7 @@ int main()
         if(ec)
             std::cerr << "discovery error: " << ec.message() << std::endl;
         else
-            std::cout << "Discovery complete -- " << results.size() << " record(s) " << std::endl;
+            std::cout << "Discovery complete -- " << results.size() << " record(s)" << std::endl;
     });
 
     io.run();

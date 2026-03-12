@@ -7,7 +7,6 @@
 
 // Observe mDNS multicast traffic using AsioPolicy.
 // Prints each record to stdout, runs until io_context work drains.
-// Usage: ./mdnspp_example_asio_observe
 
 int main()
 {
@@ -17,18 +16,15 @@ int main()
         mdnspp::observer_options{
             .on_record = [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
             {
-                std::visit([&sender](const auto &r)
-                {
-                    std::cout << sender.address << ":" << sender.port
-                        << " -> " << r << std::endl;
-                }, rec);
+                std::visit([&sender](const auto &r) { std::cout << sender.address << ":" << sender.port << " -> " << r << std::endl; }, rec);
             }
         }
     };
 
-    observer.async_observe([&io](std::error_code)
+    observer.async_observe([&io](std::error_code ec)
     {
-        io.stop();
+        if(ec)
+            io.stop();
     });
     io.run();
 }

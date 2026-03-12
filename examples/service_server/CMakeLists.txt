@@ -6,8 +6,3 @@ target_link_libraries(mdnspp_example_service_server_02_multi_serve PRIVATE mdnsp
 
 add_executable(mdnspp_example_service_server_03_conflict_resolution 03_conflict_resolution.cpp)
 target_link_libraries(mdnspp_example_service_server_03_conflict_resolution PRIVATE mdnspp::mdnspp)
-
-if(MDNSPP_ENABLE_ASIO_POLICY)
-    add_executable(mdnspp_example_service_server_04_asio_start 04_asio_start.cpp)
-    target_link_libraries(mdnspp_example_service_server_04_asio_start PRIVATE mdnspp::mdnspp mdnspp::asio)
-endif()

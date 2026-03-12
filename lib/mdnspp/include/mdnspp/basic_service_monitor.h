@@ -296,7 +296,7 @@ private:
     /// has not yet been received. Keyed by instance name in @c m_partial.
     struct incomplete_instance
     {
-        std::string service_type;
+        dns_name service_type;
         bool has_srv{false};
         bool has_address{false};
         resolved_service partial;
@@ -379,7 +379,7 @@ private:
     /// partial or live. The PTR.ptr_name becomes the instance name.
     void process_ptr(const record_ptr &r)
     {
-        const std::string &inst = r.ptr_name;
+        const dns_name &inst = r.ptr_name;
 
         if(m_partial.contains(inst) || m_live_services.contains(inst))
             return; // already tracking or live -- no re-seed
@@ -406,14 +406,14 @@ private:
             m_known_hostnames.insert(r.srv_name);
             // Build SRV refresh schedule now that we have the wire TTL
             if(r.ttl > 0)
-                rebuild_refresh_schedule(r.name + ":srv", r.ttl);
+                rebuild_refresh_schedule(r.name.str() + ":srv", r.ttl);
             check_resolved(r.name);
         }
         else if(auto lit = m_live_services.find(r.name); lit != m_live_services.end())
         {
             // SRV TTL refresh for an already-live service: rebuild schedule and update
             if(r.ttl > 0)
-                rebuild_refresh_schedule(r.name + ":srv", r.ttl);
+                rebuild_refresh_schedule(r.name.str() + ":srv", r.ttl);
 
             bool changed = (lit->second.hostname != r.srv_name || lit->second.port != r.port);
             if(changed)
@@ -451,7 +451,7 @@ private:
         if(any_updated)
         {
             // Try to resolve any partial that may now be complete
-            std::vector<std::string> to_check;
+            std::vector<dns_name> to_check;
             for(auto &[inst_name, inc] : m_partial)
             {
                 if(inc.partial.hostname == r.name && inc.has_srv && inc.has_address)
@@ -499,7 +499,7 @@ private:
 
         if(any_updated)
         {
-            std::vector<std::string> to_check;
+            std::vector<dns_name> to_check;
             for(auto &[inst_name, inc] : m_partial)
             {
                 if(inc.partial.hostname == r.name && inc.has_srv && inc.has_address)
@@ -573,7 +573,7 @@ private:
 
     /// If the named partial instance has both has_srv and has_address, promote
     /// it to m_live_services and fire on_found.
-    void check_resolved(const std::string &inst_name)
+    void check_resolved(const dns_name &inst_name)
     {
         auto it = m_partial.find(inst_name);
         if(it == m_partial.end())
@@ -702,11 +702,7 @@ private:
 
     void do_watch(std::string svc_type)
     {
-        // Strip trailing dot so the key matches read_dns_name output (no trailing dot).
-        if(!svc_type.empty() && svc_type.back() == '.')
-            svc_type.pop_back();
-
-        m_watches.try_emplace(std::move(svc_type));
+        m_watches.try_emplace(dns_name(std::move(svc_type)));
 
         // If the monitor is already running, re-arm the scheduler so the new
         // watch type receives its first query at the next scheduled tick.
@@ -716,23 +712,18 @@ private:
 
     void do_unwatch(std::string svc_type)
     {
-        if(!svc_type.empty() && svc_type.back() == '.')
-            svc_type.pop_back();
+        dns_name normalized_type(std::move(svc_type));
 
-        if(!m_watches.contains(svc_type))
+        if(!m_watches.contains(normalized_type))
             return;
 
         // Fire on_lost(unwatched) for every live service of this type
-        std::vector<std::string> to_remove;
+        std::vector<dns_name> to_remove;
         for(const auto &[inst_name, svc] : m_live_services)
         {
-            // Determine service type by looking at partial cache or instance name convention
-            // The service_type is stored in incomplete_instance for partials.
-            // For live services we need to find the PTR association.
-            // We use the m_instance_type map populated in process_ptr.
             if(auto tit = m_instance_type.find(inst_name); tit != m_instance_type.end())
             {
-                if(tit->second == svc_type)
+                if(tit->second == normalized_type)
                     to_remove.push_back(inst_name);
             }
         }
@@ -748,10 +739,10 @@ private:
         }
 
         // Remove partial instances of this type
-        std::vector<std::string> partial_to_remove;
+        std::vector<dns_name> partial_to_remove;
         for(auto &[inst_name, inc] : m_partial)
         {
-            if(inc.service_type == svc_type)
+            if(inc.service_type == normalized_type)
                 partial_to_remove.push_back(inst_name);
         }
         for(const auto &inst_name : partial_to_remove)
@@ -760,10 +751,10 @@ private:
         // Remove instance type tracking entries and their known hostnames.
         // Hostnames may be shared across service types (same host, different services),
         // so only remove a hostname if no remaining live or partial instance uses it.
-        std::vector<std::string> type_to_remove;
+        std::vector<dns_name> type_to_remove;
         for(auto &[inst_name, svc_t] : m_instance_type)
         {
-            if(svc_t == svc_type)
+            if(svc_t == normalized_type)
                 type_to_remove.push_back(inst_name);
         }
         for(const auto &inst_name : type_to_remove)
@@ -782,7 +773,7 @@ private:
                 m_known_hostnames.insert(inc.partial.hostname);
         }
 
-        m_watches.erase(svc_type);
+        m_watches.erase(normalized_type);
         m_goodbye_instances.clear(); // clear any goodbye state for this type
         update_snapshot();
     }
@@ -953,7 +944,7 @@ private:
     // Private methods -- query sending
     // -------------------------------------------------------------------------
 
-    void send_ptr_query(const std::string &svc_type)
+    void send_ptr_query(std::string_view svc_type)
     {
         auto pkt = detail::build_dns_query(svc_type, dns_type::ptr);
         this->m_socket.send(this->multicast_endpoint(),
@@ -965,7 +956,7 @@ private:
     /// Per RFC 6762 §5.2, refreshing a service instance requires querying the
     /// SRV record (authoritative) and both address record types to cover dual-
     /// stack hosts.
-    void send_instance_queries(const std::string &inst_name)
+    void send_instance_queries(std::string_view inst_name)
     {
         auto srv_pkt  = detail::build_dns_query(inst_name, dns_type::srv);
         auto a_pkt    = detail::build_dns_query(inst_name, dns_type::a);
@@ -1029,8 +1020,8 @@ private:
     /// Seeded RNG for backoff jitter and probe randomisation.
     std::mt19937 m_rng;
 
-    /// Per-watched-service-type backoff state. Keyed by service type string.
-    std::unordered_map<std::string, watched_type_state> m_watches;
+    /// Per-watched-service-type backoff state. Keyed by normalized service type.
+    std::unordered_map<dns_name, watched_type_state> m_watches;
 
     /// Per-record TTL refresh schedules. Keyed by "{instance_name}:{type_tag}"
     /// (e.g., "MyServer._http._tcp.local:srv"). Created/rebuilt on record
@@ -1038,23 +1029,23 @@ private:
     std::unordered_map<std::string, detail::ttl_refresh_schedule<Clock>> m_refresh_schedules;
 
     /// Partial resolution accumulator for instances still awaiting SRV/address.
-    std::unordered_map<std::string, incomplete_instance> m_partial;
+    std::unordered_map<dns_name, incomplete_instance> m_partial;
 
     /// Fully-resolved services currently considered live.
-    std::unordered_map<std::string, resolved_service> m_live_services;
+    std::unordered_map<dns_name, resolved_service> m_live_services;
 
     /// Hostname set for A/AAAA record receive filtering.
     /// Only addresses for known hostnames (from correlated SRV records) are
     /// processed; unrelated A/AAAA traffic is ignored.
-    std::unordered_set<std::string> m_known_hostnames;
+    std::unordered_set<dns_name> m_known_hostnames;
 
     /// Maps instance_name -> service_type for un-watch filtering.
     /// Populated in process_ptr() alongside the m_partial entry.
-    std::unordered_map<std::string, std::string> m_instance_type;
+    std::unordered_map<dns_name, dns_name> m_instance_type;
 
     /// Set of instance names for which a goodbye SRV (TTL=0) was received.
     /// Used to distinguish loss_reason::goodbye from loss_reason::timeout.
-    std::unordered_set<std::string> m_goodbye_instances;
+    std::unordered_set<dns_name> m_goodbye_instances;
 
     /// Mutex-guarded snapshot for services(). Updated on the executor thread
     /// after every state change. Readers hold the mutex only long enough to

@@ -152,14 +152,11 @@ private:
     {
         assert(this->m_loop == nullptr); // one query per lifetime
         m_results.clear();
-        m_query_name = std::move(qname);
+        m_query_name = dns_name(std::move(qname));
         m_query_type = qtype;
         m_query_mode = mode;
         m_duplicate_seen = false;
         m_query_sent = false;
-        // Strip trailing dot so the name matches read_dns_name output (no trailing dot)
-        if(!m_query_name.empty() && m_query_name.back() == '.')
-            m_query_name.pop_back();
 
         auto send_query = [this]()
         {
@@ -300,7 +297,7 @@ private:
     record_callback m_on_record;
     completion_handler m_on_completion;
     error_handler m_on_error;
-    std::string m_query_name;
+    dns_name m_query_name;
     std::vector<mdns_record_variant> m_results;
     dns_type m_query_type{dns_type::none};
     response_mode m_query_mode{response_mode::multicast};

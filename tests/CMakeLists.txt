@@ -54,6 +54,7 @@ make_test(ttl_refresh_test)
 make_test(tc_accumulator_test)
 make_test(duplicate_answer_suppression_test)
 make_test(service_monitor_test)
+make_test(dns_name_test)
 
 if (MDNSPP_ENABLE_ASIO_POLICY)
     function(make_asio_test TEST_FILE)

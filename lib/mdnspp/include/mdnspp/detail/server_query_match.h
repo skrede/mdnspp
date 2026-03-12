@@ -29,13 +29,6 @@ struct query_match_result
     size_t offset_after_questions{0};
 };
 
-inline auto strip_dot(std::string_view s) -> std::string_view
-{
-    if(!s.empty() && s.back() == '.')
-        return s.substr(0, s.size() - 1);
-    return s;
-}
-
 inline bool query_name_matches(std::span<const std::byte> data, size_t name_start, size_t name_end,
                                const service_info &info)
 {
@@ -63,7 +56,7 @@ inline std::string_view matches_subtype_query(std::span<const std::byte> data, s
     auto qname = data.subspan(name_start, name_end - name_start);
     for(const auto &sub : info.subtypes)
     {
-        auto subtype_name = sub + "._sub." + std::string(strip_dot(info.service_type)) + ".";
+        auto subtype_name = sub + "._sub." + info.service_type.str();
         auto encoded = encode_dns_name(subtype_name);
         if(std::ranges::equal(qname, std::span<const std::byte>(encoded)))
             return sub;

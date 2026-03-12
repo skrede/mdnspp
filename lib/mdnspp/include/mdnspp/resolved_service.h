@@ -29,8 +29,8 @@ namespace mdnspp {
 
 struct resolved_service
 {
-    std::string instance_name;
-    std::string hostname;
+    dns_name instance_name;
+    dns_name hostname;
     uint16_t port{0};
     std::vector<service_txt> txt_entries;
     std::vector<std::string> ipv4_addresses;
@@ -73,13 +73,13 @@ inline std::vector<resolved_service> aggregate(std::span<const mdns_record_varia
 
     // Pass 1: build service map keyed by instance name.
     // host_to_instances maps SRV.srv_name -> list of instance names.
-    std::unordered_map<std::string, svc_entry> svc_map;
-    std::unordered_map<std::string, std::vector<std::string>> host_to_instances;
+    std::unordered_map<dns_name, svc_entry> svc_map;
+    std::unordered_map<dns_name, std::vector<dns_name>> host_to_instances;
 
     struct pass1_visitor
     {
-        std::unordered_map<std::string, svc_entry> &svc_map;
-        std::unordered_map<std::string, std::vector<std::string>> &host_to_instances;
+        std::unordered_map<dns_name, svc_entry> &svc_map;
+        std::unordered_map<dns_name, std::vector<dns_name>> &host_to_instances;
 
         void operator()(const record_ptr &r) const
         {
@@ -100,7 +100,7 @@ inline std::vector<resolved_service> aggregate(std::span<const mdns_record_varia
                 if(auto hi = host_to_instances.find(r.srv_name); hi != host_to_instances.end())
                     hi->second.push_back(r.name);
                 else
-                    host_to_instances.emplace(r.srv_name, std::vector<std::string>{r.name});
+                    host_to_instances.emplace(r.srv_name, std::vector<dns_name>{r.name});
             }
         }
 
@@ -131,8 +131,8 @@ inline std::vector<resolved_service> aggregate(std::span<const mdns_record_varia
     // Pass 2: correlate A / AAAA records via host_to_instances.
     struct pass2_visitor
     {
-        std::unordered_map<std::string, svc_entry> &svc_map;
-        std::unordered_map<std::string, std::vector<std::string>> &host_to_instances;
+        std::unordered_map<dns_name, svc_entry> &svc_map;
+        std::unordered_map<dns_name, std::vector<dns_name>> &host_to_instances;
 
         void operator()(const record_a &r) const
         {

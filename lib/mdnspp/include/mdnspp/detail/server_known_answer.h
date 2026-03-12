@@ -59,9 +59,9 @@ inline suppression_mask parse_known_answers(std::span<const std::byte> data, siz
         if(offset > data.size())
             break;
 
-        auto sn = strip_dot(info.service_name);
-        auto st = strip_dot(info.service_type);
-        auto hn = strip_dot(info.hostname);
+        std::string_view sn = info.service_name;
+        std::string_view st = info.service_type;
+        std::string_view hn = info.hostname;
         const auto &ans_name = *name_result;
 
         bool name_matches = (ans_name == sn || ans_name == st || ans_name == hn);

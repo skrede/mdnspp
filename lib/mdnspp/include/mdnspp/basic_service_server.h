@@ -365,7 +365,7 @@ private:
         if(m_opts.on_conflict)
         {
             std::string new_name;
-            if(m_opts.on_conflict(m_info.service_name, new_name, m_pa_state.conflict_attempt))
+            if(m_opts.on_conflict(m_info.service_name.str(), new_name, m_pa_state.conflict_attempt))
             {
                 m_info.service_name = std::move(new_name);
                 ++m_pa_state.conflict_attempt;
@@ -408,11 +408,9 @@ private:
         detail::walk_dns_frame(std::span<const std::byte>(data.data(), data.size()),
             endpoint{}, [&](mdns_record_variant rv)
         {
-            auto sn = detail::strip_dot(m_info.service_name);
-            auto hn = detail::strip_dot(m_info.hostname);
             std::visit([&](const auto &rec)
             {
-                if(rec.name == sn || rec.name == hn)
+                if(rec.name == m_info.service_name || rec.name == m_info.hostname)
                     conflict = true;
             }, rv);
         });
@@ -657,14 +655,13 @@ private:
         // treat them as suppression candidates for our service.
         detail::suppression_mask suppression;
         static constexpr uint32_t ka_threshold = 2250;
-        auto sn = detail::strip_dot(m_info.service_name);
-        auto st = detail::strip_dot(m_info.service_type);
-        auto hn = detail::strip_dot(m_info.hostname);
         for(const auto &rec : *merged)
         {
             std::visit([&](const auto &r)
             {
-                bool name_ok = (r.name == sn || r.name == st || r.name == hn);
+                bool name_ok = (r.name == m_info.service_name
+                             || r.name == m_info.service_type
+                             || r.name == m_info.hostname);
                 if(name_ok && r.ttl >= ka_threshold)
                 {
                     using T = std::decay_t<decltype(r)>;

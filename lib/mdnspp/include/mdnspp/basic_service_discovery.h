@@ -231,9 +231,7 @@ private:
                   std::function<void()> on_silence_fn)
     {
         m_results.clear();
-        m_service_type = std::move(svc_type);
-        if(!m_service_type.empty() && m_service_type.back() == '.')
-            m_service_type.pop_back();
+        m_service_type = dns_name(std::move(svc_type));
 
         auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr,
                                                    std::span<const mdns_record_variant>(m_results), mode);
@@ -348,7 +346,7 @@ private:
     detail::move_only_function<void(std::error_code, std::vector<resolved_service>)> m_on_browse_completion;
     enumerate_handler m_on_enumerate_completion;
     error_handler m_on_error;
-    std::string m_service_type;
+    dns_name m_service_type;
     std::unique_ptr<recv_loop<P>> m_browse_loop;
     std::unique_ptr<recv_loop<P>> m_enumerate_loop;
     std::vector<mdns_record_variant> m_results;

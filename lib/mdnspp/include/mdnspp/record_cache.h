@@ -25,7 +25,7 @@ namespace detail {
 
 struct record_name_type
 {
-    std::string name;
+    dns_name name;
     dns_type type{dns_type::none};
 
     bool operator==(const record_name_type &) const = default;
@@ -35,7 +35,7 @@ struct record_name_type_hash
 {
     std::size_t operator()(const record_name_type &k) const noexcept
     {
-        auto h1 = std::hash<std::string>{}(k.name);
+        auto h1 = std::hash<dns_name>{}(k.name);
         auto h2 = std::hash<uint16_t>{}(std::to_underlying(k.type));
         return h1 ^ (h2 << 16);
     }
@@ -193,14 +193,14 @@ public:
             apply_cache_flush(key, flush_origin, lock);
     }
 
-    auto find(std::string_view name, dns_type type) const -> std::vector<cache_entry>
+    auto find(dns_name name, dns_type type) const -> std::vector<cache_entry>
     {
         std::shared_lock lock(m_mutex);
 
         auto now = Clock::now();
         std::vector<cache_entry> result;
 
-        auto key = key_type{std::string(name), type};
+        auto key = key_type{std::move(name), type};
         auto [it, end] = m_entries.equal_range(key);
         for (; it != end; ++it)
             result.push_back(to_cache_entry(it->second, now));

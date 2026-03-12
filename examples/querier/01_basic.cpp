@@ -1,15 +1,14 @@
-// Query for mDNS PTR records using DefaultPolicy.
-// Self-terminates after 3 seconds of silence.
-
 #include <mdnspp/defaults.h>
 
 #include <iostream>
 
+// Query for mDNS PTR records using DefaultPolicy.
+// Self-terminates after 3 seconds of silence.
+
 int main()
 {
     mdnspp::context ctx;
-
-    mdnspp::querier q
+    mdnspp::querier querier
     {
         ctx,
         mdnspp::query_options{
@@ -23,7 +22,7 @@ int main()
         }
     };
 
-    q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr, [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
+    querier.async_query("_http._tcp.local.", mdnspp::dns_type::ptr, [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
     {
         if(ec)
             std::cerr << "query error: " << ec.message() << std::endl;

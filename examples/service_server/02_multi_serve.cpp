@@ -1,11 +1,11 @@
-// Announce two mDNS services sharing a single context using DefaultPolicy.
-// Demonstrates that multiple service_servers can coexist on one event loop.
-// Auto-stops after 30 seconds.
-
 #include <mdnspp/defaults.h>
 
 #include <iostream>
 #include <thread>
+
+// Announce two mDNS services sharing a single context using DefaultPolicy.
+// Demonstrates that multiple service_servers can coexist on one event loop.
+// Auto-stops after 30 seconds.
 
 int main()
 {

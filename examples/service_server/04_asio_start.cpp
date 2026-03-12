@@ -1,12 +1,11 @@
-// Serve an mDNS service using AsioPolicy.
-// Responds to queries until Ctrl-C.
-// Usage: ./mdnspp_example_asio_serve
-
 #include <mdnspp/asio.h>
 #include <mdnspp/service_info.h>
 #include <mdnspp/basic_service_server.h>
 
 #include <iostream>
+
+// Serve an mDNS service using AsioPolicy.
+// Responds to queries until Ctrl-C.
 
 int main()
 {
@@ -29,9 +28,7 @@ int main()
         mdnspp::service_options{
             .on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
             {
-                std::cout << sender.address << ":" << sender.port
-                    << " queried qtype=" << to_string(qtype)
-                    << " (" << to_string(mode) << ")" << std::endl;
+                std::cout << sender.address << ":" << sender.port << " queried qtype=" << to_string(qtype) << " (" << to_string(mode) << ")" << std::endl;
             }
         }
     };

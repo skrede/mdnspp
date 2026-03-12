@@ -8,6 +8,6 @@ add_executable(mdnspp_example_service_discovery_03_enumerate_types 03_enumerate_
 target_link_libraries(mdnspp_example_service_discovery_03_enumerate_types PRIVATE mdnspp::mdnspp)
 
 if(MDNSPP_ENABLE_ASIO_POLICY)
-    add_executable(mdnspp_example_service_discovery_04_asio_callback 04_asio_callback.cpp)
+    add_executable(mdnspp_example_service_discovery_04_asio_callback 04_asio_server.cpp)
     target_link_libraries(mdnspp_example_service_discovery_04_asio_callback PRIVATE mdnspp::mdnspp mdnspp::asio)
 endif()

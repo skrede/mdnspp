@@ -8,6 +8,6 @@ add_executable(mdnspp_example_service_monitor_04_observe_mode 04_observe_mode.cp
 target_link_libraries(mdnspp_example_service_monitor_04_observe_mode PRIVATE mdnspp::mdnspp)
 
 if(MDNSPP_ENABLE_ASIO_POLICY)
-    add_executable(mdnspp_example_service_monitor_03_asio_callback 03_asio_callback.cpp)
+    add_executable(mdnspp_example_service_monitor_03_asio_callback 03_asio_monitor.cpp)
     target_link_libraries(mdnspp_example_service_monitor_03_asio_callback PRIVATE mdnspp::mdnspp mdnspp::asio)
 endif()

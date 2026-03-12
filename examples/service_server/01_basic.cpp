@@ -1,10 +1,10 @@
-// Announce an HTTP service via mDNS using DefaultPolicy.
-// Auto-stops after 30 seconds.
-
 #include <mdnspp/defaults.h>
 
 #include <thread>
 #include <iostream>
+
+// Announce an HTTP service via mDNS using DefaultPolicy.
+// Auto-stops after 30 seconds.
 
 int main()
 {

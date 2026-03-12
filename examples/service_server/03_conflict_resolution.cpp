@@ -1,10 +1,9 @@
-// Demonstrates service name conflict resolution using service_options::on_conflict.
-// Two servers with the same name are started simultaneously. When they detect
-// each other's probes, the on_conflict callback renames the service and retries.
-
 #include <mdnspp/defaults.h>
 
 #include <iostream>
+
+// Demonstrates service name conflict resolution using service_options::on_conflict.
+// Two servers with the same name are started simultaneously. When they detect each other's probes, the on_conflict callback renames the service and retries.
 
 int main()
 {
@@ -58,7 +57,7 @@ int main()
         return [&, label](std::error_code ec)
         {
             if(ec)
-                std::cerr << "[" << label << "] Failed: " << ec.message()  << std::endl;
+                std::cerr << "[" << label << "] Failed: " << ec.message() << std::endl;
             else
                 std::cout << "[" << label << "] Service is live" << std::endl;
 

@@ -1,2 +1,2 @@
-add_executable(mdnspp_example_querier_01_basic 01_basic.cpp)
-target_link_libraries(mdnspp_example_querier_01_basic PRIVATE mdnspp::mdnspp)
+add_executable(mdnspp_querier_01_basic 01_basic.cpp)
+target_link_libraries(mdnspp_querier_01_basic PRIVATE mdnspp::mdnspp)

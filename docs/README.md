@@ -70,5 +70,6 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 - [examples/querier/](../examples/querier/) -- Sending mDNS queries
 - [examples/service_discovery/](../examples/service_discovery/) -- One-shot service browsing
 - [examples/service_server/](../examples/service_server/) -- Announcing services
-- [examples/service_monitor/](../examples/service_monitor/) -- Continuous service monitoring (basic, custom group, ASIO, observe mode)
+- [examples/service_monitor/](../examples/service_monitor/) -- Continuous service monitoring (basic, custom group, observe mode)
 - [examples/record_cache/](../examples/record_cache/) -- Standalone and wired cache usage
+- [examples/asio/](../examples/asio/) -- ASIO completion token variants (callbacks, coroutines, futures)

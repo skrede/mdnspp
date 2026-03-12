@@ -1,8 +1,8 @@
-add_executable(mdnspp_example_service_server_01_basic 01_basic.cpp)
-target_link_libraries(mdnspp_example_service_server_01_basic PRIVATE mdnspp::mdnspp)
+add_executable(mdnspp_server_01_basic 01_basic.cpp)
+target_link_libraries(mdnspp_server_01_basic PRIVATE mdnspp::mdnspp)
 
-add_executable(mdnspp_example_service_server_02_multi_serve 02_multi_serve.cpp)
-target_link_libraries(mdnspp_example_service_server_02_multi_serve PRIVATE mdnspp::mdnspp)
+add_executable(mdnspp_server_02_multi_serve 02_multi_serve.cpp)
+target_link_libraries(mdnspp_server_02_multi_serve PRIVATE mdnspp::mdnspp)
 
-add_executable(mdnspp_example_service_server_03_conflict_resolution 03_conflict_resolution.cpp)
-target_link_libraries(mdnspp_example_service_server_03_conflict_resolution PRIVATE mdnspp::mdnspp)
+add_executable(mdnspp_server_03_conflict_resolution 03_conflict_resolution.cpp)
+target_link_libraries(mdnspp_server_03_conflict_resolution PRIVATE mdnspp::mdnspp)

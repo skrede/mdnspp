@@ -2,23 +2,24 @@ set(INCLUDE_DIRECTORY include)
 
 set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/dns.h
+    ${INCLUDE_DIRECTORY}/mdnspp/dns_name.h
     ${INCLUDE_DIRECTORY}/mdnspp/parse.h
     ${INCLUDE_DIRECTORY}/mdnspp/policy.h
     ${INCLUDE_DIRECTORY}/mdnspp/defaults.h
     ${INCLUDE_DIRECTORY}/mdnspp/records.h
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
-    ${INCLUDE_DIRECTORY}/mdnspp/service_info.h
-    ${INCLUDE_DIRECTORY}/mdnspp/service_type.h
-    ${INCLUDE_DIRECTORY}/mdnspp/query_options.h
-    ${INCLUDE_DIRECTORY}/mdnspp/basic_querier.h
-    ${INCLUDE_DIRECTORY}/mdnspp/basic_observer.h
-    ${INCLUDE_DIRECTORY}/mdnspp/socket_options.h
-    ${INCLUDE_DIRECTORY}/mdnspp/callback_types.h
     ${INCLUDE_DIRECTORY}/mdnspp/cache_entry.h
     ${INCLUDE_DIRECTORY}/mdnspp/record_cache.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_options.h
+    ${INCLUDE_DIRECTORY}/mdnspp/service_info.h
+    ${INCLUDE_DIRECTORY}/mdnspp/service_type.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_querier.h
     ${INCLUDE_DIRECTORY}/mdnspp/cache_options.h
+    ${INCLUDE_DIRECTORY}/mdnspp/query_options.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_observer.h
+    ${INCLUDE_DIRECTORY}/mdnspp/callback_types.h
+    ${INCLUDE_DIRECTORY}/mdnspp/socket_options.h
     ${INCLUDE_DIRECTORY}/mdnspp/monitor_options.h
     ${INCLUDE_DIRECTORY}/mdnspp/service_options.h
     ${INCLUDE_DIRECTORY}/mdnspp/observer_options.h

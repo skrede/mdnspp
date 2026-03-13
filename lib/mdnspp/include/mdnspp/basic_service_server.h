@@ -731,7 +731,7 @@ private:
             {
                 uint32_t full_ttl   = static_cast<uint32_t>(this->m_mdns_opts.record_ttl.count());
                 uint32_t legacy_ttl = static_cast<uint32_t>(this->m_mdns_opts.legacy_unicast_ttl.count());
-                uint32_t capped_ttl = std::min(full_ttl, legacy_ttl);
+                uint32_t capped_ttl = (std::min)(full_ttl, legacy_ttl);
                 auto pkt = detail::build_dns_response(m_info, qmr.accumulated_qtype, capped_ttl);
                 if(!pkt.empty())
                     send_to(response_mode::unicast, sender, std::span<const std::byte>(pkt), "legacy unicast response");

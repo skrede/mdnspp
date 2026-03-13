@@ -71,7 +71,7 @@ inline void begin_announcing(probe_announce_state &s)
 inline int compare_authority_records(std::span<const std::byte> our_rdata,
                                      std::span<const std::byte> their_rdata)
 {
-    auto min_size = std::min(our_rdata.size(), their_rdata.size());
+    auto min_size = (std::min)(our_rdata.size(), their_rdata.size());
     for(std::size_t i = 0; i < min_size; ++i)
     {
         auto a = std::to_integer<uint8_t>(our_rdata[i]);

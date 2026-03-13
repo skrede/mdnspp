@@ -66,7 +66,8 @@ inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qt
 //   - Header: id=0, flags=0x0000 (query), qdcount=1, ancount=0, nscount=1, arcount=0
 //   - Question: service_name, QTYPE=ANY (0x00FF), QCLASS=IN|QU (0x8001)
 //   - Authority: proposed SRV record for simultaneous probe tiebreaking (RFC 6762 section 8.2)
-inline std::vector<std::byte> build_probe_query(const service_info &info)
+inline std::vector<std::byte> build_probe_query(const service_info &info,
+                                                uint32_t probe_authority_ttl = 120)
 {
     auto name_service = encode_dns_name(info.service_name);
     auto name_host = encode_dns_name(info.hostname);
@@ -95,7 +96,7 @@ inline std::vector<std::byte> build_probe_query(const service_info &info)
     push_u16_be(packet, uint16_t{0x8001}); // QCLASS = IN | QU bit
 
     // Authority section: proposed SRV record
-    append_dns_rr(packet, name_service, dns_type::srv, 120, rdata_srv);
+    append_dns_rr(packet, name_service, dns_type::srv, probe_authority_ttl, rdata_srv);
 
     return packet;
 }
@@ -169,6 +170,99 @@ inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qt
     packet[7] = static_cast<std::byte>(static_cast<uint8_t>(ancount & 0xFF));
 
     return packet;
+}
+
+// Builds one or more mDNS query packets with known-answer records split across
+// packets using the TC (Truncated) bit per RFC 6762 §7.1.
+//
+// When the accumulated size of known answers would exceed max_payload bytes:
+//   - The current packet has its TC bit set (byte 2 |= 0x02)
+//   - A new continuation packet is started with the same question section
+//
+// The last (or only) packet in the returned vector does NOT have TC bit set.
+// Each packet header's ancount reflects the number of answers in that packet.
+// The question section is repeated verbatim in every continuation packet.
+inline std::vector<std::vector<std::byte>>
+build_dns_query_tc(std::string_view name, dns_type qtype,
+                   std::span<const mdns_record_variant> known_answers,
+                   std::size_t max_payload = 1472,
+                   response_mode mode = response_mode::multicast)
+{
+    std::vector<std::vector<std::byte>> result;
+
+    // Build the base question packet (no answers)
+    auto base_pkt = build_dns_query(name, qtype, mode);
+
+    // If there are no known answers, return a single packet directly
+    if(known_answers.empty())
+    {
+        result.push_back(std::move(base_pkt));
+        return result;
+    }
+
+    // Measure the size each answer contributes individually
+    std::vector<std::pair<std::size_t, std::size_t>> answer_sizes; // (start, end) into a scratch buffer
+    {
+        std::vector<std::byte> scratch;
+        for(const auto &ka : known_answers)
+        {
+            std::size_t before = scratch.size();
+            append_known_answer(scratch, ka);
+            answer_sizes.emplace_back(before, scratch.size());
+        }
+    }
+
+    // Rebuild the base packet cleanly for the first packet of this run
+    auto current_pkt = build_dns_query(name, qtype, mode);
+    uint16_t current_ancount = 0;
+
+    // Scratch buffer: we serialize all answers once and then slice them out
+    std::vector<std::byte> all_answers_buf;
+    for(const auto &ka : known_answers)
+        append_known_answer(all_answers_buf, ka);
+
+    std::size_t buf_offset = 0;
+
+    for(std::size_t i = 0; i < known_answers.size(); ++i)
+    {
+        auto [ans_start, ans_end] = answer_sizes[i];
+        std::size_t ans_size = ans_end - ans_start;
+
+        // If adding this answer would exceed max_payload, flush current packet first.
+        // Always add at least one answer per packet to avoid infinite loops.
+        if(current_ancount > 0 && current_pkt.size() + ans_size > max_payload)
+        {
+            // Set TC bit on current packet (byte 2, bit 1)
+            current_pkt[2] = static_cast<std::byte>(
+                std::to_integer<uint8_t>(current_pkt[2]) | 0x02u);
+
+            // Update ancount header (bytes 6-7)
+            current_pkt[6] = static_cast<std::byte>(static_cast<uint8_t>(current_ancount >> 8));
+            current_pkt[7] = static_cast<std::byte>(static_cast<uint8_t>(current_ancount & 0xFF));
+
+            result.push_back(std::move(current_pkt));
+
+            // Start a new continuation packet with the same question section
+            current_pkt = build_dns_query(name, qtype, mode);
+            current_ancount = 0;
+        }
+
+        // Append this answer to the current packet
+        current_pkt.insert(current_pkt.end(),
+                           all_answers_buf.data() + ans_start,
+                           all_answers_buf.data() + ans_end);
+        ++current_ancount;
+        buf_offset = ans_end;
+    }
+
+    (void)buf_offset;
+
+    // Finalize the last packet (no TC bit)
+    current_pkt[6] = static_cast<std::byte>(static_cast<uint8_t>(current_ancount >> 8));
+    current_pkt[7] = static_cast<std::byte>(static_cast<uint8_t>(current_ancount & 0xFF));
+    result.push_back(std::move(current_pkt));
+
+    return result;
 }
 
 }

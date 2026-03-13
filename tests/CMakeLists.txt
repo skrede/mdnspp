@@ -59,6 +59,18 @@ make_test(duplicate_answer_suppression_test)
 make_test(service_monitor_test)
 make_test(dns_name_test)
 
+function(make_local_test TEST_FILE)
+    add_executable(${TEST_FILE} "${TEST_FILE}.cpp")
+    target_link_libraries(${TEST_FILE} PRIVATE mdnspp mdnspp::local Catch2::Catch2WithMain)
+    target_compile_options(${TEST_FILE} PRIVATE ${MDNSPP_WARNING_FLAGS})
+    add_test(NAME ${TEST_FILE} COMMAND ${TEST_FILE})
+endfunction()
+
+make_local_test(local_conformance_test)
+make_local_test(local_bus_discovery_test)
+make_local_test(local_bus_routing_test)
+make_local_test(local_bus_rfc_compliance_test)
+
 if (MDNSPP_ENABLE_ASIO_POLICY)
     function(make_asio_test TEST_FILE)
         add_executable(${TEST_FILE} "${TEST_FILE}.cpp")

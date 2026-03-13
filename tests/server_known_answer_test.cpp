@@ -145,6 +145,31 @@ TEST_CASE("parse_known_answers", "[server_known_answer]")
     }
 }
 
+TEST_CASE("parse_known_answers with custom threshold", "[server_known_answer]")
+{
+    auto info = make_test_info();
+
+    SECTION("suppressed when TTL >= custom threshold")
+    {
+        size_t offset;
+        auto pkt = build_answer_packet({
+            {"_http._tcp.local.", dns_type::ptr, 500}
+        }, offset);
+        auto mask = parse_known_answers(std::span(pkt), offset, info, 400);
+        CHECK(mask.ptr);
+    }
+
+    SECTION("not suppressed when TTL < custom threshold")
+    {
+        size_t offset;
+        auto pkt = build_answer_packet({
+            {"_http._tcp.local.", dns_type::ptr, 500}
+        }, offset);
+        auto mask = parse_known_answers(std::span(pkt), offset, info, 600);
+        CHECK_FALSE(mask.ptr);
+    }
+}
+
 TEST_CASE("all_suppressed", "[server_known_answer]")
 {
     auto info = make_test_info();

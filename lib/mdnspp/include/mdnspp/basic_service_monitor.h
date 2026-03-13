@@ -80,13 +80,16 @@ public:
     /// @param opts       Monitor options (callbacks, mode). Move-only.
     /// @param sock_opts  Socket configuration (multicast group, interface, etc.).
     /// @param mdns_opts  Protocol tunables (backoff, TTL refresh, TC wait).
+    /// @param copts      Cache options (goodbye_grace, on_expired callback).
     explicit basic_service_monitor(executor_type ex,
                                    monitor_options opts = {},
                                    socket_options sock_opts = {},
-                                   mdns_options mdns_opts = {})
+                                   mdns_options mdns_opts = {},
+                                   cache_options copts = {})
         : base(ex, sock_opts, std::move(mdns_opts))
         , m_scheduler_timer(ex)
         , m_opts(std::move(opts))
+        , m_cache_opts(std::move(copts))
         , m_cache(make_cache_options())
         , m_rng(std::random_device{}())
     {
@@ -101,15 +104,18 @@ public:
     /// @param opts       Monitor options (callbacks, mode). Move-only.
     /// @param sock_opts  Socket configuration.
     /// @param mdns_opts  Protocol tunables.
+    /// @param copts      Cache options (goodbye_grace, on_expired callback).
     /// @param ec         Receives the error code on failure, cleared on success.
     basic_service_monitor(executor_type ex,
                           monitor_options opts,
                           socket_options sock_opts,
                           mdns_options mdns_opts,
+                          cache_options copts,
                           std::error_code &ec)
         : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_scheduler_timer(ex)
         , m_opts(std::move(opts))
+        , m_cache_opts(std::move(copts))
         , m_cache(make_cache_options())
         , m_rng(std::random_device{}())
     {
@@ -275,12 +281,13 @@ private:
     // -------------------------------------------------------------------------
 
     /// Builds the cache_options for the constructor initializer list.
-    /// Called before m_opts is initialized, so uses the (moved) opts only for
-    /// wiring expiry -- the callback captures this, which is valid as soon as
-    /// the base sub-object is alive.
+    /// Moves from m_cache_opts (preserving user-supplied goodbye_grace and
+    /// any other fields), then wires in the on_expired callback.
+    /// Called exactly once during construction; m_cache_opts is left in
+    /// a valid but unspecified state after this call.
     cache_options make_cache_options()
     {
-        cache_options copts;
+        cache_options copts = std::move(m_cache_opts);
         copts.on_expired = [this](std::vector<cache_entry> expired)
         {
             handle_expired(std::move(expired));
@@ -946,9 +953,36 @@ private:
 
     void send_ptr_query(std::string_view svc_type)
     {
-        auto pkt = detail::build_dns_query(svc_type, dns_type::ptr);
-        this->m_socket.send(this->multicast_endpoint(),
-                            std::span<const std::byte>(pkt));
+        // Collect known PTR answers from the cache (RFC 6762 section 7.1).
+        // Only include records whose remaining TTL exceeds the suppression
+        // threshold to avoid advertising stale records.
+        std::vector<mdns_record_variant> known_answers;
+        {
+            auto entries = m_cache.find(dns_name(svc_type), dns_type::ptr);
+            double fraction = this->m_mdns_opts.ka_suppression_fraction;
+            for(const auto &e : entries)
+            {
+                auto threshold = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::chrono::duration<double>(e.wire_ttl * fraction));
+                if(e.ttl_remaining > threshold)
+                    known_answers.push_back(e.record);
+            }
+        }
+
+        // Build one or more query packets, splitting across TC continuations
+        // when the known-answer list exceeds the configured payload limit.
+        auto packets = detail::build_dns_query_tc(
+            svc_type, dns_type::ptr, known_answers,
+            this->m_mdns_opts.max_query_payload);
+
+        // Send all packets immediately.
+        // NOTE: tc_continuation_delay is not applied here; timer-based
+        // continuation scheduling may be added in a future phase.
+        for(const auto &pkt : packets)
+        {
+            this->m_socket.send(this->multicast_endpoint(),
+                                std::span<const std::byte>(pkt));
+        }
     }
 
     /// Send SRV + A + AAAA queries for a specific service instance.
@@ -1013,6 +1047,10 @@ private:
 
     /// Callback fired when the monitor is fully stopped (via stop()).
     monitor_completion_handler m_on_done;
+
+    /// User-supplied cache options (goodbye_grace, etc.).
+    /// Must be declared before m_cache so it is initialized first.
+    cache_options m_cache_opts;
 
     /// TTL-aware cache for all received mDNS records.
     record_cache<Clock> m_cache;

@@ -20,6 +20,38 @@
 using namespace mdnspp;
 using namespace mdnspp::detail;
 
+// Walks all resource record sections in a DNS packet (skipping the question section)
+// and returns a vector of all TTL values found.
+static std::vector<uint32_t> collect_rr_ttls(const std::vector<std::byte> &pkt)
+{
+    if(pkt.size() < 12)
+        return {};
+
+    auto span = std::span<const std::byte>(pkt);
+    uint16_t ancount = read_u16_be(pkt.data() + 6);
+    uint16_t arcount = read_u16_be(pkt.data() + 10);
+    uint16_t total_rrs = static_cast<uint16_t>(ancount + arcount);
+
+    size_t offset = 12;
+    std::vector<uint32_t> ttls;
+
+    for(uint16_t i = 0; i < total_rrs; ++i)
+    {
+        if(!skip_dns_name(span, offset))
+            break;
+        if(offset + 8 > pkt.size())
+            break;
+        offset += 2; // type
+        offset += 2; // class
+        ttls.push_back(read_u32_be(pkt.data() + offset));
+        offset += 4; // ttl
+        uint16_t rdlen = read_u16_be(pkt.data() + offset);
+        offset += 2 + rdlen;
+    }
+
+    return ttls;
+}
+
 static service_info make_test_info()
 {
     service_info info;
@@ -160,4 +192,39 @@ TEST_CASE("build_subtype_response", "[server_response_aggregation]")
     CHECK(flags == 0x8400);
     uint16_t ancount = read_u16_be(response.data() + 6);
     CHECK(ancount == 1);
+}
+
+TEST_CASE("build_response_with_nsec uses custom TTL", "[server_response_aggregation]")
+{
+    auto info = make_test_info();
+    suppression_mask mask;
+    auto response = build_response_with_nsec(info, dns_type::ptr, false, mask, false, 1234);
+
+    REQUIRE(response.size() >= 12);
+    auto ttls = collect_rr_ttls(response);
+    REQUIRE_FALSE(ttls.empty());
+    for(auto ttl : ttls)
+        CHECK(ttl == 1234);
+}
+
+TEST_CASE("build_meta_query_response uses custom TTL", "[server_response_aggregation]")
+{
+    auto info = make_test_info();
+    auto response = build_meta_query_response(info, 600);
+
+    REQUIRE(response.size() >= 12);
+    auto ttls = collect_rr_ttls(response);
+    REQUIRE(ttls.size() == 1);
+    CHECK(ttls[0] == 600);
+}
+
+TEST_CASE("build_subtype_response uses custom TTL", "[server_response_aggregation]")
+{
+    auto info = make_test_info();
+    auto response = build_subtype_response("_printer", info, 900);
+
+    REQUIRE(response.size() >= 12);
+    auto ttls = collect_rr_ttls(response);
+    REQUIRE(ttls.size() == 1);
+    CHECK(ttls[0] == 900);
 }

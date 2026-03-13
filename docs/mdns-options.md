@@ -42,7 +42,7 @@ mdnspp::observer obs{ctx, observer_opts, sock_opts, mdns_opts};
 
 // Non-throwing overloads (mdns_opts before std::error_code):
 std::error_code ec;
-mdnspp::service_monitor mon2{ctx, std::move(monitor_opts), sock_opts, mdns_opts, ec};
+mdnspp::service_monitor mon2{ctx, std::move(monitor_opts), sock_opts, mdns_opts, {}, ec};
 ```
 
 Pass `{}` for any earlier parameter you want to leave at its default:

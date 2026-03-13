@@ -134,7 +134,7 @@ TEST_CASE("basic_service_monitor: non-throwing constructor", "[monitor]")
     mock_executor ex;
     std::error_code ec;
     test_monitor mon{ex, mdnspp::monitor_options{}, mdnspp::socket_options{},
-                     mdnspp::mdns_options{}, ec};
+                     mdnspp::mdns_options{}, mdnspp::cache_options{}, ec};
     REQUIRE_FALSE(ec);
 }
 

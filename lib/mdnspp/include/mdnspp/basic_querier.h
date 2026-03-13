@@ -277,7 +277,9 @@ private:
             this->m_loop->start();
 
             std::mt19937 rng(std::random_device{}());
-            std::uniform_int_distribution<int> dist(20, 120);
+            std::uniform_int_distribution<int> dist(
+                static_cast<int>(this->m_mdns_opts.response_delay_min.count()),
+                static_cast<int>(this->m_mdns_opts.response_delay_max.count()));
             auto delay = std::chrono::milliseconds(dist(rng));
 
             m_delay_timer.expires_after(delay);

@@ -15,8 +15,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     auto result = mdnspp::detail::read_dns_name(buf, 0);
     if(result.has_value())
     {
-        assert(result->empty() || result->back() == '.');
-        assert(result->size() <= 255);
+        assert((*result).empty() || (*result).back() == '.');
+        assert((*result).size() <= 255);
     }
 
     // Test from a random offset within the buffer
@@ -27,8 +27,8 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
         auto result2 = mdnspp::detail::read_dns_name(buf, offset);
         if(result2.has_value())
         {
-            assert(result2->empty() || result2->back() == '.');
-            assert(result2->size() <= 255);
+            assert((*result2).empty() || (*result2).back() == '.');
+            assert((*result2).size() <= 255);
         }
     }
 

@@ -38,7 +38,7 @@ jobs:
       - name: Run fuzz harnesses
         run: |
           CORPUS=build/fuzz_corpus
-          FUZZ_ARGS="-max_total_time=15 -print_final_stats=1"
+          FUZZ_ARGS="-max_total_time=60 -rss_limit_mb=4096 -print_final_stats=1"
 
           declare -A CORPUS_MAP=(
             [fuzz_read_dns_name]=read_dns_name

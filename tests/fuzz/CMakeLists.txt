@@ -1,6 +1,6 @@
 function(make_fuzz_target TARGET_FILE)
     add_executable(${TARGET_FILE} "${TARGET_FILE}.cpp")
-    target_link_libraries(${TARGET_FILE} PRIVATE mdnspp)
+    target_link_libraries(${TARGET_FILE} PRIVATE mdnspp::mdnspp)
     target_compile_options(${TARGET_FILE} PRIVATE
         -fsanitize=fuzzer,address,undefined
         -fno-sanitize-recover=all
@@ -8,9 +8,7 @@ function(make_fuzz_target TARGET_FILE)
         -g
         -O1
     )
-    target_link_options(${TARGET_FILE} PRIVATE
-        -fsanitize=fuzzer,address,undefined
-    )
+    target_link_options(${TARGET_FILE} PRIVATE -fsanitize=fuzzer,address,undefined)
 endfunction()
 
 make_fuzz_target(fuzz_read_dns_name)

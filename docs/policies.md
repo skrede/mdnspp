@@ -190,6 +190,45 @@ mdnspp::testing::mock_executor ex;
 mdnspp::basic_observer<mdnspp::testing::MockPolicy> obs{ex};
 ```
 
+## LocalPolicy
+
+**When to use:** in-process multicast simulation, deterministic multi-party
+testing, process-local service registry, CI environments without multicast
+networking.
+
+- Include: `#include <mdnspp/local/local_policy.h>`
+- CMake target: `mdnspp::local`
+- Type aliases: `mdnspp::LocalPolicy` (steady_clock), `mdnspp::LocalTestPolicy`
+  (test_clock — Catch2 tests only)
+- Executor: `mdnspp::local::local_executor<>`
+
+`LocalPolicy` uses an explicit `local_bus` as the shared multicast medium.
+No real sockets or OS networking is involved. The executor is created from the
+bus and passed to each component.
+
+```cpp
+#include <mdnspp/local/local_policy.h>
+#include <mdnspp/basic_service_server.h>
+#include <mdnspp/basic_service_monitor.h>
+
+mdnspp::local::local_bus<>      bus;
+mdnspp::local::local_executor<> executor{bus};
+
+mdnspp::basic_service_server<mdnspp::LocalPolicy>  srv{executor, info};
+mdnspp::basic_service_monitor<mdnspp::LocalPolicy> mon{executor, opts};
+
+srv.async_start();
+mon.watch("_http._tcp.local.");
+mon.async_start([&executor](std::error_code) { executor.stop(); });
+
+executor.run();   // blocks until executor.stop() — same as ctx.run()
+```
+
+All components must share the same `executor` (and by extension the same `bus`).
+
+See [Local Bus guide](local-bus.md) for architecture, bus topology, and full
+usage patterns.
+
 ## Thread-safe work scheduling: post()
 
 Every Policy provides a static `post(executor_type, move_only_function<void()>)`
@@ -231,6 +270,19 @@ static void post(executor_type ex, detail::move_only_function<void()> fn)
 Appends to a deque for deterministic testing. Drain posted work with
 `ex.drain_posted()`.
 
+### LocalPolicy
+
+```cpp
+static void post(executor_type ex, detail::move_only_function<void()> fn)
+{
+    ex.post(std::move(fn));
+}
+```
+
+Enqueues the function onto the `local_executor` posted-work deque. Work is
+processed in the next `drain()` or `run()` cycle on the thread driving the
+executor.
+
 ### Usage
 
 `post()` is used internally by `update_service_info()` to safely modify a
@@ -266,6 +318,7 @@ announcing, goodbye, and conflict resolution behavior.
 | Standalone, no dependencies | DefaultPolicy | `mdnspp::mdnspp` |
 | ASIO integration | AsioPolicy | `mdnspp::asio` |
 | Unit testing | MockPolicy | `mdnspp::testing` |
+| In-process simulation / testing | LocalPolicy | `mdnspp::local` |
 
 ## Next steps
 

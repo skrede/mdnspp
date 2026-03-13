@@ -1,6 +1,6 @@
 # RFC Compliance
 
-mdnspp targets conformance with RFC 6762 (Multicast DNS) and RFC 6763
+mdnspp targets conformance with [RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762) (Multicast DNS) and [RFC 6763](https://datatracker.ietf.org/doc/html/rfc6763)
 (DNS-Based Service Discovery). The table below shows which requirements
 are implemented and which remain pending.
 
@@ -16,17 +16,20 @@ are implemented and which remain pending.
 | 5.4 | QU/QM response routing | `[x]` | — |
 | 5.4/7.2 | TC bit and multi-packet known-answer | `[x]` | [tc-handling.md](tc-handling.md) |
 | 6 | Random response delay (20–120 ms) | `[x]` | [traffic-reduction.md](traffic-reduction.md) |
+| 6 | Parameterized response delay (20–120 ms) | `[x]` | mdns_options: response_delay_min/max |
 | 6.1 | Negative responses (NSEC) | `[x]` | — |
-| 6.7 | Legacy unicast responses | `[ ]` | Source port != 5353 not handled |
+| 6.7 | Legacy unicast responses | `[x]` | service_options::respond_to_legacy_unicast |
 | 7.1 | Known-answer suppression | `[x]` | [known-answer-suppression.md](known-answer-suppression.md) |
 | 7.3 | Duplicate question suppression | `[x]` | [traffic-reduction.md](traffic-reduction.md) |
 | 7.4 | Duplicate answer suppression | `[x]` | [duplicate-suppression.md](duplicate-suppression.md) |
 | 8.1 | Probing (3 probes at 250 ms) | `[x]` | [probing.md](probing.md) |
-| 8.1 | Simultaneous probe tiebreaking | `[~]` | Simplified: any match = conflict |
+| 8.1 | Parameterized probe count and intervals | `[x]` | service_options: probe_count, probe_interval, probe_initial_delay_max |
+| 8.1 | Simultaneous probe tiebreaking | `[x]` | Full §8.2 tiebreak with SRV rdata comparison |
 | 8.3 | Announcing (configurable burst) | `[x]` | [probing.md](probing.md) |
 | 10.1 | Goodbye packets (TTL=0) | `[x]` | [goodbye.md](goodbye.md) |
 | 10.2 | Cache-flush bit | `[x]` | [cache-flush.md](cache-flush.md) |
 | 11 | Multicast TTL 255 | `[x]` | — |
+| 11 | Receive-side TTL 255 enforcement | `[x]` | mdns_options: receive_ttl_minimum |
 
 ## RFC 6763 -- DNS-Based Service Discovery
 
@@ -35,7 +38,7 @@ are implemented and which remain pending.
 | 6 | TXT record key-value pairs | `[x]` | — |
 | 7.1 | Subtype queries | `[x]` | [dns-sd.md](dns-sd.md) |
 | 9 | Service type enumeration | `[x]` | [dns-sd.md](dns-sd.md) |
-| — | Configurable per-record TTL | `[ ]` | All records use fixed 4500 s TTL |
+| — | Configurable per-record TTL | `[x]` | mdns_options::record_ttl; service_options per-type TTLs (ptr_ttl, srv_ttl, txt_ttl, a_ttl, aaaa_ttl) |
 
 ## See Also
 

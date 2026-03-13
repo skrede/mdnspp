@@ -1,0 +1,10 @@
+add_executable(defaults_compile_test ${CMAKE_CURRENT_LIST_DIR}/defaults_compile_test.cpp)
+target_link_libraries(defaults_compile_test PRIVATE mdnspp)
+target_compile_options(defaults_compile_test PRIVATE ${MDNSPP_WARNING_FLAGS})
+add_test(NAME defaults_compile_test COMMAND defaults_compile_test)
+
+
+add_executable(infra_headers_compile_test ${CMAKE_CURRENT_LIST_DIR}/infra_headers_compile_test.cpp)
+target_link_libraries(infra_headers_compile_test PRIVATE mdnspp)
+target_compile_options(infra_headers_compile_test PRIVATE ${MDNSPP_WARNING_FLAGS})
+add_test(NAME infra_headers_compile_test COMMAND infra_headers_compile_test)

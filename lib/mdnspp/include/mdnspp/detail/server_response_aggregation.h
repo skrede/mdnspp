@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_SERVER_RESPONSE_AGGREGATION_H
 
 #include "mdnspp/service_info.h"
+#include "mdnspp/service_options.h"
 
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/dns_write.h"
@@ -62,7 +63,8 @@ struct pending_response
 inline std::vector<std::byte> build_response_with_nsec(const service_info &info, dns_type qtype,
                                                        bool needs_nsec,
                                                        const suppression_mask &mask,
-                                                       bool suppress_enabled)
+                                                       bool suppress_enabled,
+                                                       const service_options &opts)
 {
     // For specific type queries, check if that type is suppressed
     if(suppress_enabled && qtype != dns_type::any)
@@ -81,7 +83,9 @@ inline std::vector<std::byte> build_response_with_nsec(const service_info &info,
             return {};
     }
 
-    auto response = build_dns_response(info, qtype);
+    auto response = build_dns_response(info, qtype, opts);
+
+    uint32_t nsec_ttl = static_cast<uint32_t>(opts.record_ttl.count());
 
     if(needs_nsec && qtype != dns_type::any)
     {
@@ -95,12 +99,12 @@ inline std::vector<std::byte> build_response_with_nsec(const service_info &info,
             push_u16_be(response, 0x0001); // arcount = 1
 
             auto owner_name = encode_dns_name(info.hostname);
-            append_nsec_rr(response, owner_name, info, 4500);
+            append_nsec_rr(response, owner_name, info, nsec_ttl);
         }
         else
         {
             auto owner_name = encode_dns_name(info.hostname);
-            append_nsec_rr(response, owner_name, info, 4500);
+            append_nsec_rr(response, owner_name, info, nsec_ttl);
             uint16_t arcount = read_u16_be(response.data() + 10);
             ++arcount;
             response[10] = static_cast<std::byte>(static_cast<uint8_t>(arcount >> 8));
@@ -111,7 +115,8 @@ inline std::vector<std::byte> build_response_with_nsec(const service_info &info,
     return response;
 }
 
-inline std::vector<std::byte> build_meta_query_response(const service_info &info)
+inline std::vector<std::byte> build_meta_query_response(const service_info &info,
+                                                        uint32_t ttl = 4500)
 {
     std::vector<std::byte> packet;
     push_u16_be(packet, 0x0000);
@@ -123,13 +128,14 @@ inline std::vector<std::byte> build_meta_query_response(const service_info &info
 
     auto owner = encode_dns_name(meta_query_name);
     auto rdata = encode_dns_name(info.service_type);
-    append_dns_rr(packet, owner, dns_type::ptr, 4500, rdata, false);
+    append_dns_rr(packet, owner, dns_type::ptr, ttl, rdata, false);
 
     return packet;
 }
 
 inline std::vector<std::byte> build_subtype_response(std::string_view subtype_label,
-                                                     const service_info &info)
+                                                     const service_info &info,
+                                                     uint32_t ttl = 4500)
 {
     std::vector<std::byte> packet;
     push_u16_be(packet, 0x0000);
@@ -142,7 +148,7 @@ inline std::vector<std::byte> build_subtype_response(std::string_view subtype_la
     auto subtype_name = std::string(subtype_label) + "._sub." + info.service_type.str();
     auto owner = encode_dns_name(subtype_name);
     auto rdata = encode_dns_name(info.service_name);
-    append_dns_rr(packet, owner, dns_type::ptr, 4500, rdata, false);
+    append_dns_rr(packet, owner, dns_type::ptr, ttl, rdata, false);
 
     return packet;
 }

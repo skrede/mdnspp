@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DNS_RESPONSE_H
 
 #include "mdnspp/service_info.h"
+#include "mdnspp/service_options.h"
 
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/dns_write.h"
@@ -10,6 +11,8 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <climits>
+#include <algorithm>
 
 namespace mdnspp::detail {
 
@@ -28,12 +31,29 @@ namespace mdnspp::detail {
 //   other:           empty vector
 //
 // Header: id=0, flags=0x8400 (QR=1, AA=1), qdcount=0, ancount and arcount set from content.
-// Default TTL: 4500 seconds (RFC 6762 recommended).
+//
+// Per-type TTLs are taken from opts (ptr_ttl, srv_ttl, txt_ttl, a_ttl, aaaa_ttl).
+// NSEC and fallback records use opts.record_ttl.
+//
+// legacy_unicast_cap: when set to a value below UINT32_MAX, each record TTL is
+// capped at min(per_type_ttl, legacy_unicast_cap) per RFC 6762 section 6.7.
 // ---------------------------------------------------------------------------
 inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &info,
                                                  dns_type qtype,
-                                                 uint32_t default_ttl = 4500)
+                                                 const mdnspp::service_options &opts,
+                                                 uint32_t legacy_unicast_cap = UINT32_MAX)
 {
+    // Derive per-type TTL values, capped for legacy unicast if requested.
+    auto ttl_for = [&](std::chrono::seconds t) -> uint32_t {
+        return (std::min)(static_cast<uint32_t>(t.count()), legacy_unicast_cap);
+    };
+    uint32_t ptr_t  = ttl_for(opts.ptr_ttl);
+    uint32_t srv_t  = ttl_for(opts.srv_ttl);
+    uint32_t txt_t  = ttl_for(opts.txt_ttl);
+    uint32_t a_t    = ttl_for(opts.a_ttl);
+    uint32_t aaaa_t = ttl_for(opts.aaaa_ttl);
+    uint32_t rec_t  = ttl_for(opts.record_ttl); // fallback for NSEC
+
     // Pre-encode frequently used names
     auto name_service_type = encode_dns_name(info.service_type);
     auto name_service_name = encode_dns_name(info.service_name);
@@ -103,58 +123,60 @@ inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &inf
     auto append_address_records = [&](auto add_fn)
     {
         if(!rdata_a.empty())
-            add_fn(name_hostname, dns_type::a, default_ttl, rdata_a);
+            add_fn(name_hostname, dns_type::a, a_t, rdata_a);
         if(!rdata_aaaa.empty())
-            add_fn(name_hostname, dns_type::aaaa, default_ttl, rdata_aaaa);
+            add_fn(name_hostname, dns_type::aaaa, aaaa_t, rdata_aaaa);
     };
+
+    (void)rec_t; // used for NSEC in server_response_aggregation.h
 
     switch(qtype)
     {
     case dns_type::ptr: // PTR -- service type lookup
         {
             // Answer: PTR record (owner = service_type)
-            add_answer(name_service_type, dns_type::ptr, default_ttl, rdata_ptr);
+            add_answer(name_service_type, dns_type::ptr, ptr_t, rdata_ptr);
             // Additional: SRV
-            add_additional(name_service_name, dns_type::srv, default_ttl, rdata_srv);
+            add_additional(name_service_name, dns_type::srv, srv_t, rdata_srv);
             // Additional: A / AAAA
             append_address_records(add_additional);
             // Additional: TXT (if any)
             if(!rdata_txt.empty())
-                add_additional(name_service_name, dns_type::txt, default_ttl, rdata_txt);
+                add_additional(name_service_name, dns_type::txt, txt_t, rdata_txt);
             break;
         }
     case dns_type::srv: // SRV -- service instance lookup
         {
-            add_answer(name_service_name, dns_type::srv, default_ttl, rdata_srv);
+            add_answer(name_service_name, dns_type::srv, srv_t, rdata_srv);
             append_address_records(add_additional);
             break;
         }
     case dns_type::a: // A -- hostname lookup (IPv4)
         {
-            add_answer(name_hostname, dns_type::a, default_ttl, rdata_a);
+            add_answer(name_hostname, dns_type::a, a_t, rdata_a);
             break;
         }
     case dns_type::aaaa: // AAAA -- hostname lookup (IPv6)
         {
-            add_answer(name_hostname, dns_type::aaaa, default_ttl, rdata_aaaa);
+            add_answer(name_hostname, dns_type::aaaa, aaaa_t, rdata_aaaa);
             break;
         }
     case dns_type::txt: // TXT -- service metadata
         {
             // Even if txt_records is empty, produce a valid (zero-length) TXT record
-            add_answer(name_service_name, dns_type::txt, default_ttl, rdata_txt);
+            add_answer(name_service_name, dns_type::txt, txt_t, rdata_txt);
             break;
         }
     case dns_type::any: // ANY -- all available records
         {
-            add_answer(name_service_type, dns_type::ptr, default_ttl, rdata_ptr);
-            add_answer(name_service_name, dns_type::srv, default_ttl, rdata_srv);
+            add_answer(name_service_type, dns_type::ptr, ptr_t, rdata_ptr);
+            add_answer(name_service_name, dns_type::srv, srv_t, rdata_srv);
             if(!rdata_a.empty())
-                add_answer(name_hostname, dns_type::a, default_ttl, rdata_a);
+                add_answer(name_hostname, dns_type::a, a_t, rdata_a);
             if(!rdata_aaaa.empty())
-                add_answer(name_hostname, dns_type::aaaa, default_ttl, rdata_aaaa);
+                add_answer(name_hostname, dns_type::aaaa, aaaa_t, rdata_aaaa);
             if(!rdata_txt.empty())
-                add_answer(name_service_name, dns_type::txt, default_ttl, rdata_txt);
+                add_answer(name_service_name, dns_type::txt, txt_t, rdata_txt);
             break;
         }
     default:

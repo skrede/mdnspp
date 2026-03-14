@@ -154,8 +154,8 @@ public:
         auto flush = detail::extract_cache_flush(rec);
         auto ttl = detail::extract_ttl(rec);
 
-        // RFC 6762 section 10.1: goodbye record (TTL=0) retained for 1 second
-        uint32_t effective_ttl = (ttl == 0) ? 1 : ttl;
+        // RFC 6762 section 10.1: goodbye record (TTL=0) retained for goodbye_grace seconds
+        uint32_t effective_ttl = (ttl == 0) ? static_cast<uint32_t>(m_options.goodbye_grace.count()) : ttl;
 
         std::unique_lock lock(m_mutex);
 
@@ -258,7 +258,7 @@ private:
                            std::unique_lock<std::shared_mutex> &lock)
     {
         auto now = Clock::now();
-        auto deadline = now + std::chrono::seconds(1);
+        auto deadline = now + m_options.goodbye_grace;
 
         std::vector<cache_entry> affected;
         cache_entry authoritative;

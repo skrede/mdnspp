@@ -17,7 +17,7 @@
 - **Thread-safe service updates** -- safely modify the records of running mDNS service server from any thread.
 - **Policy-based architecture** -- swap socket/timer/executor implementations at compile time.
 - **Optional ASIO support** -- networking and completion token support (callbacks, futures, coroutines, and deferred operations).
-- **RFC 6762/6763 compliance** -- probing, goodbye packets, known-answer suppression, traffic reduction, and [DNS-SD](docs/rfc/README.md).
+- **[RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762)/[6763](https://datatracker.ietf.org/doc/html/rfc6763) compliance** -- probing, goodbye packets, known-answer suppression, traffic reduction, and [DNS-SD](docs/rfc/README.md).
 
 ## Quick Start
 

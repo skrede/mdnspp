@@ -159,7 +159,8 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
         for(size_t i = label_start; i < label_end; ++i)
             result += static_cast<char>(static_cast<uint8_t>(buf[i]));
 
-        if(result.size() > max_name_len)
+        // +1 accounts for the trailing dot appended at name completion
+        if(result.size() + 1 > max_name_len)
             return detail::make_unexpected(mdns_error::parse_error);
 
         offset = label_end;

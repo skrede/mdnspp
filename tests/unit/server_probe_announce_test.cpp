@@ -108,3 +108,38 @@ TEST_CASE("should_send_announce", "[server_probe_announce]")
     advance_announce(s, 2);
     CHECK_FALSE(should_send_announce(s, 2));
 }
+
+TEST_CASE("should_send_probe respects custom max_count", "[server_probe_announce]")
+{
+    probe_announce_state s;
+    begin_probing(s);
+    s.probe_count = 4;
+
+    CHECK(should_send_probe(s, 5));
+    CHECK_FALSE(should_send_probe(s, 4));
+}
+
+TEST_CASE("probing_complete with custom count", "[server_probe_announce]")
+{
+    probe_announce_state s;
+    begin_probing(s);
+
+    s.probe_count = 2;
+    CHECK(probing_complete(s, 2));
+    CHECK_FALSE(probing_complete(s, 3));
+}
+
+TEST_CASE("advance_probe with custom count", "[server_probe_announce]")
+{
+    probe_announce_state s;
+    begin_probing(s);
+
+    SECTION("returns true until count reaches max_count")
+    {
+        CHECK(advance_probe(s, 4)); // count == 1
+        CHECK(advance_probe(s, 4)); // count == 2
+        CHECK(advance_probe(s, 4)); // count == 3
+        CHECK_FALSE(advance_probe(s, 4)); // count == 4, returns false
+        CHECK(s.probe_count == 4);
+    }
+}

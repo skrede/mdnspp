@@ -16,6 +16,8 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 - [Record Cache](record-cache.md) -- Standalone TTL-aware record cache: standalone vs wired usage, cache-flush semantics
 - [mDNS Options](mdns-options.md) -- Protocol timing tunables: query backoff, TTL refresh thresholds, TC handling
 - [Custom Policies](custom-policies.md) -- Writing your own Policy, SocketLike, and TimerLike implementations
+- [Local Bus](local-bus.md) -- LocalPolicy and shared bus for in-process mDNS scenarios
+- [Test Landscape](testing.md) -- Unit, integration, fuzz, and compile test categories
 
 ## API Reference
 
@@ -50,6 +52,7 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 ### Configuration
 
 - [mdns_options](api/mdns_options.md) -- Protocol timing tunables: query backoff, TTL refresh, TC handling
+- [Options Deep-Dive](api/options/README.md) -- Per-field reference for every option in mdns_options, service_options, and cache_options
 
 ## RFC Compliance
 
@@ -73,3 +76,4 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 - [examples/service_monitor/](../examples/service_monitor/) -- Continuous service monitoring (basic, custom group, observe mode)
 - [examples/record_cache/](../examples/record_cache/) -- Standalone and wired cache usage
 - [examples/asio/](../examples/asio/) -- ASIO completion token variants (callbacks, coroutines, futures)
+- [examples/local_bus/](../examples/local_bus/) -- In-process mDNS scenario using local_bus

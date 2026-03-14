@@ -140,15 +140,16 @@ private:
             this->m_socket,
             this->m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](const endpoint &sender, std::span<std::byte> data) -> bool
+            [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
             {
-                on_packet(sender, data);
+                on_packet(meta.sender, data);
                 return true; // basic_observer wants all traffic; always reset timer
             },
             []()
             {
                 /* no-op on silence */
-            });
+            },
+            this->m_mdns_opts.receive_ttl_minimum);
 
         this->m_loop->start();
     }

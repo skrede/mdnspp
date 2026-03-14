@@ -26,8 +26,15 @@ enum class dns_class : uint16_t
 
 enum class response_mode : uint8_t
 {
-    multicast = 0u,
-    unicast   = 1u,
+    multicast      = 0u,
+    unicast        = 1u,
+    unicast_legacy = 2u,
+};
+
+enum class conflict_type : uint8_t
+{
+    name_conflict,
+    tiebreak_deferred,
 };
 
 constexpr std::string_view to_string(dns_type t) noexcept
@@ -60,8 +67,19 @@ constexpr std::string_view to_string(response_mode m) noexcept
 {
     switch(m)
     {
-    case response_mode::multicast: return "multicast";
-    case response_mode::unicast: return "unicast";
+    case response_mode::multicast:      return "multicast";
+    case response_mode::unicast:        return "unicast";
+    case response_mode::unicast_legacy: return "unicast_legacy";
+    }
+    return "unknown";
+}
+
+constexpr std::string_view to_string(conflict_type t) noexcept
+{
+    switch(t)
+    {
+    case conflict_type::name_conflict:     return "name_conflict";
+    case conflict_type::tiebreak_deferred: return "tiebreak_deferred";
     }
     return "unknown";
 }

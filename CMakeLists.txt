@@ -29,6 +29,13 @@ set(MDNSPP_WARNING_FLAGS
 
 option(MDNSPP_BUILD_TESTS OFF)
 option(MDNSPP_BUILD_EXAMPLES OFF)
+option(MDNSPP_BUILD_FUZZ_TESTS "Build fuzz testing targets (requires Clang)" OFF)
+option(MDNSPP_BUILD_LOCAL_POLICY "Build mdnspp::local (LocalPolicy, local_bus, local_socket)" OFF)
+
+# Tests require the local policy infrastructure
+if(MDNSPP_BUILD_TESTS AND NOT MDNSPP_BUILD_LOCAL_POLICY)
+    set(MDNSPP_BUILD_LOCAL_POLICY ON)
+endif()
 
 option(MDNSPP_CMAKE_FETCH_DEPS "Use CMake FetchContent to download and install dependencies" OFF)
 option(MDNSPP_ENABLE_ASIO_POLICY "Build AsioPolicy (AsioSocket, AsioTimer) backed by asio::io_context" OFF)
@@ -43,7 +50,7 @@ if (${MDNSPP_BUILD_EXAMPLES})
     add_subdirectory(examples)
 endif ()
 
-if (${MDNSPP_BUILD_TESTS})
+if (MDNSPP_BUILD_TESTS OR MDNSPP_BUILD_FUZZ_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif ()

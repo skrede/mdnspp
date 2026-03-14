@@ -9,6 +9,7 @@
 #include <span>
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <concepts>
 #include <functional>
 #include <system_error>
@@ -24,9 +25,17 @@ struct always_false : std::false_type
 
 }
 
+/// Metadata carried with each received packet.
+/// Passed to the socket handler and forwarded through recv_loop to packet handlers.
+struct recv_metadata
+{
+    endpoint sender;
+    uint8_t ttl{255};
+};
+
 // SocketLike<S>: satisfied by any type that provides the mDNS socket interface.
 template <typename S>
-concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, std::function<void(const endpoint &, std::span<std::byte>)> handler)
+concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, std::function<void(const recv_metadata &, std::span<std::byte>)> handler)
 {
     { s.async_receive(handler) } -> std::same_as<void>;
     { s.send(ep, send_data) } -> std::same_as<void>;

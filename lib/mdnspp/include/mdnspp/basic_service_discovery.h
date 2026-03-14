@@ -246,8 +246,10 @@ private:
             this->m_socket,
             this->m_timer,
             m_silence_timeout,
-            [this](const endpoint &sender, std::span<std::byte> data) -> bool
+            [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
             {
+                const endpoint &sender = meta.sender;
+
                 std::vector<mdns_record_variant> batch;
                 detail::walk_dns_frame(
                     std::span<const std::byte>(data.data(), data.size()),
@@ -279,7 +281,8 @@ private:
                 }
                 return relevant;
             },
-            std::move(on_silence_fn));
+            std::move(on_silence_fn),
+            this->m_mdns_opts.receive_ttl_minimum);
 
         target_loop->start();
     }
@@ -305,8 +308,10 @@ private:
             this->m_socket,
             this->m_timer,
             m_silence_timeout,
-            [this](const endpoint &sender, std::span<std::byte> data) -> bool
+            [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
             {
+                const endpoint &sender = meta.sender;
+
                 bool found = false;
                 detail::walk_dns_frame(
                     std::span<const std::byte>(data.data(), data.size()),
@@ -335,7 +340,8 @@ private:
                 m_enumerate_loop->stop();
                 if(auto h = std::exchange(m_on_enumerate_completion, nullptr); h)
                     h(std::error_code{}, m_enumerated_types);
-            });
+            },
+            this->m_mdns_opts.receive_ttl_minimum);
 
         m_enumerate_loop->start();
     }

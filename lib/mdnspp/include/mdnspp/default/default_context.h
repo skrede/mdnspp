@@ -22,6 +22,8 @@
 #include <chrono>
 #include <vector>
 #include <cstddef>
+#include <cstdint>
+#include <cstring>
 #include <functional>
 #include <system_error>
 
@@ -222,7 +224,7 @@ public:
     // -----------------------------------------------------------------------
 
     void register_socket(detail::native_socket_t fd,
-                          std::function<void(const endpoint &, std::span<std::byte>)> handler)
+                          std::function<void(const endpoint &, uint8_t, std::span<std::byte>)> handler)
     {
         // Replace if already registered (e.g. async_receive re-arms)
         for(auto &entry : m_sockets)
@@ -263,7 +265,7 @@ private:
     struct socket_entry
     {
         detail::native_socket_t fd{detail::invalid_socket};
-        std::function<void(const endpoint &, std::span<std::byte>)> handler;
+        std::function<void(const endpoint &, uint8_t, std::span<std::byte>)> handler;
     };
 
     // winsock_guard MUST be the first member — initialised before any sockets.
@@ -487,6 +489,8 @@ private:
             if(sock_idx >= m_sockets.size() || !m_sockets[sock_idx].handler)
                 continue;
 
+            uint8_t recv_ttl{255};
+
 #ifdef _WIN32
             int sender_len = sizeof(m_sender_addr);
             const int bytes = ::recvfrom(
@@ -500,17 +504,44 @@ private:
             if(bytes == SOCKET_ERROR)
                 continue;
 #else
-            socklen_t sender_len = sizeof(m_sender_addr);
-            const ssize_t bytes = ::recvfrom(
-                m_sockets[sock_idx].fd,
-                m_recv_buf.data(),
-                m_recv_buf.size(),
-                0,
-                reinterpret_cast<sockaddr*>(&m_sender_addr),
-                &sender_len);
+            iovec iov{};
+            iov.iov_base = m_recv_buf.data();
+            iov.iov_len = m_recv_buf.size();
+
+            alignas(cmsghdr) std::array<std::byte, 64> ctrl_buf{};
+
+            msghdr msg{};
+            msg.msg_name = &m_sender_addr;
+            msg.msg_namelen = sizeof(m_sender_addr);
+            msg.msg_iov = &iov;
+            msg.msg_iovlen = 1;
+            msg.msg_control = ctrl_buf.data();
+            msg.msg_controllen = ctrl_buf.size();
+
+            const ssize_t bytes = ::recvmsg(m_sockets[sock_idx].fd, &msg, 0);
 
             if(bytes < 0)
                 continue;
+
+            for(cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg))
+            {
+                if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL)
+                {
+                    int ttl_val{};
+                    std::memcpy(&ttl_val, CMSG_DATA(cmsg), sizeof(ttl_val));
+                    recv_ttl = static_cast<uint8_t>(ttl_val);
+                    break;
+                }
+#ifdef IPV6_HOPLIMIT
+                if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_HOPLIMIT)
+                {
+                    int ttl_val{};
+                    std::memcpy(&ttl_val, CMSG_DATA(cmsg), sizeof(ttl_val));
+                    recv_ttl = static_cast<uint8_t>(ttl_val);
+                    break;
+                }
+#endif
+            }
 #endif
 
             char addr_str[INET6_ADDRSTRLEN]{};
@@ -535,7 +566,7 @@ private:
             };
 
             m_sockets[sock_idx].handler(
-                ep,
+                ep, recv_ttl,
                 std::span<std::byte>{m_recv_buf.data(), static_cast<std::size_t>(bytes)});
         }
     }

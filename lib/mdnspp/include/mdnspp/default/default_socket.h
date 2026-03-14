@@ -82,10 +82,15 @@ public:
 
     /// Register this socket and its receive handler with DefaultContext.
     /// Called by recv_loop when it wants to arm the next receive.
-    void async_receive(std::function<void(const endpoint &, std::span<std::byte>)> handler)
+    void async_receive(std::function<void(const recv_metadata &, std::span<std::byte>)> handler)
     {
         m_receive_handler = std::move(handler);
-        m_ctx.register_socket(m_fd, m_receive_handler);
+        m_ctx.register_socket(m_fd,
+            [this](const endpoint &ep, uint8_t ttl, std::span<std::byte> data)
+            {
+                recv_metadata meta{ep, ttl};
+                m_receive_handler(meta, data);
+            });
     }
 
     /// Synchronous sendto(). mDNS sends are tiny and infrequent.
@@ -194,7 +199,7 @@ public:
 private:
     DefaultContext &m_ctx;
     detail::native_socket_t m_fd{detail::invalid_socket};
-    std::function<void(const endpoint &, std::span<std::byte>)> m_receive_handler;
+    std::function<void(const recv_metadata &, std::span<std::byte>)> m_receive_handler;
 
     static bool is_ipv6(const std::string &addr)
     {
@@ -484,6 +489,13 @@ private:
                 }
 #endif
             }
+
+#if !defined(_WIN32) && defined(IPV6_RECVHOPLIMIT)
+            {
+                const int opt = 1;
+                (void)::setsockopt(m_fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &opt, sizeof(opt));
+            }
+#endif
         }
         else
         {
@@ -610,6 +622,13 @@ private:
                 }
 #endif
             }
+
+#if !defined(_WIN32) && defined(IP_RECVTTL)
+            {
+                const int opt = 1;
+                (void)::setsockopt(m_fd, IPPROTO_IP, IP_RECVTTL, &opt, sizeof(opt));
+            }
+#endif
         }
     }
 
@@ -802,6 +821,13 @@ private:
                 }
 #endif
             }
+
+#if !defined(_WIN32) && defined(IPV6_RECVHOPLIMIT)
+            {
+                const int opt = 1;
+                (void)::setsockopt(m_fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &opt, sizeof(opt));
+            }
+#endif
         }
         else
         {
@@ -938,6 +964,13 @@ private:
                 }
 #endif
             }
+
+#if !defined(_WIN32) && defined(IP_RECVTTL)
+            {
+                const int opt = 1;
+                (void)::setsockopt(m_fd, IPPROTO_IP, IP_RECVTTL, &opt, sizeof(opt));
+            }
+#endif
         }
     }
 };

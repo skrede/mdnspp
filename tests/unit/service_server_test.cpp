@@ -27,6 +27,17 @@ using namespace mdnspp::detail;
 using namespace mdnspp::testing;
 using mdnspp::dns_type;
 
+namespace {
+
+inline uint16_t read_u16_be(const auto &buf, std::size_t offset)
+{
+    return static_cast<uint16_t>(
+        (static_cast<uint16_t>(static_cast<uint8_t>(buf[offset])) << 8) |
+        static_cast<uint16_t>(static_cast<uint8_t>(buf[offset + 1])));
+}
+
+}
+
 static service_info make_test_service()
 {
     service_info info;
@@ -91,7 +102,7 @@ static void advance_to_live(basic_service_server<MockPolicy> &server, unsigned a
 // This is used to simulate conflict detection during probing.
 static std::vector<std::byte> make_conflict_response(const service_info &info)
 {
-    return build_dns_response(info, dns_type::srv);
+    return build_dns_response(info, dns_type::srv, service_options{});
 }
 
 // -- build_dns_response tests (unchanged) --
@@ -104,7 +115,7 @@ SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response]
 
         WHEN("build_dns_response is called with qtype=12 (PTR)")
         {
-            auto pkt = build_dns_response(info, dns_type::ptr);
+            auto pkt = build_dns_response(info, dns_type::ptr, service_options{});
 
             THEN("the packet is non-empty")
             {
@@ -114,18 +125,15 @@ SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response]
             THEN("the DNS header has flags=0x8400 (response, authoritative)")
             {
                 REQUIRE(pkt.size() >= 12);
-                uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[2])) << 8) |
-                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[3]));
+                uint16_t flags = read_u16_be(pkt, 2);
                 REQUIRE(flags == 0x8400);
             }
 
             THEN("ancount >= 1 and arcount >= 1 (answer + additional)")
             {
                 REQUIRE(pkt.size() >= 12);
-                uint16_t ancount = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[6])) << 8) |
-                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[7]));
-                uint16_t arcount = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[10])) << 8) |
-                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[11]));
+                uint16_t ancount = read_u16_be(pkt, 6);
+                uint16_t arcount = read_u16_be(pkt, 10);
                 REQUIRE(ancount >= 1);
                 REQUIRE(arcount >= 1);
             }
@@ -157,7 +165,7 @@ SCENARIO("build_dns_response PTR response includes additional SRV and A records"
 
         WHEN("build_dns_response is called with qtype=12 (PTR)")
         {
-            auto pkt = build_dns_response(info, dns_type::ptr);
+            auto pkt = build_dns_response(info, dns_type::ptr, service_options{});
 
             THEN("walk_dns_frame yields PTR, SRV, and A records in the packet")
             {
@@ -186,7 +194,7 @@ SCENARIO("build_dns_response produces valid A response", "[build_dns_response][A
 
         WHEN("build_dns_response is called with qtype=1 (A)")
         {
-            auto pkt = build_dns_response(info, dns_type::a);
+            auto pkt = build_dns_response(info, dns_type::a, service_options{});
 
             THEN("walk_dns_frame parses a record_a with address_string \"192.168.1.10\"")
             {
@@ -216,7 +224,7 @@ SCENARIO("build_dns_response returns empty for A when no IPv4 address", "[build_
 
         WHEN("build_dns_response is called with qtype=1 (A)")
         {
-            auto pkt = build_dns_response(info, dns_type::a);
+            auto pkt = build_dns_response(info, dns_type::a, service_options{});
 
             THEN("the returned vector is empty")
             {
@@ -234,7 +242,7 @@ SCENARIO("build_dns_response produces valid SRV response", "[build_dns_response]
 
         WHEN("build_dns_response is called with qtype=33 (SRV)")
         {
-            auto pkt = build_dns_response(info, dns_type::srv);
+            auto pkt = build_dns_response(info, dns_type::srv, service_options{});
 
             THEN("walk_dns_frame parses a record_srv with port 8080")
             {
@@ -264,7 +272,7 @@ SCENARIO("build_dns_response returns empty for unknown qtype", "[build_dns_respo
         WHEN("build_dns_response is called with qtype=255 (ANY -- not in required set)")
         {
             // qtype=255 is ANY, handled separately; test an actually unknown type
-            auto pkt = build_dns_response(info, static_cast<dns_type>(999));
+            auto pkt = build_dns_response(info, static_cast<dns_type>(999), service_options{});
 
             THEN("the returned vector is empty")
             {
@@ -282,7 +290,7 @@ SCENARIO("build_dns_response produces valid TXT response", "[build_dns_response]
 
         WHEN("build_dns_response is called with qtype=16 (TXT)")
         {
-            auto pkt = build_dns_response(info, dns_type::txt);
+            auto pkt = build_dns_response(info, dns_type::txt, service_options{});
 
             THEN("the packet is non-empty")
             {
@@ -617,8 +625,7 @@ SCENARIO("service_server ignores non-matching query", "[service_server][query][n
                     if(pkt.data.size() >= 12)
                     {
                         // Check if it's a response (QR=1) with _wrong in it
-                        uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(pkt.data[2])) << 8) |
-                            static_cast<uint16_t>(static_cast<uint8_t>(pkt.data[3]));
+                        uint16_t flags = read_u16_be(pkt.data, 2);
                         if(flags == 0x8400)
                         {
                             // Parse and check if it contains _wrong
@@ -815,8 +822,7 @@ SCENARIO("probing sends 3 probe queries to multicast", "[service_server][probing
                     // Verify probe packets have flags=0x0000 (query, not response)
                     const auto &pkt = server.socket().sent_packets()[i].data;
                     REQUIRE(pkt.size() >= 4);
-                    uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[2])) << 8) |
-                        static_cast<uint16_t>(static_cast<uint8_t>(pkt[3]));
+                    uint16_t flags = read_u16_be(pkt, 2);
                     REQUIRE(flags == 0x0000);
                 }
             }
@@ -954,7 +960,7 @@ SCENARIO("conflict callback can rename and retry probing", "[service_server][con
         std::error_code ready_ec;
 
         service_options opts;
-        opts.on_conflict = [&](const std::string &, std::string &new_name, unsigned attempt) -> bool
+        opts.on_conflict = [&](const std::string &, std::string &new_name, unsigned attempt, conflict_type) -> bool
         {
             conflict_called = true;
             conflict_attempt = attempt;
@@ -1002,7 +1008,7 @@ SCENARIO("conflict callback returning false stops server", "[service_server][con
         std::error_code ready_ec;
 
         service_options opts;
-        opts.on_conflict = [](const std::string &, std::string &, unsigned) -> bool
+        opts.on_conflict = [](const std::string &, std::string &, unsigned, conflict_type) -> bool
         {
             return false;
         };
@@ -1107,8 +1113,7 @@ SCENARIO("announcement burst sends announce_count announcements", "[service_serv
                 {
                     const auto &pkt = server.socket().sent_packets()[i].data;
                     REQUIRE(pkt.size() >= 4);
-                    uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[2])) << 8) |
-                        static_cast<uint16_t>(static_cast<uint8_t>(pkt[3]));
+                    uint16_t flags = read_u16_be(pkt, 2);
                     REQUIRE(flags == 0x8400);
                     REQUIRE(server.socket().sent_packets()[i].dest == endpoint{"224.0.0.251", 5353});
                 }
@@ -1458,8 +1463,7 @@ static unsigned count_multicast_responses_after(const std::vector<sent_packet> &
     {
         if(packets[i].dest == endpoint{"224.0.0.251", 5353} && packets[i].data.size() >= 12)
         {
-            uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(packets[i].data[2])) << 8) |
-                static_cast<uint16_t>(static_cast<uint8_t>(packets[i].data[3]));
+            uint16_t flags = read_u16_be(packets[i].data, 2);
             if(flags == 0x8400)
                 ++count;
         }
@@ -1782,8 +1786,7 @@ SCENARIO("NSEC in Additional for unmatched type", "[nsec]")
                 REQUIRE(pkt.size() >= 12);
 
                 // Check arcount > 0 (NSEC is in Additional)
-                uint16_t arcount = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[10])) << 8) |
-                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[11]));
+                uint16_t arcount = read_u16_be(pkt, 10);
                 REQUIRE(arcount >= 1);
 
                 // Parse and verify NSEC record exists
@@ -2227,7 +2230,7 @@ static std::vector<std::byte> make_tc_ptr_query(std::string_view service_type)
 // Used to simulate another responder multicasting an answer during the 20-120ms delay window.
 static std::vector<std::byte> make_ptr_response(const service_info &info)
 {
-    return build_dns_response(info, dns_type::ptr);
+    return build_dns_response(info, dns_type::ptr, service_options{});
 }
 
 SCENARIO("TC bit on incoming query arms the tc_timer with 400-500ms window",
@@ -2403,6 +2406,329 @@ SCENARIO("Multicast response from another host suppresses our answer during dela
                 auto sent_after = server.socket().sent_packets().size();
                 REQUIRE(sent_after > sent_before);
             }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RFC-01 Legacy unicast response tests
+// ---------------------------------------------------------------------------
+
+SCENARIO("Server sends unicast response to legacy unicast query (port != 5353)", "[service_server][legacy_unicast][rfc01]")
+{
+    GIVEN("a live server with default service_options (respond_to_legacy_unicast=true)")
+    {
+        mock_executor ex;
+        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        endpoint legacy_sender{"10.0.0.1", 12345}; // port != 5353
+        auto query = make_ptr_query("_http._tcp.local.");
+        server.socket().inject_receive(legacy_sender, query);
+
+        WHEN("a PTR query arrives from a non-5353 port")
+        {
+            THEN("the response is sent directly to the legacy sender (unicast)")
+            {
+                bool unicast_to_sender = false;
+                for(const auto &pkt : server.socket().sent_packets())
+                {
+                    if(pkt.dest == legacy_sender)
+                        unicast_to_sender = true;
+                }
+                REQUIRE(unicast_to_sender);
+            }
+
+            THEN("the response is NOT sent to the multicast group for that legacy query")
+            {
+                endpoint mcast{"224.0.0.251", 5353};
+                bool multicast_sent = false;
+                for(const auto &pkt : server.socket().sent_packets())
+                {
+                    if(pkt.dest == mcast)
+                        multicast_sent = true;
+                }
+                REQUIRE_FALSE(multicast_sent);
+            }
+        }
+    }
+}
+
+SCENARIO("Server respects legacy_unicast_ttl cap on legacy unicast responses", "[service_server][legacy_unicast][ttl]")
+{
+    GIVEN("a live server with legacy_unicast_ttl=10 (default) and record_ttl=4500")
+    {
+        mock_executor ex;
+        mdns_options mopts;
+        mopts.legacy_unicast_ttl = std::chrono::seconds{10};
+        mopts.record_ttl = std::chrono::seconds{4500};
+        mopts.response_delay_min = std::chrono::milliseconds{0};
+        mopts.response_delay_max = std::chrono::milliseconds{0};
+
+        basic_service_server<MockPolicy> server{ex, make_test_info(), {}, {}, std::move(mopts)};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        endpoint legacy_sender{"10.0.0.1", 12345};
+        auto query = make_ptr_query("_http._tcp.local.");
+        server.socket().inject_receive(legacy_sender, query);
+
+        WHEN("the legacy unicast response is sent")
+        {
+            THEN("all records in the response have TTL <= 10")
+            {
+                bool found_response = false;
+                for(const auto &pkt : server.socket().sent_packets())
+                {
+                    if(pkt.dest != legacy_sender) continue;
+                    found_response = true;
+
+                    auto records = parse_response(pkt.data);
+                    for(const auto &rv : records)
+                    {
+                        uint32_t ttl = std::visit([](const auto &r) { return r.ttl; }, rv);
+                        REQUIRE(ttl <= 10u);
+                    }
+                }
+                REQUIRE(found_response);
+            }
+        }
+    }
+}
+
+SCENARIO("Server ignores legacy unicast when respond_to_legacy_unicast=false", "[service_server][legacy_unicast][disabled]")
+{
+    GIVEN("a live server with respond_to_legacy_unicast=false")
+    {
+        mock_executor ex;
+        service_options opts;
+        opts.respond_to_legacy_unicast = false;
+        mdns_options mopts;
+        mopts.response_delay_min = std::chrono::milliseconds{0};
+        mopts.response_delay_max = std::chrono::milliseconds{0};
+
+        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts), {}, std::move(mopts)};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        endpoint legacy_sender{"10.0.0.1", 12345};
+        auto query = make_ptr_query("_http._tcp.local.");
+        server.socket().inject_receive(legacy_sender, query);
+
+        WHEN("a PTR query arrives from a non-5353 port")
+        {
+            THEN("no direct unicast response is sent to the legacy sender")
+            {
+                bool unicast_to_sender = false;
+                for(const auto &pkt : server.socket().sent_packets())
+                {
+                    if(pkt.dest == legacy_sender)
+                        unicast_to_sender = true;
+                }
+                REQUIRE_FALSE(unicast_to_sender);
+            }
+
+            THEN("a multicast response timer is armed (normal multicast path)")
+            {
+                // With response_delay_min=0, the response timer should fire immediately
+                server.timer().fire();
+                endpoint mcast{"224.0.0.251", 5353};
+                bool multicast_sent = false;
+                for(const auto &pkt : server.socket().sent_packets())
+                {
+                    if(pkt.dest == mcast)
+                        multicast_sent = true;
+                }
+                REQUIRE(multicast_sent);
+            }
+        }
+    }
+}
+
+SCENARIO("Normal mDNS query from port 5353 uses multicast path", "[service_server][legacy_unicast][normal]")
+{
+    GIVEN("a live server")
+    {
+        mock_executor ex;
+        mdns_options mopts;
+        mopts.response_delay_min = std::chrono::milliseconds{0};
+        mopts.response_delay_max = std::chrono::milliseconds{0};
+
+        basic_service_server<MockPolicy> server{ex, make_test_info(), {}, {}, std::move(mopts)};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        endpoint normal_sender{"192.168.1.50", 5353}; // standard mDNS port
+        auto query = make_ptr_query("_http._tcp.local.");
+        server.socket().inject_receive(normal_sender, query);
+
+        WHEN("a PTR query arrives from port 5353")
+        {
+            THEN("no direct unicast response is sent to the sender")
+            {
+                bool unicast_to_sender = false;
+                for(const auto &pkt : server.socket().sent_packets())
+                {
+                    if(pkt.dest == normal_sender)
+                        unicast_to_sender = true;
+                }
+                REQUIRE_FALSE(unicast_to_sender);
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RFC-03 Probe tiebreaking tests
+// ---------------------------------------------------------------------------
+
+// Helper: build a conflicting probe packet from another host.
+// The probe has a SRV record in the authority section with different rdata.
+static std::vector<std::byte> make_conflicting_probe(const service_info &our_info,
+                                                      uint16_t other_probe_id,
+                                                      uint8_t rdata_filler)
+{
+    // Build a probe for the same service name but with a different SRV rdata.
+    // We manipulate the rdata by using a different priority to force a tiebreak.
+    service_info other = our_info;
+    other.priority = static_cast<uint16_t>(rdata_filler); // different priority byte
+    auto probe = build_probe_query(other);
+    // Override transaction ID with other_probe_id
+    probe[0] = static_cast<std::byte>(other_probe_id >> 8);
+    probe[1] = static_cast<std::byte>(other_probe_id & 0xFF);
+    return probe;
+}
+
+SCENARIO("Probe tiebreaking: loser defers and conflict_type is tiebreak_deferred", "[service_server][probe][tiebreaking]")
+{
+    GIVEN("a server probing with priority=0 and another probe arrives with priority=1 (ours < theirs -- we lose)")
+    {
+        mock_executor ex;
+        conflict_type observed_conflict_type = conflict_type::name_conflict;
+        bool conflict_called = false;
+
+        service_options opts;
+        opts.probe_initial_delay_max = std::chrono::milliseconds{0};
+        opts.probe_defer_delay = std::chrono::milliseconds{100};
+        opts.on_conflict = [&](const std::string &, std::string &, unsigned, conflict_type ct) -> bool
+        {
+            conflict_called = true;
+            observed_conflict_type = ct;
+            return true; // always retry
+        };
+
+        service_info info = make_test_info();
+        info.priority = 0; // our priority (lower)
+        basic_service_server<MockPolicy> server{ex, info, std::move(opts)};
+
+        WHEN("async_start is called, probe begins, and a winning probe arrives from another host")
+        {
+            server.async_start();
+            // Fire initial delay timer so probing starts
+            server.timer().fire();
+
+            // At this point we've sent our first probe. Now inject a conflicting probe
+            // from another host (different transaction ID, priority=255 > our priority=0).
+            // Since their priority (255) > ours (0), their rdata is lexicographically greater
+            // -- they win, we lose and should defer.
+            auto their_probe = make_conflicting_probe(info, 0xABCD, 255);
+            server.socket().inject_receive(endpoint{"192.168.1.99", 5353}, their_probe);
+
+            THEN("on_conflict is called with conflict_type::tiebreak_deferred")
+            {
+                REQUIRE(conflict_called);
+                REQUIRE(observed_conflict_type == conflict_type::tiebreak_deferred);
+            }
+
+            THEN("the probe timer is rearmed for defer delay after tiebreak loss")
+            {
+                REQUIRE(server.timer().has_pending());
+            }
+        }
+    }
+}
+
+SCENARIO("Probe tiebreaking: winner (ours > theirs) does NOT defer", "[service_server][probe][tiebreaking][win]")
+{
+    GIVEN("a server probing with priority=255 and another probe arrives with priority=0 (ours > theirs -- we win)")
+    {
+        mock_executor ex;
+        bool conflict_called = false;
+
+        service_options opts;
+        opts.probe_initial_delay_max = std::chrono::milliseconds{0};
+        opts.on_conflict = [&](const std::string &, std::string &, unsigned, conflict_type) -> bool
+        {
+            conflict_called = true;
+            return true;
+        };
+
+        service_info info = make_test_info();
+        info.priority = 255; // our priority (higher -- we win)
+        basic_service_server<MockPolicy> server{ex, info, std::move(opts)};
+
+        WHEN("async_start is called, probe begins, and a losing probe arrives from another host")
+        {
+            server.async_start();
+            server.timer().fire(); // fire initial delay
+
+            // Their priority=0 < ours=255, so we win the tiebreak.
+            auto their_probe = make_conflicting_probe(info, 0x1234, 0);
+            server.socket().inject_receive(endpoint{"192.168.1.99", 5353}, their_probe);
+
+            THEN("on_conflict is NOT called (we won)")
+            {
+                REQUIRE_FALSE(conflict_called);
+            }
+        }
+    }
+}
+
+SCENARIO("Our own probe loopback is not treated as a conflict", "[service_server][probe][loopback]")
+{
+    GIVEN("a server currently probing")
+    {
+        mock_executor ex;
+        bool conflict_called = false;
+
+        service_options opts;
+        opts.probe_initial_delay_max = std::chrono::milliseconds{0};
+        opts.on_conflict = [&](const std::string &, std::string &, unsigned, conflict_type) -> bool
+        {
+            conflict_called = true;
+            return true;
+        };
+
+        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
+
+        WHEN("async_start is called and probe fires")
+        {
+            server.async_start();
+            server.timer().fire();
+
+            // The server sent at least one probe -- find its transaction ID
+            const auto &sent = server.socket().sent_packets();
+            REQUIRE_FALSE(sent.empty());
+            const auto &probe_pkt = sent.back().data;
+            REQUIRE(probe_pkt.size() >= 2);
+            uint16_t our_id = read_u16_be(probe_pkt, 0);
+
+            // Build a probe with our OWN transaction ID (loopback simulation)
+            auto loopback_probe = build_probe_query(make_test_info());
+            loopback_probe[0] = probe_pkt[0];
+            loopback_probe[1] = probe_pkt[1];
+            server.socket().inject_receive(endpoint{"192.168.1.10", 5353}, loopback_probe);
+
+            THEN("on_conflict is NOT called (loopback filtered)")
+            {
+                REQUIRE_FALSE(conflict_called);
+            }
+            (void)our_id;
         }
     }
 }

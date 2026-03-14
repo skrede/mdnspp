@@ -25,9 +25,11 @@
 #include <memory>
 #include <random>
 #include <chrono>
+#include <vector>
 #include <cstdint>
 #include <cassert>
 #include <utility>
+#include <algorithm>
 #include <string_view>
 #include <system_error>
 
@@ -194,7 +196,15 @@ public:
            (m_pa_state.state == server_state::live || m_pa_state.state == server_state::announcing))
         {
             std::error_code ec;
-            auto goodbye = detail::build_dns_response(m_info, dns_type::any, 0);
+            // Goodbye uses TTL=0 for all record types (RFC 6762 §11.3).
+            service_options goodbye_opts;
+            goodbye_opts.ptr_ttl    = std::chrono::seconds{0};
+            goodbye_opts.srv_ttl    = std::chrono::seconds{0};
+            goodbye_opts.txt_ttl    = std::chrono::seconds{0};
+            goodbye_opts.a_ttl      = std::chrono::seconds{0};
+            goodbye_opts.aaaa_ttl   = std::chrono::seconds{0};
+            goodbye_opts.record_ttl = std::chrono::seconds{0};
+            auto goodbye = detail::build_dns_response(m_info, dns_type::any, goodbye_opts);
             if(!goodbye.empty())
                 this->m_socket.send(this->multicast_endpoint(),
                               std::as_bytes(std::span(goodbye)), ec);
@@ -264,15 +274,16 @@ private:
             this->m_socket,
             this->m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](const endpoint &sender, std::span<std::byte> data) -> bool
+            [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
             {
-                on_query(sender, data);
+                on_query(meta.sender, data);
                 return true;
             },
             []()
             {
                 // no-op on silence
-            });
+            },
+            this->m_mdns_opts.receive_ttl_minimum);
 
         start_probing();
         this->m_loop->start();
@@ -288,8 +299,8 @@ private:
         std::uniform_int_distribution<uint16_t> id_dist(1, 0xFFFF);
         m_pa_state.probe_id = id_dist(m_rng);
 
-        // Random delay 0-250ms before first probe (RFC 6762 section 8.1)
-        std::uniform_int_distribution dist(0, 250);
+        // Random delay [0, probe_initial_delay_max] before first probe (RFC 6762 section 8.1)
+        std::uniform_int_distribution dist(0, static_cast<int>(m_opts.probe_initial_delay_max.count()));
         m_response_timer.expires_after(std::chrono::milliseconds(dist(m_rng)));
         m_response_timer.async_wait([this](std::error_code ec)
         {
@@ -304,7 +315,7 @@ private:
         if(m_pa_state.state != server_state::probing) return;
         if(this->m_stopped.load(std::memory_order_acquire)) return;
 
-        auto probe = detail::build_probe_query(m_info);
+        auto probe = detail::build_probe_query(m_info, static_cast<uint32_t>(m_opts.probe_authority_ttl.count()));
         // Stamp our probe ID into the DNS header transaction ID (bytes 0-1)
         probe[0] = static_cast<std::byte>(m_pa_state.probe_id >> 8);
         probe[1] = static_cast<std::byte>(m_pa_state.probe_id & 0xFF);
@@ -312,8 +323,8 @@ private:
         this->m_socket.send(this->multicast_endpoint(), std::span<const std::byte>(probe), ec);
         if(ec && m_on_error) m_on_error(ec, "probe send");
 
-        bool more = detail::advance_probe(m_pa_state);
-        m_response_timer.expires_after(std::chrono::milliseconds(250));
+        bool more = detail::advance_probe(m_pa_state, m_opts.probe_count);
+        m_response_timer.expires_after(m_opts.probe_interval);
         m_response_timer.async_wait([this, more](std::error_code wait_ec)
         {
             if(wait_ec || m_pa_state.state != server_state::probing) return;
@@ -358,20 +369,46 @@ private:
         }
     }
 
-    void handle_conflict()
+    void handle_conflict(conflict_type ct = conflict_type::name_conflict)
     {
         m_response_timer.cancel();
 
         if(m_opts.on_conflict)
         {
             std::string new_name;
-            if(m_opts.on_conflict(m_info.service_name.str(), new_name, m_pa_state.conflict_attempt))
+            if(m_opts.on_conflict(m_info.service_name.str(), new_name, m_pa_state.conflict_attempt, ct))
             {
-                m_info.service_name = std::move(new_name);
-                ++m_pa_state.conflict_attempt;
+                if(ct == conflict_type::name_conflict)
+                {
+                    m_info.service_name = std::move(new_name);
+                    ++m_pa_state.conflict_attempt;
+                }
+                if(ct == conflict_type::tiebreak_deferred)
+                {
+                    // RFC 6762 section 8.2: loser defers and re-probes after probe_defer_delay
+                    m_response_timer.expires_after(m_opts.probe_defer_delay);
+                    m_response_timer.async_wait([this](std::error_code ec)
+                    {
+                        if(ec || this->m_stopped.load(std::memory_order_acquire)) return;
+                        start_probing();
+                    });
+                    return;
+                }
                 start_probing();
                 return;
             }
+        }
+
+        if(ct == conflict_type::tiebreak_deferred)
+        {
+            // No callback for tiebreak -- defer silently
+            m_response_timer.expires_after(m_opts.probe_defer_delay);
+            m_response_timer.async_wait([this](std::error_code ec)
+            {
+                if(ec || this->m_stopped.load(std::memory_order_acquire)) return;
+                start_probing();
+            });
+            return;
         }
 
         // No callback or callback returned false -- fail
@@ -399,6 +436,80 @@ private:
                 send_update_announce();
             });
         }
+    }
+
+    // Extracts the raw SRV rdata from the authority (NS) section of an incoming probe packet.
+    // Returns empty vector if no SRV rdata found in authority.
+    // Used for RFC 6762 section 8.2 simultaneous-probe tiebreaking.
+    std::vector<std::byte> extract_authority_srv_rdata(std::span<const std::byte> data) const
+    {
+        if(data.size() < 12) return {};
+
+        // Skip the question section
+        uint16_t qdcount = detail::read_u16_be(data.data() + 4);
+        uint16_t ancount = detail::read_u16_be(data.data() + 6);
+        uint16_t nscount = detail::read_u16_be(data.data() + 8);
+
+        if(nscount == 0) return {};
+
+        std::size_t offset = 12;
+
+        // Skip questions
+        for(uint16_t i = 0; i < qdcount; ++i)
+        {
+            if(!detail::skip_dns_name(data, offset)) return {};
+            if(offset + 4 > data.size()) return {};
+            offset += 4; // qtype + qclass
+        }
+
+        // Skip answers
+        for(uint16_t i = 0; i < ancount; ++i)
+        {
+            if(!detail::skip_dns_name(data, offset)) return {};
+            if(offset + 10 > data.size()) return {};
+            offset += 4; // rtype + rclass
+            offset += 4; // ttl
+            uint16_t rdlen = detail::read_u16_be(data.data() + offset);
+            offset += 2;
+            if(offset + rdlen > data.size()) return {};
+            offset += rdlen;
+        }
+
+        // Read first authority section SRV record rdata
+        for(uint16_t i = 0; i < nscount; ++i)
+        {
+            std::size_t rr_start = offset;
+            if(!detail::skip_dns_name(data, offset)) return {};
+            if(offset + 10 > data.size()) return {};
+            uint16_t rtype = detail::read_u16_be(data.data() + offset);
+            offset += 4; // rtype + rclass
+            offset += 4; // ttl
+            uint16_t rdlen = detail::read_u16_be(data.data() + offset);
+            offset += 2;
+            if(offset + rdlen > data.size()) return {};
+
+            if(rtype == std::to_underlying(dns_type::srv))
+            {
+                return std::vector<std::byte>(data.data() + offset,
+                                             data.data() + offset + rdlen);
+            }
+            offset += rdlen;
+            (void)rr_start;
+        }
+
+        return {};
+    }
+
+    // Builds the raw SRV rdata for our proposed record (for tiebreaking comparison).
+    std::vector<std::byte> build_our_srv_rdata() const
+    {
+        std::vector<std::byte> rdata;
+        detail::push_u16_be(rdata, m_info.priority);
+        detail::push_u16_be(rdata, m_info.weight);
+        detail::push_u16_be(rdata, m_info.port);
+        auto host = detail::encode_dns_name(m_info.hostname);
+        rdata.insert(rdata.end(), host.begin(), host.end());
+        return rdata;
     }
 
     // Checks if an incoming DNS response contains records matching our probed names.
@@ -436,8 +547,9 @@ private:
         if(was_armed)
             return; // timer already running, merge is enough
 
-        // RFC 6762 section 6: random delay 20-120ms before responding via multicast
-        std::uniform_int_distribution dist(20, 120);
+        // RFC 6762 section 6: random delay [response_delay_min, response_delay_max] before responding via multicast
+        std::uniform_int_distribution dist(static_cast<int>(this->m_mdns_opts.response_delay_min.count()),
+                                           static_cast<int>(this->m_mdns_opts.response_delay_max.count()));
         m_response_timer.expires_after(std::chrono::milliseconds(dist(m_rng)));
         m_response_timer.async_wait([this](std::error_code ec)
         {
@@ -449,11 +561,12 @@ private:
             // RFC 6762 §7.4: merge duplicate suppression observations into suppression mask.
             // Build the exact records we would send and check each against m_dup_suppression.
             // Using the round-trip serialised+parsed form ensures identity equality matches.
-            static constexpr uint32_t srv_ttl = 4500;
+            // Duplicate suppression threshold uses record_ttl as a single scalar baseline.
+            uint32_t dup_threshold = static_cast<uint32_t>(m_opts.record_ttl.count());
             auto combined = m_pending.suppression;
             if(!m_dup_suppression.empty())
             {
-                auto candidate_pkt = detail::build_dns_response(m_info, dns_type::any);
+                auto candidate_pkt = detail::build_dns_response(m_info, dns_type::any, m_opts);
                 std::vector<mdns_record_variant> candidates;
                 detail::walk_dns_frame(
                     std::span<const std::byte>(candidate_pkt.data(), candidate_pkt.size()),
@@ -462,7 +575,7 @@ private:
 
                 for(const auto &rec : candidates)
                 {
-                    if(!m_dup_suppression.is_suppressed(rec, srv_ttl))
+                    if(!m_dup_suppression.is_suppressed(rec, dup_threshold))
                         continue;
                     std::visit([&](const auto &r)
                     {
@@ -480,7 +593,8 @@ private:
             auto response = detail::build_response_with_nsec(m_info, m_pending.qtype,
                                                              m_pending.needs_nsec,
                                                              combined,
-                                                             m_opts.suppress_known_answers);
+                                                             m_opts.suppress_known_answers,
+                                                             m_opts);
             m_pending.reset();
             if(!response.empty())
                 send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "response send");
@@ -508,25 +622,52 @@ private:
         // During probing: check for conflicting responses and simultaneous probes
         if(m_pa_state.state == server_state::probing)
         {
-            if(data.size() >= 12 && (detail::read_u16_be(data.data() + 2) & 0x8000))
+            if(data.size() < 12)
+                return;
+
+            uint16_t flags = detail::read_u16_be(data.data() + 2);
+            if(flags & 0x8000)
             {
-                uint16_t flags = detail::read_u16_be(data.data() + 2);
-                if(flags & 0x8000)
+                // Response from an authoritative owner of the name (QR=1)
+                if(response_conflicts(data))
+                    handle_conflict(conflict_type::name_conflict);
+            }
+            else
+            {
+                // Query -- check for simultaneous probe (RFC 6762 section 8.2).
+                // A probe carries proposed records in the Authority section;
+                // if it contains our name, another host is probing for the same name.
+                // Skip our own looped-back probes by comparing the transaction ID.
+                uint16_t id = detail::read_u16_be(data.data());
+                uint16_t nscount = detail::read_u16_be(data.data() + 8);
+                if(id != m_pa_state.probe_id && nscount > 0 && response_conflicts(data))
                 {
-                    // Response from an authoritative owner of the name
-                    if(response_conflicts(data))
-                        handle_conflict();
-                }
-                else
-                {
-                    // Query -- check for simultaneous probe (RFC 6762 section 8.2).
-                    // A probe carries proposed records in the Authority section;
-                    // if it contains our name, another host is probing for the same name.
-                    // Skip our own looped-back probes by comparing the transaction ID.
-                    uint16_t id = detail::read_u16_be(data.data());
-                    uint16_t nscount = detail::read_u16_be(data.data() + 8);
-                    if(id != m_pa_state.probe_id && nscount > 0 && response_conflicts(data))
-                        handle_conflict();
+                    // RFC 6762 section 8.2 tiebreaking: compare our proposed SRV rdata
+                    // with the received authority SRV rdata lexicographically.
+                    // If our record is greater, we win -- continue probing (do nothing).
+                    // If our record is lesser or equal, we lose -- defer and re-probe.
+                    auto our_rdata   = build_our_srv_rdata();
+                    auto their_rdata = extract_authority_srv_rdata(
+                        std::span<const std::byte>(data.data(), data.size()));
+
+                    if(their_rdata.empty())
+                    {
+                        // No parseable SRV in authority -- fall back to name conflict
+                        handle_conflict(conflict_type::name_conflict);
+                    }
+                    else
+                    {
+                        int cmp = detail::compare_authority_records(
+                            std::span<const std::byte>(our_rdata),
+                            std::span<const std::byte>(their_rdata));
+                        if(cmp <= 0)
+                        {
+                            // We lose the tiebreak -- defer
+                            detail::begin_probing(m_pa_state);
+                            handle_conflict(conflict_type::tiebreak_deferred);
+                        }
+                        // else: we win -- continue probing (do nothing)
+                    }
                 }
             }
             return;
@@ -544,15 +685,20 @@ private:
 
         auto cdata = std::span<const std::byte>(data.data(), data.size());
 
-        // RFC 6762 §7.4: observe multicast responses during 20-120ms response delay
-        // to suppress answers that another responder has already sent.
+        // RFC 6762 §7.4: observe multicast responses during the active response delay
+        // window (20-120ms) to suppress answers that another responder has already sent.
+        // Only accumulate when a response timer is pending — observations outside that
+        // window are not meaningful and would stale-suppress future legitimate responses.
         if(is_response)
         {
-            auto answer_records = parse_answer_records(cdata);
-            for(const auto &rec : answer_records)
+            if(m_pending.armed)
             {
-                uint32_t observed_ttl = std::visit([](const auto &r) { return r.ttl; }, rec);
-                m_dup_suppression.observe(rec, observed_ttl);
+                auto answer_records = parse_answer_records(cdata);
+                for(const auto &rec : answer_records)
+                {
+                    uint32_t observed_ttl = std::visit([](const auto &r) { return r.ttl; }, rec);
+                    m_dup_suppression.observe(rec, observed_ttl);
+                }
             }
             return;
         }
@@ -588,26 +734,50 @@ private:
         // Normal (non-TC) query processing.
         // If the sender has pending TC entries, continue accumulating but also
         // proceed immediately with what we have.
+
+        // RFC 6762 section 6.7: legacy unicast detection.
+        // Queries from non-5353 ports (and non-zero ports, i.e. a real port) are
+        // legacy unicast; respond directly via unicast with TTLs capped at
+        // mdns_options::legacy_unicast_ttl. Port=0 is treated as multicast (test/unknown).
+        if(m_opts.respond_to_legacy_unicast && sender.port != 0 && sender.port != 5353)
+        {
+            auto qmr = detail::match_queries(cdata, m_info, m_opts);
+            if(qmr.any_matched)
+            {
+                uint32_t legacy_cap = static_cast<uint32_t>(this->m_mdns_opts.legacy_unicast_ttl.count());
+                auto pkt = detail::build_dns_response(m_info, qmr.accumulated_qtype, m_opts, legacy_cap);
+                if(!pkt.empty())
+                    send_to(response_mode::unicast, sender, std::span<const std::byte>(pkt), "legacy unicast response");
+            }
+            return;
+        }
+
         auto qmr = detail::match_queries(cdata, m_info, m_opts);
         if(!qmr.any_matched && !qmr.meta_matched && qmr.matched_subtype.empty())
             return;
 
         detail::suppression_mask suppression;
         if(m_opts.suppress_known_answers && qmr.any_matched)
-            suppression = detail::parse_known_answers(cdata, qmr.offset_after_questions, m_info);
+        {
+            uint32_t ka_threshold = static_cast<uint32_t>(
+                static_cast<double>(this->m_mdns_opts.record_ttl.count()) * this->m_mdns_opts.ka_suppression_fraction);
+            suppression = detail::parse_known_answers(cdata, qmr.offset_after_questions, m_info, ka_threshold);
+        }
 
         if(m_opts.on_query && qmr.any_matched)
             m_opts.on_query(sender, qmr.accumulated_qtype, qmr.mode);
 
         if(qmr.meta_matched)
         {
-            auto pkt = detail::build_meta_query_response(m_info);
+            uint32_t meta_ttl = static_cast<uint32_t>(m_opts.record_ttl.count());
+            auto pkt = detail::build_meta_query_response(m_info, meta_ttl);
             send_to(qmr.mode, sender, std::span<const std::byte>(pkt), "meta-query response send");
         }
 
         if(!qmr.matched_subtype.empty())
         {
-            auto pkt = detail::build_subtype_response(qmr.matched_subtype, m_info);
+            uint32_t sub_ttl = static_cast<uint32_t>(m_opts.record_ttl.count());
+            auto pkt = detail::build_subtype_response(qmr.matched_subtype, m_info, sub_ttl);
             send_to(qmr.mode, sender, std::span<const std::byte>(pkt), "subtype response send");
         }
 
@@ -621,7 +791,8 @@ private:
         {
             auto pkt = detail::build_response_with_nsec(m_info, qmr.accumulated_qtype,
                                                         qmr.needs_nsec, suppression,
-                                                        m_opts.suppress_known_answers);
+                                                        m_opts.suppress_known_answers,
+                                                        m_opts);
             if(!pkt.empty())
                 send_to(response_mode::unicast, sender, std::span<const std::byte>(pkt), "response send");
             return;
@@ -654,7 +825,8 @@ private:
         // The merged records ARE the known-answer list accumulated over TC packets;
         // treat them as suppression candidates for our service.
         detail::suppression_mask suppression;
-        static constexpr uint32_t ka_threshold = 2250;
+        uint32_t ka_threshold = static_cast<uint32_t>(
+            static_cast<double>(this->m_mdns_opts.record_ttl.count()) * this->m_mdns_opts.tc_suppression_fraction);
         for(const auto &rec : *merged)
         {
             std::visit([&](const auto &r)
@@ -695,13 +867,14 @@ private:
     // When announce_subtypes is true, also sends subtype PTR records.
     void send_announcement()
     {
-        auto response = detail::build_dns_response(m_info, dns_type::any);
+        uint32_t ann_ttl = static_cast<uint32_t>(m_opts.record_ttl.count());
+        auto response = detail::build_dns_response(m_info, dns_type::any, m_opts);
         if(!response.empty())
             send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "announcement send");
 
         if(m_opts.respond_to_meta_queries)
         {
-            auto pkt = detail::build_meta_query_response(m_info);
+            auto pkt = detail::build_meta_query_response(m_info, ann_ttl);
             if(!pkt.empty())
                 send_to(response_mode::multicast, {}, std::span<const std::byte>(pkt), "announcement send");
         }
@@ -710,7 +883,7 @@ private:
         {
             for(const auto &sub : m_info.subtypes)
             {
-                auto pkt = detail::build_subtype_response(sub, m_info);
+                auto pkt = detail::build_subtype_response(sub, m_info, ann_ttl);
                 if(!pkt.empty())
                     send_to(response_mode::multicast, {}, std::span<const std::byte>(pkt), "announcement send");
             }

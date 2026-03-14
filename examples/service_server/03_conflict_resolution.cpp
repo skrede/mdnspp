@@ -25,7 +25,7 @@ int main()
     auto make_opts = [](const std::string &label)
     {
         mdnspp::service_options opts;
-        opts.on_conflict = [label](const std::string &conflicting_name, std::string &new_name, unsigned attempt) -> bool
+        opts.on_conflict = [label](const std::string &conflicting_name, std::string &new_name, unsigned attempt, mdnspp::conflict_type) -> bool
         {
             if(attempt >= 3)
                 return false;

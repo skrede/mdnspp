@@ -1,0 +1,72 @@
+name: Fuzz testing
+
+on:
+  push:
+    branches: [master,develop]
+  pull_request:
+    branches: [master,develop]
+
+jobs:
+  fuzz:
+    runs-on: ubuntu-latest
+    env:
+      CC: clang
+      CXX: clang++
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Clang and LLVM
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang llvm
+
+      - name: Configure
+        run: >
+          cmake -B build
+          -DCMAKE_C_COMPILER=clang
+          -DCMAKE_CXX_COMPILER=clang++
+          -DMDNSPP_BUILD_FUZZ_TESTS=ON
+          -DMDNSPP_CMAKE_FETCH_DEPS=ON
+
+      - name: Build fuzz targets
+        run: cmake --build build -j$(nproc)
+
+      - name: Generate seed corpus
+        run: cmake --build build --target fuzz_corpus
+
+      - name: Run fuzz harnesses
+        run: |
+          CORPUS=build/fuzz_corpus
+          FUZZ_ARGS="-max_total_time=60 -rss_limit_mb=4096 -print_final_stats=1"
+
+          declare -A CORPUS_MAP=(
+            [fuzz_read_dns_name]=read_dns_name
+            [fuzz_skip_dns_name]=read_dns_name
+            [fuzz_encode_dns_name]=encode_dns_name
+            [fuzz_dns_name]=dns_name
+            [fuzz_parse_a]=parse_a
+            [fuzz_parse_aaaa]=parse_aaaa
+            [fuzz_parse_ptr]=parse_ptr
+            [fuzz_parse_srv]=parse_srv
+            [fuzz_parse_txt]=parse_txt
+            [fuzz_walk_dns_frame_raw]=walk_frame
+            [fuzz_walk_dns_frame_smart]=walk_frame
+            [fuzz_roundtrip_name]=roundtrip
+            [fuzz_roundtrip_dns_name]=roundtrip
+          )
+
+          failed=0
+          for target in "${!CORPUS_MAP[@]}"; do
+            corpus_dir="${CORPUS}/${CORPUS_MAP[$target]}"
+            echo "::group::${target}"
+            if ./build/tests/fuzz/${target} ${FUZZ_ARGS} "${corpus_dir}"; then
+              echo "::endgroup::"
+            else
+              echo "::endgroup::"
+              echo "::error::${target} failed"
+              failed=1
+            fi
+          done
+
+          exit $failed

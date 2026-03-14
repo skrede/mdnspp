@@ -3,6 +3,7 @@
 // build_meta_query_response, build_subtype_response.
 
 #include "mdnspp/service_info.h"
+#include "mdnspp/service_options.h"
 
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/dns_enums.h"
@@ -15,10 +16,43 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <chrono>
 #include <optional>
 
 using namespace mdnspp;
 using namespace mdnspp::detail;
+
+// Walks all resource record sections in a DNS packet (skipping the question section)
+// and returns a vector of all TTL values found.
+static std::vector<uint32_t> collect_rr_ttls(const std::vector<std::byte> &pkt)
+{
+    if(pkt.size() < 12)
+        return {};
+
+    auto span = std::span<const std::byte>(pkt);
+    uint16_t ancount = read_u16_be(pkt.data() + 6);
+    uint16_t arcount = read_u16_be(pkt.data() + 10);
+    uint16_t total_rrs = static_cast<uint16_t>(ancount + arcount);
+
+    size_t offset = 12;
+    std::vector<uint32_t> ttls;
+
+    for(uint16_t i = 0; i < total_rrs; ++i)
+    {
+        if(!skip_dns_name(span, offset))
+            break;
+        if(offset + 8 > pkt.size())
+            break;
+        offset += 2; // type
+        offset += 2; // class
+        ttls.push_back(read_u32_be(pkt.data() + offset));
+        offset += 4; // ttl
+        uint16_t rdlen = read_u16_be(pkt.data() + offset);
+        offset += 2 + rdlen;
+    }
+
+    return ttls;
+}
 
 static service_info make_test_info()
 {
@@ -105,7 +139,7 @@ TEST_CASE("build_response_with_nsec", "[server_response_aggregation]")
     SECTION("produces valid packet for PTR query")
     {
         suppression_mask mask;
-        auto response = build_response_with_nsec(info, dns_type::ptr, false, mask, false);
+        auto response = build_response_with_nsec(info, dns_type::ptr, false, mask, false, service_options{});
         REQUIRE(response.size() >= 12);
         uint16_t flags = read_u16_be(response.data() + 2);
         CHECK(flags == 0x8400);
@@ -114,18 +148,18 @@ TEST_CASE("build_response_with_nsec", "[server_response_aggregation]")
     SECTION("returns empty when type is fully suppressed")
     {
         suppression_mask mask{.ptr = true};
-        auto response = build_response_with_nsec(info, dns_type::ptr, false, mask, true);
+        auto response = build_response_with_nsec(info, dns_type::ptr, false, mask, true, service_options{});
         CHECK(response.empty());
     }
 
     SECTION("appends NSEC record when needs_nsec=true")
     {
         suppression_mask mask;
-        auto without_nsec = build_response_with_nsec(info, dns_type::ptr, false, mask, false);
-        auto with_nsec = build_response_with_nsec(info, dns_type::ptr, true, mask, false);
+        auto without_nsec = build_response_with_nsec(info, dns_type::ptr, false, mask, false, service_options{});
+        auto with_nsec    = build_response_with_nsec(info, dns_type::ptr, true,  mask, false, service_options{});
         CHECK(with_nsec.size() > without_nsec.size());
         // Check arcount was incremented
-        uint16_t arcount = read_u16_be(with_nsec.data() + 10);
+        uint16_t arcount      = read_u16_be(with_nsec.data() + 10);
         uint16_t arcount_orig = read_u16_be(without_nsec.data() + 10);
         CHECK(arcount == arcount_orig + 1);
     }
@@ -133,7 +167,7 @@ TEST_CASE("build_response_with_nsec", "[server_response_aggregation]")
     SECTION("does not suppress when suppress_enabled=false")
     {
         suppression_mask mask{.ptr = true};
-        auto response = build_response_with_nsec(info, dns_type::ptr, false, mask, false);
+        auto response = build_response_with_nsec(info, dns_type::ptr, false, mask, false, service_options{});
         CHECK_FALSE(response.empty());
     }
 }
@@ -160,4 +194,49 @@ TEST_CASE("build_subtype_response", "[server_response_aggregation]")
     CHECK(flags == 0x8400);
     uint16_t ancount = read_u16_be(response.data() + 6);
     CHECK(ancount == 1);
+}
+
+TEST_CASE("build_response_with_nsec uses custom TTL", "[server_response_aggregation]")
+{
+    auto info = make_test_info();
+    suppression_mask mask;
+
+    // Build service_options with all TTLs set to 1234s.
+    service_options opts;
+    opts.ptr_ttl    = std::chrono::seconds{1234};
+    opts.srv_ttl    = std::chrono::seconds{1234};
+    opts.txt_ttl    = std::chrono::seconds{1234};
+    opts.a_ttl      = std::chrono::seconds{1234};
+    opts.aaaa_ttl   = std::chrono::seconds{1234};
+    opts.record_ttl = std::chrono::seconds{1234};
+
+    auto response = build_response_with_nsec(info, dns_type::ptr, false, mask, false, opts);
+
+    REQUIRE(response.size() >= 12);
+    auto ttls = collect_rr_ttls(response);
+    REQUIRE_FALSE(ttls.empty());
+    for(auto ttl : ttls)
+        CHECK(ttl == 1234);
+}
+
+TEST_CASE("build_meta_query_response uses custom TTL", "[server_response_aggregation]")
+{
+    auto info = make_test_info();
+    auto response = build_meta_query_response(info, 600);
+
+    REQUIRE(response.size() >= 12);
+    auto ttls = collect_rr_ttls(response);
+    REQUIRE(ttls.size() == 1);
+    CHECK(ttls[0] == 600);
+}
+
+TEST_CASE("build_subtype_response uses custom TTL", "[server_response_aggregation]")
+{
+    auto info = make_test_info();
+    auto response = build_subtype_response("_printer", info, 900);
+
+    REQUIRE(response.size() >= 12);
+    auto ttls = collect_rr_ttls(response);
+    REQUIRE(ttls.size() == 1);
+    CHECK(ttls[0] == 900);
 }

@@ -492,6 +492,61 @@ TEST_CASE("multiple cache-flush from different origins in succession", "[record_
     CHECK(std::get<record_a>(cache.find("myhost.local.", dns_type::a)[0].record).address_string == "192.168.1.70");
 }
 
+TEST_CASE("goodbye_grace configurable", "[record_cache]")
+{
+    clock_guard cg;
+    record_cache<clock_type> cache(cache_options{.goodbye_grace = std::chrono::seconds(5)});
+    cache.insert(make_a_record("myhost.local.", "192.168.1.50", 0), test_origin());
+
+    auto results = cache.find("myhost.local.", dns_type::a);
+    REQUIRE(results.size() == 1);
+
+    SECTION("goodbye record stored with configured grace period as effective TTL")
+    {
+        CHECK(results[0].wire_ttl == 5);
+        CHECK(results[0].ttl_remaining > 0ns);
+    }
+
+    SECTION("goodbye record survives within configured grace period")
+    {
+        clock_type::advance(4s);
+        auto expired = cache.erase_expired();
+        CHECK(expired.empty());
+        CHECK(cache.find("myhost.local.", dns_type::a).size() == 1);
+    }
+
+    SECTION("goodbye record expires after configured grace period")
+    {
+        clock_type::advance(5s);
+        auto expired = cache.erase_expired();
+        CHECK(expired.size() == 1);
+        CHECK(cache.find("myhost.local.", dns_type::a).empty());
+    }
+}
+
+TEST_CASE("apply_cache_flush uses configured goodbye_grace", "[record_cache][cache_flush]")
+{
+    clock_guard cg;
+    record_cache<clock_type> cache(cache_options{.goodbye_grace = std::chrono::seconds(3)});
+
+    // Insert from origin A
+    cache.insert(make_a_record("myhost.local.", "192.168.1.50", 120), origin_a());
+
+    // Cache-flush from origin B -- applies goodbye_grace as the flush deadline
+    cache.insert(make_a_record("myhost.local.", "192.168.1.60", 120, dns_class::in, true), origin_b());
+
+    // At 2 seconds (< 3s grace): origin A entry still alive
+    clock_type::advance(2s);
+    auto expired = cache.erase_expired();
+    CHECK(expired.empty());
+
+    // At 3 seconds (== 3s grace): origin A entry flushed
+    clock_type::advance(1s);
+    expired = cache.erase_expired();
+    CHECK(expired.size() == 1);
+    CHECK(std::get<record_a>(expired[0].record).address_string == "192.168.1.50");
+}
+
 TEST_CASE("cache-flush does not affect entries with different name or type", "[record_cache][cache_flush]")
 {
     clock_guard cg;

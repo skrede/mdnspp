@@ -86,11 +86,9 @@ public:
     {
         m_receive_handler = std::move(handler);
         m_ctx.register_socket(m_fd,
-            [this](const endpoint &ep, std::span<std::byte> data)
+            [this](const endpoint &ep, uint8_t ttl, std::span<std::byte> data)
             {
-                // TODO: Extract IP TTL via platform-specific ancillary data (IP_RECVTTL).
-                // Currently simulating TTL=255 (link-local assumption).
-                recv_metadata meta{ep, uint8_t{255}};
+                recv_metadata meta{ep, ttl};
                 m_receive_handler(meta, data);
             });
     }
@@ -491,6 +489,13 @@ private:
                 }
 #endif
             }
+
+#if !defined(_WIN32) && defined(IPV6_RECVHOPLIMIT)
+            {
+                const int opt = 1;
+                (void)::setsockopt(m_fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &opt, sizeof(opt));
+            }
+#endif
         }
         else
         {
@@ -617,6 +622,13 @@ private:
                 }
 #endif
             }
+
+#if !defined(_WIN32) && defined(IP_RECVTTL)
+            {
+                const int opt = 1;
+                (void)::setsockopt(m_fd, IPPROTO_IP, IP_RECVTTL, &opt, sizeof(opt));
+            }
+#endif
         }
     }
 
@@ -809,6 +821,13 @@ private:
                 }
 #endif
             }
+
+#if !defined(_WIN32) && defined(IPV6_RECVHOPLIMIT)
+            {
+                const int opt = 1;
+                (void)::setsockopt(m_fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &opt, sizeof(opt));
+            }
+#endif
         }
         else
         {
@@ -945,6 +964,13 @@ private:
                 }
 #endif
             }
+
+#if !defined(_WIN32) && defined(IP_RECVTTL)
+            {
+                const int opt = 1;
+                (void)::setsockopt(m_fd, IPPROTO_IP, IP_RECVTTL, &opt, sizeof(opt));
+            }
+#endif
         }
     }
 };

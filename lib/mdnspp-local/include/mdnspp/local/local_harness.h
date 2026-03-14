@@ -121,7 +121,7 @@ struct local_harness
 
         // First announcement is sent immediately when announcing begins.
         // Second (and any additional) announcements require announce_interval advances.
-        for(unsigned i = 1; i < opts.announce_count; ++i)
+        for(uint8_t i = 1; i < opts.announce_count; ++i)
             advance(opts.announce_interval);
 
         (void)server; // server state is mutated via the shared executor/bus

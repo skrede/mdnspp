@@ -20,6 +20,17 @@
 #include <optional>
 #include <cstddef>
 
+namespace {
+
+inline uint16_t read_u16_be(const auto &buf, std::size_t offset)
+{
+    return static_cast<uint16_t>(
+        (static_cast<uint16_t>(static_cast<uint8_t>(buf[offset])) << 8) |
+        static_cast<uint16_t>(static_cast<uint8_t>(buf[offset + 1])));
+}
+
+}
+
 // Compile-time check: return type must be detail::expected<std::string, mdnspp::mdns_error>
 static_assert(
     std::is_same_v<
@@ -547,8 +558,7 @@ SCENARIO("build_dns_response ANY produces all records as answers (no additional)
             THEN("the packet is non-empty and arcount is 0")
             {
                 REQUIRE(pkt.size() >= 12);
-                uint16_t arcount = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[10])) << 8) |
-                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[11]));
+                uint16_t arcount = read_u16_be(pkt, 10);
                 REQUIRE(arcount == 0);
             }
 
@@ -1238,8 +1248,7 @@ static bool has_tc_bit(const std::vector<std::byte> &pkt)
 static uint16_t packet_ancount(const std::vector<std::byte> &pkt)
 {
     if(pkt.size() < 8) return 0;
-    return (static_cast<uint16_t>(static_cast<uint8_t>(pkt[6])) << 8) |
-            static_cast<uint16_t>(static_cast<uint8_t>(pkt[7]));
+    return read_u16_be(pkt, 6);
 }
 
 // Helper: build a vector of PTR records with a given long name prefix to create large known-answer lists

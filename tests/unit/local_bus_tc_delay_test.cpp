@@ -4,8 +4,8 @@
 // Verifies that basic_service_monitor spaces TC continuation packets using
 // the tc_continuation_delay timer when tc_continuation_delay > 0.
 //
-// TEST-13: TC continuation delay: first packet immediate, subsequent delayed.
-// TEST-14: TC continuation delay zero: all packets sent in same drain cycle.
+// TEST-12a: TC continuation delay: first packet immediate, subsequent delayed.
+// TEST-12b: TC continuation delay zero: all packets sent in same drain cycle.
 
 #include "mdnspp/local/local_harness.h"
 #include "mdnspp/local/local_socket.h"
@@ -86,7 +86,7 @@ void inject_ptr_response(local_harness &h,
 } // namespace
 
 // ---------------------------------------------------------------------------
-// TEST-13: TC continuation delay spaces packets
+// TEST-12a: TC continuation delay spaces packets
 // ---------------------------------------------------------------------------
 //
 // When tc_continuation_delay > 0 and the known-answer section spans multiple TC
@@ -159,7 +159,7 @@ TEST_CASE("TC continuation delay spaces packets", "[local][tc]")
 }
 
 // ---------------------------------------------------------------------------
-// TEST-14: TC continuation delay zero sends all packets in same drain cycle
+// TEST-12b: TC continuation delay zero sends all packets in same drain cycle
 // ---------------------------------------------------------------------------
 //
 // When tc_continuation_delay == 0, all TC continuation packets are sent

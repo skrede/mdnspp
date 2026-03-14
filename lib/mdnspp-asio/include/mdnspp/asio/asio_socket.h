@@ -161,8 +161,8 @@ public:
                         m_sender_endpoint.address().to_string(),
                         m_sender_endpoint.port()
                     };
-                    // TODO: Extract IP TTL via platform-specific ancillary data (IP_RECVTTL).
-                    // Currently simulating TTL=255 (link-local assumption).
+                    // ASIO async_receive_from does not expose IP TTL ancillary data.
+                    // Link-local mDNS traffic arrives with TTL=255 per RFC 6762 §11.
                     mdnspp::recv_metadata meta{ep, uint8_t{255}};
                     handler(meta, std::span<std::byte>(m_buffer.data(), bytes));
                 }

@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <string>
+#include <cstdint>
 
 namespace mdnspp {
 
@@ -19,7 +20,7 @@ struct service_options
     detail::move_only_function<void(const endpoint &sender, dns_type type, response_mode mode)> on_query{};
     /// Fired when TC continuation is processed: reports sender and number of accumulated continuation packets.
     detail::move_only_function<void(const endpoint &sender, std::size_t continuation_count)> on_tc_continuation{};
-    unsigned announce_count{2};
+    uint8_t announce_count{2};
     std::chrono::milliseconds announce_interval{1000};
     bool send_goodbye{true};
     bool suppress_known_answers{true};
@@ -34,7 +35,7 @@ struct service_options
     /// Risk of changing: Reducing speeds up startup but increases the chance
     /// of a name conflict going undetected. Values below 1 skip probing
     /// entirely, which is non-compliant.
-    unsigned probe_count{3};
+    uint8_t probe_count{3};
 
     /// Interval between successive probe packets (RFC 6762 §8.1).
     ///

@@ -27,6 +27,17 @@ using namespace mdnspp::detail;
 using namespace mdnspp::testing;
 using mdnspp::dns_type;
 
+namespace {
+
+inline uint16_t read_u16_be(const auto &buf, std::size_t offset)
+{
+    return static_cast<uint16_t>(
+        (static_cast<uint16_t>(static_cast<uint8_t>(buf[offset])) << 8) |
+        static_cast<uint16_t>(static_cast<uint8_t>(buf[offset + 1])));
+}
+
+}
+
 static service_info make_test_service()
 {
     service_info info;
@@ -114,18 +125,15 @@ SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response]
             THEN("the DNS header has flags=0x8400 (response, authoritative)")
             {
                 REQUIRE(pkt.size() >= 12);
-                uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[2])) << 8) |
-                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[3]));
+                uint16_t flags = read_u16_be(pkt, 2);
                 REQUIRE(flags == 0x8400);
             }
 
             THEN("ancount >= 1 and arcount >= 1 (answer + additional)")
             {
                 REQUIRE(pkt.size() >= 12);
-                uint16_t ancount = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[6])) << 8) |
-                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[7]));
-                uint16_t arcount = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[10])) << 8) |
-                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[11]));
+                uint16_t ancount = read_u16_be(pkt, 6);
+                uint16_t arcount = read_u16_be(pkt, 10);
                 REQUIRE(ancount >= 1);
                 REQUIRE(arcount >= 1);
             }
@@ -617,8 +625,7 @@ SCENARIO("service_server ignores non-matching query", "[service_server][query][n
                     if(pkt.data.size() >= 12)
                     {
                         // Check if it's a response (QR=1) with _wrong in it
-                        uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(pkt.data[2])) << 8) |
-                            static_cast<uint16_t>(static_cast<uint8_t>(pkt.data[3]));
+                        uint16_t flags = read_u16_be(pkt.data, 2);
                         if(flags == 0x8400)
                         {
                             // Parse and check if it contains _wrong
@@ -815,8 +822,7 @@ SCENARIO("probing sends 3 probe queries to multicast", "[service_server][probing
                     // Verify probe packets have flags=0x0000 (query, not response)
                     const auto &pkt = server.socket().sent_packets()[i].data;
                     REQUIRE(pkt.size() >= 4);
-                    uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[2])) << 8) |
-                        static_cast<uint16_t>(static_cast<uint8_t>(pkt[3]));
+                    uint16_t flags = read_u16_be(pkt, 2);
                     REQUIRE(flags == 0x0000);
                 }
             }
@@ -1107,8 +1113,7 @@ SCENARIO("announcement burst sends announce_count announcements", "[service_serv
                 {
                     const auto &pkt = server.socket().sent_packets()[i].data;
                     REQUIRE(pkt.size() >= 4);
-                    uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[2])) << 8) |
-                        static_cast<uint16_t>(static_cast<uint8_t>(pkt[3]));
+                    uint16_t flags = read_u16_be(pkt, 2);
                     REQUIRE(flags == 0x8400);
                     REQUIRE(server.socket().sent_packets()[i].dest == endpoint{"224.0.0.251", 5353});
                 }
@@ -1458,8 +1463,7 @@ static unsigned count_multicast_responses_after(const std::vector<sent_packet> &
     {
         if(packets[i].dest == endpoint{"224.0.0.251", 5353} && packets[i].data.size() >= 12)
         {
-            uint16_t flags = (static_cast<uint16_t>(static_cast<uint8_t>(packets[i].data[2])) << 8) |
-                static_cast<uint16_t>(static_cast<uint8_t>(packets[i].data[3]));
+            uint16_t flags = read_u16_be(packets[i].data, 2);
             if(flags == 0x8400)
                 ++count;
         }
@@ -1782,8 +1786,7 @@ SCENARIO("NSEC in Additional for unmatched type", "[nsec]")
                 REQUIRE(pkt.size() >= 12);
 
                 // Check arcount > 0 (NSEC is in Additional)
-                uint16_t arcount = (static_cast<uint16_t>(static_cast<uint8_t>(pkt[10])) << 8) |
-                    static_cast<uint16_t>(static_cast<uint8_t>(pkt[11]));
+                uint16_t arcount = read_u16_be(pkt, 10);
                 REQUIRE(arcount >= 1);
 
                 // Parse and verify NSEC record exists
@@ -2713,8 +2716,7 @@ SCENARIO("Our own probe loopback is not treated as a conflict", "[service_server
             REQUIRE_FALSE(sent.empty());
             const auto &probe_pkt = sent.back().data;
             REQUIRE(probe_pkt.size() >= 2);
-            uint16_t our_id = (static_cast<uint16_t>(static_cast<uint8_t>(probe_pkt[0])) << 8) |
-                               static_cast<uint16_t>(static_cast<uint8_t>(probe_pkt[1]));
+            uint16_t our_id = read_u16_be(probe_pkt, 0);
 
             // Build a probe with our OWN transaction ID (loopback simulation)
             auto loopback_probe = build_probe_query(make_test_info());

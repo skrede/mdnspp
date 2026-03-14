@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_SERVER_RESPONSE_AGGREGATION_H
 
 #include "mdnspp/service_info.h"
+#include "mdnspp/service_options.h"
 
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/dns_write.h"
@@ -63,7 +64,7 @@ inline std::vector<std::byte> build_response_with_nsec(const service_info &info,
                                                        bool needs_nsec,
                                                        const suppression_mask &mask,
                                                        bool suppress_enabled,
-                                                       uint32_t ttl = 4500)
+                                                       const service_options &opts)
 {
     // For specific type queries, check if that type is suppressed
     if(suppress_enabled && qtype != dns_type::any)
@@ -82,7 +83,9 @@ inline std::vector<std::byte> build_response_with_nsec(const service_info &info,
             return {};
     }
 
-    auto response = build_dns_response(info, qtype, ttl);
+    auto response = build_dns_response(info, qtype, opts);
+
+    uint32_t nsec_ttl = static_cast<uint32_t>(opts.record_ttl.count());
 
     if(needs_nsec && qtype != dns_type::any)
     {
@@ -96,12 +99,12 @@ inline std::vector<std::byte> build_response_with_nsec(const service_info &info,
             push_u16_be(response, 0x0001); // arcount = 1
 
             auto owner_name = encode_dns_name(info.hostname);
-            append_nsec_rr(response, owner_name, info, ttl);
+            append_nsec_rr(response, owner_name, info, nsec_ttl);
         }
         else
         {
             auto owner_name = encode_dns_name(info.hostname);
-            append_nsec_rr(response, owner_name, info, ttl);
+            append_nsec_rr(response, owner_name, info, nsec_ttl);
             uint16_t arcount = read_u16_be(response.data() + 10);
             ++arcount;
             response[10] = static_cast<std::byte>(static_cast<uint8_t>(arcount >> 8));

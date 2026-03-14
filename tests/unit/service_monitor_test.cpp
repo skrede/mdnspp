@@ -15,6 +15,7 @@
 //   MON-08 -- monitor_options and resolved_service public contracts correct
 
 #include "mdnspp/service_info.h"
+#include "mdnspp/service_options.h"
 #include "mdnspp/basic_service_monitor.h"
 
 #include "mdnspp/detail/dns_wire.h"
@@ -40,6 +41,20 @@ using test_monitor = mdnspp::basic_service_monitor<MockPolicy, test_clock>;
 
 namespace {
 
+// Build a service_options with a uniform TTL applied to all record types.
+mdnspp::service_options make_uniform_opts(uint32_t ttl)
+{
+    mdnspp::service_options opts;
+    auto s = std::chrono::seconds{ttl};
+    opts.ptr_ttl    = s;
+    opts.srv_ttl    = s;
+    opts.txt_ttl    = s;
+    opts.a_ttl      = s;
+    opts.aaaa_ttl   = s;
+    opts.record_ttl = s;
+    return opts;
+}
+
 // Build a minimal PTR-response packet for a service.
 // service_type e.g. "_http._tcp.local"
 // instance_name e.g. "MyServer._http._tcp.local"
@@ -57,7 +72,7 @@ std::vector<std::byte> make_ptr_packet(const std::string &service_type,
     info.hostname     = hostname;
     info.port         = 8080;
     info.address_ipv4 = ipv4;
-    return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::ptr, ttl);
+    return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::ptr, make_uniform_opts(ttl));
 }
 
 // Build a SRV response packet.
@@ -72,7 +87,7 @@ std::vector<std::byte> make_srv_packet(const std::string &instance_name,
     info.hostname     = hostname;
     info.port         = port;
     info.address_ipv4 = "1.2.3.4"; // needed for additional records
-    return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::srv, ttl);
+    return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::srv, make_uniform_opts(ttl));
 }
 
 // Build a bare A response packet (owner = hostname).
@@ -88,7 +103,7 @@ std::vector<std::byte> make_a_packet(const std::string &service_type,
     info.hostname     = hostname;
     info.port         = 8080;
     info.address_ipv4 = ipv4;
-    return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::a, ttl);
+    return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::a, make_uniform_opts(ttl));
 }
 
 // Build a TXT response packet.
@@ -104,7 +119,7 @@ std::vector<std::byte> make_txt_packet(const std::string &service_type,
     info.hostname      = hostname;
     info.port          = 8080;
     info.txt_records   = txt;
-    return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::txt, ttl);
+    return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::txt, make_uniform_opts(ttl));
 }
 
 mdnspp::endpoint default_sender()

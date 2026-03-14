@@ -498,7 +498,7 @@ SCENARIO("build_dns_response produces valid AAAA response", "[build_dns_response
 
         WHEN("build_dns_response is called with qtype=28 (AAAA)")
         {
-            auto pkt = build_dns_response(info, mdnspp::dns_type::aaaa);
+            auto pkt = build_dns_response(info, mdnspp::dns_type::aaaa, mdnspp::service_options{});
 
             THEN("walk_dns_frame parses a record_aaaa")
             {
@@ -524,7 +524,7 @@ SCENARIO("build_dns_response returns empty for AAAA when no IPv6 address", "[bui
 
         WHEN("build_dns_response is called with qtype=28 (AAAA)")
         {
-            auto pkt = build_dns_response(info, mdnspp::dns_type::aaaa);
+            auto pkt = build_dns_response(info, mdnspp::dns_type::aaaa, mdnspp::service_options{});
 
             THEN("the returned vector is empty")
             {
@@ -542,7 +542,7 @@ SCENARIO("build_dns_response ANY produces all records as answers (no additional)
 
         WHEN("build_dns_response is called with qtype=255 (ANY)")
         {
-            auto pkt = build_dns_response(info, mdnspp::dns_type::any);
+            auto pkt = build_dns_response(info, mdnspp::dns_type::any, mdnspp::service_options{});
 
             THEN("the packet is non-empty and arcount is 0")
             {
@@ -583,7 +583,7 @@ SCENARIO("build_dns_response TXT with empty txt_records produces valid zero-leng
 
         WHEN("build_dns_response is called with qtype=16 (TXT)")
         {
-            auto pkt = build_dns_response(info, mdnspp::dns_type::txt);
+            auto pkt = build_dns_response(info, mdnspp::dns_type::txt, mdnspp::service_options{});
 
             THEN("the packet is non-empty (valid TXT with empty rdata)")
             {
@@ -601,7 +601,7 @@ SCENARIO("build_dns_response PTR includes AAAA additional when service has IPv6"
 
         WHEN("build_dns_response is called with qtype=12 (PTR)")
         {
-            auto pkt = build_dns_response(info, mdnspp::dns_type::ptr);
+            auto pkt = build_dns_response(info, mdnspp::dns_type::ptr, mdnspp::service_options{});
 
             THEN("walk_dns_frame yields PTR, SRV, A, and AAAA records")
             {
@@ -854,7 +854,7 @@ SCENARIO("build_dns_response PTR answer does NOT have cache-flush bit set", "[bu
 
         WHEN("build_dns_response is called with qtype=PTR")
         {
-            auto pkt = build_dns_response(info, mdnspp::dns_type::ptr);
+            auto pkt = build_dns_response(info, mdnspp::dns_type::ptr, mdnspp::service_options{});
 
             THEN("the first RR (PTR answer) has rrclass 0x0001 (no cache-flush bit)")
             {
@@ -873,7 +873,7 @@ SCENARIO("build_dns_response SRV answer has cache-flush bit set", "[build_dns_re
 
         WHEN("build_dns_response is called with qtype=SRV")
         {
-            auto pkt = build_dns_response(info, mdnspp::dns_type::srv);
+            auto pkt = build_dns_response(info, mdnspp::dns_type::srv, mdnspp::service_options{});
 
             THEN("the first RR (SRV answer) has rrclass 0x8001 (cache-flush bit set)")
             {
@@ -892,7 +892,7 @@ SCENARIO("build_dns_response ANY sets cache-flush on unique records only", "[bui
 
         WHEN("build_dns_response is called with qtype=ANY")
         {
-            auto pkt = build_dns_response(info, mdnspp::dns_type::any);
+            auto pkt = build_dns_response(info, mdnspp::dns_type::any, mdnspp::service_options{});
 
             THEN("PTR has rrclass 0x0001, SRV/A/AAAA/TXT have rrclass 0x8001")
             {

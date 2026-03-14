@@ -4,6 +4,7 @@
 #include <chrono>
 #include <vector>
 #include <cstddef>
+#include <cstdint>
 
 namespace mdnspp {
 
@@ -231,7 +232,7 @@ struct mdns_options
     /// Risk of changing: Reducing below 255 allows packets forwarded by
     /// routers, which violates the mDNS link-local scoping requirement and
     /// enables cross-segment spoofing attacks.
-    unsigned receive_ttl_minimum{255};
+    uint32_t receive_ttl_minimum{255};
 };
 
 }

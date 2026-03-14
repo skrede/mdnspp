@@ -88,6 +88,7 @@ public:
                                    cache_options copts = {})
         : base(ex, sock_opts, std::move(mdns_opts))
         , m_scheduler_timer(ex)
+        , m_tc_send_timer(ex)
         , m_opts(std::move(opts))
         , m_cache_opts(std::move(copts))
         , m_cache(make_cache_options())
@@ -114,6 +115,7 @@ public:
                           std::error_code &ec)
         : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_scheduler_timer(ex)
+        , m_tc_send_timer(ex)
         , m_opts(std::move(opts))
         , m_cache_opts(std::move(copts))
         , m_cache(make_cache_options())
@@ -150,11 +152,12 @@ public:
             this->m_socket,
             this->m_timer,
             infinite,
-            [this](const endpoint &sender, std::span<std::byte> data) -> bool
+            [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
             {
-                return handle_packet(sender, data);
+                return handle_packet(meta.sender, data);
             },
-            [] { /* silence handler -- no-op for monitor */ });
+            [] { /* silence handler -- no-op for monitor */ },
+            this->m_mdns_opts.receive_ttl_minimum);
 
         this->m_loop->start();
         arm_scheduler();
@@ -166,6 +169,7 @@ public:
         base::stop([this]()
         {
             m_scheduler_timer.cancel();
+            m_tc_send_timer.cancel();
             if(this->m_loop)
                 this->m_loop->stop();
             if(m_on_done)
@@ -975,13 +979,37 @@ private:
             svc_type, dns_type::ptr, known_answers,
             this->m_mdns_opts.max_query_payload);
 
-        // Send all packets immediately.
-        // NOTE: tc_continuation_delay is not applied here; timer-based
-        // continuation scheduling may be added in a future phase.
-        for(const auto &pkt : packets)
+        if(!packets.empty())
+            send_tc_packets(std::move(packets), 0);
+    }
+
+    void send_tc_packets(std::vector<std::vector<std::byte>> packets, std::size_t idx)
+    {
+        if(idx >= packets.size() || this->m_stopped.load(std::memory_order_acquire))
+            return;
+
+        this->m_socket.send(this->multicast_endpoint(),
+                            std::span<const std::byte>(packets[idx]));
+
+        if(idx + 1 < packets.size())
         {
-            this->m_socket.send(this->multicast_endpoint(),
-                                std::span<const std::byte>(pkt));
+            auto delay = this->m_mdns_opts.tc_continuation_delay;
+            if(delay.count() > 0)
+            {
+                auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(delay);
+                m_tc_send_timer.expires_after(ms);
+                m_tc_send_timer.async_wait(
+                    [this, pkts = std::move(packets), idx](std::error_code ec) mutable
+                    {
+                        if(ec || this->m_stopped.load(std::memory_order_acquire))
+                            return;
+                        send_tc_packets(std::move(pkts), idx + 1);
+                    });
+            }
+            else
+            {
+                send_tc_packets(std::move(packets), idx + 1);
+            }
         }
     }
 
@@ -1042,6 +1070,9 @@ private:
     /// Dedicated scheduler timer for backoff/TTL-refresh scheduling.
     /// Separate from the base recv timer to allow independent scheduling.
     timer_type m_scheduler_timer;
+
+    /// Timer used to space TC continuation packets when tc_continuation_delay > 0.
+    timer_type m_tc_send_timer;
 
     monitor_options m_opts;
 

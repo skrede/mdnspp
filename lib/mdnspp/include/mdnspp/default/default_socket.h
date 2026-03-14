@@ -82,10 +82,17 @@ public:
 
     /// Register this socket and its receive handler with DefaultContext.
     /// Called by recv_loop when it wants to arm the next receive.
-    void async_receive(std::function<void(const endpoint &, std::span<std::byte>)> handler)
+    void async_receive(std::function<void(const recv_metadata &, std::span<std::byte>)> handler)
     {
         m_receive_handler = std::move(handler);
-        m_ctx.register_socket(m_fd, m_receive_handler);
+        m_ctx.register_socket(m_fd,
+            [this](const endpoint &ep, std::span<std::byte> data)
+            {
+                // TODO: Extract IP TTL via platform-specific ancillary data (IP_RECVTTL).
+                // Currently simulating TTL=255 (link-local assumption).
+                recv_metadata meta{ep, uint8_t{255}};
+                m_receive_handler(meta, data);
+            });
     }
 
     /// Synchronous sendto(). mDNS sends are tiny and infrequent.
@@ -194,7 +201,7 @@ public:
 private:
     DefaultContext &m_ctx;
     detail::native_socket_t m_fd{detail::invalid_socket};
-    std::function<void(const endpoint &, std::span<std::byte>)> m_receive_handler;
+    std::function<void(const recv_metadata &, std::span<std::byte>)> m_receive_handler;
 
     static bool is_ipv6(const std::string &addr)
     {

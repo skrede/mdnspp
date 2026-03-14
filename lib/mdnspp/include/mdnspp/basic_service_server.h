@@ -196,7 +196,15 @@ public:
            (m_pa_state.state == server_state::live || m_pa_state.state == server_state::announcing))
         {
             std::error_code ec;
-            auto goodbye = detail::build_dns_response(m_info, dns_type::any, 0);
+            // Goodbye uses TTL=0 for all record types (RFC 6762 §11.3).
+            service_options goodbye_opts;
+            goodbye_opts.ptr_ttl    = std::chrono::seconds{0};
+            goodbye_opts.srv_ttl    = std::chrono::seconds{0};
+            goodbye_opts.txt_ttl    = std::chrono::seconds{0};
+            goodbye_opts.a_ttl      = std::chrono::seconds{0};
+            goodbye_opts.aaaa_ttl   = std::chrono::seconds{0};
+            goodbye_opts.record_ttl = std::chrono::seconds{0};
+            auto goodbye = detail::build_dns_response(m_info, dns_type::any, goodbye_opts);
             if(!goodbye.empty())
                 this->m_socket.send(this->multicast_endpoint(),
                               std::as_bytes(std::span(goodbye)), ec);
@@ -266,15 +274,16 @@ private:
             this->m_socket,
             this->m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
-            [this](const endpoint &sender, std::span<std::byte> data) -> bool
+            [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
             {
-                on_query(sender, data);
+                on_query(meta.sender, data);
                 return true;
             },
             []()
             {
                 // no-op on silence
-            });
+            },
+            this->m_mdns_opts.receive_ttl_minimum);
 
         start_probing();
         this->m_loop->start();
@@ -552,11 +561,12 @@ private:
             // RFC 6762 §7.4: merge duplicate suppression observations into suppression mask.
             // Build the exact records we would send and check each against m_dup_suppression.
             // Using the round-trip serialised+parsed form ensures identity equality matches.
-            uint32_t srv_ttl = static_cast<uint32_t>(this->m_mdns_opts.record_ttl.count());
+            // Duplicate suppression threshold uses record_ttl as a single scalar baseline.
+            uint32_t dup_threshold = static_cast<uint32_t>(m_opts.record_ttl.count());
             auto combined = m_pending.suppression;
             if(!m_dup_suppression.empty())
             {
-                auto candidate_pkt = detail::build_dns_response(m_info, dns_type::any, srv_ttl);
+                auto candidate_pkt = detail::build_dns_response(m_info, dns_type::any, m_opts);
                 std::vector<mdns_record_variant> candidates;
                 detail::walk_dns_frame(
                     std::span<const std::byte>(candidate_pkt.data(), candidate_pkt.size()),
@@ -565,7 +575,7 @@ private:
 
                 for(const auto &rec : candidates)
                 {
-                    if(!m_dup_suppression.is_suppressed(rec, srv_ttl))
+                    if(!m_dup_suppression.is_suppressed(rec, dup_threshold))
                         continue;
                     std::visit([&](const auto &r)
                     {
@@ -584,7 +594,7 @@ private:
                                                              m_pending.needs_nsec,
                                                              combined,
                                                              m_opts.suppress_known_answers,
-                                                             srv_ttl);
+                                                             m_opts);
             m_pending.reset();
             if(!response.empty())
                 send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "response send");
@@ -729,10 +739,8 @@ private:
             auto qmr = detail::match_queries(cdata, m_info, m_opts);
             if(qmr.any_matched)
             {
-                uint32_t full_ttl   = static_cast<uint32_t>(this->m_mdns_opts.record_ttl.count());
-                uint32_t legacy_ttl = static_cast<uint32_t>(this->m_mdns_opts.legacy_unicast_ttl.count());
-                uint32_t capped_ttl = (std::min)(full_ttl, legacy_ttl);
-                auto pkt = detail::build_dns_response(m_info, qmr.accumulated_qtype, capped_ttl);
+                uint32_t legacy_cap = static_cast<uint32_t>(this->m_mdns_opts.legacy_unicast_ttl.count());
+                auto pkt = detail::build_dns_response(m_info, qmr.accumulated_qtype, m_opts, legacy_cap);
                 if(!pkt.empty())
                     send_to(response_mode::unicast, sender, std::span<const std::byte>(pkt), "legacy unicast response");
             }
@@ -776,11 +784,10 @@ private:
 
         if(qmr.mode == response_mode::unicast)
         {
-            uint32_t resp_ttl = static_cast<uint32_t>(m_opts.record_ttl.count());
             auto pkt = detail::build_response_with_nsec(m_info, qmr.accumulated_qtype,
                                                         qmr.needs_nsec, suppression,
                                                         m_opts.suppress_known_answers,
-                                                        resp_ttl);
+                                                        m_opts);
             if(!pkt.empty())
                 send_to(response_mode::unicast, sender, std::span<const std::byte>(pkt), "response send");
             return;
@@ -856,7 +863,7 @@ private:
     void send_announcement()
     {
         uint32_t ann_ttl = static_cast<uint32_t>(m_opts.record_ttl.count());
-        auto response = detail::build_dns_response(m_info, dns_type::any, ann_ttl);
+        auto response = detail::build_dns_response(m_info, dns_type::any, m_opts);
         if(!response.empty())
             send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "announcement send");
 

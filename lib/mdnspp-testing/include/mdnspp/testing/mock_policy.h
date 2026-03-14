@@ -90,13 +90,14 @@ public:
         enqueue(std::move(packet), endpoint{});
     }
 
-    void async_receive(std::function<void(const endpoint &, std::span<std::byte>)> handler)
+    void async_receive(std::function<void(const recv_metadata &, std::span<std::byte>)> handler)
     {
         if(!m_receive_queue.empty())
         {
             auto [packet, sender] = std::move(m_receive_queue.front());
             m_receive_queue.pop();
-            handler(std::move(sender), std::span<std::byte>(packet));
+            recv_metadata meta{std::move(sender), uint8_t{255}};
+            handler(meta, std::span<std::byte>(packet));
         }
         else
         {
@@ -111,7 +112,8 @@ public:
         if(m_pending_receive)
         {
             auto h = std::exchange(m_pending_receive, nullptr);
-            h(std::move(from), std::span<std::byte>(packet));
+            recv_metadata meta{std::move(from), uint8_t{255}};
+            h(meta, std::span<std::byte>(packet));
         }
         else
         {
@@ -151,7 +153,7 @@ public:
 
 private:
     std::queue<std::pair<std::vector<std::byte>, endpoint>> m_receive_queue;
-    std::function<void(const endpoint &, std::span<std::byte>)> m_pending_receive;
+    std::function<void(const recv_metadata &, std::span<std::byte>)> m_pending_receive;
     std::vector<sent_packet> m_sent_packets;
     socket_options m_opts{};
 

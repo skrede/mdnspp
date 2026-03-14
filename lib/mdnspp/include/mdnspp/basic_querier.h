@@ -177,8 +177,10 @@ private:
             this->m_timer,
             m_silence_timeout,
             // on_packet: check for duplicate queries during delay, then walk frame
-            [this](const endpoint &sender, std::span<std::byte> data) -> bool
+            [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
             {
+                const endpoint &sender = meta.sender;
+
                 if(this->m_stopped.load(std::memory_order_acquire))
                     return false;
 
@@ -263,7 +265,8 @@ private:
                 this->m_loop->stop();
                 if(auto h = std::exchange(m_on_completion, nullptr); h)
                     h(std::error_code{}, m_results);
-            });
+            },
+            this->m_mdns_opts.receive_ttl_minimum);
 
         if(mode == response_mode::unicast)
         {

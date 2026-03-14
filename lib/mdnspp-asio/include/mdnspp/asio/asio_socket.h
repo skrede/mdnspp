@@ -148,7 +148,7 @@ public:
         m_buffer.resize(4096);
     }
 
-    void async_receive(std::function<void(const mdnspp::endpoint &, std::span<std::byte>)> handler)
+    void async_receive(std::function<void(const mdnspp::recv_metadata &, std::span<std::byte>)> handler)
     {
         m_socket.async_receive_from(
             asio::buffer(m_buffer),
@@ -161,7 +161,10 @@ public:
                         m_sender_endpoint.address().to_string(),
                         m_sender_endpoint.port()
                     };
-                    handler(ep, std::span<std::byte>(m_buffer.data(), bytes));
+                    // TODO: Extract IP TTL via platform-specific ancillary data (IP_RECVTTL).
+                    // Currently simulating TTL=255 (link-local assumption).
+                    mdnspp::recv_metadata meta{ep, uint8_t{255}};
+                    handler(meta, std::span<std::byte>(m_buffer.data(), bytes));
                 }
             });
     }

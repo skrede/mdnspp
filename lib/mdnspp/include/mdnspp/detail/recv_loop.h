@@ -4,6 +4,7 @@
 #include "mdnspp/policy.h"
 #include <atomic>
 #include <chrono>
+#include <cstdint>
 #include <functional>
 #include <span>
 #include <vector>
@@ -19,19 +20,21 @@ public:
 
     // Returns true if the packet was relevant (resets silence timer),
     // false to ignore (timer continues counting down).
-    using packet_handler = std::function<bool(const endpoint &, std::span<std::byte>)>;
+    using packet_handler = std::function<bool(const recv_metadata &, std::span<std::byte>)>;
 
     recv_loop(
         socket_type &socket,
         timer_type &timer,
         std::chrono::milliseconds silence_timeout,
         packet_handler on_packet,
-        std::function<void()> on_silence)
+        std::function<void()> on_silence,
+        uint32_t receive_ttl_minimum = 0)
         : m_socket(socket)
         , m_timer(timer)
         , m_silence_timeout(silence_timeout)
         , m_on_packet(std::move(on_packet))
         , m_on_silence(std::move(on_silence))
+        , m_receive_ttl_minimum(receive_ttl_minimum)
         , m_stopped(false)
     {
     }
@@ -72,13 +75,18 @@ private:
         }
         m_buffer.resize(4096);
         m_socket.async_receive(
-            [this](const endpoint &ep, std::span<std::byte> data)
+            [this](const recv_metadata &meta, std::span<std::byte> data)
             {
                 if(m_stopped.load(std::memory_order_acquire))
                 {
                     return;
                 }
-                bool relevant = m_on_packet(ep, data);
+                if(static_cast<uint32_t>(meta.ttl) < m_receive_ttl_minimum)
+                {
+                    arm_receive();
+                    return;
+                }
+                bool relevant = m_on_packet(meta, data);
                 if(relevant)
                     arm_silence_timer();
                 arm_receive();
@@ -104,6 +112,7 @@ private:
     std::chrono::milliseconds m_silence_timeout;
     packet_handler m_on_packet;
     std::function<void()> m_on_silence;
+    uint32_t m_receive_ttl_minimum;
     std::atomic<bool> m_stopped;
     std::vector<std::byte> m_buffer;
 };

@@ -128,7 +128,7 @@ int main()
     Querier querier{
         executor,
         mdnspp::query_options{
-            .on_record = [](const mdnspp::mdns_record_variant &rec)
+            .on_record = [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &rec)
             {
                 std::visit([](const auto &r)
                 {

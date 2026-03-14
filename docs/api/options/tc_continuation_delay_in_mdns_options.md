@@ -21,7 +21,7 @@ The RFC default is no added delay (zero). Reasons to add delay:
 
 Reasons to keep at zero:
 
-- **Low-traffic networks** — when the total known-answer list rarely exceeds one packet's worth, this field has no practical effect. Keeping it at zero adds no overhead.
+- **Low-traffic networks** — when the total known-answer list rarely exceeds one packet's worth, this field has no practical effect. When set to zero, continuation packets are sent within the same executor drain cycle without scheduling inter-packet timers.
 
 ## Danger
 

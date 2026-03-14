@@ -2,7 +2,7 @@
 
 | Attribute | Value |
 |-----------|-------|
-| **Type** | `unsigned` |
+| **Type** | `uint32_t` |
 | **Default** | `255` |
 | **One-liner** | Minimum IP TTL (hop limit) for received mDNS packets |
 

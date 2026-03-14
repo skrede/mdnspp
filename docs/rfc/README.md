@@ -28,8 +28,8 @@ are implemented and which remain pending.
 | 8.3 | Announcing (configurable burst) | `[x]` | [probing.md](probing.md) |
 | 10.1 | Goodbye packets (TTL=0) | `[x]` | [goodbye.md](goodbye.md) |
 | 10.2 | Cache-flush bit | `[x]` | [cache-flush.md](cache-flush.md) |
-| 11 | Multicast TTL 255 | `[x]` | — |
-| 11 | Receive-side TTL 255 enforcement | `[x]` | mdns_options: receive_ttl_minimum |
+| 11 | Multicast TTL 255 | `[x]` | [socket-options.md](../socket-options.md) |
+| 11 | Receive-side TTL 255 enforcement | `[x]` | [receive_ttl_minimum](../api/options/receive_ttl_minimum_in_mdns_options.md) |
 
 ## RFC 6763 -- DNS-Based Service Discovery
 

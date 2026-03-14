@@ -99,7 +99,7 @@ uint32_t max_ttl(const std::vector<mdns_record_variant> &records)
 {
     uint32_t m = 0;
     for(const auto &rec : records)
-        m = std::max(m, std::visit([](const auto &r) { return r.ttl; }, rec));
+        m = (std::max)(m, std::visit([](const auto &r) { return r.ttl; }, rec));
     return m;
 }
 

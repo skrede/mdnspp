@@ -234,8 +234,11 @@ TEST_CASE("Goodbye with delayed expiry", "[local][discovery]")
     monitor.async_start();
     h.executor.drain();
 
-    // Advance to trigger discovery (scheduler fires at 200ms, sends query, server responds).
-    h.advance(std::chrono::milliseconds{400});
+    // Advance to trigger discovery.
+    // First step: monitor's scheduler fires (initial_interval=200ms) and sends PTR query.
+    // Second step: server's response timer fires ([20,120]ms delay) and delivers response.
+    h.advance(std::chrono::milliseconds{200});
+    h.advance(std::chrono::milliseconds{200});
 
     REQUIRE_FALSE(found_services.empty());
 

@@ -7,6 +7,7 @@
 #include <span>
 #include <deque>
 #include <chrono>
+#include <string>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
@@ -21,7 +22,10 @@ template <typename Clock = std::chrono::steady_clock>
 class local_bus
 {
 public:
-    local_bus() = default;
+    explicit local_bus(uint16_t start_port = 5353)
+        : m_port(start_port)
+    {
+    }
 
     local_bus(const local_bus &) = delete;
     local_bus &operator=(const local_bus &) = delete;
@@ -30,7 +34,8 @@ public:
 
     endpoint register_socket(local_socket<Clock> *sock, const socket_options &opts)
     {
-        endpoint assigned{"127.0.0.1", m_next_port++};
+        uint16_t port = opts.port_override.has_value() ? *opts.port_override : m_port;
+        endpoint assigned{"127.0.0." + std::to_string(m_next_ip++), port};
         m_sockets.push_back(socket_entry{
             sock,
             assigned,
@@ -117,7 +122,8 @@ private:
 
     std::vector<socket_entry> m_sockets;
     std::deque<queued_packet> m_queue;
-    uint16_t m_next_port{10000};
+    uint16_t m_port{5353};
+    uint8_t  m_next_ip{1};
 };
 
 }

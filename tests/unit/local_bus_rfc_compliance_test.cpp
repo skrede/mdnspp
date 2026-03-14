@@ -19,6 +19,7 @@
 #include "mdnspp/observer_options.h"
 #include "mdnspp/service_options.h"
 #include "mdnspp/resolved_service.h"
+
 #include "mdnspp/basic_observer.h"
 #include "mdnspp/basic_service_server.h"
 #include "mdnspp/basic_service_monitor.h"
@@ -128,10 +129,6 @@ TEST_CASE("Known-answer suppression", "[local][rfc]")
     service_options srv_opts;
     srv_opts.respond_to_meta_queries    = false;
     srv_opts.suppress_known_answers     = true;
-    // Injector sockets are assigned ports >= 10000 by local_bus, which are not port 5353.
-    // Without this, the server treats injected queries as legacy unicast and processes them
-    // in a separate code path that bypasses known-answer suppression and on_query.
-    srv_opts.respond_to_legacy_unicast  = false;
     srv_opts.on_query = [&](const endpoint &, dns_type, response_mode)
     {
         ++queries_received_by_server;
@@ -526,8 +523,8 @@ TEST_CASE("Cache-flush propagation across monitors", "[local][rfc]")
                                             "_http._tcp.local.",
                                             "flushserver.local.", 9300,
                                             "10.0.0.99");
-    uint32_t stale_ttl = 4500;
-    auto stale_pkt = detail::build_dns_response(stale_info, dns_type::a, stale_ttl);
+    service_options stale_opts;
+    auto stale_pkt = detail::build_dns_response(stale_info, dns_type::a, stale_opts);
 
     inject(h, std::span<const std::byte>(stale_pkt));
     h.executor.drain();

@@ -368,7 +368,10 @@ TEST_CASE("Multiple services and types routing", "[local][routing]")
 
     // Advance to let both monitors send queries and receive responses.
     // fast_scheduler_opts caps max_interval at 200ms so queries fire quickly.
-    h.advance(std::chrono::milliseconds{400});
+    // First step fires the monitors' initial queries; second step lets the
+    // server response timers (default 20-120ms delay) fire and deliver responses.
+    h.advance(std::chrono::milliseconds{200});
+    h.advance(std::chrono::milliseconds{200});
 
     // Monitor A should have discovered the HTTP server (WebServer) only.
     REQUIRE_FALSE(http_found.empty());

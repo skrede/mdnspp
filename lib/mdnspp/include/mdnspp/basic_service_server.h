@@ -685,15 +685,20 @@ private:
 
         auto cdata = std::span<const std::byte>(data.data(), data.size());
 
-        // RFC 6762 §7.4: observe multicast responses during 20-120ms response delay
-        // to suppress answers that another responder has already sent.
+        // RFC 6762 §7.4: observe multicast responses during the active response delay
+        // window (20-120ms) to suppress answers that another responder has already sent.
+        // Only accumulate when a response timer is pending — observations outside that
+        // window are not meaningful and would stale-suppress future legitimate responses.
         if(is_response)
         {
-            auto answer_records = parse_answer_records(cdata);
-            for(const auto &rec : answer_records)
+            if(m_pending.armed)
             {
-                uint32_t observed_ttl = std::visit([](const auto &r) { return r.ttl; }, rec);
-                m_dup_suppression.observe(rec, observed_ttl);
+                auto answer_records = parse_answer_records(cdata);
+                for(const auto &rec : answer_records)
+                {
+                    uint32_t observed_ttl = std::visit([](const auto &r) { return r.ttl; }, rec);
+                    m_dup_suppression.observe(rec, observed_ttl);
+                }
             }
             return;
         }

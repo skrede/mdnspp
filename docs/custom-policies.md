@@ -12,7 +12,7 @@ Four built-in policies cover most use cases:
 | `DefaultPolicy` | `<mdnspp/defaults.h>` | Standalone, no external dependencies |
 | `AsioPolicy` | `<mdnspp/asio.h>` | Integration with ASIO (Boost.Asio or standalone Asio) |
 | `MockPolicy` | `<mdnspp/testing/mock_policy.h>` | Unit testing without network access |
-| `LocalPolicy` | `<mdnspp/local/local_policy.h>` | In-process multicast simulation |
+| `InProcPolicy` | `<mdnspp/inproc/inproc_policy.h>` | In-process multicast simulation |
 
 ## Primer
 
@@ -252,19 +252,19 @@ Custom policies are most useful when:
 
 ---
 
-### LocalPolicy as a worked example
+### InProcPolicy as a worked example
 
-`LocalPolicy` is the clearest in-tree example of how to satisfy the `Policy`
+`InProcPolicy` is the clearest in-tree example of how to satisfy the `Policy`
 concept with a custom executor model. Source:
-`lib/mdnspp-local/include/mdnspp/local/local_policy.h`
+`lib/mdnspp-inproc/include/mdnspp/inproc/inproc_policy.h`
 
 ```cpp
 template <typename Clock = std::chrono::steady_clock>
-struct local_policy
+struct inproc_policy
 {
-    using executor_type = local_executor<Clock> &;
-    using socket_type   = local_socket<Clock>;
-    using timer_type    = local_timer<Clock>;
+    using executor_type = inproc_executor<Clock> &;
+    using socket_type   = inproc_socket<Clock>;
+    using timer_type    = inproc_timer<Clock>;
 
     static void post(executor_type ex, detail::move_only_function<void()> fn)
     {
@@ -273,53 +273,53 @@ struct local_policy
 };
 ```
 
-**`executor_type = local_executor<Clock>&`**
+**`executor_type = inproc_executor<Clock>&`**
 
 The executor is a reference, not a value. This is the same pattern as
 `AsioPolicy` (whose `executor_type` is `asio::io_context&`). Every `basic_*`
 component stores the reference and constructs its socket and timer from it.
-The `local_bus` is not part of `executor_type` directly — it is reachable via
+The `inproc_bus` is not part of `executor_type` directly — it is reachable via
 `ex.bus()`.
 
 This differs from `DefaultPolicy`, where `executor_type` is a value type
-(`context`) that owns its own internal state. `LocalPolicy` requires an
-externally constructed `local_executor` because the bus must be shared across
+(`context`) that owns its own internal state. `InProcPolicy` requires an
+externally constructed `inproc_executor` because the bus must be shared across
 all components and its lifetime must outlast all of them.
 
-**`socket_type = local_socket<Clock>`**
+**`socket_type = inproc_socket<Clock>`**
 
-`local_socket<Clock>` satisfies `SocketLike`. On construction it registers
+`inproc_socket<Clock>` satisfies `SocketLike`. On construction it registers
 itself with the bus via `ex.bus().register_socket(...)` and receives an
 assigned `127.0.0.1:NNNN` endpoint. `send()` enqueues packets onto the bus
 queue rather than delivering inline — this prevents re-entrancy when a receive
 callback triggers a send. `async_receive()` stores the handler; `deliver()` is
 called by the bus when a packet arrives for this socket's endpoint.
 
-**`timer_type = local_timer<Clock>`**
+**`timer_type = inproc_timer<Clock>`**
 
-`local_timer<Clock>` satisfies `TimerLike`. On construction it registers with
+`inproc_timer<Clock>` satisfies `TimerLike`. On construction it registers with
 `ex.register_timer(this)`. `expires_after()` sets the deadline; `try_fire(now)`
 is called by the executor on each `step()` and fires the stored handler if the
 deadline has passed.
 
 **`post()` threading model**
 
-`local_policy::post()` delegates to `ex.post()`, which appends to a
+`inproc_policy::post()` delegates to `ex.post()`, which appends to a
 `std::deque`. This is simpler than `DefaultPolicy` (which uses a mutex-protected
-queue) because `local_executor` is single-threaded by design — it is not safe to
+queue) because `inproc_executor` is single-threaded by design — it is not safe to
 call `post()` from a thread other than the one driving `run()` unless the caller
 handles synchronisation externally.
 
 **Bus parameter vs. context model**
 
-The key structural difference from `DefaultPolicy`: `LocalPolicy` separates the
+The key structural difference from `DefaultPolicy`: `InProcPolicy` separates the
 shared medium (the bus) from the executor. Multiple components sharing the same
 bus can be driven by a single executor, but the bus itself is not owned by the
 executor — it is passed in by reference. This makes it straightforward to test
 multi-party scenarios where components need to exchange packets without any real
 network.
 
-See [local-bus.md](local-bus.md) for the full production usage guide.
+See [inproc-bus.md](inproc-bus.md) for the full production usage guide.
 
 ### DefaultPolicy and AsioPolicy as examples
 

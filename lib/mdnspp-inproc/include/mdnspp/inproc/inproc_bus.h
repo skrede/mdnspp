@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_LOCAL_LOCAL_BUS_H
-#define HPP_GUARD_MDNSPP_LOCAL_LOCAL_BUS_H
+#ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_BUS_H
+#define HPP_GUARD_MDNSPP_INPROC_INPROC_BUS_H
 
 #include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
@@ -13,26 +13,26 @@
 #include <cstdint>
 #include <algorithm>
 
-namespace mdnspp::local {
+namespace mdnspp::inproc {
 
 template <typename Clock>
-class local_socket;
+class inproc_socket;
 
 template <typename Clock = std::chrono::steady_clock>
-class local_bus
+class inproc_bus
 {
 public:
-    explicit local_bus(uint16_t start_port = 5353)
+    explicit inproc_bus(uint16_t start_port = 5353)
         : m_port(start_port)
     {
     }
 
-    local_bus(const local_bus &) = delete;
-    local_bus &operator=(const local_bus &) = delete;
-    local_bus(local_bus &&) = delete;
-    local_bus &operator=(local_bus &&) = delete;
+    inproc_bus(const inproc_bus &) = delete;
+    inproc_bus &operator=(const inproc_bus &) = delete;
+    inproc_bus(inproc_bus &&) = delete;
+    inproc_bus &operator=(inproc_bus &&) = delete;
 
-    endpoint register_socket(local_socket<Clock> *sock, const socket_options &opts)
+    endpoint register_socket(inproc_socket<Clock> *sock, const socket_options &opts)
     {
         uint16_t port = opts.port_override.has_value() ? *opts.port_override : m_port;
         endpoint assigned{"127.0.0." + std::to_string(m_next_ip++), port};
@@ -45,7 +45,7 @@ public:
         return assigned;
     }
 
-    void deregister_socket(local_socket<Clock> *sock) noexcept
+    void deregister_socket(inproc_socket<Clock> *sock) noexcept
     {
         std::erase_if(m_sockets, [sock](const socket_entry &e) { return e.sock == sock; });
     }
@@ -114,7 +114,7 @@ private:
 
     struct socket_entry
     {
-        local_socket<Clock> *sock;
+        inproc_socket<Clock> *sock;
         endpoint assigned_ep;
         endpoint group;
         bool loopback;

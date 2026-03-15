@@ -1,14 +1,14 @@
-// tests/local_bus_discovery_test.cpp
+// tests/inproc_bus_discovery_test.cpp
 //
-// Multi-party mDNS integration tests using the deterministic local bus.
-// All tests use local_harness (shared executor + bus) and test_clock for
+// Multi-party mDNS integration tests using the deterministic inproc bus.
+// All tests use inproc_harness (shared executor + bus) and test_clock for
 // zero-wall-clock-time deterministic timing.
 //
 // TEST-01: Probe conflict resolution between two servers with the same name.
 // TEST-02: Discovery lifecycle (server announces -> monitor discovers -> server stops -> on_lost).
 // TEST-10: Goodbye with delayed expiry (on_lost does NOT fire before grace period elapses).
 
-#include "mdnspp/local/local_harness.h"
+#include "mdnspp/inproc/inproc_harness.h"
 
 #include "mdnspp/service_info.h"
 #include "mdnspp/cache_options.h"
@@ -28,7 +28,7 @@
 #include <optional>
 
 using namespace mdnspp;
-using mdnspp::local::local_harness;
+using mdnspp::inproc::inproc_harness;
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -69,9 +69,9 @@ mdns_options fast_scheduler_opts()
 // TEST-01: Probe conflict resolution between two servers
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Probe conflict resolution between two servers", "[local][discovery]")
+TEST_CASE("Probe conflict resolution between two servers", "[inproc][discovery]")
 {
-    local_harness h;
+    inproc_harness h;
 
     // Both servers claim the same service name but different ports.
     // Their probes are visible to each other via the shared bus.
@@ -129,9 +129,9 @@ TEST_CASE("Probe conflict resolution between two servers", "[local][discovery]")
 // TEST-02: Discovery lifecycle: found -> lost
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Discovery lifecycle: found and lost", "[local][discovery]")
+TEST_CASE("Discovery lifecycle: found and lost", "[inproc][discovery]")
 {
-    local_harness h;
+    inproc_harness h;
 
     // --- Server setup ---
     auto server = h.make_server(
@@ -204,9 +204,9 @@ TEST_CASE("Discovery lifecycle: found and lost", "[local][discovery]")
 // TEST-10: Goodbye with delayed expiry
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Goodbye with delayed expiry", "[local][discovery]")
+TEST_CASE("Goodbye with delayed expiry", "[inproc][discovery]")
 {
-    local_harness h;
+    inproc_harness h;
 
     // --- Server ---
     auto server = h.make_server(

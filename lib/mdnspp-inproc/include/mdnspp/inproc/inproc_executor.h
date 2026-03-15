@@ -1,9 +1,9 @@
-#ifndef HPP_GUARD_MDNSPP_LOCAL_LOCAL_EXECUTOR_H
-#define HPP_GUARD_MDNSPP_LOCAL_LOCAL_EXECUTOR_H
+#ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_EXECUTOR_H
+#define HPP_GUARD_MDNSPP_INPROC_INPROC_EXECUTOR_H
 
 #include "mdnspp/detail/compat.h"
 
-#include "mdnspp/local/local_bus.h"
+#include "mdnspp/inproc/inproc_bus.h"
 
 #include <deque>
 #include <vector>
@@ -11,26 +11,26 @@
 #include <algorithm>
 #include <thread>
 
-namespace mdnspp::local {
+namespace mdnspp::inproc {
 
 template <typename Clock>
-class local_timer;
+class inproc_timer;
 
 template <typename Clock = std::chrono::steady_clock>
-class local_executor
+class inproc_executor
 {
 public:
-    explicit local_executor(local_bus<Clock> &bus)
+    explicit inproc_executor(inproc_bus<Clock> &bus)
         : m_bus(bus)
     {
     }
 
-    ~local_executor() = default;
+    ~inproc_executor() = default;
 
-    local_executor(const local_executor &) = delete;
-    local_executor &operator=(const local_executor &) = delete;
-    local_executor(local_executor &&) = delete;
-    local_executor &operator=(local_executor &&) = delete;
+    inproc_executor(const inproc_executor &) = delete;
+    inproc_executor &operator=(const inproc_executor &) = delete;
+    inproc_executor(inproc_executor &&) = delete;
+    inproc_executor &operator=(inproc_executor &&) = delete;
 
     void post(detail::move_only_function<void()> fn)
     {
@@ -84,23 +84,23 @@ public:
         m_stopped = true;
     }
 
-    void register_timer(local_timer<Clock> *t)
+    void register_timer(inproc_timer<Clock> *t)
     {
         if(std::find(m_timers.begin(), m_timers.end(), t) == m_timers.end())
             m_timers.push_back(t);
     }
 
-    void deregister_timer(local_timer<Clock> *t) noexcept
+    void deregister_timer(inproc_timer<Clock> *t) noexcept
     {
         std::erase(m_timers, t);
     }
 
-    local_bus<Clock> &bus() noexcept { return m_bus; }
+    inproc_bus<Clock> &bus() noexcept { return m_bus; }
 
 private:
-    local_bus<Clock> &m_bus;
+    inproc_bus<Clock> &m_bus;
     std::deque<detail::move_only_function<void()>> m_posted;
-    std::vector<local_timer<Clock> *> m_timers;
+    std::vector<inproc_timer<Clock> *> m_timers;
     bool m_stopped{false};
 };
 

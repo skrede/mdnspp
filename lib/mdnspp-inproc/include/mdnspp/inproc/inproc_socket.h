@@ -1,12 +1,12 @@
-#ifndef HPP_GUARD_MDNSPP_LOCAL_LOCAL_SOCKET_H
-#define HPP_GUARD_MDNSPP_LOCAL_LOCAL_SOCKET_H
+#ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_SOCKET_H
+#define HPP_GUARD_MDNSPP_INPROC_INPROC_SOCKET_H
 
 #include "mdnspp/endpoint.h"
 #include "mdnspp/policy.h"
 #include "mdnspp/socket_options.h"
 
-#include "mdnspp/local/local_bus.h"
-#include "mdnspp/local/local_executor.h"
+#include "mdnspp/inproc/inproc_bus.h"
+#include "mdnspp/inproc/inproc_executor.h"
 
 #include <span>
 #include <queue>
@@ -17,43 +17,43 @@
 #include <system_error>
 #include <utility>
 
-namespace mdnspp::local {
+namespace mdnspp::inproc {
 
 template <typename Clock = std::chrono::steady_clock>
-class local_socket
+class inproc_socket
 {
 public:
-    explicit local_socket(local_executor<Clock> &ex)
-        : local_socket(ex, socket_options{})
+    explicit inproc_socket(inproc_executor<Clock> &ex)
+        : inproc_socket(ex, socket_options{})
     {
     }
 
-    explicit local_socket(local_executor<Clock> &ex, std::error_code &)
-        : local_socket(ex, socket_options{})
+    explicit inproc_socket(inproc_executor<Clock> &ex, std::error_code &)
+        : inproc_socket(ex, socket_options{})
     {
     }
 
-    explicit local_socket(local_executor<Clock> &ex, const socket_options &opts)
+    explicit inproc_socket(inproc_executor<Clock> &ex, const socket_options &opts)
         : m_bus(&ex.bus())
         , m_opts(opts)
         , m_ep(m_bus->register_socket(this, opts))
     {
     }
 
-    explicit local_socket(local_executor<Clock> &ex, const socket_options &opts, std::error_code &)
-        : local_socket(ex, opts)
+    explicit inproc_socket(inproc_executor<Clock> &ex, const socket_options &opts, std::error_code &)
+        : inproc_socket(ex, opts)
     {
     }
 
-    ~local_socket()
+    ~inproc_socket()
     {
         close();
     }
 
-    local_socket(const local_socket &) = delete;
-    local_socket &operator=(const local_socket &) = delete;
-    local_socket(local_socket &&) = delete;
-    local_socket &operator=(local_socket &&) = delete;
+    inproc_socket(const inproc_socket &) = delete;
+    inproc_socket &operator=(const inproc_socket &) = delete;
+    inproc_socket(inproc_socket &&) = delete;
+    inproc_socket &operator=(inproc_socket &&) = delete;
 
     void async_receive(std::function<void(const recv_metadata &, std::span<std::byte>)> handler)
     {
@@ -115,7 +115,7 @@ public:
     [[nodiscard]] const socket_options &options() const noexcept { return m_opts; }
 
 private:
-    local_bus<Clock> *m_bus;
+    inproc_bus<Clock> *m_bus;
     socket_options m_opts;
     endpoint m_ep;
     std::function<void(const recv_metadata &, std::span<std::byte>)> m_pending_receive;

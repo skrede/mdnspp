@@ -1,40 +1,40 @@
-#ifndef HPP_GUARD_MDNSPP_LOCAL_LOCAL_TIMER_H
-#define HPP_GUARD_MDNSPP_LOCAL_LOCAL_TIMER_H
+#ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_TIMER_H
+#define HPP_GUARD_MDNSPP_INPROC_INPROC_TIMER_H
 
-#include "mdnspp/local/local_executor.h"
+#include "mdnspp/inproc/inproc_executor.h"
 
 #include <chrono>
 #include <functional>
 #include <system_error>
 
-namespace mdnspp::local {
+namespace mdnspp::inproc {
 
 template <typename Clock = std::chrono::steady_clock>
-class local_timer
+class inproc_timer
 {
 public:
-    explicit local_timer(local_executor<Clock> &ex)
+    explicit inproc_timer(inproc_executor<Clock> &ex)
         : m_exec(&ex)
     {
         m_exec->register_timer(this);
     }
 
-    explicit local_timer(local_executor<Clock> &ex, std::error_code &)
+    explicit inproc_timer(inproc_executor<Clock> &ex, std::error_code &)
         : m_exec(&ex)
     {
         m_exec->register_timer(this);
     }
 
-    ~local_timer()
+    ~inproc_timer()
     {
         if(m_exec)
             m_exec->deregister_timer(this);
     }
 
-    local_timer(const local_timer &) = delete;
-    local_timer &operator=(const local_timer &) = delete;
-    local_timer(local_timer &&) = delete;
-    local_timer &operator=(local_timer &&) = delete;
+    inproc_timer(const inproc_timer &) = delete;
+    inproc_timer &operator=(const inproc_timer &) = delete;
+    inproc_timer(inproc_timer &&) = delete;
+    inproc_timer &operator=(inproc_timer &&) = delete;
 
     void expires_after(std::chrono::milliseconds d)
     {
@@ -81,7 +81,7 @@ public:
     [[nodiscard]] typename Clock::time_point expiry() const noexcept { return m_expiry; }
 
 private:
-    local_executor<Clock> *m_exec;
+    inproc_executor<Clock> *m_exec;
     typename Clock::time_point m_expiry{};
     std::function<void(std::error_code)> m_handler;
     bool m_active{false};

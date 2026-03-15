@@ -1,7 +1,7 @@
-// tests/local_bus_rfc_compliance_test.cpp
+// tests/inproc_bus_rfc_compliance_test.cpp
 //
-// RFC 6762 compliance integration tests using the deterministic local bus.
-// All tests use local_harness (shared executor + bus) and test_clock for
+// RFC 6762 compliance integration tests using the deterministic inproc bus.
+// All tests use inproc_harness (shared executor + bus) and test_clock for
 // zero-wall-clock-time deterministic timing.
 //
 // TEST-03: Known-answer suppression end-to-end.
@@ -9,8 +9,8 @@
 // TEST-06: TC bit multi-packet accumulation end-to-end.
 // TEST-07: Cache-flush propagation across monitors.
 
-#include "mdnspp/local/local_harness.h"
-#include "mdnspp/local/local_socket.h"
+#include "mdnspp/inproc/inproc_harness.h"
+#include "mdnspp/inproc/inproc_socket.h"
 
 #include "mdnspp/service_info.h"
 #include "mdnspp/cache_options.h"
@@ -40,8 +40,8 @@
 #include <optional>
 
 using namespace mdnspp;
-using mdnspp::local::local_harness;
-using mdnspp::local::local_socket;
+using mdnspp::inproc::inproc_harness;
+using mdnspp::inproc::inproc_socket;
 using mdnspp::testing::test_clock;
 
 // ---------------------------------------------------------------------------
@@ -88,7 +88,7 @@ mdns_options fast_response_opts(std::chrono::milliseconds delay = std::chrono::m
     return opts;
 }
 
-// Multicast endpoint used by the local bus (loopback mDNS).
+// Multicast endpoint used by the inproc bus (loopback mDNS).
 endpoint mdns_multicast_ep()
 {
     return endpoint{"224.0.0.251", 5353};
@@ -97,9 +97,9 @@ endpoint mdns_multicast_ep()
 // Inject raw bytes onto the bus as if sent from a transient socket.
 // The injector socket is created, sends, then destroyed (deregisters from bus).
 // The send enqueues the packet; drain() is needed to deliver it.
-void inject(local_harness &h, std::span<const std::byte> data)
+void inject(inproc_harness &h, std::span<const std::byte> data)
 {
-    local_socket<test_clock> injector{h.executor};
+    inproc_socket<test_clock> injector{h.executor};
     injector.send(mdns_multicast_ep(), data);
 }
 
@@ -116,9 +116,9 @@ void inject(local_harness &h, std::span<const std::byte> data)
 // count PTR records arriving on the bus. Inject two queries — one with a matching
 // known-answer (suppression expected) and one without (response expected).
 
-TEST_CASE("Known-answer suppression", "[local][rfc]")
+TEST_CASE("Known-answer suppression", "[inproc][rfc]")
 {
-    local_harness h;
+    inproc_harness h;
 
     // Server with 1ms response delay so timing is deterministic.
     // Track which queries the server receives and whether it suppresses.
@@ -225,9 +225,9 @@ TEST_CASE("Known-answer suppression", "[local][rfc]")
 // on_found should fire exactly once, regardless of how many multicast responses
 // it receives.
 
-TEST_CASE("Duplicate answer suppression across queriers", "[local][rfc]")
+TEST_CASE("Duplicate answer suppression across queriers", "[inproc][rfc]")
 {
-    local_harness h;
+    inproc_harness h;
 
     // Server with short response delay.
     service_options srv_opts;
@@ -304,9 +304,9 @@ TEST_CASE("Duplicate answer suppression across queriers", "[local][rfc]")
 //   6. A passive observer sees PTR records only from the query packets themselves
 //      (answer sections), not from a server response.
 
-TEST_CASE("TC bit multi-packet accumulation", "[local][rfc]")
+TEST_CASE("TC bit multi-packet accumulation", "[inproc][rfc]")
 {
-    local_harness h;
+    inproc_harness h;
 
     // Track TC continuation callback.
     std::size_t tc_merged_count = 0;
@@ -400,7 +400,7 @@ TEST_CASE("TC bit multi-packet accumulation", "[local][rfc]")
     // endpoint. The TC accumulator keys entries by sender; a different socket would
     // be a different source and the records would not be merged.
     {
-        local_socket<test_clock> injector{h.executor};
+        inproc_socket<test_clock> injector{h.executor};
 
         // Inject pkt1 (TC=1, PTR+SRV+TXT).
         injector.send(mdns_multicast_ep(), std::span<const std::byte>(pkt1));
@@ -449,9 +449,9 @@ TEST_CASE("TC bit multi-packet accumulation", "[local][rfc]")
 //   4. Both monitors' on_cache_flush callbacks fire because origin B's record
 //      conflicts with the authoritative record from origin A.
 
-TEST_CASE("Cache-flush propagation across monitors", "[local][rfc]")
+TEST_CASE("Cache-flush propagation across monitors", "[inproc][rfc]")
 {
-    local_harness h;
+    inproc_harness h;
 
     service_options srv_opts;
     srv_opts.respond_to_meta_queries = false;

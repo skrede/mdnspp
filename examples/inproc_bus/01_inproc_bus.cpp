@@ -1,7 +1,7 @@
-// Multi-service lifecycle example using LocalPolicy and local_bus.
+// Multi-service lifecycle example using InProcPolicy and inproc_bus.
 //
 // Demonstrates server, monitor, and querier working together through the
-// in-process local bus -- no real network sockets. Useful for understanding
+// in-process bus -- no real network sockets. Useful for understanding
 // the mDNS lifecycle without needing a real network interface.
 //
 // Sequence:
@@ -12,10 +12,10 @@
 //   5. The server is stopped (sends goodbye, triggers on_lost with goodbye reason).
 //   6. The executor is stopped once all work is done.
 
-#include <mdnspp/local/local_bus.h>
-#include <mdnspp/local/local_timer.h>
-#include <mdnspp/local/local_policy.h>
-#include <mdnspp/local/local_executor.h>
+#include <mdnspp/inproc/inproc_bus.h>
+#include <mdnspp/inproc/inproc_timer.h>
+#include <mdnspp/inproc/inproc_policy.h>
+#include <mdnspp/inproc/inproc_executor.h>
 
 #include <mdnspp/mdns_options.h>
 #include <mdnspp/service_info.h>
@@ -34,14 +34,14 @@
 
 using namespace std::chrono_literals;
 
-// LocalPolicy uses steady_clock and real time. The executor drives its own
+// InProcPolicy uses steady_clock and real time. The executor drives its own
 // event loop via run(), sleeping 1ms between drain iterations.
-using Policy = mdnspp::LocalPolicy;
+using Policy = mdnspp::InProcPolicy;
 
 // Alias the concrete types for readability.
-using Bus      = mdnspp::local::local_bus<>;
-using Executor = mdnspp::local::local_executor<>;
-using Timer    = mdnspp::local::local_timer<>;
+using Bus      = mdnspp::inproc::inproc_bus<>;
+using Executor = mdnspp::inproc::inproc_executor<>;
+using Timer    = mdnspp::inproc::inproc_timer<>;
 using Server   = mdnspp::basic_service_server<Policy>;
 using Monitor  = mdnspp::basic_service_monitor<Policy>;
 using Querier  = mdnspp::basic_querier<Policy>;
@@ -159,7 +159,7 @@ int main()
             std::cout << ")\n";
         });
 
-    // Step 7: use a local_timer to schedule the update and shutdown sequence.
+    // Step 7: use an inproc_timer to schedule the update and shutdown sequence.
     // These timers run on the same executor as the server/monitor/querier,
     // so there is no cross-thread synchronisation required.
 

@@ -1,9 +1,9 @@
-#ifndef HPP_GUARD_MDNSPP_LOCAL_LOCAL_HARNESS_H
-#define HPP_GUARD_MDNSPP_LOCAL_LOCAL_HARNESS_H
+#ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_HARNESS_H
+#define HPP_GUARD_MDNSPP_INPROC_INPROC_HARNESS_H
 
-#include "mdnspp/local/local_bus.h"
-#include "mdnspp/local/local_policy.h"
-#include "mdnspp/local/local_executor.h"
+#include "mdnspp/inproc/inproc_bus.h"
+#include "mdnspp/inproc/inproc_policy.h"
+#include "mdnspp/inproc/inproc_executor.h"
 
 #include "mdnspp/service_info.h"
 #include "mdnspp/cache_options.h"
@@ -21,28 +21,22 @@
 
 #include <chrono>
 
-namespace mdnspp::local {
+namespace mdnspp::inproc {
 
-// local_harness — shared test fixture for multi-party local bus integration tests.
+// inproc_harness — shared test fixture for multi-party in-process bus integration tests.
 //
 // Provides factory methods for all basic_* types wired to the same shared executor
 // and bus. advance() steps the test_clock and drains all events to quiescence.
 // advance_to_live() drives a server through the full probe/announce ceremony.
-//
-// Usage:
-//   local_harness h;
-//   auto server = h.make_server(info, opts);
-//   server.async_start();
-//   h.advance_to_live(server);
-struct local_harness
+struct inproc_harness
 {
-    local_harness()
+    inproc_harness()
     {
         testing::test_clock::reset();
     }
 
-    local_bus<testing::test_clock>      bus;
-    local_executor<testing::test_clock> executor{bus};
+    inproc_bus<testing::test_clock>      bus;
+    inproc_executor<testing::test_clock> executor{bus};
 
     // Advance the test clock by d, then drain all events to quiescence.
     void advance(std::chrono::milliseconds d)
@@ -51,44 +45,44 @@ struct local_harness
         executor.drain();
     }
 
-    // Create a basic_service_server<LocalTestPolicy> with the shared executor.
-    basic_service_server<LocalTestPolicy> make_server(service_info info,
-                                                      service_options opts = {},
-                                                      socket_options sock_opts = {},
-                                                      mdns_options mdns_opts = {})
+    // Create a basic_service_server<InProcTestPolicy> with the shared executor.
+    basic_service_server<InProcTestPolicy> make_server(service_info info,
+                                                       service_options opts = {},
+                                                       socket_options sock_opts = {},
+                                                       mdns_options mdns_opts = {})
     {
-        return basic_service_server<LocalTestPolicy>{
+        return basic_service_server<InProcTestPolicy>{
             executor, std::move(info), std::move(opts),
             std::move(sock_opts), std::move(mdns_opts)};
     }
 
-    // Create a basic_service_monitor<LocalTestPolicy, test_clock> with the shared executor.
-    basic_service_monitor<LocalTestPolicy, testing::test_clock>
+    // Create a basic_service_monitor<InProcTestPolicy, test_clock> with the shared executor.
+    basic_service_monitor<InProcTestPolicy, testing::test_clock>
     make_monitor(monitor_options opts = {},
                  socket_options sock_opts = {},
                  mdns_options mdns_opts = {},
                  cache_options copts = {})
     {
-        return basic_service_monitor<LocalTestPolicy, testing::test_clock>{
+        return basic_service_monitor<InProcTestPolicy, testing::test_clock>{
             executor, std::move(opts), std::move(sock_opts),
             std::move(mdns_opts), std::move(copts)};
     }
 
-    // Create a basic_querier<LocalTestPolicy> with the shared executor.
-    basic_querier<LocalTestPolicy> make_querier(query_options opts = {},
-                                               socket_options sock_opts = {},
-                                               mdns_options mdns_opts = {})
+    // Create a basic_querier<InProcTestPolicy> with the shared executor.
+    basic_querier<InProcTestPolicy> make_querier(query_options opts = {},
+                                                 socket_options sock_opts = {},
+                                                 mdns_options mdns_opts = {})
     {
-        return basic_querier<LocalTestPolicy>{
+        return basic_querier<InProcTestPolicy>{
             executor, std::move(opts), std::move(sock_opts), std::move(mdns_opts)};
     }
 
-    // Create a basic_observer<LocalTestPolicy> with the shared executor.
-    basic_observer<LocalTestPolicy> make_observer(observer_options opts = {},
-                                                  socket_options sock_opts = {},
-                                                  mdns_options mdns_opts = {})
+    // Create a basic_observer<InProcTestPolicy> with the shared executor.
+    basic_observer<InProcTestPolicy> make_observer(observer_options opts = {},
+                                                   socket_options sock_opts = {},
+                                                   mdns_options mdns_opts = {})
     {
-        return basic_observer<LocalTestPolicy>{
+        return basic_observer<InProcTestPolicy>{
             executor, std::move(opts), std::move(sock_opts), std::move(mdns_opts)};
     }
 
@@ -105,7 +99,7 @@ struct local_harness
     //
     // An optional service_options parameter allows extracting actual timing values
     // when non-default options were used.
-    void advance_to_live(basic_service_server<LocalTestPolicy> &server,
+    void advance_to_live(basic_service_server<InProcTestPolicy> &server,
                          service_options opts = {})
     {
         // Advance past the random initial delay [0, probe_initial_delay_max].

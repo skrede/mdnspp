@@ -30,7 +30,7 @@ add_executable(my_app main.cpp)
 target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 ```
 
-Link against `mdnspp::mdnspp` for standalone usage with the default policy, or `mdnspp::asio` for ASIO completion token support. The `mdnspp::asio` target fetches standalone ASIO automatically via FetchContent.
+Link against `mdnspp::mdnspp` for standalone usage with the default policy, or `mdnspp::asio` for ASIO completion token support. The `mdnspp::asio` target is automatically available when standalone ASIO is found or fetched via `MDNSPP_CMAKE_FETCH_DEPS=ON`.
 
 ## find_package
 
@@ -64,24 +64,21 @@ target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 | Target | Description |
 |--------|-------------|
 | `mdnspp::mdnspp` | DefaultPolicy with native sockets, all public headers; links `ws2_32` on Windows |
-| `mdnspp::asio` | AsioPolicy + async adapters; fetches standalone ASIO via FetchContent |
+| `mdnspp::asio` | AsioPolicy + async adapters; available when standalone ASIO is found or fetched |
+| `mdnspp::inproc` | InProcPolicy for in-process multicast simulation and deterministic testing |
 | `mdnspp::testing` | MockPolicy and test utilities for unit testing without network access |
 
-Most users want `mdnspp::mdnspp`. Add `mdnspp::asio` if you need ASIO completion token support (futures, coroutines, deferred). Link `mdnspp::testing` in your test targets for MockPolicy.
+Most users want `mdnspp::mdnspp`. Add `mdnspp::asio` if you need ASIO completion token support (futures, coroutines, deferred). Link `mdnspp::inproc` for in-process bus scenarios. Link `mdnspp::testing` in your test targets for MockPolicy.
 
 ## CMake Options
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `MDNSPP_ENABLE_ASIO_POLICY` | `OFF` | Build AsioPolicy (requires standalone ASIO) |
+| `MDNSPP_CMAKE_FETCH_DEPS` | `OFF` | Use FetchContent to download dependencies (ASIO, Catch2) |
 | `MDNSPP_BUILD_EXAMPLES` | `OFF` | Build example programs |
 | `MDNSPP_BUILD_TESTS` | `OFF` | Build test suite |
 
-To enable ASIO support:
-
-```bash
-cmake -B build -DMDNSPP_ENABLE_ASIO_POLICY=ON
-```
+The `mdnspp::asio` target is automatically available when ASIO is found on the system or when `MDNSPP_CMAKE_FETCH_DEPS=ON` fetches it. No separate option is needed.
 
 ## Building from Source
 
@@ -101,7 +98,7 @@ cmake -B build \
     -DCMAKE_BUILD_TYPE=Release \
     -DMDNSPP_BUILD_EXAMPLES=ON \
     -DMDNSPP_BUILD_TESTS=ON \
-    -DMDNSPP_ENABLE_ASIO_POLICY=ON
+    -DMDNSPP_CMAKE_FETCH_DEPS=ON
 cmake --build build
 ctest --test-dir build
 ```

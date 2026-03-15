@@ -1,54 +1,54 @@
-// tests/local_conformance_test.cpp
+// tests/inproc_conformance_test.cpp
 
 #include "mdnspp/policy.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/testing/test_clock.h"
 
-#include "mdnspp/local/local_bus.h"
-#include "mdnspp/local/local_timer.h"
-#include "mdnspp/local/local_socket.h"
-#include "mdnspp/local/local_policy.h"
-#include "mdnspp/local/local_executor.h"
+#include "mdnspp/inproc/inproc_bus.h"
+#include "mdnspp/inproc/inproc_timer.h"
+#include "mdnspp/inproc/inproc_socket.h"
+#include "mdnspp/inproc/inproc_policy.h"
+#include "mdnspp/inproc/inproc_executor.h"
 
 #include <catch2/catch_test_macros.hpp>
 
-using mdnspp::local::local_bus;
-using mdnspp::local::local_executor;
-using mdnspp::local::local_socket;
-using mdnspp::local::local_timer;
+using mdnspp::inproc::inproc_bus;
+using mdnspp::inproc::inproc_executor;
+using mdnspp::inproc::inproc_socket;
+using mdnspp::inproc::inproc_timer;
 using mdnspp::testing::test_clock;
 using Clock = test_clock;
 
-static_assert(mdnspp::Policy<mdnspp::LocalTestPolicy>,
-    "local_policy<test_clock> must satisfy Policy concept");
-static_assert(mdnspp::SocketLike<mdnspp::local::local_socket<test_clock>>,
-    "local_socket<test_clock> must satisfy SocketLike concept");
-static_assert(mdnspp::TimerLike<mdnspp::local::local_timer<test_clock>>,
-    "local_timer<test_clock> must satisfy TimerLike concept");
+static_assert(mdnspp::Policy<mdnspp::InProcTestPolicy>,
+    "inproc_policy<test_clock> must satisfy Policy concept");
+static_assert(mdnspp::SocketLike<mdnspp::inproc::inproc_socket<test_clock>>,
+    "inproc_socket<test_clock> must satisfy SocketLike concept");
+static_assert(mdnspp::TimerLike<mdnspp::inproc::inproc_timer<test_clock>>,
+    "inproc_timer<test_clock> must satisfy TimerLike concept");
 
-TEST_CASE("local_policy satisfies Policy concept", "[local][conformance]")
+TEST_CASE("inproc_policy satisfies Policy concept", "[inproc][conformance]")
 {
     test_clock::reset();
-    local_bus<Clock> bus;
-    local_executor<Clock> ex{bus};
+    inproc_bus<Clock> bus;
+    inproc_executor<Clock> ex{bus};
 
-    local_socket<Clock> sock{ex};
-    local_timer<Clock> timer{ex};
+    inproc_socket<Clock> sock{ex};
+    inproc_timer<Clock> timer{ex};
 
     // Just verify construction and basic wiring — no crash
     REQUIRE_FALSE(bus.has_pending_packets());
     REQUIRE_FALSE(timer.has_pending());
 }
 
-TEST_CASE("local_bus multicast delivery", "[local][bus]")
+TEST_CASE("inproc_bus multicast delivery", "[inproc][bus]")
 {
     test_clock::reset();
-    local_bus<Clock> bus;
-    local_executor<Clock> ex{bus};
+    inproc_bus<Clock> bus;
+    inproc_executor<Clock> ex{bus};
 
     mdnspp::socket_options opts{};
-    local_socket<Clock> sock_a{ex, opts};
-    local_socket<Clock> sock_b{ex, opts};
+    inproc_socket<Clock> sock_a{ex, opts};
+    inproc_socket<Clock> sock_b{ex, opts};
 
     std::vector<std::byte> received_by_b;
     mdnspp::endpoint sender_b;
@@ -81,14 +81,14 @@ TEST_CASE("local_bus multicast delivery", "[local][bus]")
     REQUIRE(a_received);
 }
 
-TEST_CASE("local_bus unicast delivery", "[local][bus]")
+TEST_CASE("inproc_bus unicast delivery", "[inproc][bus]")
 {
     test_clock::reset();
-    local_bus<Clock> bus;
-    local_executor<Clock> ex{bus};
+    inproc_bus<Clock> bus;
+    inproc_executor<Clock> ex{bus};
 
-    local_socket<Clock> sock_a{ex};
-    local_socket<Clock> sock_b{ex};
+    inproc_socket<Clock> sock_a{ex};
+    inproc_socket<Clock> sock_b{ex};
 
     bool b_received = false;
     bool a_received = false;
@@ -113,19 +113,19 @@ TEST_CASE("local_bus unicast delivery", "[local][bus]")
     REQUIRE_FALSE(a_received);
 }
 
-TEST_CASE("local_bus loopback disabled", "[local][bus]")
+TEST_CASE("inproc_bus loopback disabled", "[inproc][bus]")
 {
     test_clock::reset();
-    local_bus<Clock> bus;
-    local_executor<Clock> ex{bus};
+    inproc_bus<Clock> bus;
+    inproc_executor<Clock> ex{bus};
 
     mdnspp::socket_options opts_no_loopback{};
     opts_no_loopback.multicast_loopback = mdnspp::loopback_mode::disabled;
 
-    local_socket<Clock> sender{ex, opts_no_loopback};
+    inproc_socket<Clock> sender{ex, opts_no_loopback};
 
     mdnspp::socket_options opts_loopback{};
-    local_socket<Clock> receiver{ex, opts_loopback};
+    inproc_socket<Clock> receiver{ex, opts_loopback};
 
     bool sender_received = false;
     bool receiver_received = false;
@@ -149,13 +149,13 @@ TEST_CASE("local_bus loopback disabled", "[local][bus]")
     REQUIRE(receiver_received);
 }
 
-TEST_CASE("local_timer fires on clock advance", "[local][timer]")
+TEST_CASE("inproc_timer fires on clock advance", "[inproc][timer]")
 {
     test_clock::reset();
-    local_bus<Clock> bus;
-    local_executor<Clock> ex{bus};
+    inproc_bus<Clock> bus;
+    inproc_executor<Clock> ex{bus};
 
-    local_timer<Clock> timer{ex};
+    inproc_timer<Clock> timer{ex};
 
     std::error_code received_ec = std::make_error_code(std::errc::interrupted);
     bool fired = false;
@@ -182,13 +182,13 @@ TEST_CASE("local_timer fires on clock advance", "[local][timer]")
     REQUIRE_FALSE(received_ec);
 }
 
-TEST_CASE("local_timer cancel", "[local][timer]")
+TEST_CASE("inproc_timer cancel", "[inproc][timer]")
 {
     test_clock::reset();
-    local_bus<Clock> bus;
-    local_executor<Clock> ex{bus};
+    inproc_bus<Clock> bus;
+    inproc_executor<Clock> ex{bus};
 
-    local_timer<Clock> timer{ex};
+    inproc_timer<Clock> timer{ex};
 
     std::error_code received_ec{};
     bool fired = false;
@@ -209,17 +209,17 @@ TEST_CASE("local_timer cancel", "[local][timer]")
     REQUIRE(received_ec == std::make_error_code(std::errc::operation_canceled));
 }
 
-TEST_CASE("local_executor post and drain", "[local][executor]")
+TEST_CASE("inproc_executor post and drain", "[inproc][executor]")
 {
     test_clock::reset();
-    local_bus<Clock> bus;
-    local_executor<Clock> ex{bus};
+    inproc_bus<Clock> bus;
+    inproc_executor<Clock> ex{bus};
 
     std::vector<int> order;
 
-    mdnspp::LocalTestPolicy::post(ex, [&] { order.push_back(1); });
-    mdnspp::LocalTestPolicy::post(ex, [&] { order.push_back(2); });
-    mdnspp::LocalTestPolicy::post(ex, [&] { order.push_back(3); });
+    mdnspp::InProcTestPolicy::post(ex, [&] { order.push_back(1); });
+    mdnspp::InProcTestPolicy::post(ex, [&] { order.push_back(2); });
+    mdnspp::InProcTestPolicy::post(ex, [&] { order.push_back(3); });
 
     REQUIRE(order.empty());
 

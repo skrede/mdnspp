@@ -1,20 +1,20 @@
-// tests/unit/local_bus_recv_ttl_test.cpp
+// tests/unit/inproc_bus_recv_ttl_test.cpp
 //
-// Integration tests verifying receive_ttl_minimum packet filtering via local bus.
+// Integration tests verifying receive_ttl_minimum packet filtering via inproc bus.
 //
 // TEST-13: receive_ttl_minimum filters packets below the threshold.
 //
 // These tests confirm PARAM-05c: receive_ttl_minimum in mdns_options is enforced
 // in recv_loop -- packets with IP TTL below the threshold are silently discarded.
 //
-// Verification approach: inject DNS packets directly into the observer's local_socket
+// Verification approach: inject DNS packets directly into the observer's inproc_socket
 // with a controlled TTL, then confirm whether on_record fires based on the threshold.
 //
-// The inject-with-ttl path uses local_socket::deliver(from, data, ttl) which is the
+// The inject-with-ttl path uses inproc_socket::deliver(from, data, ttl) which is the
 // test-only overload added in phase 47-03.
 
-#include "mdnspp/local/local_harness.h"
-#include "mdnspp/local/local_socket.h"
+#include "mdnspp/inproc/inproc_harness.h"
+#include "mdnspp/inproc/inproc_socket.h"
 
 #include "mdnspp/records.h"
 #include "mdnspp/service_info.h"
@@ -37,8 +37,8 @@
 #include <cstddef>
 
 using namespace mdnspp;
-using mdnspp::local::local_harness;
-using mdnspp::local::local_socket;
+using mdnspp::inproc::inproc_harness;
+using mdnspp::inproc::inproc_socket;
 using mdnspp::testing::test_clock;
 
 namespace {
@@ -57,8 +57,6 @@ service_info make_service(std::string_view name,
     return info;
 }
 
-// Build a minimal mDNS PTR response packet for injection.
-// Uses the real DNS response builder so the observer can parse it.
 std::vector<std::byte> make_ptr_response(std::string_view service_name,
                                           std::string_view service_type,
                                           std::string_view host,
@@ -76,14 +74,10 @@ std::vector<std::byte> make_ptr_response(std::string_view service_name,
 // ---------------------------------------------------------------------------
 // TEST-13a: receive_ttl_minimum=255 filters TTL=254 packets
 // ---------------------------------------------------------------------------
-//
-// Observer configured with receive_ttl_minimum=255 (the RFC default).
-// Packets delivered with TTL=254 (one hop below link-local minimum) are dropped.
-// Packets delivered with TTL=255 are processed normally.
 
-TEST_CASE("receive_ttl_minimum=255 drops TTL=254 packets", "[local][ttl-filter]")
+TEST_CASE("receive_ttl_minimum=255 drops TTL=254 packets", "[inproc][ttl-filter]")
 {
-    local_harness h;
+    inproc_harness h;
 
     mdns_options mdns_opts;
     mdns_opts.receive_ttl_minimum = 255;
@@ -105,13 +99,11 @@ TEST_CASE("receive_ttl_minimum=255 drops TTL=254 packets", "[local][ttl-filter]"
 
     endpoint from{"192.168.1.50", 5353};
 
-    // Inject with TTL=254 — must be dropped.
     observer.socket().deliver(from, std::span<const std::byte>(pkt), uint8_t{254});
     h.executor.drain();
 
     REQUIRE(records_received == 0);
 
-    // Inject with TTL=255 — must be processed.
     observer.socket().deliver(from, std::span<const std::byte>(pkt), uint8_t{255});
     h.executor.drain();
 
@@ -121,12 +113,10 @@ TEST_CASE("receive_ttl_minimum=255 drops TTL=254 packets", "[local][ttl-filter]"
 // ---------------------------------------------------------------------------
 // TEST-13b: receive_ttl_minimum=0 accepts all TTL values including TTL=0
 // ---------------------------------------------------------------------------
-//
-// receive_ttl_minimum=0 disables filtering entirely — all packets pass.
 
-TEST_CASE("receive_ttl_minimum=0 accepts all TTL values", "[local][ttl-filter]")
+TEST_CASE("receive_ttl_minimum=0 accepts all TTL values", "[inproc][ttl-filter]")
 {
-    local_harness h;
+    inproc_harness h;
 
     mdns_options mdns_opts;
     mdns_opts.receive_ttl_minimum = 0;
@@ -148,7 +138,6 @@ TEST_CASE("receive_ttl_minimum=0 accepts all TTL values", "[local][ttl-filter]")
 
     endpoint from{"192.168.1.51", 5353};
 
-    // Inject with TTL=0 — must be processed (minimum is 0, all pass).
     observer.socket().deliver(from, std::span<const std::byte>(pkt), uint8_t{0});
     h.executor.drain();
 
@@ -158,12 +147,10 @@ TEST_CASE("receive_ttl_minimum=0 accepts all TTL values", "[local][ttl-filter]")
 // ---------------------------------------------------------------------------
 // TEST-13c: receive_ttl_minimum=1 accepts TTL=1 but drops TTL=0
 // ---------------------------------------------------------------------------
-//
-// receive_ttl_minimum=1: TTL=1 passes (>= 1), TTL=0 is dropped (< 1).
 
-TEST_CASE("receive_ttl_minimum=1 accepts TTL=1, drops TTL=0", "[local][ttl-filter]")
+TEST_CASE("receive_ttl_minimum=1 accepts TTL=1, drops TTL=0", "[inproc][ttl-filter]")
 {
-    local_harness h;
+    inproc_harness h;
 
     mdns_options mdns_opts;
     mdns_opts.receive_ttl_minimum = 1;
@@ -183,7 +170,6 @@ TEST_CASE("receive_ttl_minimum=1 accepts TTL=1, drops TTL=0", "[local][ttl-filte
         ++records_ttl0;
     };
 
-    // Two separate observers with different service names to avoid conflicts.
     mdns_options mdns_opts2;
     mdns_opts2.receive_ttl_minimum = 1;
 
@@ -205,13 +191,11 @@ TEST_CASE("receive_ttl_minimum=1 accepts TTL=1, drops TTL=0", "[local][ttl-filte
                                        "_http._tcp.local.",
                                        "ttlzero0.local.", 9003);
 
-    // Inject TTL=1 into obs1 — must pass (1 >= 1).
     obs1.socket().deliver(from, std::span<const std::byte>(pkt_ttl1), uint8_t{1});
     h.executor.drain();
 
     REQUIRE(records_ttl1 >= 1);
 
-    // Inject TTL=0 into obs2 — must be dropped (0 < 1).
     obs2.socket().deliver(from, std::span<const std::byte>(pkt_ttl0), uint8_t{0});
     h.executor.drain();
 

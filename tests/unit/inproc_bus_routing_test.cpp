@@ -1,14 +1,14 @@
-// tests/local_bus_routing_test.cpp
+// tests/inproc_bus_routing_test.cpp
 //
-// Multi-party mDNS infrastructure and routing tests using the deterministic local bus.
-// All tests use local_harness (shared executor + bus) and test_clock for
+// Multi-party mDNS infrastructure and routing tests using the deterministic inproc bus.
+// All tests use inproc_harness (shared executor + bus) and test_clock for
 // zero-wall-clock-time deterministic timing.
 //
 // TEST-05: Observer captures all traffic — probes, announces, queries, and responses.
 // TEST-08: Query backoff convergence — monitor's query interval increases exponentially.
 // TEST-09: Multiple services and types routing — type-specific monitors see only their type.
 
-#include "mdnspp/local/local_harness.h"
+#include "mdnspp/inproc/inproc_harness.h"
 
 #include "mdnspp/records.h"
 #include "mdnspp/service_info.h"
@@ -30,7 +30,7 @@
 #include <variant>
 
 using namespace mdnspp;
-using mdnspp::local::local_harness;
+using mdnspp::inproc::inproc_harness;
 
 // ---------------------------------------------------------------------------
 // Shared helpers
@@ -71,9 +71,9 @@ mdns_options fast_scheduler_opts()
 // TEST-05: Observer captures all traffic
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Observer captures all traffic", "[local][routing]")
+TEST_CASE("Observer captures all traffic", "[inproc][routing]")
 {
-    local_harness h;
+    inproc_harness h;
 
     // --- Observer setup ---
     // Captures every DNS record delivered to it from any bus participant.
@@ -216,9 +216,9 @@ TEST_CASE("Observer captures all traffic", "[local][routing]")
 // TEST-08: Query backoff convergence
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Query backoff convergence", "[local][routing]")
+TEST_CASE("Query backoff convergence", "[inproc][routing]")
 {
-    local_harness h;
+    inproc_harness h;
 
     // Use custom mdns_options with a faster initial interval and smaller max_interval
     // so the backoff progression can be observed within a manageable time window.
@@ -314,9 +314,9 @@ TEST_CASE("Query backoff convergence", "[local][routing]")
 // TEST-09: Multiple services and types routing
 // ---------------------------------------------------------------------------
 
-TEST_CASE("Multiple services and types routing", "[local][routing]")
+TEST_CASE("Multiple services and types routing", "[inproc][routing]")
 {
-    local_harness h;
+    inproc_harness h;
 
     // --- Server A: HTTP ---
     auto server_a = h.make_server(

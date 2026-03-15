@@ -17,11 +17,11 @@ struct socket_options
     endpoint multicast_group{"224.0.0.251", 5353};
     loopback_mode multicast_loopback{loopback_mode::enabled};
     std::optional<std::uint8_t> multicast_ttl{};
-    /// Override the port assigned by local_bus::register_socket.
-    /// When set, the local_socket is assigned the given port instead of the
+    /// Override the port assigned by inproc_bus::register_socket.
+    /// When set, the inproc_socket is assigned the given port instead of the
     /// bus default (start_port). Useful for simulating legacy unicast clients
     /// that use a source port other than 5353.
-    /// Has no effect on non-local (OS) sockets.
+    /// Has no effect on non-inproc (OS) sockets.
     std::optional<uint16_t> port_override{};
 };
 

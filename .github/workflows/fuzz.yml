@@ -2,9 +2,9 @@ name: Fuzz testing
 
 on:
   push:
-    branches: [master,develop]
+    branches: [master,fuzz]
   pull_request:
-    branches: [master,develop]
+    branches: [master,fuzz]
 
 jobs:
   fuzz:

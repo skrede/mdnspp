@@ -1,0 +1,2 @@
+add_executable(mdnspp_inproc_bus_01 01_inproc_bus.cpp)
+target_link_libraries(mdnspp_inproc_bus_01 PRIVATE mdnspp::inproc)

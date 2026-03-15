@@ -123,7 +123,7 @@ ctx.run(); // drives all three
 (futures, coroutines, deferred operations).
 
 - Include: `#include <mdnspp/asio.h>`
-- CMake target: `mdnspp::asio` (sets `MDNSPP_ENABLE_ASIO_POLICY` automatically)
+- CMake target: `mdnspp::asio`
 - Executor: `asio::io_context&`
 
 AsioPolicy types are written with the `basic_*` templates directly:
@@ -190,32 +190,32 @@ mdnspp::testing::mock_executor ex;
 mdnspp::basic_observer<mdnspp::testing::MockPolicy> obs{ex};
 ```
 
-## LocalPolicy
+## InProcPolicy
 
 **When to use:** in-process multicast simulation, deterministic multi-party
 testing, process-local service registry, CI environments without multicast
 networking.
 
-- Include: `#include <mdnspp/local/local_policy.h>`
-- CMake target: `mdnspp::local`
-- Type aliases: `mdnspp::LocalPolicy` (steady_clock), `mdnspp::LocalTestPolicy`
+- Include: `#include <mdnspp/inproc/inproc_policy.h>`
+- CMake target: `mdnspp::inproc`
+- Type aliases: `mdnspp::InProcPolicy` (steady_clock), `mdnspp::InProcTestPolicy`
   (test_clock — Catch2 tests only)
-- Executor: `mdnspp::local::local_executor<>`
+- Executor: `mdnspp::inproc::inproc_executor<>`
 
-`LocalPolicy` uses an explicit `local_bus` as the shared multicast medium.
+`InProcPolicy` uses an explicit `inproc_bus` as the shared multicast medium.
 No real sockets or OS networking is involved. The executor is created from the
 bus and passed to each component.
 
 ```cpp
-#include <mdnspp/local/local_policy.h>
+#include <mdnspp/inproc/inproc_policy.h>
 #include <mdnspp/basic_service_server.h>
 #include <mdnspp/basic_service_monitor.h>
 
-mdnspp::local::local_bus<>      bus;
-mdnspp::local::local_executor<> executor{bus};
+mdnspp::inproc::inproc_bus<>      bus;
+mdnspp::inproc::inproc_executor<> executor{bus};
 
-mdnspp::basic_service_server<mdnspp::LocalPolicy>  srv{executor, info};
-mdnspp::basic_service_monitor<mdnspp::LocalPolicy> mon{executor, opts};
+mdnspp::basic_service_server<mdnspp::InProcPolicy>  srv{executor, info};
+mdnspp::basic_service_monitor<mdnspp::InProcPolicy> mon{executor, opts};
 
 srv.async_start();
 mon.watch("_http._tcp.local.");
@@ -226,7 +226,7 @@ executor.run();   // blocks until executor.stop() — same as ctx.run()
 
 All components must share the same `executor` (and by extension the same `bus`).
 
-See [Local Bus guide](local-bus.md) for architecture, bus topology, and full
+See [In-Process Bus guide](inproc-bus.md) for architecture, bus topology, and full
 usage patterns.
 
 ## Thread-safe work scheduling: post()
@@ -270,7 +270,7 @@ static void post(executor_type ex, detail::move_only_function<void()> fn)
 Appends to a deque for deterministic testing. Drain posted work with
 `ex.drain_posted()`.
 
-### LocalPolicy
+### InProcPolicy
 
 ```cpp
 static void post(executor_type ex, detail::move_only_function<void()> fn)
@@ -279,7 +279,7 @@ static void post(executor_type ex, detail::move_only_function<void()> fn)
 }
 ```
 
-Enqueues the function onto the `local_executor` posted-work deque. Work is
+Enqueues the function onto the `inproc_executor` posted-work deque. Work is
 processed in the next `drain()` or `run()` cycle on the thread driving the
 executor.
 
@@ -318,7 +318,7 @@ announcing, goodbye, and conflict resolution behavior.
 | Standalone, no dependencies | DefaultPolicy | `mdnspp::mdnspp` |
 | ASIO integration | AsioPolicy | `mdnspp::asio` |
 | Unit testing | MockPolicy | `mdnspp::testing` |
-| In-process simulation / testing | LocalPolicy | `mdnspp::local` |
+| In-process simulation / testing | InProcPolicy | `mdnspp::inproc` |
 
 ## Next steps
 

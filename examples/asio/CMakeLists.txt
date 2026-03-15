@@ -1,4 +1,4 @@
-if(MDNSPP_ENABLE_ASIO_POLICY)
+if(TARGET mdnspp::asio)
     add_executable(mdnspp_asio_01_observer 01_observer.cpp)
     target_link_libraries(mdnspp_asio_01_observer PRIVATE mdnspp::mdnspp mdnspp::asio)
 

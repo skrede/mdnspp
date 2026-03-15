@@ -15,7 +15,7 @@ If you are new to ASIO, here is a minimal mental model:
 ## Setup
 
 All examples below share this common setup. Link `mdnspp::asio` in CMake --
-this sets `MDNSPP_ENABLE_ASIO_POLICY` automatically.
+the `MDNSPP_ENABLE_ASIO_POLICY` compile definition is set automatically.
 
 ```cmake
 target_link_libraries(my_app PRIVATE mdnspp::asio)

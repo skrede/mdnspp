@@ -39,7 +39,7 @@ Unit tests cover:
 - Querier query construction and result delivery (querier_test, query_backoff_test)
 - Endpoint and socket option handling (endpoint_test, socket_options_test)
 - Policy concept conformance for all three built-in policies
-  (concept_conformance_test, default_conformance_test, local_conformance_test,
+  (concept_conformance_test, default_conformance_test, inproc_conformance_test,
   asio_conformance_test)
 
 **How to run:**
@@ -58,29 +58,29 @@ ctest --test-dir build -R dns_name_test
 
 ## Integration tests
 
-**Location:** `tests/unit/local_bus_*.cpp` (compiled with the unit test suite)
+**Location:** `tests/unit/inproc_bus_*.cpp` (compiled with the unit test suite)
 **Framework:** Catch2
-**Policy:** `LocalTestPolicy` (test_clock via `local_harness`)
+**Policy:** `InProcTestPolicy` (test_clock via `inproc_harness`)
 
 Integration tests exercise multi-party mDNS scenarios end-to-end using the
-deterministic local bus. All network I/O stays in-process. `local_harness`
-provides a shared `local_bus<test_clock>` and `local_executor<test_clock>` so
+deterministic in-process bus. All network I/O stays in-process. `inproc_harness`
+provides a shared `inproc_bus<test_clock>` and `inproc_executor<test_clock>` so
 tests can advance simulated time with `h.advance(ms)` instead of sleeping.
 
 Ten scenarios are covered:
 
 | ID | Scenario | Files |
 |----|----------|-------|
-| TEST-01 | Probe conflict resolution — two servers with the same name | `local_bus_discovery_test.cpp`, `local_bus_rfc_compliance_test.cpp` |
-| TEST-02 | Discovery lifecycle — server announces, monitor finds, server stops, monitor loses | `local_bus_discovery_test.cpp`, `local_bus_rfc_compliance_test.cpp` |
-| TEST-03 | Known-answer suppression — querier suppresses records already in query | `local_bus_rfc_compliance_test.cpp` |
-| TEST-04 | Duplicate answer suppression across queriers | `local_bus_rfc_compliance_test.cpp` |
-| TEST-05 | Observer captures all traffic — probes, announces, queries, responses | `local_bus_routing_test.cpp` |
-| TEST-06 | TC bit multi-packet accumulation end-to-end | `local_bus_rfc_compliance_test.cpp` |
-| TEST-07 | Cache-flush propagation across monitors | `local_bus_rfc_compliance_test.cpp` |
-| TEST-08 | Query backoff convergence — exponential backoff on repeated queries | `local_bus_routing_test.cpp` |
-| TEST-09 | Multiple service types — type-specific monitors see only their type | `local_bus_routing_test.cpp` |
-| TEST-10 | Goodbye with delayed expiry — `on_lost` does not fire before grace period | `local_bus_discovery_test.cpp` |
+| TEST-01 | Probe conflict resolution — two servers with the same name | `inproc_bus_discovery_test.cpp`, `inproc_bus_rfc_compliance_test.cpp` |
+| TEST-02 | Discovery lifecycle — server announces, monitor finds, server stops, monitor loses | `inproc_bus_discovery_test.cpp`, `inproc_bus_rfc_compliance_test.cpp` |
+| TEST-03 | Known-answer suppression — querier suppresses records already in query | `inproc_bus_rfc_compliance_test.cpp` |
+| TEST-04 | Duplicate answer suppression across queriers | `inproc_bus_rfc_compliance_test.cpp` |
+| TEST-05 | Observer captures all traffic — probes, announces, queries, responses | `inproc_bus_routing_test.cpp` |
+| TEST-06 | TC bit multi-packet accumulation end-to-end | `inproc_bus_rfc_compliance_test.cpp` |
+| TEST-07 | Cache-flush propagation across monitors | `inproc_bus_rfc_compliance_test.cpp` |
+| TEST-08 | Query backoff convergence — exponential backoff on repeated queries | `inproc_bus_routing_test.cpp` |
+| TEST-09 | Multiple service types — type-specific monitors see only their type | `inproc_bus_routing_test.cpp` |
+| TEST-10 | Goodbye with delayed expiry — `on_lost` does not fire before grace period | `inproc_bus_discovery_test.cpp` |
 
 Integration tests run as part of the standard unit test suite and require no
 additional build flags.
@@ -157,6 +157,6 @@ Compile tests run as part of the standard build and are included in `ctest`.
 
 ## See also
 
-- [local-bus.md](local-bus.md) — LocalPolicy production guide (steady_clock, `run()`)
+- [inproc-bus.md](inproc-bus.md) — InProcPolicy production guide (steady_clock, `run()`)
 - [policies.md](policies.md) — MockPolicy unit testing setup
-- [custom-policies.md](custom-policies.md) — LocalPolicy concept walkthrough
+- [custom-policies.md](custom-policies.md) — InProcPolicy concept walkthrough

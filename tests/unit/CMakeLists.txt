@@ -5,6 +5,14 @@ function(make_test TEST_FILE)
     add_test(NAME ${TEST_FILE} COMMAND ${TEST_FILE})
 endfunction()
 
+function(make_subdir_test TEST_NAME SOURCE_PATH)
+    add_executable(${TEST_NAME} "${CMAKE_CURRENT_LIST_DIR}/${SOURCE_PATH}")
+    target_include_directories(${TEST_NAME} PRIVATE "${CMAKE_CURRENT_LIST_DIR}")
+    target_link_libraries(${TEST_NAME} PRIVATE mdnspp mdnspp::testing Catch2::Catch2WithMain)
+    target_compile_options(${TEST_NAME} PRIVATE ${MDNSPP_WARNING_FLAGS})
+    add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+endfunction()
+
 function(make_inproc_test TEST_FILE)
     add_executable(${TEST_FILE} "${CMAKE_CURRENT_LIST_DIR}/${TEST_FILE}.cpp")
     target_link_libraries(${TEST_FILE} PRIVATE mdnspp mdnspp::inproc Catch2::Catch2WithMain)
@@ -24,17 +32,12 @@ if (TARGET mdnspp::asio)
     make_asio_test(asio_completion_token_test)
 endif ()
 
+# -- Standalone tests (not split) --
 make_test(records_test)
 make_test(concept_conformance_test)
 make_test(recv_loop_test)
-make_test(parse_test)
-make_test(service_discovery_test)
-make_test(querier_test)
 make_test(service_info_test)
 make_test(socket_options_test)
-make_test(service_server_test)
-make_test(observer_test)
-make_test(dns_wire_test)
 make_test(service_aggregation_test)
 make_test(dns_test)
 make_test(mdns_util_test)
@@ -49,14 +52,57 @@ make_test(server_query_match_test)
 make_test(server_known_answer_test)
 make_test(server_probe_announce_test)
 make_test(server_response_aggregation_test)
-make_test(record_cache_test)
 make_test(query_backoff_test)
 make_test(ttl_refresh_test)
 make_test(tc_accumulator_test)
 make_test(duplicate_answer_suppression_test)
-make_test(service_monitor_test)
 make_test(dns_name_test)
 
+# -- server/ (from service_server_test.cpp) --
+make_subdir_test(server_response_test      server/response.cpp)
+make_subdir_test(server_lifecycle_test      server/lifecycle.cpp)
+make_subdir_test(server_probing_test        server/probing.cpp)
+make_subdir_test(server_announce_test       server/announce.cpp)
+make_subdir_test(server_query_test          server/query.cpp)
+make_subdir_test(server_suppression_test    server/suppression.cpp)
+make_subdir_test(server_advanced_test       server/advanced.cpp)
+
+# -- dns_wire/ (from dns_wire_test.cpp) --
+make_subdir_test(dns_wire_read_name_test    dns_wire/read_name.cpp)
+make_subdir_test(dns_wire_encode_test       dns_wire/encode.cpp)
+make_subdir_test(dns_wire_response_test     dns_wire/response.cpp)
+make_subdir_test(dns_wire_nsec_test         dns_wire/nsec.cpp)
+make_subdir_test(dns_wire_known_answer_test dns_wire/known_answer.cpp)
+
+# -- monitor/ (from service_monitor_test.cpp) --
+make_subdir_test(monitor_lifecycle_test     monitor/lifecycle.cpp)
+make_subdir_test(monitor_resolution_test    monitor/resolution.cpp)
+make_subdir_test(monitor_events_test        monitor/events.cpp)
+make_subdir_test(monitor_scheduler_test     monitor/scheduler.cpp)
+make_subdir_test(monitor_snapshot_test      monitor/snapshot.cpp)
+
+# -- discovery/ (from service_discovery_test.cpp) --
+make_subdir_test(discovery_discover_test    discovery/discover.cpp)
+make_subdir_test(discovery_browse_test      discovery/browse.cpp)
+make_subdir_test(discovery_lifecycle_test   discovery/lifecycle.cpp)
+
+# -- querier/ (from querier_test.cpp) --
+make_subdir_test(querier_basic_test         querier/basic.cpp)
+make_subdir_test(querier_suppression_test   querier/suppression.cpp)
+
+# -- parse/ (from parse_test.cpp) --
+make_subdir_test(parse_records_test         parse/records.cpp)
+make_subdir_test(parse_dispatch_test        parse/dispatch.cpp)
+
+# -- cache/ (from record_cache_test.cpp) --
+make_subdir_test(cache_basic_test           cache/basic.cpp)
+make_subdir_test(cache_flush_test           cache/flush.cpp)
+
+# -- observer/ (from observer_test.cpp) --
+make_subdir_test(observer_delivery_test     observer/delivery.cpp)
+make_subdir_test(observer_lifecycle_test    observer/lifecycle.cpp)
+
+# -- inproc bus tests --
 make_inproc_test(inproc_conformance_test)
 make_inproc_test(inproc_bus_discovery_test)
 make_inproc_test(inproc_bus_routing_test)

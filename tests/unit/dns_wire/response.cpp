@@ -265,6 +265,47 @@ SCENARIO("build_dns_response SRV answer has cache-flush bit set", "[build_dns_re
     }
 }
 
+// ---------------------------------------------------------------------------
+// Error handling: invalid address encoding
+// ---------------------------------------------------------------------------
+
+SCENARIO("build_dns_response ANY omits A record for invalid IPv4 address",
+         "[build_dns_response][error_handling][ipv4]")
+{
+    GIVEN("a service_info with an invalid IPv4 address and valid IPv6 address")
+    {
+        auto info = make_test_service_v46();
+        info.address_ipv4 = "999.1.2.3";  // intentionally malformed
+
+        WHEN("build_dns_response is called with qtype=ANY")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::any, mdnspp::service_options{});
+
+            THEN("the packet is non-empty (other records are present)")
+            {
+                REQUIRE_FALSE(pkt.empty());
+            }
+
+            THEN("walk_dns_frame finds no A record but does find SRV, PTR, and AAAA records")
+            {
+                auto records = parse_wire(pkt);
+                bool has_a = false, has_srv = false, has_ptr = false, has_aaaa = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<mdnspp::record_a>(rv)) has_a = true;
+                    if(std::holds_alternative<mdnspp::record_srv>(rv)) has_srv = true;
+                    if(std::holds_alternative<mdnspp::record_ptr>(rv)) has_ptr = true;
+                    if(std::holds_alternative<mdnspp::record_aaaa>(rv)) has_aaaa = true;
+                }
+                REQUIRE_FALSE(has_a);
+                REQUIRE(has_srv);
+                REQUIRE(has_ptr);
+                REQUIRE(has_aaaa);
+            }
+        }
+    }
+}
+
 SCENARIO("build_dns_response ANY sets cache-flush on unique records only", "[build_dns_response][cache_flush]")
 {
     GIVEN("a service_info with both addresses and TXT records")

@@ -10,6 +10,7 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/socket_options.h"
 
+#include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/validate_multicast.h"
 #include "mdnspp/default/default_context.h"
 
@@ -18,7 +19,6 @@
 #include <string>
 #include <cstddef>
 #include <cstring>
-#include <functional>
 #include <system_error>
 
 #ifdef _WIN32
@@ -79,7 +79,7 @@ public:
     DefaultSocket &operator=(DefaultSocket &&) = delete;
 
     /// Register this socket and its receive handler with DefaultContext.
-    void async_receive(std::function<void(const recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
     {
         m_receive_handler = std::move(handler);
         m_ctx.register_socket(m_fd,
@@ -140,7 +140,7 @@ public:
 private:
     DefaultContext &m_ctx;
     detail::native_socket_t m_fd{detail::invalid_socket};
-    std::function<void(const recv_metadata &, std::span<std::byte>)> m_receive_handler;
+    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_receive_handler;
 
     // -------------------------------------------------------------------------
     // Address helpers
@@ -260,7 +260,7 @@ private:
 
     // Returns true on success. On failure, sets ec and cleans up m_fd.
     bool set_sock_opt(int32_t level, int32_t optname, const void *optval,
-                      socklen_t optlen, std::error_code &ec, const char *ctx)
+                      socklen_t optlen, std::error_code &ec)
     {
 #ifdef _WIN32
         if(::setsockopt(m_fd, level, optname,
@@ -278,7 +278,6 @@ private:
             return false;
         }
 #endif
-        (void)ctx;
         return true;
     }
 
@@ -329,7 +328,7 @@ private:
         }
 
         const int32_t one = 1;
-        if(!set_sock_opt(SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one), ec, "SO_REUSEADDR"))
+        if(!set_sock_opt(SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one), ec))
             return;
 
 #if defined(SO_REUSEPORT)
@@ -390,7 +389,7 @@ private:
         if(!opts.interface_address.empty())
         {
             if(!set_sock_opt(IPPROTO_IP, IP_MULTICAST_IF, &iface_addr,
-                             sizeof(iface_addr), ec, "IP_MULTICAST_IF"))
+                             sizeof(iface_addr), ec))
                 return;
         }
 
@@ -400,7 +399,7 @@ private:
             ::inet_pton(AF_INET, opts.multicast_group.address.c_str(), &mreq.imr_multiaddr);
             mreq.imr_interface = iface_addr;
             if(!set_sock_opt(IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq,
-                             sizeof(mreq), ec, "IP_ADD_MEMBERSHIP"))
+                             sizeof(mreq), ec))
                 return;
         }
 
@@ -408,7 +407,7 @@ private:
         {
             const int32_t ttl_val = static_cast<int32_t>(opts.multicast_ttl.value_or(255));
             if(!set_sock_opt(IPPROTO_IP, IP_MULTICAST_TTL, &ttl_val,
-                             sizeof(ttl_val), ec, "IP_MULTICAST_TTL"))
+                             sizeof(ttl_val), ec))
                 return;
         }
 
@@ -416,7 +415,7 @@ private:
         {
             const int32_t val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
             if(!set_sock_opt(IPPROTO_IP, IP_MULTICAST_LOOP, &val,
-                             sizeof(val), ec, "IP_MULTICAST_LOOP"))
+                             sizeof(val), ec))
                 return;
         }
 
@@ -452,7 +451,7 @@ private:
         if(!opts.interface_address.empty())
         {
             if(!set_sock_opt(IPPROTO_IPV6, IPV6_MULTICAST_IF, &iface_idx,
-                             sizeof(iface_idx), ec, "IPV6_MULTICAST_IF"))
+                             sizeof(iface_idx), ec))
                 return;
         }
 
@@ -462,7 +461,7 @@ private:
             ::inet_pton(AF_INET6, opts.multicast_group.address.c_str(), &mreq6.ipv6mr_multiaddr);
             mreq6.ipv6mr_interface = iface_idx;
             if(!set_sock_opt(IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq6,
-                             sizeof(mreq6), ec, "IPV6_JOIN_GROUP"))
+                             sizeof(mreq6), ec))
                 return;
         }
 
@@ -470,7 +469,7 @@ private:
         {
             const int32_t hops_val = static_cast<int32_t>(opts.multicast_ttl.value_or(255));
             if(!set_sock_opt(IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &hops_val,
-                             sizeof(hops_val), ec, "IPV6_MULTICAST_HOPS"))
+                             sizeof(hops_val), ec))
                 return;
         }
 
@@ -478,7 +477,7 @@ private:
         {
             const int32_t val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
             if(!set_sock_opt(IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &val,
-                             sizeof(val), ec, "IPV6_MULTICAST_LOOP"))
+                             sizeof(val), ec))
                 return;
         }
 

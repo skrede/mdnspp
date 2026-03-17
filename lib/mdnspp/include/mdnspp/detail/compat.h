@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DETAIL_COMPAT_H
-#define HPP_GUARD_MDNSPP_DETAIL_COMPAT_H
+#ifndef HPP_GUARD_MDNSPP_COMPAT_H
+#define HPP_GUARD_MDNSPP_COMPAT_H
 
 #include <functional>
 #include <memory>

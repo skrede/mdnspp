@@ -1,8 +1,10 @@
 #ifndef HPP_GUARD_MDNSPP_DNS_WRITE_H
 #define HPP_GUARD_MDNSPP_DNS_WRITE_H
 
+#include "mdnspp/mdns_error.h"
 #include "mdnspp/service_info.h"
 
+#include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/platform.h"
 #include "mdnspp/detail/dns_enums.h"
@@ -11,6 +13,7 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <charconv>
 
 namespace mdnspp::detail {
@@ -36,8 +39,9 @@ inline void append_dns_rr(std::vector<std::byte> &buf,
 }
 
 // Encodes an IPv4 address string "a.b.c.d" into 4 raw bytes.
-// Returns empty vector on parse failure (never throws).
-inline std::vector<std::byte> encode_ipv4(const std::string &addr)
+// Returns expected with mdns_error::invalid_ipv4_address on parse failure (never throws).
+inline detail::expected<std::vector<std::byte>, mdnspp::mdns_error>
+encode_ipv4(const std::string &addr)
 {
     std::vector<std::byte> result;
     result.reserve(4);
@@ -48,37 +52,38 @@ inline std::vector<std::byte> encode_ipv4(const std::string &addr)
     for(int32_t i = 0; i < 4; ++i)
     {
         if(p >= end)
-            return {};
+            return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
 
         int32_t octet{};
         auto [ptr, ec] = std::from_chars(p, end, octet);
         if(ec != std::errc{} || octet < 0 || octet > 255)
-            return {};
+            return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
 
         result.push_back(static_cast<std::byte>(static_cast<uint8_t>(octet)));
 
         if(i < 3)
         {
             if(ptr >= end || *ptr != '.')
-                return {};
+                return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
             p = ptr + 1;
         }
         else
         {
             if(ptr != end)
-                return {};
+                return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
         }
     }
     return result;
 }
 
 // Encodes an IPv6 address string into 16 raw bytes using inet_pton.
-// Returns empty vector on parse failure.
-inline std::vector<std::byte> encode_ipv6(const std::string &addr)
+// Returns expected with mdns_error::invalid_ipv6_address on parse failure.
+inline detail::expected<std::vector<std::byte>, mdnspp::mdns_error>
+encode_ipv6(const std::string &addr)
 {
     uint8_t raw[16];
     if(::inet_pton(AF_INET6, addr.c_str(), raw) != 1)
-        return {};
+        return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv6_address);
     std::vector<std::byte> result;
     result.reserve(16);
     for(auto b : raw)

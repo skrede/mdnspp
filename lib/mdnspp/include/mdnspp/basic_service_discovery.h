@@ -21,7 +21,6 @@
 #include <cassert>
 #include <utility>
 #include <algorithm>
-#include <functional>
 #include <string_view>
 #include <system_error>
 
@@ -228,7 +227,7 @@ private:
     // with shared on_packet handler, and starts the loop.
     void do_query(std::string svc_type, response_mode mode,
                   std::unique_ptr<recv_loop<P>> &target_loop,
-                  std::function<void()> on_silence_fn)
+                  detail::move_only_function<void()> on_silence_fn)
     {
         m_results.clear();
         m_service_type = dns_name(std::move(svc_type));

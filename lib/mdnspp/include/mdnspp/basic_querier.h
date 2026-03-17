@@ -140,10 +140,6 @@ public:
     }
 
 private:
-    // -------------------------------------------------------------------------
-    // do_query -- decomposed into focused helpers
-    // -------------------------------------------------------------------------
-
     // Common query body -- assumes m_on_completion is already set.
     // Must only be called once per lifetime (m_loop must be null on entry).
     //
@@ -236,14 +232,10 @@ private:
                 batch.push_back(std::move(rec));
             });
 
-        bool relevant = std::any_of(batch.begin(), batch.end(),
-            [this](const mdns_record_variant &rec)
-            {
-                return std::visit([this](const auto &r)
-                {
-                    return r.name == m_query_name;
-                }, rec);
-            });
+        bool relevant = std::any_of(batch.begin(), batch.end(), [this](const mdns_record_variant &rec)
+        {
+            return std::visit([this](const auto &r) { return r.name == m_query_name; }, rec);
+        });
 
         if(relevant)
         {

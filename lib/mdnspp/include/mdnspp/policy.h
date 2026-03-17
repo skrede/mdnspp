@@ -11,7 +11,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <concepts>
-#include <functional>
 #include <system_error>
 
 namespace mdnspp {
@@ -35,9 +34,9 @@ struct recv_metadata
 
 // SocketLike<S>: satisfied by any type that provides the mDNS socket interface.
 template <typename S>
-concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, std::function<void(const recv_metadata &, std::span<std::byte>)> handler)
+concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
 {
-    { s.async_receive(handler) } -> std::same_as<void>;
+    { s.async_receive(std::move(handler)) } -> std::same_as<void>;
     { s.send(ep, send_data) } -> std::same_as<void>;
     { s.send(ep, send_data, ec) } -> std::same_as<void>;
     { s.close() } -> std::same_as<void>;
@@ -45,10 +44,10 @@ concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byt
 
 // TimerLike<T>: satisfied by any type that provides the mDNS timer interface.
 template <typename T>
-concept TimerLike = requires(T &t, std::chrono::milliseconds dur, std::function<void(std::error_code)> handler)
+concept TimerLike = requires(T &t, std::chrono::milliseconds dur, detail::move_only_function<void(std::error_code)> handler)
 {
     t.expires_after(dur); // no return constraint — asio::steady_timer returns std::size_t
-    { t.async_wait(handler) } -> std::same_as<void>;
+    { t.async_wait(std::move(handler)) } -> std::same_as<void>;
     { t.cancel() } -> std::same_as<void>;
 };
 

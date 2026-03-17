@@ -1,10 +1,10 @@
 #ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_TIMER_H
 #define HPP_GUARD_MDNSPP_INPROC_INPROC_TIMER_H
 
+#include "mdnspp/detail/compat.h"
 #include "mdnspp/inproc/inproc_executor.h"
 
 #include <chrono>
-#include <functional>
 #include <system_error>
 
 namespace mdnspp::inproc {
@@ -48,7 +48,7 @@ public:
         m_active = true;
     }
 
-    void async_wait(std::function<void(std::error_code)> handler)
+    void async_wait(detail::move_only_function<void(std::error_code)> handler)
     {
         m_handler = std::move(handler);
     }
@@ -83,7 +83,7 @@ public:
 private:
     inproc_executor<Clock> *m_exec;
     typename Clock::time_point m_expiry{};
-    std::function<void(std::error_code)> m_handler;
+    detail::move_only_function<void(std::error_code)> m_handler;
     bool m_active{false};
     int m_cancel_count{0};
 };

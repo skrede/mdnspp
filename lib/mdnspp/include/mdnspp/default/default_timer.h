@@ -8,11 +8,11 @@
 
 #include "mdnspp/policy.h"
 
+#include "mdnspp/detail/compat.h"
 #include "mdnspp/default/default_context.h"
 
 #include <chrono>
 #include <utility>
-#include <functional>
 #include <system_error>
 
 namespace mdnspp {
@@ -50,7 +50,7 @@ public:
     }
 
     /// Register the completion handler. Fired by DefaultContext when the deadline passes.
-    void async_wait(std::function<void(std::error_code)> handler)
+    void async_wait(detail::move_only_function<void(std::error_code)> handler)
     {
         m_pending_handler = std::move(handler);
     }
@@ -94,13 +94,14 @@ public:
 private:
     DefaultContext &m_ctx;
     std::chrono::steady_clock::time_point m_deadline{};
-    std::function<void(std::error_code)> m_pending_handler;
+    detail::move_only_function<void(std::error_code)> m_pending_handler;
 };
 
 static_assert(TimerLike<DefaultTimer>, "DefaultTimer must satisfy TimerLike — check expires_after/async_wait/cancel");
 
 inline int DefaultContext::compute_next_timeout_ms(std::chrono::steady_clock::time_point now) const
 {
+    assert_executor_thread();
     int min_ms = -1; // -1 = no pending timer, poll blocks indefinitely
     for(const DefaultTimer *t : m_timers)
     {
@@ -122,6 +123,7 @@ inline int DefaultContext::compute_next_timeout_ms(std::chrono::steady_clock::ti
 
 inline void DefaultContext::fire_expired_timers()
 {
+    assert_executor_thread();
     // Snapshot to avoid iterator invalidation if a handler calls register/deregister.
     const auto timers = m_timers;
     for(DefaultTimer *t : timers)

@@ -29,6 +29,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
+#include <ranges>
 #include <utility>
 #include <algorithm>
 #include <string_view>

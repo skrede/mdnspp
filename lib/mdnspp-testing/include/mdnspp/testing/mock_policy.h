@@ -13,7 +13,6 @@
 #include <vector>
 #include <cstddef>
 #include <utility>
-#include <functional>
 #include <system_error>
 
 namespace mdnspp::testing {
@@ -90,7 +89,7 @@ public:
         enqueue(std::move(packet), endpoint{});
     }
 
-    void async_receive(std::function<void(const recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
     {
         if(!m_receive_queue.empty())
         {
@@ -153,7 +152,7 @@ public:
 
 private:
     std::queue<std::pair<std::vector<std::byte>, endpoint>> m_receive_queue;
-    std::function<void(const recv_metadata &, std::span<std::byte>)> m_pending_receive;
+    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_pending_receive;
     std::vector<sent_packet> m_sent_packets;
     socket_options m_opts{};
 
@@ -183,7 +182,7 @@ public:
         m_cancel_count++;
     }
 
-    void async_wait(std::function<void(std::error_code)> handler)
+    void async_wait(detail::move_only_function<void(std::error_code)> handler)
     {
         m_pending_handler = std::move(handler);
     }
@@ -213,7 +212,7 @@ public:
     std::chrono::milliseconds last_duration() const { return m_last_duration; }
 
 private:
-    std::function<void(std::error_code)> m_pending_handler;
+    detail::move_only_function<void(std::error_code)> m_pending_handler;
     std::chrono::milliseconds m_last_duration{0};
     int m_cancel_count{0};
 };

@@ -109,6 +109,32 @@ SCENARIO("build_dns_query with known answers includes Answer section", "[dns_wir
     }
 }
 
+SCENARIO("append_known_answer omits record_a with invalid address string",
+         "[dns_wire][known_answer][error_handling]")
+{
+    GIVEN("a record_a with an invalid address string '999.1.2.3'")
+    {
+        mdnspp::record_a bad_a;
+        bad_a.name = "myhost.local.";
+        bad_a.ttl = 120;
+        bad_a.address_string = "999.1.2.3";
+
+        mdnspp::mdns_record_variant bad_rec = bad_a;
+
+        WHEN("append_known_answer is called with this record")
+        {
+            std::vector<std::byte> buf;
+            std::size_t size_before = buf.size();
+            append_known_answer(buf, bad_rec);
+
+            THEN("the buffer size is unchanged (record was not appended)")
+            {
+                REQUIRE(buf.size() == size_before);
+            }
+        }
+    }
+}
+
 SCENARIO("build_dns_query with empty known answers matches basic overload", "[dns_wire][known_answer]")
 {
     GIVEN("an empty known-answers span")

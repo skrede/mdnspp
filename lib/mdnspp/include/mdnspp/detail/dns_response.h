@@ -9,9 +9,10 @@
 #include "mdnspp/detail/dns_enums.h"
 
 #include <vector>
+#include <cstdio>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
-#include <climits>
 #include <algorithm>
 
 namespace mdnspp::detail {
@@ -70,15 +71,27 @@ inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &inf
     push_u16_be(rdata_srv, info.port);
     rdata_srv.insert(rdata_srv.end(), name_hostname.begin(), name_hostname.end());
 
-    // A rdata: 4 IPv4 octets (may be empty if no address_ipv4)
+    // A rdata: 4 IPv4 octets (may be empty if no address_ipv4 or encoding fails)
     std::vector<std::byte> rdata_a;
     if(info.address_ipv4.has_value())
-        rdata_a = encode_ipv4(*info.address_ipv4);
+    {
+        auto enc = encode_ipv4(*info.address_ipv4);
+        if(enc.has_value())
+            rdata_a = std::move(*enc);
+        else
+            std::fprintf(stderr, "encode_ipv4 failed: %s\n", info.address_ipv4->c_str());
+    }
 
-    // AAAA rdata: 16 IPv6 bytes (may be empty if no address_ipv6)
+    // AAAA rdata: 16 IPv6 bytes (may be empty if no address_ipv6 or encoding fails)
     std::vector<std::byte> rdata_aaaa;
     if(info.address_ipv6.has_value())
-        rdata_aaaa = encode_ipv6(*info.address_ipv6);
+    {
+        auto enc = encode_ipv6(*info.address_ipv6);
+        if(enc.has_value())
+            rdata_aaaa = std::move(*enc);
+        else
+            std::fprintf(stderr, "encode_ipv6 failed: %s\n", info.address_ipv6->c_str());
+    }
 
     // TXT rdata: length-prefixed key[=value] strings
     std::vector<std::byte> rdata_txt;

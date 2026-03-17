@@ -11,9 +11,10 @@
 #include <span>
 #include <string>
 #include <vector>
+#include <cstdio>
+#include <utility>
 #include <cstddef>
 #include <cstdint>
-#include <utility>
 #include <string_view>
 
 namespace mdnspp::detail {
@@ -129,15 +130,19 @@ inline void append_known_answer(std::vector<std::byte> &buf, const mdns_record_v
         }
         else if constexpr(std::is_same_v<T, record_a>)
         {
-            auto rdata = encode_ipv4(r.address_string);
-            if(!rdata.empty())
-                append_dns_rr(buf, name, dns_type::a, r.ttl, rdata);
+            auto enc = encode_ipv4(r.address_string);
+            if(enc.has_value())
+                append_dns_rr(buf, name, dns_type::a, r.ttl, *enc);
+            else
+                std::fprintf(stderr, "encode_ipv4 failed: %s\n", r.address_string.c_str());
         }
         else if constexpr(std::is_same_v<T, record_aaaa>)
         {
-            auto rdata = encode_ipv6(r.address_string);
-            if(!rdata.empty())
-                append_dns_rr(buf, name, dns_type::aaaa, r.ttl, rdata);
+            auto enc = encode_ipv6(r.address_string);
+            if(enc.has_value())
+                append_dns_rr(buf, name, dns_type::aaaa, r.ttl, *enc);
+            else
+                std::fprintf(stderr, "encode_ipv6 failed: %s\n", r.address_string.c_str());
         }
         else if constexpr(std::is_same_v<T, record_txt>)
         {

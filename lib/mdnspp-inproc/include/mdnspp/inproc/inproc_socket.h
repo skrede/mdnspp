@@ -5,6 +5,7 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/socket_options.h"
 
+#include "mdnspp/detail/compat.h"
 #include "mdnspp/inproc/inproc_bus.h"
 #include "mdnspp/inproc/inproc_executor.h"
 
@@ -13,7 +14,6 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
-#include <functional>
 #include <system_error>
 #include <utility>
 
@@ -55,7 +55,7 @@ public:
     inproc_socket(inproc_socket &&) = delete;
     inproc_socket &operator=(inproc_socket &&) = delete;
 
-    void async_receive(std::function<void(const recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
     {
         if(!m_recv_queue.empty())
         {
@@ -118,7 +118,7 @@ private:
     inproc_bus<Clock> *m_bus;
     socket_options m_opts;
     endpoint m_ep;
-    std::function<void(const recv_metadata &, std::span<std::byte>)> m_pending_receive;
+    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_pending_receive;
     std::vector<std::byte> m_recv_buf;
 
     struct queued_packet

@@ -310,6 +310,49 @@ SCENARIO("update_service_info posts work to executor", "[service_server][update]
     }
 }
 
+SCENARIO("Server invokes on_error with invalid_ipv4_address when address encoding fails",
+         "[service_server][on_error][address_encoding]")
+{
+    GIVEN("a service_server with an invalid IPv4 address and an on_error handler")
+    {
+        mock_executor ex;
+
+        service_options opts;
+        opts.respond_to_meta_queries = false;
+
+        service_info info = make_test_info();
+        info.address_ipv4 = "999.1.2.3";  // intentionally malformed
+
+        basic_service_server<MockPolicy> server{ex, std::move(info), std::move(opts)};
+
+        std::vector<std::error_code> error_codes;
+        std::vector<std::string> error_msgs;
+        server.on_error([&](std::error_code ec, std::string_view msg)
+        {
+            error_codes.push_back(ec);
+            error_msgs.push_back(std::string(msg));
+        });
+
+        server.async_start();
+        advance_to_live(server);
+
+        THEN("on_error was invoked at least once with invalid_ipv4_address")
+        {
+            REQUIRE_FALSE(error_codes.empty());
+            bool found = false;
+            for(const auto &ec : error_codes)
+            {
+                if(ec == make_error_code(mdnspp::mdns_error::invalid_ipv4_address))
+                {
+                    found = true;
+                    break;
+                }
+            }
+            REQUIRE(found);
+        }
+    }
+}
+
 SCENARIO("update_service_info sends unsolicited announcement to multicast", "[service_server][update][announcement]")
 {
     GIVEN("a live service_server")

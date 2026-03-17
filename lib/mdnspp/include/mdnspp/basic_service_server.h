@@ -368,10 +368,35 @@ private:
         }
     }
 
+    // Validates address fields in m_info against the encode functions and invokes
+    // m_on_error for any that fail. Called before building DNS responses.
+    void validate_addresses()
+    {
+        if(m_info.address_ipv4.has_value())
+        {
+            auto enc = detail::encode_ipv4(*m_info.address_ipv4);
+            if(!enc.has_value() && m_on_error)
+            {
+                m_on_error(make_error_code(enc.error()),
+                           "invalid IPv4 address: " + *m_info.address_ipv4);
+            }
+        }
+        if(m_info.address_ipv6.has_value())
+        {
+            auto enc = detail::encode_ipv6(*m_info.address_ipv6);
+            if(!enc.has_value() && m_on_error)
+            {
+                m_on_error(make_error_code(enc.error()),
+                           "invalid IPv6 address: " + *m_info.address_ipv6);
+            }
+        }
+    }
+
     // Sends an unsolicited announcement with all records (PTR, SRV, TXT, A/AAAA)
     // to the multicast group. RFC 6762 section 8.4.
     void send_announcement()
     {
+        validate_addresses();
         auto response = detail::build_dns_response(m_info, dns_type::any, m_opts);
         if(!response.empty())
             send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "announcement send");
@@ -458,6 +483,7 @@ private:
         if(m_pa_state.state != server_state::live && m_pa_state.state != server_state::announcing)
             return;
 
+        validate_addresses();
         std::error_code ec;
         service_options goodbye_opts;
         goodbye_opts.ptr_ttl    = std::chrono::seconds{0};

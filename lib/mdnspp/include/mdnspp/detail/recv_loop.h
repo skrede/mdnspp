@@ -2,12 +2,12 @@
 #define HPP_GUARD_MDNSPP_RECV_LOOP_H
 
 #include "mdnspp/policy.h"
+#include "mdnspp/detail/compat.h"
 
 #include <span>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <functional>
 
 namespace mdnspp {
 
@@ -20,14 +20,14 @@ public:
 
     // Returns true if the packet was relevant (resets silence timer),
     // false to ignore (timer continues counting down).
-    using packet_handler = std::function<bool(const recv_metadata &, std::span<std::byte>)>;
+    using packet_handler = detail::move_only_function<bool(const recv_metadata &, std::span<std::byte>)>;
 
     recv_loop(
         socket_type &socket,
         timer_type &timer,
         std::chrono::milliseconds silence_timeout,
         packet_handler on_packet,
-        std::function<void()> on_silence,
+        detail::move_only_function<void()> on_silence,
         uint32_t receive_ttl_minimum = 0)
         : m_receive_ttl_minimum(receive_ttl_minimum)
         , m_stopped(false)
@@ -111,7 +111,7 @@ private:
     std::chrono::milliseconds m_silence_timeout;
     socket_type &m_socket;
     timer_type &m_timer;
-    std::function<void()> m_on_silence;
+    detail::move_only_function<void()> m_on_silence;
     packet_handler m_on_packet;
 };
 

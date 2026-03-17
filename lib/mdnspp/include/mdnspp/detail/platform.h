@@ -16,4 +16,4 @@ using nfds_t = unsigned long;
 #  include <poll.h>
 #endif
 
-#endif // HPP_GUARD_MDNSPP_PLATFORM_H
+#endif

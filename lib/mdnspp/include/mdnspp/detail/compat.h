@@ -133,6 +133,9 @@ public:
     constexpr const T &operator*() const & { return std::get<0>(m_storage); }
     constexpr T &&operator*() && { return std::get<0>(std::move(m_storage)); }
 
+    constexpr T *operator->() { return &std::get<0>(m_storage); }
+    constexpr const T *operator->() const { return &std::get<0>(m_storage); }
+
     constexpr T &value() & { return std::get<0>(m_storage); }
     constexpr const T &value() const & { return std::get<0>(m_storage); }
 

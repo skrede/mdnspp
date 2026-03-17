@@ -483,7 +483,6 @@ private:
         if(m_pa_state.state != server_state::live && m_pa_state.state != server_state::announcing)
             return;
 
-        validate_addresses();
         std::error_code ec;
         service_options goodbye_opts;
         goodbye_opts.ptr_ttl    = std::chrono::seconds{0};

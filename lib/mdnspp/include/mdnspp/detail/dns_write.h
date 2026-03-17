@@ -11,7 +11,7 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
-#include <sstream>
+#include <charconv>
 
 namespace mdnspp::detail {
 
@@ -36,21 +36,39 @@ inline void append_dns_rr(std::vector<std::byte> &buf,
 }
 
 // Encodes an IPv4 address string "a.b.c.d" into 4 raw bytes.
-// Returns empty vector on parse failure.
+// Returns empty vector on parse failure (never throws).
 inline std::vector<std::byte> encode_ipv4(const std::string &addr)
 {
     std::vector<std::byte> result;
-    std::istringstream ss(addr);
-    std::string token;
-    while(std::getline(ss, token, '.'))
+    result.reserve(4);
+
+    const char *p = addr.data();
+    const char *end = p + addr.size();
+
+    for(int32_t i = 0; i < 4; ++i)
     {
-        int octet = std::stoi(token);
-        if(octet < 0 || octet > 255)
+        if(p >= end)
             return {};
+
+        int32_t octet{};
+        auto [ptr, ec] = std::from_chars(p, end, octet);
+        if(ec != std::errc{} || octet < 0 || octet > 255)
+            return {};
+
         result.push_back(static_cast<std::byte>(static_cast<uint8_t>(octet)));
+
+        if(i < 3)
+        {
+            if(ptr >= end || *ptr != '.')
+                return {};
+            p = ptr + 1;
+        }
+        else
+        {
+            if(ptr != end)
+                return {};
+        }
     }
-    if(result.size() != 4)
-        return {};
     return result;
 }
 

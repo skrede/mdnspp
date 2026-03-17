@@ -2,12 +2,12 @@
 #define HPP_GUARD_MDNSPP_RECV_LOOP_H
 
 #include "mdnspp/policy.h"
+
+#include <span>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
-#include <span>
-#include <vector>
 
 namespace mdnspp {
 
@@ -73,7 +73,6 @@ private:
         {
             return;
         }
-        m_buffer.resize(4096);
         m_socket.async_receive(
             [this](const recv_metadata &meta, std::span<std::byte> data)
             {
@@ -114,7 +113,6 @@ private:
     std::function<void()> m_on_silence;
     uint32_t m_receive_ttl_minimum;
     std::atomic<bool> m_stopped;
-    std::vector<std::byte> m_buffer;
 };
 
 }

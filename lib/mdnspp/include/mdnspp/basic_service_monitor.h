@@ -439,58 +439,22 @@ private:
         }
     }
 
-    /// A record: add IPv4 address to partial/live service.
     void process_a(const record_a &r)
     {
-        // Check partial first -- any instance using this hostname
-        bool any_updated{false};
-
-        for(auto &[inst_name, inc] : m_partial)
-        {
-            if(inc.partial.hostname == r.name)
-            {
-                if(std::ranges::find(inc.partial.ipv4_addresses, r.address_string)
-                   == inc.partial.ipv4_addresses.end())
-                {
-                    inc.partial.ipv4_addresses.push_back(r.address_string);
-                    inc.has_address = true;
-                    any_updated     = true;
-                }
-            }
-        }
-
-        if(any_updated)
-        {
-            // Try to resolve any partial that may now be complete
-            std::vector<dns_name> to_check;
-            for(auto &[inst_name, inc] : m_partial)
-            {
-                if(inc.partial.hostname == r.name && inc.has_srv && inc.has_address)
-                    to_check.push_back(inst_name);
-            }
-            for(const auto &inst_name : to_check)
-                check_resolved(inst_name);
-        }
-
-        // Also update live services with the same hostname
-        for(auto &[inst_name, svc] : m_live_services)
-        {
-            if(svc.hostname == r.name)
-            {
-                if(std::ranges::find(svc.ipv4_addresses, r.address_string)
-                   == svc.ipv4_addresses.end())
-                {
-                    svc.ipv4_addresses.push_back(r.address_string);
-                    if(m_opts.on_updated)
-                        m_opts.on_updated(svc, update_event::added, dns_type::a);
-                    update_snapshot();
-                }
-            }
-        }
+        process_address_record(r, dns_type::a,
+            [](resolved_service &svc) -> std::vector<std::string> & { return svc.ipv4_addresses; });
     }
 
-    /// AAAA record: add IPv6 address to partial/live service.
     void process_aaaa(const record_aaaa &r)
+    {
+        process_address_record(r, dns_type::aaaa,
+            [](resolved_service &svc) -> std::vector<std::string> & { return svc.ipv6_addresses; });
+    }
+
+    /// Shared implementation for A and AAAA record processing.
+    /// AddrGetter: resolved_service& -> std::vector<std::string>&
+    template <typename Record, typename AddrGetter>
+    void process_address_record(const Record &r, dns_type dtype, AddrGetter get_addrs)
     {
         bool any_updated{false};
 
@@ -498,10 +462,10 @@ private:
         {
             if(inc.partial.hostname == r.name)
             {
-                if(std::ranges::find(inc.partial.ipv6_addresses, r.address_string)
-                   == inc.partial.ipv6_addresses.end())
+                auto &addrs = get_addrs(inc.partial);
+                if(std::ranges::find(addrs, r.address_string) == addrs.end())
                 {
-                    inc.partial.ipv6_addresses.push_back(r.address_string);
+                    addrs.push_back(r.address_string);
                     inc.has_address = true;
                     any_updated     = true;
                 }
@@ -524,12 +488,12 @@ private:
         {
             if(svc.hostname == r.name)
             {
-                if(std::ranges::find(svc.ipv6_addresses, r.address_string)
-                   == svc.ipv6_addresses.end())
+                auto &addrs = get_addrs(svc);
+                if(std::ranges::find(addrs, r.address_string) == addrs.end())
                 {
-                    svc.ipv6_addresses.push_back(r.address_string);
+                    addrs.push_back(r.address_string);
                     if(m_opts.on_updated)
-                        m_opts.on_updated(svc, update_event::added, dns_type::aaaa);
+                        m_opts.on_updated(svc, update_event::added, dtype);
                     update_snapshot();
                 }
             }
@@ -606,104 +570,94 @@ private:
     }
 
     /// Called by the cache's on_expired callback when TTL-expired entries are evicted.
-    ///
-    /// For each expired entry:
-    ///   - SRV record: fires on_lost(timeout or goodbye) and removes from live/partial
-    ///   - A/AAAA record for a live service: fires on_updated(removed)
-    ///   - TXT record for a live service: fires on_updated(removed)
     void handle_expired(std::vector<cache_entry> expired)
     {
         for(const auto &entry : expired)
         {
-            std::visit([this, &entry](const auto &r)
+            std::visit([this](const auto &r)
             {
                 using T = std::remove_cvref_t<decltype(r)>;
 
                 if constexpr (std::is_same_v<T, record_srv>)
-                {
-                    // SRV expiry -- service is lost
-                    auto it = m_live_services.find(r.name);
-                    if(it == m_live_services.end())
-                    {
-                        // May still be partial -- just clean up
-                        m_partial.erase(r.name);
-                        m_goodbye_instances.erase(r.name);
-                        return;
-                    }
-
-                    resolved_service last_known = it->second;
-                    m_live_services.erase(it);
-                    m_partial.erase(r.name);
-
-                    // Determine reason from goodbye side map
-                    loss_reason reason = m_goodbye_instances.erase(r.name) > 0
-                        ? loss_reason::goodbye
-                        : loss_reason::timeout;
-
-                    if(m_opts.on_lost)
-                        m_opts.on_lost(last_known, reason);
-
-                    update_snapshot();
-                }
+                    handle_expired_srv(r);
                 else if constexpr (std::is_same_v<T, record_a>)
-                {
-                    for(auto &[inst_name, svc] : m_live_services)
-                    {
-                        if(svc.hostname != r.name)
-                            continue;
-                        auto it = std::ranges::find(svc.ipv4_addresses, r.address_string);
-                        if(it != svc.ipv4_addresses.end())
-                        {
-                            svc.ipv4_addresses.erase(it);
-                            if(m_opts.on_updated)
-                                m_opts.on_updated(svc, update_event::removed, dns_type::a);
-                            update_snapshot();
-                        }
-                    }
-                }
+                    handle_expired_address(r, dns_type::a,
+                        [](resolved_service &s) -> std::vector<std::string> & { return s.ipv4_addresses; });
                 else if constexpr (std::is_same_v<T, record_aaaa>)
-                {
-                    for(auto &[inst_name, svc] : m_live_services)
-                    {
-                        if(svc.hostname != r.name)
-                            continue;
-                        auto it = std::ranges::find(svc.ipv6_addresses, r.address_string);
-                        if(it != svc.ipv6_addresses.end())
-                        {
-                            svc.ipv6_addresses.erase(it);
-                            if(m_opts.on_updated)
-                                m_opts.on_updated(svc, update_event::removed, dns_type::aaaa);
-                            update_snapshot();
-                        }
-                    }
-                }
+                    handle_expired_address(r, dns_type::aaaa,
+                        [](resolved_service &s) -> std::vector<std::string> & { return s.ipv6_addresses; });
                 else if constexpr (std::is_same_v<T, record_txt>)
-                {
-                    if(auto lit = m_live_services.find(r.name); lit != m_live_services.end())
-                    {
-                        // TXT expiry: clear txt_entries for entries that were in this record
-                        bool changed{false};
-                        for(const auto &e : r.entries)
-                        {
-                            auto eit = std::ranges::find_if(lit->second.txt_entries,
-                                [&](const service_txt &x) { return x.key == e.key; });
-                            if(eit != lit->second.txt_entries.end())
-                            {
-                                lit->second.txt_entries.erase(eit);
-                                changed = true;
-                            }
-                        }
-                        if(changed)
-                        {
-                            if(m_opts.on_updated)
-                                m_opts.on_updated(lit->second, update_event::removed, dns_type::txt);
-                            update_snapshot();
-                        }
-                    }
-                }
+                    handle_expired_txt(r);
                 // PTR expiry -- silently ignored (SRV expiry is the loss trigger)
-                (void)entry;
             }, entry.record);
+        }
+    }
+
+    void handle_expired_srv(const record_srv &r)
+    {
+        auto it = m_live_services.find(r.name);
+        if(it == m_live_services.end())
+        {
+            m_partial.erase(r.name);
+            m_goodbye_instances.erase(r.name);
+            return;
+        }
+
+        resolved_service last_known = it->second;
+        m_live_services.erase(it);
+        m_partial.erase(r.name);
+
+        loss_reason reason = m_goodbye_instances.erase(r.name) > 0
+            ? loss_reason::goodbye
+            : loss_reason::timeout;
+
+        if(m_opts.on_lost)
+            m_opts.on_lost(last_known, reason);
+
+        update_snapshot();
+    }
+
+    template <typename Record, typename AddrGetter>
+    void handle_expired_address(const Record &r, dns_type dtype, AddrGetter get_addrs)
+    {
+        for(auto &[inst_name, svc] : m_live_services)
+        {
+            if(svc.hostname != r.name)
+                continue;
+            auto &addrs = get_addrs(svc);
+            auto it = std::ranges::find(addrs, r.address_string);
+            if(it != addrs.end())
+            {
+                addrs.erase(it);
+                if(m_opts.on_updated)
+                    m_opts.on_updated(svc, update_event::removed, dtype);
+                update_snapshot();
+            }
+        }
+    }
+
+    void handle_expired_txt(const record_txt &r)
+    {
+        auto lit = m_live_services.find(r.name);
+        if(lit == m_live_services.end())
+            return;
+
+        bool changed{false};
+        for(const auto &e : r.entries)
+        {
+            auto eit = std::ranges::find_if(lit->second.txt_entries,
+                [&](const service_txt &x) { return x.key == e.key; });
+            if(eit != lit->second.txt_entries.end())
+            {
+                lit->second.txt_entries.erase(eit);
+                changed = true;
+            }
+        }
+        if(changed)
+        {
+            if(m_opts.on_updated)
+                m_opts.on_updated(lit->second, update_event::removed, dns_type::txt);
+            update_snapshot();
         }
     }
 

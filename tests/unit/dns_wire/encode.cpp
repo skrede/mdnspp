@@ -251,3 +251,70 @@ SCENARIO("skip_dns_name where label extends past end of buffer", "[dns_read][ski
         }
     }
 }
+
+SCENARIO("encode_dns_name rejects labels exceeding 63 bytes", "[dns_read][encode_dns_name]")
+{
+    GIVEN("a name with a 64-byte label")
+    {
+        std::string long_label(64, 'a');
+        auto result = encode_dns_name(long_label);
+        THEN("it returns empty") { REQUIRE(result.empty()); }
+    }
+
+    GIVEN("a name with a 63-byte label")
+    {
+        std::string label(63, 'a');
+        auto result = encode_dns_name(label);
+        THEN("it encodes successfully") { REQUIRE_FALSE(result.empty()); }
+    }
+
+    GIVEN("a multi-label name where one label exceeds 63 bytes")
+    {
+        std::string name = "short." + std::string(64, 'b') + ".end";
+        auto result = encode_dns_name(name);
+        THEN("it returns empty") { REQUIRE(result.empty()); }
+    }
+
+    GIVEN("the fuzz crash input with a 192-byte label causing uint8_t truncation to 0xC0")
+    {
+        std::string input;
+        input += "p.";
+        input += std::string(45, '\xff');
+        input += "c.";
+        input += std::string(192, 'C');
+        auto result = encode_dns_name(input);
+        THEN("it returns empty because the third label exceeds 63 bytes")
+        {
+            REQUIRE(result.empty());
+        }
+    }
+}
+
+SCENARIO("read_dns_name rejects labels exceeding 63 bytes", "[dns_read][read_dns_name]")
+{
+    using mdnspp::detail::read_dns_name;
+
+    GIVEN("wire data with a 64-byte label")
+    {
+        std::vector<std::byte> wire;
+        wire.push_back(std::byte{64});
+        for(int32_t i = 0; i < 64; ++i)
+            wire.push_back(std::byte{'a'});
+        wire.push_back(std::byte{0});
+
+        auto result = read_dns_name(std::span<const std::byte>(wire), 0);
+        THEN("it returns parse_error") { REQUIRE_FALSE(result.has_value()); }
+    }
+
+    GIVEN("wire data with a 63-byte label")
+    {
+        std::vector<std::byte> wire;
+        wire.push_back(std::byte{63});
+        for(int32_t i = 0; i < 63; ++i)
+            wire.push_back(std::byte{'a'});
+        wire.push_back(std::byte{0});
+
+        auto result = read_dns_name(std::span<const std::byte>(wire), 0);
+        THEN("it decodes successfully") { REQUIRE(result.has_value()); }
+    }
+}

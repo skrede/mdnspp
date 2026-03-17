@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DETAIL_COMPAT_H
-#define HPP_GUARD_MDNSPP_DETAIL_COMPAT_H
+#ifndef HPP_GUARD_MDNSPP_COMPAT_H
+#define HPP_GUARD_MDNSPP_COMPAT_H
 
 #include <functional>
 #include <memory>
@@ -72,6 +72,11 @@ public:
 
     explicit operator bool() const noexcept { return m_impl != nullptr; }
 
+    friend bool operator==(const move_only_function &f, std::nullptr_t) noexcept { return !f; }
+    friend bool operator==(std::nullptr_t, const move_only_function &f) noexcept { return !f; }
+    friend bool operator!=(const move_only_function &f, std::nullptr_t) noexcept { return !!f; }
+    friend bool operator!=(std::nullptr_t, const move_only_function &f) noexcept { return !!f; }
+
     R operator()(Args... args) { return m_impl->invoke(std::forward<Args>(args)...); }
 };
 
@@ -127,6 +132,9 @@ public:
     constexpr T &operator*() & { return std::get<0>(m_storage); }
     constexpr const T &operator*() const & { return std::get<0>(m_storage); }
     constexpr T &&operator*() && { return std::get<0>(std::move(m_storage)); }
+
+    constexpr T *operator->() { return &std::get<0>(m_storage); }
+    constexpr const T *operator->() const { return &std::get<0>(m_storage); }
 
     constexpr T &value() & { return std::get<0>(m_storage); }
     constexpr const T &value() const & { return std::get<0>(m_storage); }

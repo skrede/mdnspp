@@ -1,8 +1,10 @@
 #ifndef HPP_GUARD_MDNSPP_DNS_WRITE_H
 #define HPP_GUARD_MDNSPP_DNS_WRITE_H
 
+#include "mdnspp/mdns_error.h"
 #include "mdnspp/service_info.h"
 
+#include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/platform.h"
 #include "mdnspp/detail/dns_enums.h"
@@ -11,7 +13,8 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
-#include <sstream>
+#include <utility>
+#include <charconv>
 
 namespace mdnspp::detail {
 
@@ -20,6 +23,8 @@ namespace mdnspp::detail {
 //   rtype -- DNS record type
 //   ttl   -- 32-bit TTL in seconds
 //   rdata -- the raw rdata bytes
+// Silently skips the record if the owner name is empty (encoding failure)
+// or if rdata exceeds the uint16_t RDLENGTH limit (65535 bytes).
 inline void append_dns_rr(std::vector<std::byte> &buf,
                           const std::vector<std::byte> &name,
                           dns_type rtype,
@@ -27,6 +32,8 @@ inline void append_dns_rr(std::vector<std::byte> &buf,
                           const std::vector<std::byte> &rdata,
                           bool cache_flush = false)
 {
+    if(name.empty() || rdata.size() > UINT16_MAX)
+        return;
     buf.insert(buf.end(), name.begin(), name.end());
     push_u16_be(buf, std::to_underlying(rtype));
     push_u16_be(buf, cache_flush ? uint16_t{0x8001} : uint16_t{0x0001});
@@ -36,31 +43,51 @@ inline void append_dns_rr(std::vector<std::byte> &buf,
 }
 
 // Encodes an IPv4 address string "a.b.c.d" into 4 raw bytes.
-// Returns empty vector on parse failure.
-inline std::vector<std::byte> encode_ipv4(const std::string &addr)
+// Returns expected with mdns_error::invalid_ipv4_address on parse failure (never throws).
+inline detail::expected<std::vector<std::byte>, mdnspp::mdns_error>
+encode_ipv4(const std::string &addr)
 {
     std::vector<std::byte> result;
-    std::istringstream ss(addr);
-    std::string token;
-    while(std::getline(ss, token, '.'))
+    result.reserve(4);
+
+    const char *p = addr.data();
+    const char *end = p + addr.size();
+
+    for(int32_t i = 0; i < 4; ++i)
     {
-        int octet = std::stoi(token);
-        if(octet < 0 || octet > 255)
-            return {};
+        if(p >= end)
+            return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
+
+        int32_t octet{};
+        auto [ptr, ec] = std::from_chars(p, end, octet);
+        if(ec != std::errc{} || octet < 0 || octet > 255)
+            return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
+
         result.push_back(static_cast<std::byte>(static_cast<uint8_t>(octet)));
+
+        if(i < 3)
+        {
+            if(ptr >= end || *ptr != '.')
+                return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
+            p = ptr + 1;
+        }
+        else
+        {
+            if(ptr != end)
+                return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
+        }
     }
-    if(result.size() != 4)
-        return {};
     return result;
 }
 
 // Encodes an IPv6 address string into 16 raw bytes using inet_pton.
-// Returns empty vector on parse failure.
-inline std::vector<std::byte> encode_ipv6(const std::string &addr)
+// Returns expected with mdns_error::invalid_ipv6_address on parse failure.
+inline detail::expected<std::vector<std::byte>, mdnspp::mdns_error>
+encode_ipv6(const std::string &addr)
 {
     uint8_t raw[16];
     if(::inet_pton(AF_INET6, addr.c_str(), raw) != 1)
-        return {};
+        return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv6_address);
     std::vector<std::byte> result;
     result.reserve(16);
     for(auto b : raw)
@@ -70,6 +97,7 @@ inline std::vector<std::byte> encode_ipv6(const std::string &addr)
 
 // Encodes a vector of service_txt entries as RFC 6763 TXT rdata.
 // Each entry becomes a length-prefixed string of "key=value" or "key".
+// Entries exceeding 255 bytes are skipped (RFC 6763 §6.1: TXT string max 255).
 inline std::vector<std::byte> encode_txt_records(const std::vector<mdnspp::service_txt> &entries)
 {
     std::vector<std::byte> result;
@@ -81,8 +109,9 @@ inline std::vector<std::byte> encode_txt_records(const std::vector<mdnspp::servi
             s += '=';
             s += *entry.value;
         }
-        // Length prefix (clamped to 255 per RFC 6763)
-        uint8_t len = static_cast<uint8_t>(s.size() < 255 ? s.size() : 255);
+        if(s.size() > 255)
+            continue;
+        auto len = static_cast<uint8_t>(s.size());
         result.push_back(static_cast<std::byte>(len));
         for(size_t i = 0; i < len; ++i)
             result.push_back(static_cast<std::byte>(static_cast<uint8_t>(s[i])));

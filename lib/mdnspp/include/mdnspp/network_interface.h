@@ -13,9 +13,9 @@
 #include <ws2tcpip.h>
 #endif
 
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
 #include <cstring>
 #include <algorithm>
 #include <system_error>

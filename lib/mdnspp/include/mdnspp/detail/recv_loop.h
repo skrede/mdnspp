@@ -2,12 +2,12 @@
 #define HPP_GUARD_MDNSPP_RECV_LOOP_H
 
 #include "mdnspp/policy.h"
+#include "mdnspp/detail/compat.h"
+
+#include <span>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <functional>
-#include <span>
-#include <vector>
 
 namespace mdnspp {
 
@@ -20,22 +20,22 @@ public:
 
     // Returns true if the packet was relevant (resets silence timer),
     // false to ignore (timer continues counting down).
-    using packet_handler = std::function<bool(const recv_metadata &, std::span<std::byte>)>;
+    using packet_handler = detail::move_only_function<bool(const recv_metadata &, std::span<std::byte>)>;
 
     recv_loop(
         socket_type &socket,
         timer_type &timer,
         std::chrono::milliseconds silence_timeout,
         packet_handler on_packet,
-        std::function<void()> on_silence,
+        detail::move_only_function<void()> on_silence,
         uint32_t receive_ttl_minimum = 0)
-        : m_socket(socket)
-        , m_timer(timer)
-        , m_silence_timeout(silence_timeout)
-        , m_on_packet(std::move(on_packet))
-        , m_on_silence(std::move(on_silence))
-        , m_receive_ttl_minimum(receive_ttl_minimum)
+        : m_receive_ttl_minimum(receive_ttl_minimum)
         , m_stopped(false)
+        , m_silence_timeout(silence_timeout)
+        , m_socket(socket)
+        , m_timer(timer)
+        , m_on_silence(std::move(on_silence))
+        , m_on_packet(std::move(on_packet))
     {
     }
 
@@ -73,7 +73,6 @@ private:
         {
             return;
         }
-        m_buffer.resize(4096);
         m_socket.async_receive(
             [this](const recv_metadata &meta, std::span<std::byte> data)
             {
@@ -107,14 +106,13 @@ private:
             });
     }
 
-    socket_type &m_socket;
-    timer_type &m_timer;
-    std::chrono::milliseconds m_silence_timeout;
-    packet_handler m_on_packet;
-    std::function<void()> m_on_silence;
     uint32_t m_receive_ttl_minimum;
     std::atomic<bool> m_stopped;
-    std::vector<std::byte> m_buffer;
+    std::chrono::milliseconds m_silence_timeout;
+    socket_type &m_socket;
+    timer_type &m_timer;
+    detail::move_only_function<void()> m_on_silence;
+    packet_handler m_on_packet;
 };
 
 }

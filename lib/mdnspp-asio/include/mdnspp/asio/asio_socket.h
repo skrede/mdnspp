@@ -4,13 +4,13 @@
 #include <mdnspp/policy.h>
 #include <mdnspp/endpoint.h>
 #include <mdnspp/socket_options.h>
+#include <mdnspp/detail/compat.h>
 #include <mdnspp/detail/validate_multicast.h>
 
 #include <asio.hpp>
 
 #include <span>
 #include <vector>
-#include <functional>
 #include <system_error>
 
 namespace mdnspp {
@@ -148,12 +148,12 @@ public:
         m_buffer.resize(4096);
     }
 
-    void async_receive(std::function<void(const mdnspp::recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(detail::move_only_function<void(const mdnspp::recv_metadata &, std::span<std::byte>)> handler)
     {
         m_socket.async_receive_from(
             asio::buffer(m_buffer),
             m_sender_endpoint,
-            [this, handler = std::move(handler)](std::error_code ec, std::size_t bytes)
+            [this, handler = std::move(handler)](std::error_code ec, std::size_t bytes) mutable
             {
                 if(!ec)
                 {

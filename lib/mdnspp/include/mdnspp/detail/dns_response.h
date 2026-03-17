@@ -9,9 +9,10 @@
 #include "mdnspp/detail/dns_enums.h"
 
 #include <vector>
+#include <cstdio>
+#include <climits>
 #include <cstddef>
 #include <cstdint>
-#include <climits>
 #include <algorithm>
 
 namespace mdnspp::detail {
@@ -54,10 +55,13 @@ inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &inf
     uint32_t aaaa_t = ttl_for(opts.aaaa_ttl);
     uint32_t rec_t  = ttl_for(opts.record_ttl); // fallback for NSEC
 
-    // Pre-encode frequently used names
+    // Pre-encode frequently used names (empty = encoding failure)
     auto name_service_type = encode_dns_name(info.service_type);
     auto name_service_name = encode_dns_name(info.service_name);
     auto name_hostname = encode_dns_name(info.hostname);
+
+    if(name_service_type.empty() || name_service_name.empty() || name_hostname.empty())
+        return {};
 
     // Build rdata buffers for each record type
     // PTR rdata: DNS-encoded service_name
@@ -70,15 +74,27 @@ inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &inf
     push_u16_be(rdata_srv, info.port);
     rdata_srv.insert(rdata_srv.end(), name_hostname.begin(), name_hostname.end());
 
-    // A rdata: 4 IPv4 octets (may be empty if no address_ipv4)
+    // A rdata: 4 IPv4 octets (may be empty if no address_ipv4 or encoding fails)
     std::vector<std::byte> rdata_a;
     if(info.address_ipv4.has_value())
-        rdata_a = encode_ipv4(*info.address_ipv4);
+    {
+        auto enc = encode_ipv4(*info.address_ipv4);
+        if(enc.has_value())
+            rdata_a = std::move(*enc);
+        else
+            std::fprintf(stderr, "encode_ipv4 failed: %s\n", info.address_ipv4->c_str());
+    }
 
-    // AAAA rdata: 16 IPv6 bytes (may be empty if no address_ipv6)
+    // AAAA rdata: 16 IPv6 bytes (may be empty if no address_ipv6 or encoding fails)
     std::vector<std::byte> rdata_aaaa;
     if(info.address_ipv6.has_value())
-        rdata_aaaa = encode_ipv6(*info.address_ipv6);
+    {
+        auto enc = encode_ipv6(*info.address_ipv6);
+        if(enc.has_value())
+            rdata_aaaa = std::move(*enc);
+        else
+            std::fprintf(stderr, "encode_ipv6 failed: %s\n", info.address_ipv6->c_str());
+    }
 
     // TXT rdata: length-prefixed key[=value] strings
     std::vector<std::byte> rdata_txt;

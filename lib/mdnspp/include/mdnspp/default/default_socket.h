@@ -10,6 +10,7 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/socket_options.h"
 
+#include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/validate_multicast.h"
 #include "mdnspp/default/default_context.h"
 
@@ -18,7 +19,6 @@
 #include <string>
 #include <cstddef>
 #include <cstring>
-#include <functional>
 #include <system_error>
 
 #ifdef _WIN32
@@ -41,8 +41,6 @@ class DefaultSocket
 {
 public:
     // Throwing constructor.
-    /// Opens a UDP socket, sets options, binds to the default mDNS port,
-    /// joins the default multicast group, and registers with the context for poll dispatch.
     explicit DefaultSocket(DefaultContext &ctx)
         : m_ctx{ctx}
     {
@@ -81,8 +79,7 @@ public:
     DefaultSocket &operator=(DefaultSocket &&) = delete;
 
     /// Register this socket and its receive handler with DefaultContext.
-    /// Called by recv_loop when it wants to arm the next receive.
-    void async_receive(std::function<void(const recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
     {
         m_receive_handler = std::move(handler);
         m_ctx.register_socket(m_fd,
@@ -93,91 +90,35 @@ public:
             });
     }
 
-    /// Synchronous sendto(). mDNS sends are tiny and infrequent.
+    /// Synchronous sendto().
     void send(const endpoint &dest, std::span<const std::byte> data)
     {
-        sockaddr_storage ss{};
-        socklen_t sa_len{};
-
-        if(is_ipv6(dest.address))
-        {
-            auto &addr6 = *reinterpret_cast<sockaddr_in6 *>(&ss);
-            addr6.sin6_family = AF_INET6;
-            addr6.sin6_port = htons(dest.port);
-            ::inet_pton(AF_INET6, dest.address.c_str(), &addr6.sin6_addr);
-            sa_len = sizeof(sockaddr_in6);
-        }
-        else
-        {
-            auto &addr4 = *reinterpret_cast<sockaddr_in *>(&ss);
-            addr4.sin_family = AF_INET;
-            addr4.sin_port = htons(dest.port);
-            ::inet_pton(AF_INET, dest.address.c_str(), &addr4.sin_addr);
-            sa_len = sizeof(sockaddr_in);
-        }
-
+        auto [ss, sa_len] = build_sockaddr(dest);
 #ifdef _WIN32
-        (void)::sendto(
-            m_fd,
-            reinterpret_cast<const char*>(data.data()),
-            static_cast<int>(data.size()),
-            0,
-            reinterpret_cast<const sockaddr*>(&ss),
-            static_cast<int>(sa_len));
+        (void)::sendto(m_fd, reinterpret_cast<const char*>(data.data()),
+                        static_cast<int>(data.size()), 0,
+                        reinterpret_cast<const sockaddr*>(&ss), static_cast<int>(sa_len));
 #else
-        (void)::sendto(
-            m_fd,
-            data.data(),
-            data.size(),
-            0,
-            reinterpret_cast<const sockaddr*>(&ss),
-            sa_len);
+        (void)::sendto(m_fd, data.data(), data.size(), 0,
+                        reinterpret_cast<const sockaddr*>(&ss), sa_len);
 #endif
     }
 
     /// Synchronous sendto() -- non-throwing, reports errors via ec.
     void send(const endpoint &dest, std::span<const std::byte> data, std::error_code &ec)
     {
-        sockaddr_storage ss{};
-        socklen_t sa_len{};
-
-        if(is_ipv6(dest.address))
-        {
-            auto &addr6 = *reinterpret_cast<sockaddr_in6 *>(&ss);
-            addr6.sin6_family = AF_INET6;
-            addr6.sin6_port = htons(dest.port);
-            ::inet_pton(AF_INET6, dest.address.c_str(), &addr6.sin6_addr);
-            sa_len = sizeof(sockaddr_in6);
-        }
-        else
-        {
-            auto &addr4 = *reinterpret_cast<sockaddr_in *>(&ss);
-            addr4.sin_family = AF_INET;
-            addr4.sin_port = htons(dest.port);
-            ::inet_pton(AF_INET, dest.address.c_str(), &addr4.sin_addr);
-            sa_len = sizeof(sockaddr_in);
-        }
-
+        auto [ss, sa_len] = build_sockaddr(dest);
 #ifdef _WIN32
-        auto result = ::sendto(
-            m_fd,
-            reinterpret_cast<const char*>(data.data()),
-            static_cast<int>(data.size()),
-            0,
-            reinterpret_cast<const sockaddr*>(&ss),
-            static_cast<int>(sa_len));
+        auto result = ::sendto(m_fd, reinterpret_cast<const char*>(data.data()),
+                               static_cast<int>(data.size()), 0,
+                               reinterpret_cast<const sockaddr*>(&ss), static_cast<int>(sa_len));
         if(result == SOCKET_ERROR)
             ec = std::error_code(::WSAGetLastError(), std::system_category());
         else
             ec.clear();
 #else
-        auto result = ::sendto(
-            m_fd,
-            data.data(),
-            data.size(),
-            0,
-            reinterpret_cast<const sockaddr*>(&ss),
-            sa_len);
+        auto result = ::sendto(m_fd, data.data(), data.size(), 0,
+                               reinterpret_cast<const sockaddr*>(&ss), sa_len);
         if(result < 0)
             ec = std::error_code(errno, std::system_category());
         else
@@ -199,12 +140,44 @@ public:
 private:
     DefaultContext &m_ctx;
     detail::native_socket_t m_fd{detail::invalid_socket};
-    std::function<void(const recv_metadata &, std::span<std::byte>)> m_receive_handler;
+    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_receive_handler;
+
+    // -------------------------------------------------------------------------
+    // Address helpers
+    // -------------------------------------------------------------------------
 
     static bool is_ipv6(const std::string &addr)
     {
         in6_addr tmp{};
         return ::inet_pton(AF_INET6, addr.c_str(), &tmp) == 1;
+    }
+
+    struct sockaddr_result
+    {
+        sockaddr_storage ss{};
+        socklen_t len{};
+    };
+
+    static sockaddr_result build_sockaddr(const endpoint &dest)
+    {
+        sockaddr_result r;
+        if(is_ipv6(dest.address))
+        {
+            auto &addr6 = *reinterpret_cast<sockaddr_in6 *>(&r.ss);
+            addr6.sin6_family = AF_INET6;
+            addr6.sin6_port = htons(dest.port);
+            ::inet_pton(AF_INET6, dest.address.c_str(), &addr6.sin6_addr);
+            r.len = sizeof(sockaddr_in6);
+        }
+        else
+        {
+            auto &addr4 = *reinterpret_cast<sockaddr_in *>(&r.ss);
+            addr4.sin_family = AF_INET;
+            addr4.sin_port = htons(dest.port);
+            ::inet_pton(AF_INET, dest.address.c_str(), &addr4.sin_addr);
+            r.len = sizeof(sockaddr_in);
+        }
+        return r;
     }
 
     static unsigned int resolve_ipv6_interface_index([[maybe_unused]] const std::string &addr)
@@ -216,7 +189,7 @@ private:
         std::unique_ptr<std::byte[]> buffer;
         ULONG result = ERROR_BUFFER_OVERFLOW;
 
-        for(int attempts = 0; attempts < 3 && result == ERROR_BUFFER_OVERFLOW; ++attempts)
+        for(int32_t attempts = 0; attempts < 3 && result == ERROR_BUFFER_OVERFLOW; ++attempts)
         {
             buffer = std::make_unique<std::byte[]>(buf_size);
             result = GetAdaptersAddresses(AF_UNSPEC, 0, nullptr,
@@ -275,29 +248,39 @@ private:
 #endif
     }
 
-    /// throwing
-    void set_nonblocking_or_throw()
+    // -------------------------------------------------------------------------
+    // Platform setsockopt helpers -- eliminate #ifdef duplication
+    // -------------------------------------------------------------------------
+
+    void cleanup_on_error()
     {
-#ifdef _WIN32
-        u_long mode = 1;
-        if(::ioctlsocket(m_fd, FIONBIO, &mode) == SOCKET_ERROR)
-        {
-            detail::close_socket(m_fd);
-            m_fd = detail::invalid_socket;
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "ioctlsocket(FIONBIO)");
-        }
-#else
-        const int flags = ::fcntl(m_fd, F_GETFL, 0);
-        if(flags < 0 || ::fcntl(m_fd, F_SETFL, flags | O_NONBLOCK) < 0)
-        {
-            detail::close_socket(m_fd);
-            m_fd = detail::invalid_socket;
-            throw std::system_error(errno, std::generic_category(), "fcntl(F_SETFL, O_NONBLOCK)");
-        }
-#endif
+        detail::close_socket(m_fd);
+        m_fd = detail::invalid_socket;
     }
 
-    /// non-throwing
+    // Returns true on success. On failure, sets ec and cleans up m_fd.
+    bool set_sock_opt(int32_t level, int32_t optname, const void *optval,
+                      socklen_t optlen, std::error_code &ec)
+    {
+#ifdef _WIN32
+        if(::setsockopt(m_fd, level, optname,
+                        reinterpret_cast<const char*>(optval), optlen) == SOCKET_ERROR)
+        {
+            ec = std::error_code(::WSAGetLastError(), std::system_category());
+            cleanup_on_error();
+            return false;
+        }
+#else
+        if(::setsockopt(m_fd, level, optname, optval, optlen) < 0)
+        {
+            ec = std::error_code(errno, std::generic_category());
+            cleanup_on_error();
+            return false;
+        }
+#endif
+        return true;
+    }
+
     bool set_nonblocking(std::error_code &ec)
     {
 #ifdef _WIN32
@@ -308,7 +291,7 @@ private:
             return false;
         }
 #else
-        const int flags = ::fcntl(m_fd, F_GETFL, 0);
+        const int32_t flags = ::fcntl(m_fd, F_GETFL, 0);
         if(flags < 0 || ::fcntl(m_fd, F_SETFL, flags | O_NONBLOCK) < 0)
         {
             ec = std::error_code(errno, std::generic_category());
@@ -318,333 +301,21 @@ private:
         return true;
     }
 
-    /// throwing
-    /// Throwing -- interface-aware multicast configuration via socket_options.
-    void open_and_configure(const socket_options &opts)
-    {
-        // 0. Validate multicast group address
-        detail::validate_multicast_address(opts.multicast_group.address);
+    // -------------------------------------------------------------------------
+    // Socket configuration -- single implementation using error_code
+    // -------------------------------------------------------------------------
 
-        const bool v6 = is_ipv6(opts.multicast_group.address);
-        const int family = v6 ? AF_INET6 : AF_INET;
-
-        // 1. Create UDP socket
-        m_fd = ::socket(family, SOCK_DGRAM, IPPROTO_UDP);
-        if(m_fd == detail::invalid_socket)
-        {
-#ifdef _WIN32
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "socket");
-#else
-            throw std::system_error(errno, std::generic_category(), "socket");
-#endif
-        }
-
-        // 2. SO_REUSEADDR
-        {
-            const int opt = 1;
-#ifdef _WIN32
-            if(::setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR,
-                            reinterpret_cast<const char*>(&opt), sizeof(opt)) == SOCKET_ERROR)
-            {
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                throw std::system_error(::WSAGetLastError(), std::system_category(), "setsockopt(SO_REUSEADDR)");
-            }
-#else
-            if(::setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-            {
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                throw std::system_error(errno, std::generic_category(), "setsockopt(SO_REUSEADDR)");
-            }
-#endif
-        }
-
-        // 3. SO_REUSEPORT (optional -- warn on failure, do not throw)
-#if defined(SO_REUSEPORT)
-        {
-            const int opt = 1;
-            if(::setsockopt(m_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt)) < 0)
-            {
-            }
-        }
-#endif
-
-        // 4. Non-blocking
-        set_nonblocking_or_throw();
-
-        if(v6)
-        {
-            // 5v6. Bind to in6addr_any with configured port
-            {
-                sockaddr_in6 addr6{};
-                addr6.sin6_family = AF_INET6;
-                addr6.sin6_addr = in6addr_any;
-                addr6.sin6_port = htons(opts.multicast_group.port);
-
-#ifdef _WIN32
-                if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr6), sizeof(addr6)) == SOCKET_ERROR)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(::WSAGetLastError(), std::system_category(), "bind");
-                }
-#else
-                if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr6),
-                          static_cast<socklen_t>(sizeof(addr6))) < 0)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(errno, std::generic_category(), "bind");
-                }
-#endif
-            }
-
-            // 6v6. Resolve interface index for IPv6
-            unsigned int iface_idx = resolve_ipv6_interface_index(opts.interface_address);
-
-            // 7v6. IPV6_MULTICAST_IF (outgoing multicast interface)
-            if(!opts.interface_address.empty())
-            {
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_IF,
-                                reinterpret_cast<const char*>(&iface_idx), sizeof(iface_idx)) == SOCKET_ERROR)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(::WSAGetLastError(), std::system_category(), "setsockopt(IPV6_MULTICAST_IF)");
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &iface_idx, sizeof(iface_idx)) < 0)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(errno, std::generic_category(), "setsockopt(IPV6_MULTICAST_IF)");
-                }
-#endif
-            }
-
-            // 8v6. IPV6_JOIN_GROUP
-            {
-                ipv6_mreq mreq6{};
-                ::inet_pton(AF_INET6, opts.multicast_group.address.c_str(), &mreq6.ipv6mr_multiaddr);
-                mreq6.ipv6mr_interface = iface_idx;
-
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_JOIN_GROUP,
-                                reinterpret_cast<const char*>(&mreq6), sizeof(mreq6)) == SOCKET_ERROR)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(::WSAGetLastError(), std::system_category(), "setsockopt(IPV6_JOIN_GROUP)");
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq6, sizeof(mreq6)) < 0)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(errno, std::generic_category(), "setsockopt(IPV6_JOIN_GROUP)");
-                }
-#endif
-            }
-
-            // 9v6. IPV6_MULTICAST_HOPS (default 255 per RFC 6762 Section 11)
-            {
-                const int hops_val = static_cast<int>(opts.multicast_ttl.value_or(255));
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS,
-                                reinterpret_cast<const char*>(&hops_val), sizeof(hops_val)) == SOCKET_ERROR)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(::WSAGetLastError(), std::system_category(), "setsockopt(IPV6_MULTICAST_HOPS)");
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &hops_val, sizeof(hops_val)) < 0)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(errno, std::generic_category(), "setsockopt(IPV6_MULTICAST_HOPS)");
-                }
-#endif
-            }
-
-            // 10v6. IPV6_MULTICAST_LOOP
-            {
-                const int val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP,
-                                reinterpret_cast<const char*>(&val), sizeof(val)) == SOCKET_ERROR)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(::WSAGetLastError(), std::system_category(), "setsockopt(IPV6_MULTICAST_LOOP)");
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &val, sizeof(val)) < 0)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(errno, std::generic_category(), "setsockopt(IPV6_MULTICAST_LOOP)");
-                }
-#endif
-            }
-
-#if !defined(_WIN32) && defined(IPV6_RECVHOPLIMIT)
-            {
-                const int opt = 1;
-                (void)::setsockopt(m_fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &opt, sizeof(opt));
-            }
-#endif
-        }
-        else
-        {
-            // 5. Bind to INADDR_ANY with configured port
-            {
-                sockaddr_in addr{};
-                addr.sin_family = AF_INET;
-                addr.sin_addr.s_addr = htonl(INADDR_ANY);
-                addr.sin_port = htons(opts.multicast_group.port);
-
-#ifdef _WIN32
-                if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(::WSAGetLastError(), std::system_category(), "bind");
-                }
-#else
-                if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr),
-                          static_cast<socklen_t>(sizeof(addr))) < 0)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(errno, std::generic_category(), "bind");
-                }
-#endif
-            }
-
-            // 6. Compute interface address (single variable for both IF and MEMBERSHIP)
-            in_addr iface_addr{};
-            if(opts.interface_address.empty())
-                iface_addr.s_addr = htonl(INADDR_ANY);
-            else if(::inet_pton(AF_INET, opts.interface_address.c_str(), &iface_addr) != 1)
-            {
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                throw std::system_error(std::make_error_code(std::errc::invalid_argument),
-                                        "invalid interface address: " + opts.interface_address);
-            }
-
-            // 7. IP_MULTICAST_IF (outgoing multicast interface)
-            if(!opts.interface_address.empty())
-            {
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_IF,
-                                reinterpret_cast<const char*>(&iface_addr), sizeof(iface_addr)) == SOCKET_ERROR)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(::WSAGetLastError(), std::system_category(), "setsockopt(IP_MULTICAST_IF)");
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_IF, &iface_addr, sizeof(iface_addr)) < 0)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(errno, std::generic_category(), "setsockopt(IP_MULTICAST_IF)");
-                }
-#endif
-            }
-
-            // 8. IP_ADD_MEMBERSHIP (same iface_addr -- no split-brain)
-            {
-                ip_mreq mreq{};
-                ::inet_pton(AF_INET, opts.multicast_group.address.c_str(), &mreq.imr_multiaddr);
-                mreq.imr_interface = iface_addr;
-
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
-                                reinterpret_cast<const char*>(&mreq), sizeof(mreq)) == SOCKET_ERROR)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(::WSAGetLastError(), std::system_category(), "setsockopt(IP_ADD_MEMBERSHIP)");
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(errno, std::generic_category(), "setsockopt(IP_ADD_MEMBERSHIP)");
-                }
-#endif
-            }
-
-            // 9. IP_MULTICAST_TTL (default 255 per RFC 6762 Section 11)
-            {
-                const int ttl_val = static_cast<int>(opts.multicast_ttl.value_or(255));
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_TTL,
-                                reinterpret_cast<const char*>(&ttl_val), sizeof(ttl_val)) == SOCKET_ERROR)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(::WSAGetLastError(), std::system_category(), "setsockopt(IP_MULTICAST_TTL)");
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl_val, sizeof(ttl_val)) < 0)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(errno, std::generic_category(), "setsockopt(IP_MULTICAST_TTL)");
-                }
-#endif
-            }
-
-            // 10. IP_MULTICAST_LOOP
-            {
-                const int val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_LOOP,
-                                reinterpret_cast<const char*>(&val), sizeof(val)) == SOCKET_ERROR)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(::WSAGetLastError(), std::system_category(), "setsockopt(IP_MULTICAST_LOOP)");
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_LOOP, &val, sizeof(val)) < 0)
-                {
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    throw std::system_error(errno, std::generic_category(), "setsockopt(IP_MULTICAST_LOOP)");
-                }
-#endif
-            }
-
-#if !defined(_WIN32) && defined(IP_RECVTTL)
-            {
-                const int opt = 1;
-                (void)::setsockopt(m_fd, IPPROTO_IP, IP_RECVTTL, &opt, sizeof(opt));
-            }
-#endif
-        }
-    }
-
-    /// Non-throwing -- interface-aware multicast configuration via socket_options.
+    // Non-throwing -- the throwing overload wraps this.
     void open_and_configure(const socket_options &opts, std::error_code &ec)
     {
         ec.clear();
 
-        // 0. Validate multicast group address
         detail::validate_multicast_address(opts.multicast_group.address, ec);
         if(ec) return;
 
         const bool v6 = is_ipv6(opts.multicast_group.address);
-        const int family = v6 ? AF_INET6 : AF_INET;
+        const int32_t family = v6 ? AF_INET6 : AF_INET;
 
-        // 1. Create UDP socket
         m_fd = ::socket(family, SOCK_DGRAM, IPPROTO_UDP);
         if(m_fd == detail::invalid_socket)
         {
@@ -656,322 +327,190 @@ private:
             return;
         }
 
-        // 2. SO_REUSEADDR
-        {
-            const int opt = 1;
-#ifdef _WIN32
-            if(::setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR,
-                            reinterpret_cast<const char*>(&opt), sizeof(opt)) == SOCKET_ERROR)
-            {
-                ec = std::error_code(::WSAGetLastError(), std::system_category());
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                return;
-            }
-#else
-            if(::setsockopt(m_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0)
-            {
-                ec = std::error_code(errno, std::generic_category());
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
-                return;
-            }
-#endif
-        }
+        const int32_t one = 1;
+        if(!set_sock_opt(SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one), ec))
+            return;
 
-        // 3. SO_REUSEPORT (optional -- warn on failure, do not set ec)
 #if defined(SO_REUSEPORT)
-        {
-            const int opt = 1;
-            (void)::setsockopt(m_fd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
-        }
+        (void)::setsockopt(m_fd, SOL_SOCKET, SO_REUSEPORT, &one, sizeof(one));
 #endif
 
-        // 4. Non-blocking
         if(!set_nonblocking(ec))
         {
-            detail::close_socket(m_fd);
-            m_fd = detail::invalid_socket;
+            cleanup_on_error();
             return;
         }
 
         if(v6)
-        {
-            // 5v6. Bind to in6addr_any with configured port
-            {
-                sockaddr_in6 addr6{};
-                addr6.sin6_family = AF_INET6;
-                addr6.sin6_addr = in6addr_any;
-                addr6.sin6_port = htons(opts.multicast_group.port);
-
-#ifdef _WIN32
-                if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr6), sizeof(addr6)) == SOCKET_ERROR)
-                {
-                    ec = std::error_code(::WSAGetLastError(), std::system_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#else
-                if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr6),
-                          static_cast<socklen_t>(sizeof(addr6))) < 0)
-                {
-                    ec = std::error_code(errno, std::generic_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#endif
-            }
-
-            // 6v6. Resolve interface index for IPv6
-            unsigned int iface_idx = resolve_ipv6_interface_index(opts.interface_address);
-
-            // 7v6. IPV6_MULTICAST_IF (outgoing multicast interface)
-            if(!opts.interface_address.empty())
-            {
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_IF,
-                                reinterpret_cast<const char*>(&iface_idx), sizeof(iface_idx)) == SOCKET_ERROR)
-                {
-                    ec = std::error_code(::WSAGetLastError(), std::system_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, &iface_idx, sizeof(iface_idx)) < 0)
-                {
-                    ec = std::error_code(errno, std::generic_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#endif
-            }
-
-            // 8v6. IPV6_JOIN_GROUP
-            {
-                ipv6_mreq mreq6{};
-                ::inet_pton(AF_INET6, opts.multicast_group.address.c_str(), &mreq6.ipv6mr_multiaddr);
-                mreq6.ipv6mr_interface = iface_idx;
-
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_JOIN_GROUP,
-                                reinterpret_cast<const char*>(&mreq6), sizeof(mreq6)) == SOCKET_ERROR)
-                {
-                    ec = std::error_code(::WSAGetLastError(), std::system_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq6, sizeof(mreq6)) < 0)
-                {
-                    ec = std::error_code(errno, std::generic_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#endif
-            }
-
-            // 9v6. IPV6_MULTICAST_HOPS (default 255 per RFC 6762 Section 11)
-            {
-                const int hops_val = static_cast<int>(opts.multicast_ttl.value_or(255));
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS,
-                                reinterpret_cast<const char*>(&hops_val), sizeof(hops_val)) == SOCKET_ERROR)
-                {
-                    ec = std::error_code(::WSAGetLastError(), std::system_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &hops_val, sizeof(hops_val)) < 0)
-                {
-                    ec = std::error_code(errno, std::generic_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#endif
-            }
-
-            // 10v6. IPV6_MULTICAST_LOOP
-            {
-                const int val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP,
-                                reinterpret_cast<const char*>(&val), sizeof(val)) == SOCKET_ERROR)
-                {
-                    ec = std::error_code(::WSAGetLastError(), std::system_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &val, sizeof(val)) < 0)
-                {
-                    ec = std::error_code(errno, std::generic_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#endif
-            }
-
-#if !defined(_WIN32) && defined(IPV6_RECVHOPLIMIT)
-            {
-                const int opt = 1;
-                (void)::setsockopt(m_fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &opt, sizeof(opt));
-            }
-#endif
-        }
+            configure_ipv6(opts, ec);
         else
+            configure_ipv4(opts, ec);
+    }
+
+    // Throwing -- delegates to the ec overload.
+    void open_and_configure(const socket_options &opts)
+    {
+        std::error_code ec;
+        open_and_configure(opts, ec);
+        if(ec)
+            throw std::system_error(ec, "DefaultSocket::open_and_configure");
+    }
+
+    // -------------------------------------------------------------------------
+    // IPv4 configuration
+    // -------------------------------------------------------------------------
+
+    void configure_ipv4(const socket_options &opts, std::error_code &ec)
+    {
+        // Bind
         {
-            // 5. Bind to INADDR_ANY with configured port
-            {
-                sockaddr_in addr{};
-                addr.sin_family = AF_INET;
-                addr.sin_addr.s_addr = htonl(INADDR_ANY);
-                addr.sin_port = htons(opts.multicast_group.port);
+            sockaddr_in addr{};
+            addr.sin_family = AF_INET;
+            addr.sin_addr.s_addr = htonl(INADDR_ANY);
+            addr.sin_port = htons(opts.multicast_group.port);
 
-#ifdef _WIN32
-                if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
-                {
-                    ec = std::error_code(::WSAGetLastError(), std::system_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#else
-                if(::bind(m_fd, reinterpret_cast<const sockaddr*>(&addr),
-                          static_cast<socklen_t>(sizeof(addr))) < 0)
-                {
-                    ec = std::error_code(errno, std::generic_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#endif
-            }
-
-            // 6. Compute interface address (single variable for both IF and MEMBERSHIP)
-            in_addr iface_addr{};
-            if(opts.interface_address.empty())
-                iface_addr.s_addr = htonl(INADDR_ANY);
-            else if(::inet_pton(AF_INET, opts.interface_address.c_str(), &iface_addr) != 1)
-            {
-                ec = std::make_error_code(std::errc::invalid_argument);
-                detail::close_socket(m_fd);
-                m_fd = detail::invalid_socket;
+            if(!bind_socket(reinterpret_cast<const sockaddr*>(&addr),
+                            static_cast<socklen_t>(sizeof(addr)), ec))
                 return;
-            }
+        }
 
-            // 7. IP_MULTICAST_IF (outgoing multicast interface)
-            if(!opts.interface_address.empty())
-            {
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_IF,
-                                reinterpret_cast<const char*>(&iface_addr), sizeof(iface_addr)) == SOCKET_ERROR)
-                {
-                    ec = std::error_code(::WSAGetLastError(), std::system_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_IF, &iface_addr, sizeof(iface_addr)) < 0)
-                {
-                    ec = std::error_code(errno, std::generic_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#endif
-            }
+        // Interface address
+        in_addr iface_addr{};
+        if(opts.interface_address.empty())
+            iface_addr.s_addr = htonl(INADDR_ANY);
+        else if(::inet_pton(AF_INET, opts.interface_address.c_str(), &iface_addr) != 1)
+        {
+            ec = std::make_error_code(std::errc::invalid_argument);
+            cleanup_on_error();
+            return;
+        }
 
-            // 8. IP_ADD_MEMBERSHIP (same iface_addr -- no split-brain)
-            {
-                ip_mreq mreq{};
-                ::inet_pton(AF_INET, opts.multicast_group.address.c_str(), &mreq.imr_multiaddr);
-                mreq.imr_interface = iface_addr;
+        // IP_MULTICAST_IF
+        if(!opts.interface_address.empty())
+        {
+            if(!set_sock_opt(IPPROTO_IP, IP_MULTICAST_IF, &iface_addr,
+                             sizeof(iface_addr), ec))
+                return;
+        }
 
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP,
-                                reinterpret_cast<const char*>(&mreq), sizeof(mreq)) == SOCKET_ERROR)
-                {
-                    ec = std::error_code(::WSAGetLastError(), std::system_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq, sizeof(mreq)) < 0)
-                {
-                    ec = std::error_code(errno, std::generic_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#endif
-            }
+        // IP_ADD_MEMBERSHIP
+        {
+            ip_mreq mreq{};
+            ::inet_pton(AF_INET, opts.multicast_group.address.c_str(), &mreq.imr_multiaddr);
+            mreq.imr_interface = iface_addr;
+            if(!set_sock_opt(IPPROTO_IP, IP_ADD_MEMBERSHIP, &mreq,
+                             sizeof(mreq), ec))
+                return;
+        }
 
-            // 9. IP_MULTICAST_TTL (default 255 per RFC 6762 Section 11)
-            {
-                const int ttl_val = static_cast<int>(opts.multicast_ttl.value_or(255));
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_TTL,
-                                reinterpret_cast<const char*>(&ttl_val), sizeof(ttl_val)) == SOCKET_ERROR)
-                {
-                    ec = std::error_code(::WSAGetLastError(), std::system_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl_val, sizeof(ttl_val)) < 0)
-                {
-                    ec = std::error_code(errno, std::generic_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#endif
-            }
+        // IP_MULTICAST_TTL
+        {
+            const int32_t ttl_val = static_cast<int32_t>(opts.multicast_ttl.value_or(255));
+            if(!set_sock_opt(IPPROTO_IP, IP_MULTICAST_TTL, &ttl_val,
+                             sizeof(ttl_val), ec))
+                return;
+        }
 
-            // 10. IP_MULTICAST_LOOP
-            {
-                const int val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
-#ifdef _WIN32
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_LOOP,
-                                reinterpret_cast<const char*>(&val), sizeof(val)) == SOCKET_ERROR)
-                {
-                    ec = std::error_code(::WSAGetLastError(), std::system_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#else
-                if(::setsockopt(m_fd, IPPROTO_IP, IP_MULTICAST_LOOP, &val, sizeof(val)) < 0)
-                {
-                    ec = std::error_code(errno, std::generic_category());
-                    detail::close_socket(m_fd);
-                    m_fd = detail::invalid_socket;
-                    return;
-                }
-#endif
-            }
+        // IP_MULTICAST_LOOP
+        {
+            const int32_t val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
+            if(!set_sock_opt(IPPROTO_IP, IP_MULTICAST_LOOP, &val,
+                             sizeof(val), ec))
+                return;
+        }
 
 #if !defined(_WIN32) && defined(IP_RECVTTL)
-            {
-                const int opt = 1;
-                (void)::setsockopt(m_fd, IPPROTO_IP, IP_RECVTTL, &opt, sizeof(opt));
-            }
-#endif
+        {
+            const int32_t opt = 1;
+            (void)::setsockopt(m_fd, IPPROTO_IP, IP_RECVTTL, &opt, sizeof(opt));
         }
+#endif
+    }
+
+    // -------------------------------------------------------------------------
+    // IPv6 configuration
+    // -------------------------------------------------------------------------
+
+    void configure_ipv6(const socket_options &opts, std::error_code &ec)
+    {
+        // Bind
+        {
+            sockaddr_in6 addr6{};
+            addr6.sin6_family = AF_INET6;
+            addr6.sin6_addr = in6addr_any;
+            addr6.sin6_port = htons(opts.multicast_group.port);
+
+            if(!bind_socket(reinterpret_cast<const sockaddr*>(&addr6),
+                            static_cast<socklen_t>(sizeof(addr6)), ec))
+                return;
+        }
+
+        unsigned int iface_idx = resolve_ipv6_interface_index(opts.interface_address);
+
+        // IPV6_MULTICAST_IF
+        if(!opts.interface_address.empty())
+        {
+            if(!set_sock_opt(IPPROTO_IPV6, IPV6_MULTICAST_IF, &iface_idx,
+                             sizeof(iface_idx), ec))
+                return;
+        }
+
+        // IPV6_JOIN_GROUP
+        {
+            ipv6_mreq mreq6{};
+            ::inet_pton(AF_INET6, opts.multicast_group.address.c_str(), &mreq6.ipv6mr_multiaddr);
+            mreq6.ipv6mr_interface = iface_idx;
+            if(!set_sock_opt(IPPROTO_IPV6, IPV6_JOIN_GROUP, &mreq6,
+                             sizeof(mreq6), ec))
+                return;
+        }
+
+        // IPV6_MULTICAST_HOPS
+        {
+            const int32_t hops_val = static_cast<int32_t>(opts.multicast_ttl.value_or(255));
+            if(!set_sock_opt(IPPROTO_IPV6, IPV6_MULTICAST_HOPS, &hops_val,
+                             sizeof(hops_val), ec))
+                return;
+        }
+
+        // IPV6_MULTICAST_LOOP
+        {
+            const int32_t val = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
+            if(!set_sock_opt(IPPROTO_IPV6, IPV6_MULTICAST_LOOP, &val,
+                             sizeof(val), ec))
+                return;
+        }
+
+#if !defined(_WIN32) && defined(IPV6_RECVHOPLIMIT)
+        {
+            const int32_t opt = 1;
+            (void)::setsockopt(m_fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &opt, sizeof(opt));
+        }
+#endif
+    }
+
+    // -------------------------------------------------------------------------
+    // Bind helper
+    // -------------------------------------------------------------------------
+
+    bool bind_socket(const sockaddr *addr, socklen_t addrlen, std::error_code &ec)
+    {
+#ifdef _WIN32
+        if(::bind(m_fd, addr, static_cast<int>(addrlen)) == SOCKET_ERROR)
+        {
+            ec = std::error_code(::WSAGetLastError(), std::system_category());
+            cleanup_on_error();
+            return false;
+        }
+#else
+        if(::bind(m_fd, addr, addrlen) < 0)
+        {
+            ec = std::error_code(errno, std::generic_category());
+            cleanup_on_error();
+            return false;
+        }
+#endif
+        return true;
     }
 };
 

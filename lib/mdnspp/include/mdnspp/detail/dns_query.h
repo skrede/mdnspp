@@ -11,9 +11,10 @@
 #include <span>
 #include <string>
 #include <vector>
+#include <cstdio>
+#include <utility>
 #include <cstddef>
 #include <cstdint>
-#include <utility>
 #include <string_view>
 
 namespace mdnspp::detail {
@@ -49,8 +50,10 @@ inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qt
     packet.push_back(static_cast<std::byte>(0x00));
     packet.push_back(static_cast<std::byte>(0x00));
 
-    // Encoded question name
+    // Encoded question name (empty = encoding failure)
     auto encoded = encode_dns_name(name);
+    if(encoded.empty())
+        return {};
     packet.insert(packet.end(), encoded.begin(), encoded.end());
 
     // QTYPE (big-endian)
@@ -71,6 +74,9 @@ inline std::vector<std::byte> build_probe_query(const service_info &info,
 {
     auto name_service = encode_dns_name(info.service_name);
     auto name_host = encode_dns_name(info.hostname);
+
+    if(name_service.empty() || name_host.empty())
+        return {};
 
     // Build SRV rdata: priority(2) + weight(2) + port(2) + encoded hostname
     std::vector<std::byte> rdata_srv;
@@ -129,15 +135,19 @@ inline void append_known_answer(std::vector<std::byte> &buf, const mdns_record_v
         }
         else if constexpr(std::is_same_v<T, record_a>)
         {
-            auto rdata = encode_ipv4(r.address_string);
-            if(!rdata.empty())
-                append_dns_rr(buf, name, dns_type::a, r.ttl, rdata);
+            auto enc = encode_ipv4(r.address_string);
+            if(enc.has_value())
+                append_dns_rr(buf, name, dns_type::a, r.ttl, *enc);
+            else
+                std::fprintf(stderr, "encode_ipv4 failed: %s\n", r.address_string.c_str());
         }
         else if constexpr(std::is_same_v<T, record_aaaa>)
         {
-            auto rdata = encode_ipv6(r.address_string);
-            if(!rdata.empty())
-                append_dns_rr(buf, name, dns_type::aaaa, r.ttl, rdata);
+            auto enc = encode_ipv6(r.address_string);
+            if(enc.has_value())
+                append_dns_rr(buf, name, dns_type::aaaa, r.ttl, *enc);
+            else
+                std::fprintf(stderr, "encode_ipv6 failed: %s\n", r.address_string.c_str());
         }
         else if constexpr(std::is_same_v<T, record_txt>)
         {

@@ -2,11 +2,11 @@
 #define HPP_GUARD_MDNSPP_ASIO_TIMER_H
 
 #include <mdnspp/policy.h>
+#include <mdnspp/detail/compat.h>
 
 #include <asio.hpp>
 
 #include <chrono>
-#include <functional>
 #include <system_error>
 
 namespace mdnspp {
@@ -29,7 +29,7 @@ public:
         m_timer.expires_after(dur);
     }
 
-    void async_wait(std::function<void(std::error_code)> handler)
+    void async_wait(detail::move_only_function<void(std::error_code)> handler)
     {
         m_timer.async_wait(std::move(handler));
     }

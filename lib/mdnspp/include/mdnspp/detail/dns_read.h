@@ -146,6 +146,10 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
             return result;
         }
 
+        // RFC 1035 §2.3.4: labels are 6 bits, max 63 octets
+        if(label_len > 63)
+            return detail::make_unexpected(mdns_error::parse_error);
+
         // Regular label: bounds-check, then append
         size_t label_start = offset + 1;
         size_t label_end = label_start + static_cast<size_t>(label_len);
@@ -183,6 +187,9 @@ inline std::vector<std::byte> encode_dns_name(std::string_view name)
     if(name.back() == '.')
         name.remove_suffix(1);
 
+    constexpr size_t max_label_len = 63;
+    constexpr size_t max_name_len = 255;
+
     size_t pos = 0;
     while(pos < name.size())
     {
@@ -191,6 +198,9 @@ inline std::vector<std::byte> encode_dns_name(std::string_view name)
             dot = name.size();
 
         size_t label_len = dot - pos;
+        if(label_len > max_label_len)
+            return {};
+
         result.push_back(static_cast<std::byte>(static_cast<uint8_t>(label_len)));
         for(size_t i = pos; i < dot; ++i)
             result.push_back(static_cast<std::byte>(static_cast<uint8_t>(name[i])));
@@ -199,6 +209,11 @@ inline std::vector<std::byte> encode_dns_name(std::string_view name)
     }
 
     result.push_back(std::byte{0}); // root label
+
+    // RFC 1035 §3.1: total wire-encoded name must not exceed 255 bytes
+    if(result.size() > max_name_len)
+        return {};
+
     return result;
 }
 

@@ -14,17 +14,18 @@
 
 #include "mdnspp/detail/platform.h"
 
-#include <deque>
-#include <mutex>
 #include <span>
 #include <array>
+#include <deque>
+#include <mutex>
 #include <atomic>
 #include <chrono>
+#include <thread>
 #include <vector>
+#include <cassert>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
-#include <functional>
 #include <system_error>
 
 #ifdef _WIN32
@@ -132,6 +133,10 @@ public:
     /// Call restart() before re-entering run() after a stop().
     void run()
     {
+#ifndef NDEBUG
+        if(!m_owner_set.exchange(true, std::memory_order_acq_rel))
+            m_owner_thread = std::this_thread::get_id();
+#endif
         while(!m_stopped.load(std::memory_order_acquire))
         {
             const auto now = std::chrono::steady_clock::now();
@@ -164,6 +169,10 @@ public:
 
     void poll_one()
     {
+#ifndef NDEBUG
+        if(!m_owner_set.exchange(true, std::memory_order_acq_rel))
+            m_owner_thread = std::this_thread::get_id();
+#endif
         const int rc = do_poll(0);
         if(rc < 0)
             return;
@@ -197,13 +206,13 @@ public:
     /// Clears any stale work left over from the previous run.
     void restart()
     {
-        m_stopped.store(false, std::memory_order_relaxed);
+        m_stopped.store(false, std::memory_order_release);
         drain_wakeup_fd();
         {
             std::lock_guard lock{m_work_mutex};
             m_work_queue.clear();
         }
-        m_post_pending.store(false, std::memory_order_relaxed);
+        m_post_pending.store(false, std::memory_order_release);
     }
 
     /// Post work to the event loop from any thread.
@@ -224,7 +233,7 @@ public:
     // -----------------------------------------------------------------------
 
     void register_socket(detail::native_socket_t fd,
-                          std::function<void(const endpoint &, uint8_t, std::span<std::byte>)> handler)
+                          detail::move_only_function<void(const endpoint &, uint8_t, std::span<std::byte>)> handler)
     {
         // Replace if already registered (e.g. async_receive re-arms)
         for(auto &entry : m_sockets)
@@ -245,12 +254,14 @@ public:
 
     void register_timer(DefaultTimer *t)
     {
+        assert_executor_thread();
         if(std::find(m_timers.begin(), m_timers.end(), t) == m_timers.end())
             m_timers.push_back(t);
     }
 
     void deregister_timer(DefaultTimer *t)
     {
+        assert_executor_thread();
         std::erase(m_timers, t);
     }
 
@@ -265,8 +276,18 @@ private:
     struct socket_entry
     {
         detail::native_socket_t fd{detail::invalid_socket};
-        std::function<void(const endpoint &, uint8_t, std::span<std::byte>)> handler;
+        detail::move_only_function<void(const endpoint &, uint8_t, std::span<std::byte>)> handler;
     };
+
+    void assert_executor_thread() const noexcept
+    {
+#ifndef NDEBUG
+        // Only enforce once an executor thread has been established (first run()/poll_one()).
+        if(m_owner_set.load(std::memory_order_acquire))
+            assert(std::this_thread::get_id() == m_owner_thread &&
+                   "DefaultContext: m_timers accessed from wrong thread");
+#endif
+    }
 
     // winsock_guard MUST be the first member — initialised before any sockets.
     winsock_guard m_wsa{};
@@ -292,6 +313,12 @@ private:
     // Poll state — rebuilt each do_poll() call.
     std::vector<pollfd> m_pollfds;
     bool m_wakeup_ready{false};
+
+#ifndef NDEBUG
+    // Lazily initialized on first call to run() — captures the executor thread id.
+    std::atomic<bool> m_owner_set{false};
+    std::thread::id m_owner_thread{};
+#endif
 
     void drain_work_queue()
     {

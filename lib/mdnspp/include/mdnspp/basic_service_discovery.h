@@ -21,7 +21,6 @@
 #include <cassert>
 #include <utility>
 #include <algorithm>
-#include <functional>
 #include <string_view>
 #include <system_error>
 
@@ -61,11 +60,11 @@ public:
     basic_service_discovery(basic_service_discovery &&other) noexcept
         : base(std::move(other))
         , m_silence_timeout(other.m_silence_timeout)
+        , m_on_error(std::move(other.m_on_error))
         , m_on_record(std::move(other.m_on_record))
         , m_on_completion(std::move(other.m_on_completion))
-        , m_on_browse_completion(std::move(other.m_on_browse_completion))
         , m_on_enumerate_completion(std::move(other.m_on_enumerate_completion))
-        , m_on_error(std::move(other.m_on_error))
+        , m_on_browse_completion(std::move(other.m_on_browse_completion))
         , m_browse_loop(std::move(other.m_browse_loop))
         , m_enumerate_loop(std::move(other.m_enumerate_loop))
         , m_results(std::move(other.m_results))
@@ -228,7 +227,7 @@ private:
     // with shared on_packet handler, and starts the loop.
     void do_query(std::string svc_type, response_mode mode,
                   std::unique_ptr<recv_loop<P>> &target_loop,
-                  std::function<void()> on_silence_fn)
+                  detail::move_only_function<void()> on_silence_fn)
     {
         m_results.clear();
         m_service_type = dns_name(std::move(svc_type));
@@ -347,12 +346,12 @@ private:
     }
 
     std::chrono::milliseconds m_silence_timeout;
+    dns_name m_service_type;
+    error_handler m_on_error;
     record_callback m_on_record;
     completion_handler m_on_completion;
-    detail::move_only_function<void(std::error_code, std::vector<resolved_service>)> m_on_browse_completion;
     enumerate_handler m_on_enumerate_completion;
-    error_handler m_on_error;
-    dns_name m_service_type;
+    detail::move_only_function<void(std::error_code, std::vector<resolved_service>)> m_on_browse_completion;
     std::unique_ptr<recv_loop<P>> m_browse_loop;
     std::unique_ptr<recv_loop<P>> m_enumerate_loop;
     std::vector<mdns_record_variant> m_results;

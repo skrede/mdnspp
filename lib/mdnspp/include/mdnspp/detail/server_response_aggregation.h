@@ -89,6 +89,10 @@ inline std::vector<std::byte> build_response_with_nsec(const service_info &info,
 
     if(needs_nsec && qtype != dns_type::any)
     {
+        auto owner_name = encode_dns_name(info.hostname);
+        if(owner_name.empty())
+            return response;
+
         if(response.empty())
         {
             push_u16_be(response, 0x0000); // id
@@ -98,12 +102,10 @@ inline std::vector<std::byte> build_response_with_nsec(const service_info &info,
             push_u16_be(response, 0x0000); // nscount
             push_u16_be(response, 0x0001); // arcount = 1
 
-            auto owner_name = encode_dns_name(info.hostname);
             append_nsec_rr(response, owner_name, info, nsec_ttl);
         }
         else
         {
-            auto owner_name = encode_dns_name(info.hostname);
             append_nsec_rr(response, owner_name, info, nsec_ttl);
             uint16_t arcount = read_u16_be(response.data() + 10);
             ++arcount;

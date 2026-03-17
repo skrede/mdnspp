@@ -69,9 +69,9 @@ public:
     // Moving a started basic_observer is a logic error (recv_loop callbacks capture this).
     basic_observer(basic_observer &&other) noexcept
         : base(std::move(other))
+        , m_on_error(std::move(other.m_on_error))
         , m_on_record(std::move(other.m_on_record))
         , m_on_completion(std::move(other.m_on_completion))
-        , m_on_error(std::move(other.m_on_error))
     {
     }
 
@@ -171,9 +171,9 @@ private:
             });
     }
 
+    error_handler m_on_error;
     record_callback m_on_record;
     completion_handler m_on_completion;
-    error_handler m_on_error;
 };
 
 }

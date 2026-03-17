@@ -41,10 +41,11 @@ using timer_type    = typename P::timer_type;
 explicit basic_service_monitor(executor_type ex,
                                monitor_options opts = {},
                                socket_options sock_opts = {},
-                               mdns_options mdns_opts = {});
+                               mdns_options mdns_opts = {},
+                               cache_options copts = {});
 ```
 
-Constructs the monitor from an executor. The optional [`monitor_options`](monitor_options.md) supplies discovery callbacks and the monitoring mode. The optional `sock_opts` controls network interface selection and multicast group (see [Socket Options](../socket-options.md)). The optional [`mdns_options`](mdns_options.md) controls query backoff timing, TTL refresh thresholds, and TC accumulation windows. Throws on socket construction failure.
+Constructs the monitor from an executor. The optional [`monitor_options`](monitor_options.md) supplies discovery callbacks and the monitoring mode. The optional `sock_opts` controls network interface selection and multicast group (see [Socket Options](../socket-options.md)). The optional [`mdns_options`](mdns_options.md) controls query backoff timing, TTL refresh thresholds, and TC accumulation windows. The optional `cache_options` controls goodbye grace period and cache expiry callbacks. Throws on socket construction failure.
 
 **Note:** `monitor_options` is move-only. Use `std::move` when passing a named variable.
 
@@ -55,6 +56,7 @@ basic_service_monitor(executor_type ex,
                       monitor_options opts,
                       socket_options sock_opts,
                       mdns_options mdns_opts,
+                      cache_options copts,
                       std::error_code &ec);
 ```
 

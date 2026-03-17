@@ -33,13 +33,13 @@ struct service_options
     conflict_callback on_conflict{};
     detail::move_only_function<void(const endpoint &sender, dns_type type, response_mode mode)> on_query{};
     detail::move_only_function<void(const endpoint &sender, std::size_t continuation_count)> on_tc_continuation{};
-    unsigned announce_count{2};
+    uint8_t announce_count{2};
     std::chrono::milliseconds announce_interval{1000};
     bool send_goodbye{true};
     bool suppress_known_answers{true};
     bool respond_to_meta_queries{true};
     bool announce_subtypes{false};
-    unsigned probe_count{3};
+    uint8_t probe_count{3};
     std::chrono::milliseconds probe_interval{250};
     std::chrono::milliseconds probe_initial_delay_max{250};
     bool respond_to_legacy_unicast{true};
@@ -63,13 +63,13 @@ struct service_options
 | `on_conflict` | `conflict_callback` | `{}` (none) | RFC 6762 §8.1, §9 | Called when a name conflict is detected during probing. See [conflict_callback](#conflict_callback) for signature and parameters. |
 | `on_query` | `move_only_function<void(const endpoint&, dns_type, response_mode)>` | `{}` (none) | RFC 6762 §5.4 | Called when a matching query is received while live. |
 | `on_tc_continuation` | `move_only_function<void(const endpoint&, std::size_t)>` | `{}` (none) | RFC 6762 §6 | Fired when a TC continuation is processed. Reports the sender endpoint and the number of accumulated continuation packets. |
-| `announce_count` | `unsigned` | `2` | RFC 6762 §8.3 | Number of announcement packets sent after probing completes. Also controls the number of announcements sent by `update_service_info()`. |
+| `announce_count` | `uint8_t` | `2` | RFC 6762 §8.3 | Number of announcement packets sent after probing completes. Also controls the number of announcements sent by `update_service_info()`. |
 | `announce_interval` | `std::chrono::milliseconds` | `1000ms` | RFC 6762 §8.3 | Interval between consecutive announcement packets. |
 | `send_goodbye` | `bool` | `true` | RFC 6762 §10.1 | Whether to send a goodbye packet (TTL=0) on `stop()`. |
 | `suppress_known_answers` | `bool` | `true` | RFC 6762 §7.1 | Whether to suppress responses when the querier includes matching known answers with TTL at least half of the default. |
 | `respond_to_meta_queries` | `bool` | `true` | RFC 6763 §9 | Whether to respond to DNS-SD service type enumeration queries (`_services._dns-sd._udp.local.`). |
 | `announce_subtypes` | `bool` | `false` | RFC 6763 §7.1 | Whether to include subtype PTR records in announcement bursts. |
-| `probe_count` | `unsigned` | `3` | RFC 6762 §8.1 | Number of probe packets sent before a service is considered conflict-free and announcing begins. Values below 1 skip probing entirely, which is non-compliant. |
+| `probe_count` | `uint8_t` | `3` | RFC 6762 §8.1 | Number of probe packets sent before a service is considered conflict-free and announcing begins. Values below 1 skip probing entirely, which is non-compliant. |
 | `probe_interval` | `std::chrono::milliseconds` | `250ms` | RFC 6762 §8.1 | Interval between successive probe packets. |
 | `probe_initial_delay_max` | `std::chrono::milliseconds` | `250ms` | RFC 6762 §8.1 | Upper bound on the random initial delay before the first probe is sent. The first probe is delayed by a uniform random value in `[0, probe_initial_delay_max]` to desynchronize simultaneous startups. |
 | `respond_to_legacy_unicast` | `bool` | `true` | RFC 6762 §6.7 | Whether to respond to legacy unicast queries (source port != 5353). When enabled, the responder sends a unicast reply with TTLs capped at `mdns_options::legacy_unicast_ttl`. |

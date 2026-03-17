@@ -171,9 +171,9 @@ Conflict during probing invokes `service_options::on_conflict`. If the callback 
 
 ```cpp
 struct service_info {
-    std::string                service_name;   // e.g. "MyApp._http._tcp.local."
-    std::string                service_type;   // e.g. "_http._tcp.local."
-    std::string                hostname;       // e.g. "myhost.local."
+    dns_name                   service_name;   // e.g. "MyApp._http._tcp.local."
+    dns_name                   service_type;   // e.g. "_http._tcp.local."
+    dns_name                   hostname;       // e.g. "myhost.local."
     uint16_t                   port{0};
     uint16_t                   priority{0};    // SRV priority (lower = preferred)
     uint16_t                   weight{0};      // SRV weight (load balancing)

@@ -72,6 +72,11 @@ public:
 
     explicit operator bool() const noexcept { return m_impl != nullptr; }
 
+    friend bool operator==(const move_only_function &f, std::nullptr_t) noexcept { return !f; }
+    friend bool operator==(std::nullptr_t, const move_only_function &f) noexcept { return !f; }
+    friend bool operator!=(const move_only_function &f, std::nullptr_t) noexcept { return !!f; }
+    friend bool operator!=(std::nullptr_t, const move_only_function &f) noexcept { return !!f; }
+
     R operator()(Args... args) { return m_impl->invoke(std::forward<Args>(args)...); }
 };
 

@@ -35,7 +35,7 @@ inline uint16_t read_u16_be(const auto &buf, std::size_t offset)
 
 }
 
-static service_info make_test_service()
+inline service_info make_test_service()
 {
     service_info info;
     info.service_name = "MyService._http._tcp.local.";
@@ -50,7 +50,7 @@ static service_info make_test_service()
     return info;
 }
 
-static std::vector<mdns_record_variant> parse_response(const std::vector<std::byte> &pkt)
+inline std::vector<mdns_record_variant> parse_response(const std::vector<std::byte> &pkt)
 {
     std::vector<mdns_record_variant> records;
     walk_dns_frame(std::span<const std::byte>(pkt), endpoint{}, [&](mdns_record_variant rv)
@@ -60,7 +60,7 @@ static std::vector<mdns_record_variant> parse_response(const std::vector<std::by
     return records;
 }
 
-static service_info make_test_info()
+inline service_info make_test_info()
 {
     service_info info;
     info.service_name = "MyService._http._tcp.local.";
@@ -74,7 +74,7 @@ static service_info make_test_info()
     return info;
 }
 
-static std::vector<std::byte> make_ptr_query(std::string_view service_type)
+inline std::vector<std::byte> make_ptr_query(std::string_view service_type)
 {
     return build_dns_query(service_type, dns_type::ptr);
 }
@@ -83,7 +83,7 @@ static std::vector<std::byte> make_ptr_query(std::string_view service_type)
 // Probing: 1 fire (initial delay) + 2 fires (probes 2 and 3) + 1 fire (conflict window) = 4
 // Announcing: first announcement is immediate (no fire), then (announce_count - 1) fires
 // With default announce_count=2: 4 + 1 = 5 timer fires total.
-static void advance_to_live(basic_service_server<MockPolicy> &server, unsigned announce_count = 2)
+inline void advance_to_live(basic_service_server<MockPolicy> &server, unsigned announce_count = 2)
 {
     // 4 timer fires to complete probing
     for(unsigned i = 0; i < 4; ++i)
@@ -96,7 +96,7 @@ static void advance_to_live(basic_service_server<MockPolicy> &server, unsigned a
 
 // Builds a mock DNS response packet that contains a record matching the given service_info.
 // This is used to simulate conflict detection during probing.
-static std::vector<std::byte> make_conflict_response(const service_info &info)
+inline std::vector<std::byte> make_conflict_response(const service_info &info)
 {
     return build_dns_response(info, dns_type::srv, service_options{});
 }

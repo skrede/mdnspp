@@ -20,7 +20,7 @@ using namespace mdnspp;
 using namespace mdnspp::testing;
 using namespace std::chrono_literals;
 
-[[maybe_unused]] static std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
+inline std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
 {
     std::vector<std::byte> v;
     v.reserve(vals.size());
@@ -29,13 +29,13 @@ using namespace std::chrono_literals;
     return v;
 }
 
-static void push_u16_be(std::vector<std::byte> &buf, uint16_t v)
+inline void push_u16_be(std::vector<std::byte> &buf, uint16_t v)
 {
     buf.push_back(static_cast<std::byte>(static_cast<uint8_t>(v >> 8)));
     buf.push_back(static_cast<std::byte>(static_cast<uint8_t>(v & 0xFF)));
 }
 
-static void push_u32_be(std::vector<std::byte> &buf, uint32_t v)
+inline void push_u32_be(std::vector<std::byte> &buf, uint32_t v)
 {
     buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 24) & 0xFF)));
     buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 16) & 0xFF)));
@@ -43,7 +43,7 @@ static void push_u32_be(std::vector<std::byte> &buf, uint32_t v)
     buf.push_back(static_cast<std::byte>(static_cast<uint8_t>(v & 0xFF)));
 }
 
-static std::vector<std::byte> encode_name(std::string_view name)
+inline std::vector<std::byte> encode_name(std::string_view name)
 {
     std::vector<std::byte> result;
     if(!name.empty() && name.back() == '.')
@@ -65,7 +65,7 @@ static std::vector<std::byte> encode_name(std::string_view name)
     return result;
 }
 
-static std::vector<std::byte> make_ptr_response(std::string_view owner,
+inline std::vector<std::byte> make_ptr_response(std::string_view owner,
                                                 std::string_view target)
 {
     std::vector<std::byte> pkt;
@@ -90,7 +90,7 @@ static std::vector<std::byte> make_ptr_response(std::string_view owner,
     return pkt;
 }
 
-[[maybe_unused]] static std::vector<std::byte> make_a_response(std::string_view owner,
+inline std::vector<std::byte> make_a_response(std::string_view owner,
                                               uint8_t a, uint8_t b,
                                               uint8_t c, uint8_t d)
 {
@@ -117,7 +117,7 @@ static std::vector<std::byte> make_ptr_response(std::string_view owner,
     return pkt;
 }
 
-static std::vector<std::byte> make_multi_record_response()
+inline std::vector<std::byte> make_multi_record_response()
 {
     std::vector<std::byte> pkt;
 
@@ -152,7 +152,7 @@ static std::vector<std::byte> make_multi_record_response()
     return pkt;
 }
 
-[[maybe_unused]] static std::vector<std::byte> make_srv_response(std::string_view owner,
+inline std::vector<std::byte> make_srv_response(std::string_view owner,
                                                 std::string_view target_hostname,
                                                 uint16_t port)
 {
@@ -183,7 +183,7 @@ static std::vector<std::byte> make_multi_record_response()
     return pkt;
 }
 
-static std::vector<std::byte> make_full_service_response(
+inline std::vector<std::byte> make_full_service_response(
     std::string_view instance_name,
     std::string_view service_type,
     std::string_view hostname,

@@ -21,9 +21,7 @@ using mdnspp::testing::mock_executor;
 
 using test_monitor = mdnspp::basic_service_monitor<MockPolicy, test_clock>;
 
-namespace {
-
-mdnspp::service_options make_uniform_opts(uint32_t ttl)
+inline mdnspp::service_options make_uniform_opts(uint32_t ttl)
 {
     mdnspp::service_options opts;
     auto s = std::chrono::seconds{ttl};
@@ -36,7 +34,7 @@ mdnspp::service_options make_uniform_opts(uint32_t ttl)
     return opts;
 }
 
-std::vector<std::byte> make_ptr_packet(const std::string &service_type,
+inline std::vector<std::byte> make_ptr_packet(const std::string &service_type,
                                        const std::string &instance_name,
                                        const std::string &hostname,
                                        const std::string &ipv4,
@@ -51,7 +49,7 @@ std::vector<std::byte> make_ptr_packet(const std::string &service_type,
     return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::ptr, make_uniform_opts(ttl));
 }
 
-std::vector<std::byte> make_srv_packet(const std::string &instance_name,
+inline std::vector<std::byte> make_srv_packet(const std::string &instance_name,
                                        const std::string &hostname,
                                        uint16_t port = 8080,
                                        uint32_t ttl  = 4500)
@@ -65,7 +63,7 @@ std::vector<std::byte> make_srv_packet(const std::string &instance_name,
     return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::srv, make_uniform_opts(ttl));
 }
 
-std::vector<std::byte> make_a_packet(const std::string &service_type,
+inline std::vector<std::byte> make_a_packet(const std::string &service_type,
                                      const std::string &instance_name,
                                      const std::string &hostname,
                                      const std::string &ipv4,
@@ -80,7 +78,7 @@ std::vector<std::byte> make_a_packet(const std::string &service_type,
     return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::a, make_uniform_opts(ttl));
 }
 
-std::vector<std::byte> make_txt_packet(const std::string &service_type,
+inline std::vector<std::byte> make_txt_packet(const std::string &service_type,
                                        const std::string &instance_name,
                                        const std::string &hostname,
                                        const std::vector<mdnspp::service_txt> &txt,
@@ -95,14 +93,12 @@ std::vector<std::byte> make_txt_packet(const std::string &service_type,
     return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::txt, make_uniform_opts(ttl));
 }
 
-mdnspp::endpoint default_sender()
+inline mdnspp::endpoint default_sender()
 {
     mdnspp::endpoint ep;
     ep.address = "224.0.0.251";
     ep.port    = 5353;
     return ep;
-}
-
 }
 
 #endif

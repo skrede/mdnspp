@@ -922,8 +922,8 @@ private:
     completion_handler m_on_completion;
     error_handler m_on_error;
     std::mt19937 m_rng;
-    detail::pending_response m_pending;
     detail::probe_announce_state m_pa_state;
+    detail::pending_response m_pending;
     detail::tc_accumulator<> m_tc_acc;
     detail::duplicate_suppression_state m_dup_suppression;
 };

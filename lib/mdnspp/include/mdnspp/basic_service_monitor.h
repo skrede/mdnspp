@@ -87,12 +87,12 @@ public:
                                    mdns_options mdns_opts = {},
                                    cache_options copts = {})
         : base(ex, sock_opts, std::move(mdns_opts))
-        , m_scheduler_timer(ex)
-        , m_tc_send_timer(ex)
+        , m_rng(std::random_device{}())
         , m_opts(std::move(opts))
         , m_cache_opts(std::move(copts))
         , m_cache(make_cache_options())
-        , m_rng(std::random_device{}())
+        , m_scheduler_timer(ex)
+        , m_tc_send_timer(ex)
     {
     }
 
@@ -114,12 +114,12 @@ public:
                           cache_options copts,
                           std::error_code &ec)
         : base(ex, sock_opts, std::move(mdns_opts), ec)
-        , m_scheduler_timer(ex)
-        , m_tc_send_timer(ex)
+        , m_rng(std::random_device{}())
         , m_opts(std::move(opts))
         , m_cache_opts(std::move(copts))
         , m_cache(make_cache_options())
-        , m_rng(std::random_device{}())
+        , m_scheduler_timer(ex)
+        , m_tc_send_timer(ex)
     {
     }
 
@@ -1021,59 +1021,36 @@ private:
     // Data members
     // -------------------------------------------------------------------------
 
-    /// Dedicated scheduler timer for backoff/TTL-refresh scheduling.
-    /// Separate from the base recv timer to allow independent scheduling.
-    timer_type m_scheduler_timer;
-
-    /// Timer used to space TC continuation packets when tc_continuation_delay > 0.
-    timer_type m_tc_send_timer;
-
-    monitor_options m_opts;
-
-    /// Callback fired when the monitor is fully stopped (via stop()).
-    monitor_completion_handler m_on_done;
-
-    /// User-supplied cache options (goodbye_grace, etc.).
-    /// Must be declared before m_cache so it is initialized first.
-    cache_options m_cache_opts;
-
-    /// TTL-aware cache for all received mDNS records.
-    record_cache<Clock> m_cache;
-
-    /// Seeded RNG for backoff jitter and probe randomisation.
+    // ---- Fundamental / simple types ----
     std::mt19937 m_rng;
 
-    /// Per-watched-service-type backoff state. Keyed by normalized service type.
-    std::unordered_map<dns_name, watched_type_state> m_watches;
+    // ---- Options and callbacks ----
+    monitor_options m_opts;
+    monitor_completion_handler m_on_done;
 
-    /// Per-record TTL refresh schedules. Keyed by "{instance_name}:{type_tag}"
-    /// (e.g., "MyServer._http._tcp.local:srv"). Created/rebuilt on record
-    /// insertion for watched instances in discover and ttl_refresh modes.
+    // ---- Cache (m_cache_opts MUST precede m_cache for initialization order) ----
+    cache_options m_cache_opts;
+    record_cache<Clock> m_cache;
+
+    // ---- Timers ----
+    timer_type m_scheduler_timer;
+    timer_type m_tc_send_timer;
+
+    // ---- Synchronization ----
+    mutable std::mutex m_snapshot_mutex;
+
+    // ---- Maps (ascending by value-type complexity) ----
+    std::unordered_map<dns_name, dns_name> m_instance_type;
+    std::unordered_map<dns_name, watched_type_state> m_watches;
+    std::unordered_map<dns_name, incomplete_instance> m_partial;
+    std::unordered_map<dns_name, resolved_service> m_live_services;
     std::unordered_map<std::string, detail::ttl_refresh_schedule<Clock>> m_refresh_schedules;
 
-    /// Partial resolution accumulator for instances still awaiting SRV/address.
-    std::unordered_map<dns_name, incomplete_instance> m_partial;
-
-    /// Fully-resolved services currently considered live.
-    std::unordered_map<dns_name, resolved_service> m_live_services;
-
-    /// Hostname set for A/AAAA record receive filtering.
-    /// Only addresses for known hostnames (from correlated SRV records) are
-    /// processed; unrelated A/AAAA traffic is ignored.
+    // ---- Sets ----
     std::unordered_set<dns_name> m_known_hostnames;
-
-    /// Maps instance_name -> service_type for un-watch filtering.
-    /// Populated in process_ptr() alongside the m_partial entry.
-    std::unordered_map<dns_name, dns_name> m_instance_type;
-
-    /// Set of instance names for which a goodbye SRV (TTL=0) was received.
-    /// Used to distinguish loss_reason::goodbye from loss_reason::timeout.
     std::unordered_set<dns_name> m_goodbye_instances;
 
-    /// Mutex-guarded snapshot for services(). Updated on the executor thread
-    /// after every state change. Readers hold the mutex only long enough to
-    /// copy the shared_ptr; the vector itself is read outside the lock.
-    mutable std::mutex m_snapshot_mutex;
+    // ---- Smart pointers ----
     std::shared_ptr<const std::vector<resolved_service>> m_services_snapshot;
 };
 

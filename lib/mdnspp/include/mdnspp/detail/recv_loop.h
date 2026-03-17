@@ -29,13 +29,13 @@ public:
         packet_handler on_packet,
         std::function<void()> on_silence,
         uint32_t receive_ttl_minimum = 0)
-        : m_socket(socket)
-        , m_timer(timer)
-        , m_silence_timeout(silence_timeout)
-        , m_on_packet(std::move(on_packet))
-        , m_on_silence(std::move(on_silence))
-        , m_receive_ttl_minimum(receive_ttl_minimum)
+        : m_receive_ttl_minimum(receive_ttl_minimum)
         , m_stopped(false)
+        , m_silence_timeout(silence_timeout)
+        , m_socket(socket)
+        , m_timer(timer)
+        , m_on_silence(std::move(on_silence))
+        , m_on_packet(std::move(on_packet))
     {
     }
 
@@ -106,13 +106,13 @@ private:
             });
     }
 
-    socket_type &m_socket;
-    timer_type &m_timer;
-    std::chrono::milliseconds m_silence_timeout;
-    packet_handler m_on_packet;
-    std::function<void()> m_on_silence;
     uint32_t m_receive_ttl_minimum;
     std::atomic<bool> m_stopped;
+    std::chrono::milliseconds m_silence_timeout;
+    socket_type &m_socket;
+    timer_type &m_timer;
+    std::function<void()> m_on_silence;
+    packet_handler m_on_packet;
 };
 
 }

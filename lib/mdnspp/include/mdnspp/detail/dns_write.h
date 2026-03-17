@@ -23,6 +23,8 @@ namespace mdnspp::detail {
 //   rtype -- DNS record type
 //   ttl   -- 32-bit TTL in seconds
 //   rdata -- the raw rdata bytes
+// Silently skips the record if the owner name is empty (encoding failure)
+// or if rdata exceeds the uint16_t RDLENGTH limit (65535 bytes).
 inline void append_dns_rr(std::vector<std::byte> &buf,
                           const std::vector<std::byte> &name,
                           dns_type rtype,
@@ -30,6 +32,8 @@ inline void append_dns_rr(std::vector<std::byte> &buf,
                           const std::vector<std::byte> &rdata,
                           bool cache_flush = false)
 {
+    if(name.empty() || rdata.size() > UINT16_MAX)
+        return;
     buf.insert(buf.end(), name.begin(), name.end());
     push_u16_be(buf, std::to_underlying(rtype));
     push_u16_be(buf, cache_flush ? uint16_t{0x8001} : uint16_t{0x0001});
@@ -93,6 +97,7 @@ encode_ipv6(const std::string &addr)
 
 // Encodes a vector of service_txt entries as RFC 6763 TXT rdata.
 // Each entry becomes a length-prefixed string of "key=value" or "key".
+// Entries exceeding 255 bytes are skipped (RFC 6763 §6.1: TXT string max 255).
 inline std::vector<std::byte> encode_txt_records(const std::vector<mdnspp::service_txt> &entries)
 {
     std::vector<std::byte> result;
@@ -104,8 +109,9 @@ inline std::vector<std::byte> encode_txt_records(const std::vector<mdnspp::servi
             s += '=';
             s += *entry.value;
         }
-        // Length prefix (clamped to 255 per RFC 6763)
-        uint8_t len = static_cast<uint8_t>(s.size() < 255 ? s.size() : 255);
+        if(s.size() > 255)
+            continue;
+        auto len = static_cast<uint8_t>(s.size());
         result.push_back(static_cast<std::byte>(len));
         for(size_t i = 0; i < len; ++i)
             result.push_back(static_cast<std::byte>(static_cast<uint8_t>(s[i])));

@@ -50,8 +50,10 @@ inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qt
     packet.push_back(static_cast<std::byte>(0x00));
     packet.push_back(static_cast<std::byte>(0x00));
 
-    // Encoded question name
+    // Encoded question name (empty = encoding failure)
     auto encoded = encode_dns_name(name);
+    if(encoded.empty())
+        return {};
     packet.insert(packet.end(), encoded.begin(), encoded.end());
 
     // QTYPE (big-endian)
@@ -72,6 +74,9 @@ inline std::vector<std::byte> build_probe_query(const service_info &info,
 {
     auto name_service = encode_dns_name(info.service_name);
     auto name_host = encode_dns_name(info.hostname);
+
+    if(name_service.empty() || name_host.empty())
+        return {};
 
     // Build SRV rdata: priority(2) + weight(2) + port(2) + encoded hostname
     std::vector<std::byte> rdata_srv;

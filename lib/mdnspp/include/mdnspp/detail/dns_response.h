@@ -55,10 +55,13 @@ inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &inf
     uint32_t aaaa_t = ttl_for(opts.aaaa_ttl);
     uint32_t rec_t  = ttl_for(opts.record_ttl); // fallback for NSEC
 
-    // Pre-encode frequently used names
+    // Pre-encode frequently used names (empty = encoding failure)
     auto name_service_type = encode_dns_name(info.service_type);
     auto name_service_name = encode_dns_name(info.service_name);
     auto name_hostname = encode_dns_name(info.hostname);
+
+    if(name_service_type.empty() || name_service_name.empty() || name_hostname.empty())
+        return {};
 
     // Build rdata buffers for each record type
     // PTR rdata: DNS-encoded service_name

@@ -188,6 +188,7 @@ inline std::vector<std::byte> encode_dns_name(std::string_view name)
         name.remove_suffix(1);
 
     constexpr size_t max_label_len = 63;
+    constexpr size_t max_name_len = 255;
 
     size_t pos = 0;
     while(pos < name.size())
@@ -208,6 +209,11 @@ inline std::vector<std::byte> encode_dns_name(std::string_view name)
     }
 
     result.push_back(std::byte{0}); // root label
+
+    // RFC 1035 §3.1: total wire-encoded name must not exceed 255 bytes
+    if(result.size() > max_name_len)
+        return {};
+
     return result;
 }
 

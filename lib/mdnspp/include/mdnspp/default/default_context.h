@@ -9,6 +9,7 @@
 // they dereference DefaultTimer*. Include native_timer.h to get the full
 // implementation — that header includes this one first.
 
+#include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/detail/compat.h"
 
@@ -26,11 +27,13 @@
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <optional>
 #include <system_error>
 
 #ifdef _WIN32
 #  include <winsock2.h>
 #  include <ws2tcpip.h>
+#  include <mswsock.h>
 #else
 #  include <arpa/inet.h>
 #  include <fcntl.h>
@@ -40,6 +43,9 @@
 #  include <unistd.h>
 #  ifdef __linux__
 #    include <sys/eventfd.h>
+#  endif
+#  ifdef __APPLE__
+#    include <net/if_dl.h>
 #  endif
 #endif
 
@@ -233,7 +239,11 @@ public:
     // -----------------------------------------------------------------------
 
     void register_socket(detail::native_socket_t fd,
-                          detail::move_only_function<void(const endpoint &, uint8_t, std::span<std::byte>)> handler)
+                          detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler
+#ifdef _WIN32
+                          , LPFN_WSARECVMSG fn_wsarecvmsg = nullptr
+#endif
+                          )
     {
         // Replace if already registered (e.g. async_receive re-arms)
         for(auto &entry : m_sockets)
@@ -241,10 +251,17 @@ public:
             if(entry.fd == fd)
             {
                 entry.handler = std::move(handler);
+#ifdef _WIN32
+                entry.fn_wsarecvmsg = fn_wsarecvmsg;
+#endif
                 return;
             }
         }
+#ifdef _WIN32
+        m_sockets.push_back({fd, std::move(handler), fn_wsarecvmsg});
+#else
         m_sockets.push_back({fd, std::move(handler)});
+#endif
     }
 
     void deregister_socket(detail::native_socket_t fd)
@@ -276,7 +293,10 @@ private:
     struct socket_entry
     {
         detail::native_socket_t fd{detail::invalid_socket};
-        detail::move_only_function<void(const endpoint &, uint8_t, std::span<std::byte>)> handler;
+        detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler;
+#ifdef _WIN32
+        LPFN_WSARECVMSG fn_wsarecvmsg{nullptr};
+#endif
     };
 
     void assert_executor_thread() const noexcept
@@ -516,20 +536,83 @@ private:
             if(sock_idx >= m_sockets.size() || !m_sockets[sock_idx].handler)
                 continue;
 
-            uint8_t recv_ttl{255};
+            std::optional<uint8_t> recv_ttl;
+            uint32_t recv_ifindex = 0;
+            ssize_t bytes = 0;
 
 #ifdef _WIN32
-            int sender_len = sizeof(m_sender_addr);
-            const int bytes = ::recvfrom(
-                m_sockets[sock_idx].fd,
-                reinterpret_cast<char*>(m_recv_buf.data()),
-                static_cast<int>(m_recv_buf.size()),
-                0,
-                reinterpret_cast<sockaddr*>(&m_sender_addr),
-                &sender_len);
+            if(m_sockets[sock_idx].fn_wsarecvmsg)
+            {
+                WSABUF data_buf{static_cast<ULONG>(m_recv_buf.size()),
+                                reinterpret_cast<char*>(m_recv_buf.data())};
+                alignas(WSACMSGHDR) std::array<std::byte, 64> ctrl_buf{};
 
-            if(bytes == SOCKET_ERROR)
-                continue;
+                WSAMSG wmsg{};
+                wmsg.name    = reinterpret_cast<LPSOCKADDR>(&m_sender_addr);
+                wmsg.namelen = sizeof(m_sender_addr);
+                wmsg.lpBuffers     = &data_buf;
+                wmsg.dwBufferCount = 1;
+                wmsg.Control.buf = reinterpret_cast<char*>(ctrl_buf.data());
+                wmsg.Control.len = static_cast<ULONG>(ctrl_buf.size());
+                wmsg.dwFlags = 0;
+
+                DWORD received = 0;
+                if(m_sockets[sock_idx].fn_wsarecvmsg(
+                       m_sockets[sock_idx].fd, &wmsg, &received, nullptr, nullptr) == SOCKET_ERROR)
+                    continue;
+
+                bytes = static_cast<ssize_t>(received);
+
+                for(WSACMSGHDR *cmsg = WSA_CMSG_FIRSTHDR(&wmsg);
+                    cmsg; cmsg = WSA_CMSG_NXTHDR(&wmsg, cmsg))
+                {
+                    if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL)
+                    {
+                        int ttl_val{};
+                        std::memcpy(&ttl_val, WSA_CMSG_DATA(cmsg), sizeof(ttl_val));
+                        recv_ttl = static_cast<uint8_t>(ttl_val);
+                    }
+#ifdef IPV6_HOPLIMIT
+                    else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_HOPLIMIT)
+                    {
+                        int ttl_val{};
+                        std::memcpy(&ttl_val, WSA_CMSG_DATA(cmsg), sizeof(ttl_val));
+                        recv_ttl = static_cast<uint8_t>(ttl_val);
+                    }
+#endif
+#ifdef IP_PKTINFO
+                    else if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO)
+                    {
+                        IN_PKTINFO pktinfo{};
+                        std::memcpy(&pktinfo, WSA_CMSG_DATA(cmsg), sizeof(pktinfo));
+                        recv_ifindex = static_cast<uint32_t>(pktinfo.ipi_ifindex);
+                    }
+#endif
+#ifdef IPV6_PKTINFO
+                    else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO)
+                    {
+                        IN6_PKTINFO pktinfo6{};
+                        std::memcpy(&pktinfo6, WSA_CMSG_DATA(cmsg), sizeof(pktinfo6));
+                        recv_ifindex = static_cast<uint32_t>(pktinfo6.ipi6_ifindex);
+                    }
+#endif
+                }
+            }
+            else
+            {
+                // Fallback: recvfrom when WSARecvMsg is unavailable. TTL and ifindex stay unset.
+                int sender_len = sizeof(m_sender_addr);
+                const int recv_bytes = ::recvfrom(
+                    m_sockets[sock_idx].fd,
+                    reinterpret_cast<char*>(m_recv_buf.data()),
+                    static_cast<int>(m_recv_buf.size()),
+                    0,
+                    reinterpret_cast<sockaddr*>(&m_sender_addr),
+                    &sender_len);
+                if(recv_bytes == SOCKET_ERROR)
+                    continue;
+                bytes = static_cast<ssize_t>(recv_bytes);
+            }
 #else
             iovec iov{};
             iov.iov_base = m_recv_buf.data();
@@ -545,7 +628,7 @@ private:
             msg.msg_control = ctrl_buf.data();
             msg.msg_controllen = ctrl_buf.size();
 
-            const ssize_t bytes = ::recvmsg(m_sockets[sock_idx].fd, &msg, 0);
+            bytes = ::recvmsg(m_sockets[sock_idx].fd, &msg, 0);
 
             if(bytes < 0)
                 continue;
@@ -557,15 +640,39 @@ private:
                     int ttl_val{};
                     std::memcpy(&ttl_val, CMSG_DATA(cmsg), sizeof(ttl_val));
                     recv_ttl = static_cast<uint8_t>(ttl_val);
-                    break;
                 }
 #ifdef IPV6_HOPLIMIT
-                if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_HOPLIMIT)
+                else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_HOPLIMIT)
                 {
                     int ttl_val{};
                     std::memcpy(&ttl_val, CMSG_DATA(cmsg), sizeof(ttl_val));
                     recv_ttl = static_cast<uint8_t>(ttl_val);
-                    break;
+                }
+#endif
+#if defined(IP_PKTINFO)
+                else if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO)
+                {
+                    in_pktinfo pktinfo{};
+                    std::memcpy(&pktinfo, CMSG_DATA(cmsg), sizeof(pktinfo));
+                    recv_ifindex = static_cast<uint32_t>(pktinfo.ipi_ifindex);
+                }
+#elif defined(__APPLE__) && defined(IP_RECVIF)
+                else if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_RECVIF)
+                {
+                    sockaddr_dl sdl{};
+                    std::memcpy(&sdl, CMSG_DATA(cmsg),
+                                (std::min)(sizeof(sdl),
+                                           static_cast<std::size_t>(cmsg->cmsg_len) -
+                                           sizeof(cmsghdr)));
+                    recv_ifindex = static_cast<uint32_t>(sdl.sdl_index);
+                }
+#endif
+#ifdef IPV6_PKTINFO
+                else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO)
+                {
+                    in6_pktinfo pktinfo6{};
+                    std::memcpy(&pktinfo6, CMSG_DATA(cmsg), sizeof(pktinfo6));
+                    recv_ifindex = static_cast<uint32_t>(pktinfo6.ipi6_ifindex);
                 }
 #endif
             }
@@ -587,13 +694,14 @@ private:
                 port = ntohs(sa4.sin_port);
             }
 
-            endpoint ep{
-                .address = addr_str,
-                .port    = port,
+            recv_metadata meta{
+                .sender       = {addr_str, port},
+                .ttl          = recv_ttl,
+                .recv_ifindex = recv_ifindex,
             };
 
             m_sockets[sock_idx].handler(
-                ep, recv_ttl,
+                meta,
                 std::span<std::byte>{m_recv_buf.data(), static_cast<std::size_t>(bytes)});
         }
     }

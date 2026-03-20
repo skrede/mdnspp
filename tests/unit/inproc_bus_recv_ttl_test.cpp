@@ -35,6 +35,7 @@
 #include <vector>
 #include <cstdint>
 #include <cstddef>
+#include <optional>
 
 using namespace mdnspp;
 using mdnspp::inproc::inproc_harness;
@@ -142,6 +143,76 @@ TEST_CASE("receive_ttl_minimum=0 accepts all TTL values", "[inproc][ttl-filter]"
     h.executor.drain();
 
     REQUIRE(records_received >= 1);
+}
+
+// ---------------------------------------------------------------------------
+// TEST-13d: nullopt TTL with ttl_unknown_policy::accept passes the packet
+// ---------------------------------------------------------------------------
+
+TEST_CASE("nullopt TTL with ttl_unknown_policy::accept passes packet", "[inproc][ttl-filter][optional-ttl]")
+{
+    inproc_harness h;
+
+    mdns_options mdns_opts;
+    mdns_opts.receive_ttl_minimum = 255;
+    mdns_opts.unknown_ttl_policy = ttl_unknown_policy::accept;
+
+    int records_received = 0;
+    observer_options obs_opts;
+    obs_opts.on_record = [&](const endpoint &, const mdns_record_variant &)
+    {
+        ++records_received;
+    };
+
+    auto observer = h.make_observer(std::move(obs_opts), {}, std::move(mdns_opts));
+    observer.async_observe();
+    h.executor.drain();
+
+    auto pkt = make_ptr_response("TtlOptAccept._http._tcp.local.",
+                                  "_http._tcp.local.",
+                                  "ttloptaccept.local.", 9010);
+
+    endpoint from{"192.168.1.60", 5353};
+
+    observer.socket().deliver(from, std::span<const std::byte>(pkt), std::optional<uint8_t>{});
+    h.executor.drain();
+
+    REQUIRE(records_received >= 1);
+}
+
+// ---------------------------------------------------------------------------
+// TEST-13e: nullopt TTL with ttl_unknown_policy::reject drops the packet
+// ---------------------------------------------------------------------------
+
+TEST_CASE("nullopt TTL with ttl_unknown_policy::reject drops packet", "[inproc][ttl-filter][optional-ttl]")
+{
+    inproc_harness h;
+
+    mdns_options mdns_opts;
+    mdns_opts.receive_ttl_minimum = 255;
+    mdns_opts.unknown_ttl_policy = ttl_unknown_policy::reject;
+
+    int records_received = 0;
+    observer_options obs_opts;
+    obs_opts.on_record = [&](const endpoint &, const mdns_record_variant &)
+    {
+        ++records_received;
+    };
+
+    auto observer = h.make_observer(std::move(obs_opts), {}, std::move(mdns_opts));
+    observer.async_observe();
+    h.executor.drain();
+
+    auto pkt = make_ptr_response("TtlOptReject._http._tcp.local.",
+                                  "_http._tcp.local.",
+                                  "ttloptreject.local.", 9011);
+
+    endpoint from{"192.168.1.61", 5353};
+
+    observer.socket().deliver(from, std::span<const std::byte>(pkt), std::optional<uint8_t>{});
+    h.executor.drain();
+
+    REQUIRE(records_received == 0);
 }
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_RESOLVED_SERVICE_H
 
 #include "mdnspp/records.h"
+#include "mdnspp/network_interface.h"
 
 #include <span>
 #include <chrono>
@@ -41,6 +42,10 @@ struct resolved_service
     std::chrono::nanoseconds ttl_remaining{};
     /// Wire TTL of the SRV record in seconds. Zero for one-shot results.
     uint32_t wire_ttl{0};
+    /// Network interface on which the service was received.
+    /// Default-constructed (empty name, index=0, is_up=false) when not populated
+    /// (e.g. for one-shot aggregate() results or non-nic_group usage).
+    network_interface source_interface{};
 };
 
 // aggregate() — correlate a flat sequence of mDNS records into resolved_service values.

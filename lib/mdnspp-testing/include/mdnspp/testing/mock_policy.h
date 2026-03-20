@@ -80,7 +80,7 @@ public:
     // Enqueue a packet with a specific sender endpoint.
     void enqueue(std::vector<std::byte> packet, endpoint from)
     {
-        m_receive_queue.push({std::move(packet), std::move(from)});
+        m_receive_queue.push({std::move(packet), std::move(from), std::optional<uint8_t>{uint8_t{255}}});
     }
 
     // Enqueue a packet with the default sender (endpoint{}).
@@ -89,13 +89,19 @@ public:
         enqueue(std::move(packet), endpoint{});
     }
 
+    // Enqueue a packet with a specific sender and optional TTL.
+    void enqueue(std::vector<std::byte> packet, endpoint from, std::optional<uint8_t> ttl)
+    {
+        m_receive_queue.push({std::move(packet), std::move(from), ttl});
+    }
+
     void async_receive(detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
     {
         if(!m_receive_queue.empty())
         {
-            auto [packet, sender] = std::move(m_receive_queue.front());
+            auto [packet, sender, ttl] = std::move(m_receive_queue.front());
             m_receive_queue.pop();
-            recv_metadata meta{std::move(sender), uint8_t{255}};
+            recv_metadata meta{std::move(sender), ttl};
             handler(meta, std::span<std::byte>(packet));
         }
         else
@@ -108,15 +114,21 @@ public:
     // Use this when the server is already running and the recv_loop chain has stalled.
     void inject_receive(endpoint from, std::vector<std::byte> packet)
     {
+        inject_receive(std::move(from), std::move(packet), std::optional<uint8_t>{uint8_t{255}});
+    }
+
+    // Inject a packet with an explicit optional TTL.
+    void inject_receive(endpoint from, std::vector<std::byte> packet, std::optional<uint8_t> ttl)
+    {
         if(m_pending_receive)
         {
             auto h = std::exchange(m_pending_receive, nullptr);
-            recv_metadata meta{std::move(from), uint8_t{255}};
+            recv_metadata meta{std::move(from), ttl};
             h(meta, std::span<std::byte>(packet));
         }
         else
         {
-            enqueue(std::move(packet), std::move(from));
+            enqueue(std::move(packet), std::move(from), ttl);
         }
     }
 
@@ -151,7 +163,13 @@ public:
     void clear_sent() { m_sent_packets.clear(); }
 
 private:
-    std::queue<std::pair<std::vector<std::byte>, endpoint>> m_receive_queue;
+    struct queued_item
+    {
+        std::vector<std::byte> packet;
+        endpoint sender;
+        std::optional<uint8_t> ttl;
+    };
+    std::queue<queued_item> m_receive_queue;
     detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_pending_receive;
     std::vector<sent_packet> m_sent_packets;
     socket_options m_opts{};

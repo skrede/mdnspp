@@ -25,6 +25,8 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/observer_options.h
     ${INCLUDE_DIRECTORY}/mdnspp/resolved_service.h
     ${INCLUDE_DIRECTORY}/mdnspp/network_interface.h
+    ${INCLUDE_DIRECTORY}/mdnspp/nic_group_options.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_nic_monitor.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_service_server.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_service_monitor.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_service_discovery.h

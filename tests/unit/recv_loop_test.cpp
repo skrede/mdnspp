@@ -6,6 +6,8 @@
 
 #include <span>
 #include <chrono>
+#include <cstdint>
+#include <optional>
 #include <vector>
 #include <cstddef>
 
@@ -155,4 +157,118 @@ TEST_CASE("recv_loop resets silence timer on each packet")
     //   packet 2 triggers arm_silence_timer() (expires_after +1) + arm_receive() (no-op)
     // Minimum cancel_count >= 2 (at least 2 expires_after calls post-initial)
     REQUIRE(timer.cancel_count() >= 2);
+}
+
+TEST_CASE("recv_loop with ttl_unknown_policy::accept passes nullopt TTL packets")
+{
+    mock_executor ex;
+    MockSocket sock{ex};
+    MockTimer timer{ex};
+
+    sock.enqueue(make_packet(8), endpoint{}, std::optional<uint8_t>{});
+
+    int received = 0;
+    recv_loop<MockPolicy> loop{
+        sock,
+        timer,
+        SILENCE_TIMEOUT,
+        [&](const recv_metadata &, std::span<std::byte>) -> bool
+        {
+            ++received;
+            return true;
+        },
+        [](){},
+        255,
+        ttl_unknown_policy::accept
+    };
+
+    loop.start();
+
+    REQUIRE(received == 1);
+}
+
+TEST_CASE("recv_loop with ttl_unknown_policy::reject drops nullopt TTL packets")
+{
+    mock_executor ex;
+    MockSocket sock{ex};
+    MockTimer timer{ex};
+
+    sock.enqueue(make_packet(8), endpoint{}, std::optional<uint8_t>{});
+
+    int received = 0;
+    recv_loop<MockPolicy> loop{
+        sock,
+        timer,
+        SILENCE_TIMEOUT,
+        [&](const recv_metadata &, std::span<std::byte>) -> bool
+        {
+            ++received;
+            return true;
+        },
+        [](){},
+        255,
+        ttl_unknown_policy::reject
+    };
+
+    loop.start();
+
+    REQUIRE(received == 0);
+}
+
+TEST_CASE("recv_loop drops populated TTL below receive_ttl_minimum")
+{
+    mock_executor ex;
+    MockSocket sock{ex};
+    MockTimer timer{ex};
+
+    // TTL=10, minimum=255 — should be dropped
+    sock.enqueue(make_packet(8), endpoint{}, std::optional<uint8_t>{uint8_t{10}});
+
+    int received = 0;
+    recv_loop<MockPolicy> loop{
+        sock,
+        timer,
+        SILENCE_TIMEOUT,
+        [&](const recv_metadata &, std::span<std::byte>) -> bool
+        {
+            ++received;
+            return true;
+        },
+        [](){},
+        255,
+        ttl_unknown_policy::accept
+    };
+
+    loop.start();
+
+    REQUIRE(received == 0);
+}
+
+TEST_CASE("recv_loop passes populated TTL at or above receive_ttl_minimum")
+{
+    mock_executor ex;
+    MockSocket sock{ex};
+    MockTimer timer{ex};
+
+    // TTL=255, minimum=255 — should pass
+    sock.enqueue(make_packet(8), endpoint{}, std::optional<uint8_t>{uint8_t{255}});
+
+    int received = 0;
+    recv_loop<MockPolicy> loop{
+        sock,
+        timer,
+        SILENCE_TIMEOUT,
+        [&](const recv_metadata &, std::span<std::byte>) -> bool
+        {
+            ++received;
+            return true;
+        },
+        [](){},
+        255,
+        ttl_unknown_policy::accept
+    };
+
+    loop.start();
+
+    REQUIRE(received == 1);
 }

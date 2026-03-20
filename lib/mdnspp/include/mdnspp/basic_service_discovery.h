@@ -281,7 +281,8 @@ private:
                 return relevant;
             },
             std::move(on_silence_fn),
-            this->m_mdns_opts.receive_ttl_minimum);
+            this->m_mdns_opts.receive_ttl_minimum,
+            this->m_mdns_opts.unknown_ttl_policy);
 
         target_loop->start();
     }
@@ -340,7 +341,8 @@ private:
                 if(auto h = std::exchange(m_on_enumerate_completion, nullptr); h)
                     h(std::error_code{}, m_enumerated_types);
             },
-            this->m_mdns_opts.receive_ttl_minimum);
+            this->m_mdns_opts.receive_ttl_minimum,
+            this->m_mdns_opts.unknown_ttl_policy);
 
         m_enumerate_loop->start();
     }

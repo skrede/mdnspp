@@ -265,7 +265,8 @@ private:
             {
                 // no-op on silence
             },
-            this->m_mdns_opts.receive_ttl_minimum);
+            this->m_mdns_opts.receive_ttl_minimum,
+            this->m_mdns_opts.unknown_ttl_policy);
 
         start_probing();
         this->m_loop->start();

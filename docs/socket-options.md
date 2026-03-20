@@ -31,6 +31,7 @@ struct socket_options
     endpoint multicast_group{"224.0.0.251", 5353};
     loopback_mode multicast_loopback{loopback_mode::enabled};
     std::optional<std::uint8_t> multicast_ttl{};
+    std::optional<uint16_t> port_override{};
 };
 
 }
@@ -44,6 +45,7 @@ struct socket_options
 | `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. Change this to isolate mDNS traffic to a custom namespace. |
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets are looped back to the sending host. Enabled by default so that services and clients on the same machine can communicate. |
 | `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | Multicast time-to-live. When `socket_options` is used, defaults to 255 per RFC 6762 Section 11. `std::nullopt` leaves the OS default. |
+| `port_override` | `std::optional<uint16_t>` | `std::nullopt` | Overrides the source port assigned by `inproc_bus`. Used in InProcPolicy tests to simulate legacy unicast queries (source port != 5353). Has no effect on real sockets. |
 
 ### loopback_mode enum
 

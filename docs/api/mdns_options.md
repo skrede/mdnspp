@@ -28,7 +28,7 @@ struct mdns_options {
     double                    tc_suppression_fraction{0.5};
     std::size_t               max_query_payload{1472};
     std::chrono::microseconds tc_continuation_delay{0};
-    unsigned                  receive_ttl_minimum{255};
+    uint32_t                  receive_ttl_minimum{255};
 };
 ```
 
@@ -50,7 +50,7 @@ struct mdns_options {
 | `tc_suppression_fraction` | `double` | `0.5` | RFC 6762 §7.1 | Fraction of the wire TTL used as the suppression threshold on the TC accumulation path. Applied independently from `ka_suppression_fraction` so TC-path suppression can be tuned separately. |
 | `max_query_payload` | `std::size_t` | `1472` bytes | — | Maximum UDP payload size for an outgoing query packet before it must be split into TC continuation packets. Matches Ethernet MTU minus IPv4 and UDP headers. Reduce for lower-MTU links. |
 | `tc_continuation_delay` | `std::chrono::microseconds` | `0` | RFC 6762 §6 | Delay inserted between successive TC continuation packets. Zero means packets are sent back-to-back. A non-zero value rate-limits TC continuation bursts on congested links. |
-| `receive_ttl_minimum` | `unsigned` | `255` | RFC 6762 §11 | Minimum IP TTL (hop limit) for received mDNS packets. Packets arriving with an IP TTL below this value are silently discarded. The value 255 enforces link-local-only reception: any forwarded packet has its IP TTL decremented below 255. |
+| `receive_ttl_minimum` | `uint32_t` | `255` | RFC 6762 §11 | Minimum IP TTL (hop limit) for received mDNS packets. Packets arriving with an IP TTL below this value are silently discarded. The value 255 enforces link-local-only reception: any forwarded packet has its IP TTL decremented below 255. |
 
 **Note:** All defaults are RFC-compliant. Changing them is an advanced operation: incorrect settings may violate interoperability guarantees or cause excessive network traffic.
 
@@ -75,10 +75,10 @@ mdnspp::service_monitor mon{ctx, std::move(monitor_opts), sock_opts, mdns_opts};
 mdnspp::service_server srv{ctx, info, service_opts, sock_opts, mdns_opts};
 
 // service_discovery (throwing)
-mdnspp::service_discovery sd{ctx, timeout, sock_opts, mdns_opts};
+mdnspp::service_discovery sd{ctx, query_opts, sock_opts, mdns_opts};
 
 // querier (throwing)
-mdnspp::querier q{ctx, timeout, sock_opts, mdns_opts};
+mdnspp::querier q{ctx, query_opts, sock_opts, mdns_opts};
 
 // observer (throwing)
 mdnspp::observer obs{ctx, observer_opts, sock_opts, mdns_opts};

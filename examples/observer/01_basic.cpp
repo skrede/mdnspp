@@ -26,10 +26,9 @@ int main()
         }
     };
 
-    obs.async_observe([&ctx](std::error_code ec)
+    obs.async_observe([&ctx](std::error_code)
     {
-        if(ec)
-            ctx.stop();
+        ctx.stop();
     });
     ctx.run();
 }

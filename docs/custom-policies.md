@@ -88,18 +88,19 @@ concept SocketLike = requires(
     const endpoint &ep,
     std::span<const std::byte> send_data,
     std::error_code &ec,
-    std::function<void(const endpoint &, std::span<std::byte>)> handler)
+    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
 {
-    { s.async_receive(handler) } -> std::same_as<void>;
-    { s.send(ep, send_data) }    -> std::same_as<void>;
-    { s.send(ep, send_data, ec)} -> std::same_as<void>;
-    { s.close() }                -> std::same_as<void>;
+    { s.async_receive(std::move(handler)) } -> std::same_as<void>;
+    { s.send(ep, send_data) }               -> std::same_as<void>;
+    { s.send(ep, send_data, ec) }           -> std::same_as<void>;
+    { s.close() }                            -> std::same_as<void>;
 };
 ```
 
-`async_receive` delivers packets by calling `handler(sender, data)` for each
-received datagram. It is expected to re-arm itself internally (i.e., it keeps
-listening until `close()` is called).
+`async_receive` delivers packets by calling `handler(metadata, data)` for each
+received datagram, where `metadata` is a `recv_metadata` containing the sender
+endpoint and the IP TTL of the received packet. It is expected to re-arm itself
+internally (i.e., it keeps listening until `close()` is called).
 
 `send` has two overloads: one that throws or ignores errors internally, and one
 that reports errors via the `std::error_code&` out-parameter.
@@ -111,11 +112,11 @@ template <typename T>
 concept TimerLike = requires(
     T &t,
     std::chrono::milliseconds dur,
-    std::function<void(std::error_code)> handler)
+    detail::move_only_function<void(std::error_code)> handler)
 {
     t.expires_after(dur);
-    { t.async_wait(handler) } -> std::same_as<void>;
-    { t.cancel() }            -> std::same_as<void>;
+    { t.async_wait(std::move(handler)) } -> std::same_as<void>;
+    { t.cancel() }                        -> std::same_as<void>;
 };
 ```
 
@@ -156,7 +157,7 @@ struct MySocket
 
     // SocketLike interface
     void async_receive(
-        std::function<void(const mdnspp::endpoint &, std::span<std::byte>)> handler);
+        mdnspp::detail::move_only_function<void(const mdnspp::recv_metadata &, std::span<std::byte>)> handler);
 
     void send(const mdnspp::endpoint &ep, std::span<const std::byte> data);
     void send(const mdnspp::endpoint &ep, std::span<const std::byte> data,
@@ -178,7 +179,7 @@ struct MyTimer
     MyTimer(MyExecutor ex, std::error_code &ec);
 
     void expires_after(std::chrono::milliseconds duration);
-    void async_wait(std::function<void(std::error_code)> handler);
+    void async_wait(mdnspp::detail::move_only_function<void(std::error_code)> handler);
     void cancel();
 };
 ```
@@ -323,8 +324,8 @@ See [inproc-bus.md](inproc-bus.md) for the full production usage guide.
 
 ### DefaultPolicy and AsioPolicy as examples
 
-- `DefaultPolicy` source: `lib/mdnspp/include/mdnspp/detail/default_policy.h`
-- `AsioPolicy` source: `lib/mdnspp/asio/include/mdnspp/asio_policy.h`
+- `DefaultPolicy` source: `lib/mdnspp/include/mdnspp/default/default_policy.h`
+- `AsioPolicy` source: `lib/mdnspp-asio/include/mdnspp/asio/asio_policy.h`
 
 Both are real, production Policy implementations and are the best reference
 for building your own.

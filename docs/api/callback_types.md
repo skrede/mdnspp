@@ -100,10 +100,9 @@ q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,
     });
 
 // Observer -- error code only
-o.async_observe("_http._tcp.local.", mdnspp::dns_type::ptr,
-    [](std::error_code ec) {
-        std::cout << "observation stopped: " << ec.message() << "\n";
-    });
+o.async_observe([](std::error_code ec) {
+    std::cout << "observation stopped: " << ec.message() << "\n";
+});
 ```
 
 ## See Also

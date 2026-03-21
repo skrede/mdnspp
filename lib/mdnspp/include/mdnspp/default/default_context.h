@@ -538,7 +538,7 @@ private:
 
             std::optional<uint8_t> recv_ttl;
             uint32_t recv_ifindex = 0;
-            ssize_t bytes = 0;
+            std::ptrdiff_t bytes = 0;
 
 #ifdef _WIN32
             if(m_sockets[sock_idx].fn_wsarecvmsg)
@@ -561,7 +561,7 @@ private:
                        m_sockets[sock_idx].fd, &wmsg, &received, nullptr, nullptr) == SOCKET_ERROR)
                     continue;
 
-                bytes = static_cast<ssize_t>(received);
+                bytes = static_cast<std::ptrdiff_t>(received);
 
                 for(WSACMSGHDR *cmsg = WSA_CMSG_FIRSTHDR(&wmsg);
                     cmsg; cmsg = WSA_CMSG_NXTHDR(&wmsg, cmsg))
@@ -611,7 +611,7 @@ private:
                     &sender_len);
                 if(recv_bytes == SOCKET_ERROR)
                     continue;
-                bytes = static_cast<ssize_t>(recv_bytes);
+                bytes = static_cast<std::ptrdiff_t>(recv_bytes);
             }
 #else
             iovec iov{};

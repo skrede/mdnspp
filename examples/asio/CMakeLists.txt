@@ -19,4 +19,7 @@ if(TARGET mdnspp::asio)
 
     add_executable(mdnspp_asio_07_use_future 07_use_future.cpp)
     target_link_libraries(mdnspp_asio_07_use_future PRIVATE mdnspp::mdnspp mdnspp::asio)
+
+    add_executable(mdnspp_asio_08_nic_group 08_nic_group.cpp)
+    target_link_libraries(mdnspp_asio_08_nic_group PRIVATE mdnspp::mdnspp mdnspp::asio)
 endif()

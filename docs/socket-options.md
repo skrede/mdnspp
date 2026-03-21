@@ -267,6 +267,53 @@ mdnspp::socket_options opts{
 mdnspp auto-detects whether the address is IPv4 or IPv6 and configures the
 socket accordingly.
 
+## Receive-side TTL extraction
+
+RFC 6762 §11 requires that mDNS implementations verify the IP TTL of received
+packets and discard those with a TTL below 255. mdnspp implements this via
+the `recv_metadata::ttl` field populated by the socket implementation.
+
+### Socket option configuration
+
+The following `setsockopt` calls are made during socket construction when TTL
+extraction is enabled:
+
+| Platform | Option | Purpose |
+|----------|--------|---------|
+| Linux (IPv4) | `IP_RECVTTL` | Deliver IP TTL as ancillary data in `recvmsg` |
+| Linux (IPv6) | `IPV6_RECVHOPLIMIT` | Deliver IPv6 hop limit as ancillary data |
+| Linux / macOS | `IP_PKTINFO` / `IP_RECVIF` | Deliver receiving interface index as ancillary data |
+| Windows (IPv4) | `IP_RECVTTL` + `WSAIoctl(SIO_RCVALL)` | WSARecvMsg ancillary TTL |
+| Windows (IPv6) | `IPV6_RECVHOPLIMIT` | WSARecvMsg ancillary hop limit |
+
+### Platform matrix
+
+| Platform | DefaultSocket | AsioSocket |
+|----------|--------------|------------|
+| Linux | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` -- ASIO does not expose ancillary data from `async_receive_from` |
+| macOS | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` -- same ASIO limitation |
+| Windows | Real TTL via `WSARecvMsg` + `IP_RECVTTL` | `std::nullopt` -- same ASIO limitation |
+
+When TTL extraction fails silently (setsockopt error, platform unsupported),
+the socket opens normally and `recv_metadata::ttl` is left as `std::nullopt`.
+The `mdns_options::unknown_ttl_policy` field controls whether such packets
+are accepted or rejected.
+
+### Filtering configuration
+
+TTL filtering is configured via `mdns_options`:
+
+```cpp
+mdns_options opts{
+    .receive_ttl_minimum  = 255,                    // discard packets with TTL < 255
+    .unknown_ttl_policy   = ttl_unknown_policy::accept, // accept when TTL unavailable
+};
+```
+
+See [mdns_options](api/mdns_options.md) for all fields. For the full
+RFC 6762 §11 compliance discussion, see [Receive-Side TTL](rfc/receive-ttl.md).
+For the `recv_metadata` struct fields, see [recv_metadata](api/recv_metadata.md).
+
 ## Known limitations
 
 ### Linux receive-side filtering

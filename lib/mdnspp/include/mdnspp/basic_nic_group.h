@@ -208,6 +208,14 @@ private:
     // For each NIC: a tuple of vectors of unique_ptrs, one vector per Peer type.
     using instance_tuple = std::tuple<std::vector<std::unique_ptr<Peers<P>>>...>;
 
+    // Bundles the originating NIC identity with its peer instances so that
+    // collect_merged() and collect_per_interface() can stamp source_interface.
+    struct nic_slot
+    {
+        network_interface nic;
+        instance_tuple instances;
+    };
+
     // -------------------------------------------------------------------------
     // NIC event handlers (called under m_mutex)
     // -------------------------------------------------------------------------
@@ -235,7 +243,8 @@ private:
         }
 
         auto &slot = m_instances[nic.index];
-        create_instances_for_nic(slot, sock_opts, std::make_index_sequence<sizeof...(Peers)>{});
+        slot.nic = nic;
+        create_instances_for_nic(slot.instances, sock_opts, std::make_index_sequence<sizeof...(Peers)>{});
     }
 
     void on_nic_removed(const network_interface &nic)
@@ -244,7 +253,7 @@ private:
         if(it == m_instances.end())
             return;
 
-        stop_instance_tuple(it->second, std::make_index_sequence<sizeof...(Peers)>{});
+        stop_instance_tuple(it->second.instances, std::make_index_sequence<sizeof...(Peers)>{});
         m_instances.erase(it);
     }
 
@@ -277,25 +286,57 @@ private:
     }
 
     // Factory: construct the right peer type from its options.
+    //
+    // monitor_options and observer_options contain move_only_function members and
+    // are therefore non-copyable. basic_nic_group does not forward per-instance
+    // callbacks to its internal peers -- it manages service collection via
+    // services() / watch() / unwatch(). Only the non-callable fields are
+    // propagated (e.g., monitor_options::mode). server_peer_options has only
+    // copyable fields (service_info, service_options) and is passed as-is.
     template <typename PeerType, typename Options>
     std::unique_ptr<PeerType> make_peer_instance(const Options &opts,
                                                   const socket_options &sock_opts)
     {
         if constexpr(std::is_same_v<PeerType, basic_service_monitor<P>>)
         {
+            monitor_options cloned{.mode = opts.mode};
             return std::make_unique<basic_service_monitor<P>>(
-                m_executor, opts, sock_opts, m_grp_opts.mdns_opts);
+                m_executor, std::move(cloned), sock_opts, m_grp_opts.mdns_opts);
         }
         else if constexpr(std::is_same_v<PeerType, basic_service_server<P>>)
         {
-            // opts is server_peer_options {service_info, service_options}
+            // service_options contains move_only_function members (on_conflict, on_query,
+            // on_tc_continuation). basic_nic_group does not expose server callbacks from
+            // per-NIC instances. Only the non-callable configuration fields are propagated.
+            service_options cloned_svc{
+                .announce_count          = opts.opts.announce_count,
+                .announce_interval       = opts.opts.announce_interval,
+                .send_goodbye            = opts.opts.send_goodbye,
+                .suppress_known_answers  = opts.opts.suppress_known_answers,
+                .respond_to_meta_queries = opts.opts.respond_to_meta_queries,
+                .announce_subtypes       = opts.opts.announce_subtypes,
+                .probe_count             = opts.opts.probe_count,
+                .probe_interval          = opts.opts.probe_interval,
+                .probe_initial_delay_max = opts.opts.probe_initial_delay_max,
+                .respond_to_legacy_unicast = opts.opts.respond_to_legacy_unicast,
+                .ptr_ttl                 = opts.opts.ptr_ttl,
+                .srv_ttl                 = opts.opts.srv_ttl,
+                .txt_ttl                 = opts.opts.txt_ttl,
+                .a_ttl                   = opts.opts.a_ttl,
+                .aaaa_ttl                = opts.opts.aaaa_ttl,
+                .record_ttl              = opts.opts.record_ttl,
+                .probe_authority_ttl     = opts.opts.probe_authority_ttl,
+                .probe_defer_delay       = opts.opts.probe_defer_delay,
+            };
             return std::make_unique<basic_service_server<P>>(
-                m_executor, opts.info, opts.opts, sock_opts);
+                m_executor, opts.info, std::move(cloned_svc), sock_opts);
         }
         else if constexpr(std::is_same_v<PeerType, basic_observer<P>>)
         {
+            // observer_options::on_record is move_only_function -- not forwarded to per-NIC instances.
+            observer_options cloned{};
             return std::make_unique<basic_observer<P>>(
-                m_executor, opts, sock_opts, m_grp_opts.mdns_opts);
+                m_executor, std::move(cloned), sock_opts, m_grp_opts.mdns_opts);
         }
         else
         {
@@ -330,7 +371,7 @@ private:
     void stop_all_instances()
     {
         for(auto &[idx, slot] : m_instances)
-            stop_instance_tuple(slot, std::make_index_sequence<sizeof...(Peers)>{});
+            stop_instance_tuple(slot.instances, std::make_index_sequence<sizeof...(Peers)>{});
     }
 
     template <std::size_t... Is>
@@ -356,16 +397,25 @@ private:
 
     std::vector<resolved_service> collect_merged() const
     {
+        constexpr std::size_t idx = peer_index_of<basic_service_monitor>();
         std::unordered_map<std::string, resolved_service> by_name;
 
-        for_each_monitor_instance_const([&by_name](const auto &inst)
+        if constexpr(idx != std::size_t(-1))
         {
-            for(auto svc : inst.services())
+            for(const auto &[nic_idx, slot] : m_instances)
             {
-                auto key = svc.instance_name.str();
-                by_name[key] = std::move(svc);
+                for(const auto &inst_ptr : std::get<idx>(slot.instances))
+                {
+                    if(!inst_ptr) continue;
+                    for(auto svc : inst_ptr->services())
+                    {
+                        svc.source_interface = slot.nic;
+                        auto key = svc.instance_name.str();
+                        by_name[key] = std::move(svc);
+                    }
+                }
             }
-        });
+        }
 
         std::vector<resolved_service> result;
         result.reserve(by_name.size());
@@ -376,15 +426,24 @@ private:
 
     std::vector<resolved_service> collect_per_interface() const
     {
+        constexpr std::size_t idx = peer_index_of<basic_service_monitor>();
         std::vector<resolved_service> result;
 
-        for_each_monitor_instance_const([&result](const auto &inst)
+        if constexpr(idx != std::size_t(-1))
         {
-            auto svcs = inst.services();
-            result.insert(result.end(),
-                          std::make_move_iterator(svcs.begin()),
-                          std::make_move_iterator(svcs.end()));
-        });
+            for(const auto &[nic_idx, slot] : m_instances)
+            {
+                for(const auto &inst_ptr : std::get<idx>(slot.instances))
+                {
+                    if(!inst_ptr) continue;
+                    for(auto svc : inst_ptr->services())
+                    {
+                        svc.source_interface = slot.nic;
+                        result.push_back(std::move(svc));
+                    }
+                }
+            }
+        }
 
         return result;
     }
@@ -403,7 +462,7 @@ private:
         {
             for(auto &[nic_idx, slot] : m_instances)
             {
-                for(auto &inst_ptr : std::get<idx>(slot))
+                for(auto &inst_ptr : std::get<idx>(slot.instances))
                 {
                     if(inst_ptr)
                         fn(*inst_ptr);
@@ -420,7 +479,7 @@ private:
         {
             for(const auto &[nic_idx, slot] : m_instances)
             {
-                for(const auto &inst_ptr : std::get<idx>(slot))
+                for(const auto &inst_ptr : std::get<idx>(slot.instances))
                 {
                     if(inst_ptr)
                         fn(*inst_ptr);
@@ -441,8 +500,8 @@ private:
 
     std::tuple<std::vector<typename peer_traits<Peers, P>::options_type>...> m_peer_opts;
 
-    // Keyed by interface index — unique_ptr because basic_* types are non-movable post-start.
-    std::unordered_map<unsigned int, instance_tuple> m_instances;
+    // Keyed by interface index. Bundles network_interface identity with per-NIC peer instances.
+    std::unordered_map<unsigned int, nic_slot> m_instances;
 
     // Accumulated watch() calls; propagated to new monitor instances on NIC add.
     std::unordered_set<std::string> m_watch_set;

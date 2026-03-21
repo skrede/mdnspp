@@ -12,27 +12,29 @@ Aggregated view of a discovered mDNS service instance. Combines PTR, SRV, A, AAA
 
 ```cpp
 struct resolved_service {
-    std::string              instance_name;    // fully-qualified instance name (from PTR)
-    std::string              hostname;         // target hostname (from SRV)
+    dns_name                 instance_name;    // fully-qualified instance name (from PTR)
+    dns_name                 hostname;         // target hostname (from SRV)
     uint16_t                 port{0};          // service port (from SRV)
     std::vector<service_txt> txt_entries;      // key/value pairs (from TXT)
     std::vector<std::string> ipv4_addresses;   // IPv4 addresses (from A records)
     std::vector<std::string> ipv6_addresses;   // IPv6 addresses (from AAAA records)
     std::chrono::nanoseconds ttl_remaining{};  // time until SRV record expires
     uint32_t                 wire_ttl{0};      // SRV wire TTL in seconds
+    network_interface        source_interface; // NIC on which the service was received
 };
 ```
 
 | Field | Type | Source Record | Description |
 |-------|------|---------------|-------------|
-| `instance_name` | `std::string` | PTR | Fully-qualified service instance name (e.g. `"MyApp._http._tcp.local"`) |
-| `hostname` | `std::string` | SRV | Target hostname (e.g. `"myhost.local"`) |
+| `instance_name` | `dns_name` | PTR | Fully-qualified service instance name (e.g. `"myapp._http._tcp.local."`). `dns_name` is a strong type that enforces lowercase FQDN with trailing dot; use `.str()` to obtain a `std::string`. |
+| `hostname` | `dns_name` | SRV | Target hostname (e.g. `"myhost.local."`). |
 | `port` | `uint16_t` | SRV | TCP/UDP port the service listens on |
 | `txt_entries` | `std::vector<service_txt>` | TXT | Key/value metadata pairs |
 | `ipv4_addresses` | `std::vector<std::string>` | A | IPv4 address strings (e.g. `"192.168.1.10"`) |
 | `ipv6_addresses` | `std::vector<std::string>` | AAAA | IPv6 address strings (e.g. `"fe80::1"`) |
 | `wire_ttl` | `uint32_t` | SRV | Original TTL from the network, in seconds. Zero for one-shot `aggregate()` results; populated by `service_monitor`. |
 | `ttl_remaining` | `std::chrono::nanoseconds` | SRV | Time remaining until the SRV anchor record expires. Zero for one-shot `aggregate()` results; populated by `service_monitor`'s `services()` snapshot. |
+| `source_interface` | `network_interface` | — | Network interface on which the service was received. Default-constructed (`name` empty, `index` 0) for one-shot `aggregate()` results and non-nic_group usage; populated by `basic_nic_group` based on `recv_metadata::recv_ifindex`. |
 
 ### service_txt
 
@@ -96,8 +98,8 @@ int main()
                 std::cout << "Found " << services.size() << " service(s):\n";
                 for (const auto& svc : services)
                 {
-                    std::cout << "  " << svc.instance_name << "\n"
-                              << "    host: " << svc.hostname
+                    std::cout << "  " << svc.instance_name.str() << "\n"
+                              << "    host: " << svc.hostname.str()
                               << " port: " << svc.port << "\n";
 
                     for (const auto& addr : svc.ipv4_addresses)

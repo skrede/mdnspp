@@ -14,6 +14,8 @@
 - **Cross-platform** -- Linux, macOS, and Windows.
 - **Standalone native networking** -- no external dependencies for the default policy.
 - **Network interface selection** -- run mDNS services on any NIC or bind to a specific NIC.
+- **Multi-NIC orchestration** -- `nic_group` and `dynamic_nic_grp` manage peer instances across all active interfaces automatically; `nic_monitor` detects interface changes at runtime.
+- **Receive-side TTL verification** -- RFC 6762 §11 enforcement via `recv_metadata::ttl` with platform-native extraction (`IP_RECVTTL`, `IP_PKTINFO`, `WSARecvMsg`).
 - **Thread-safe service updates** -- safely modify the records of running mDNS service server from any thread.
 - **Policy-based architecture** -- swap socket/timer/executor implementations at compile time.
 - **Optional ASIO support** -- networking and completion token support (callbacks, futures, coroutines, and deferred operations).
@@ -113,13 +115,15 @@ int main()
 
     mdnspp::service_discovery sd{
         ctx,
-        std::chrono::seconds(3), {},
-        [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
-        {
-            std::visit([&](const auto &r)
+        mdnspp::query_options{
+            .on_record = [](const mdnspp::endpoint &sender,
+                            const mdnspp::mdns_record_variant &rec)
             {
-                std::cout << sender << " -> " << r << "\n";
-            }, rec);
+                std::visit([&](const auto &r)
+                {
+                    std::cout << sender << " -> " << r << "\n";
+                }, rec);
+            }
         }
     };
 
@@ -160,16 +164,17 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::querier q
-    {
+    mdnspp::querier q{
         ctx,
-        std::chrono::seconds(3), {},
-        [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
-        {
-            std::visit([&](const auto &r)
+        mdnspp::query_options{
+            .on_record = [](const mdnspp::endpoint &sender,
+                            const mdnspp::mdns_record_variant &rec)
             {
-                std::cout << sender << " -> " << r << "\n";
-            }, rec);
+                std::visit([&](const auto &r)
+                {
+                    std::cout << sender << " -> " << r << "\n";
+                }, rec);
+            }
         }
     };
 
@@ -211,18 +216,20 @@ int main()
     mdnspp::context ctx;
     int count = 0;
 
-    mdnspp::observer obs
-    {
-        ctx, {},
-        [&](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
-        {
-            std::visit([&](const auto &r)
+    mdnspp::observer obs{
+        ctx,
+        mdnspp::observer_options{
+            .on_record = [&](const mdnspp::endpoint &sender,
+                             const mdnspp::mdns_record_variant &rec)
             {
-                std::cout << sender << " -> " << r << "\n";
-            }, rec);
+                std::visit([&](const auto &r)
+                {
+                    std::cout << sender << " -> " << r << "\n";
+                }, rec);
 
-            if(++count >= 10)
-                obs.stop();
+                if(++count >= 10)
+                    obs.stop();
+            }
         }
     };
 

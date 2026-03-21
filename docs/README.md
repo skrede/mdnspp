@@ -18,6 +18,7 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 - [Custom Policies](custom-policies.md) -- Writing your own Policy, SocketLike, and TimerLike implementations
 - [In-Process Bus](inproc-bus.md) -- InProcPolicy and shared bus for in-process mDNS scenarios
 - [Test Landscape](testing.md) -- Unit, integration, fuzz, and compile test categories
+- [NIC Group](nic-group.md) -- Multi-NIC orchestration: basic_nic_group, basic_nic_monitor, dynamic_nic_group
 
 ## API Reference
 
@@ -49,6 +50,12 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 - [cache_options](api/cache_options.md) -- Record cache expiry and cache-flush callbacks
 - [cache_entry](api/cache_entry.md) -- Cached mDNS record snapshot with TTL information
 
+### Multi-NIC and Receive Metadata
+
+- [nic_group](api/nic_group.md) -- Multi-NIC orchestrator: basic_nic_group, basic_nic_monitor, dynamic_nic_group
+- [nic_group_options](api/nic_group_options.md) -- nic_group_options, nic_monitor_options, server_peer_options, dedup_mode
+- [recv_metadata](api/recv_metadata.md) -- recv_metadata struct (sender, optional ttl, recv_ifindex) and ttl_unknown_policy
+
 ### Configuration
 
 - [mdns_options](api/mdns_options.md) -- Protocol timing tunables: query backoff, TTL refresh, TC handling
@@ -66,6 +73,11 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
   - [Probing](rfc/probing.md) -- RFC 6762 §8 name uniqueness probing
   - [DNS-SD](rfc/dns-sd.md) -- RFC 6763 DNS-SD service discovery
   - [Traffic Reduction](rfc/traffic-reduction.md) -- RFC 6762 §11 traffic reduction techniques
+  - [Receive-Side TTL](rfc/receive-ttl.md) -- RFC 6762 §11 receive TTL verification (IP_RECVTTL, IP_PKTINFO)
+  - [QU/QM Routing](rfc/quqm-routing.md) -- RFC 6762 §5.4 QU/QM response routing
+  - [Negative Responses](rfc/negative-responses.md) -- RFC 6762 §6.1 NSEC negative responses
+  - [Legacy Unicast](rfc/legacy-unicast.md) -- RFC 6762 §6.7 legacy unicast responses
+  - [TXT Records](rfc/txt-records.md) -- RFC 6763 §6 TXT record key-value pairs
 
 ## Examples
 
@@ -77,3 +89,4 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 - [examples/record_cache/](../examples/record_cache/) -- Standalone and wired cache usage
 - [examples/asio/](../examples/asio/) -- ASIO completion token variants (callbacks, coroutines, futures)
 - [examples/inproc_bus/](../examples/inproc_bus/) -- In-process mDNS scenario using inproc_bus
+- [examples/nic_group/](../examples/nic_group/) -- Multi-NIC grouping: monitor-only, announce+monitor, dynamic builder

@@ -1,2 +1,8 @@
 add_executable(mdnspp_observer_01_basic 01_basic.cpp)
 target_link_libraries(mdnspp_observer_01_basic PRIVATE mdnspp::mdnspp)
+
+add_executable(mdnspp_observer_02_ttl_inspection 02_ttl_inspection.cpp)
+target_link_libraries(mdnspp_observer_02_ttl_inspection PRIVATE mdnspp::mdnspp)
+
+add_executable(mdnspp_observer_03_source_interface 03_source_interface.cpp)
+target_link_libraries(mdnspp_observer_03_source_interface PRIVATE mdnspp::mdnspp)

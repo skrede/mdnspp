@@ -143,10 +143,46 @@ For conflict resolution, goodbye packets, and other server options, see
 [service_options](api/service_options.md). For RFC compliance details, see
 [RFC Compliance](rfc/README.md).
 
+## Multi-interface scenarios
+
+When a host has multiple network interfaces and you need mDNS to operate on
+all of them simultaneously, `nic_group` provides automatic NIC management.
+It starts one set of peer instances (monitors, servers, or observers) per
+active interface and keeps them synchronized as interfaces are added or
+removed at runtime:
+
+```cpp
+#include <mdnspp/defaults.h>
+
+mdnspp::context ctx;
+
+mdnspp::nic_group<mdnspp::basic_service_monitor> grp{
+    ctx,
+    mdnspp::nic_group_options{},
+    std::vector<mdnspp::monitor_options>{
+        mdnspp::monitor_options{
+            .on_found = [](const mdnspp::resolved_service &svc)
+            {
+                std::cout << svc.instance_name.str()
+                          << " on " << svc.source_interface.name << "\n";
+            }
+        }
+    }
+};
+
+grp.watch("_http._tcp.local.");
+grp.start();
+ctx.run();
+```
+
+See the [NIC Group guide](nic-group.md) for monitor-only, announce+monitor,
+dynamic builder, dedup modes, and interface filtering patterns.
+
 ## What's next
 
 - [Service Options](api/service_options.md) -- conflict resolution, goodbye, announcement tuning
 - [RFC Compliance](rfc/README.md) -- RFC 6762/6763 conformance status and feature documentation
 - [Policies](policies.md) -- understand the DefaultPolicy, AsioPolicy, and MockPolicy architecture
 - [Async Patterns](async-patterns.md) -- use ASIO completion tokens (futures, coroutines, deferred)
+- [NIC Group](nic-group.md) -- multi-NIC orchestration guide
 - [API Reference](api/) -- full type documentation

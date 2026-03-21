@@ -257,8 +257,8 @@ int main()
             {
                 std::cout << "Found " << services.size() << " service(s):\n";
                 for (const auto& svc : services)
-                    std::cout << "  " << svc.instance_name
-                              << " at " << svc.hostname << ":" << svc.port << "\n";
+                    std::cout << "  " << svc.instance_name.str()
+                              << " at " << svc.hostname.str() << ":" << svc.port << "\n";
             }
 
             ctx.stop();

@@ -4,7 +4,7 @@
 [![macOS](https://github.com/skrede/mdnspp/actions/workflows/macos.yml/badge.svg?branch=master)](https://github.com/skrede/mdnspp/actions/workflows/macos.yml)
 [![Windows](https://github.com/skrede/mdnspp/actions/workflows/windows.yml/badge.svg?branch=master)](https://github.com/skrede/mdnspp/actions/workflows/windows.yml)
 [![codecov](https://codecov.io/gh/skrede/mdnspp/branch/master/graph/badge.svg)](https://codecov.io/gh/skrede/mdnspp)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 [![C++23](https://img.shields.io/badge/C%2B%2B-23-blue.svg)](https://en.cppreference.com/w/cpp/23)
 
 **mdnspp** is a C++23 mDNS/DNS-SD library with a policy-based architecture. The library is fully standalone -- no Boost dependency and no hidden threads. The policy design lets it compose naturally with any executor or event loop: use the built-in native sockets for standalone applications, or plug in ASIO for completion token support. Cross-platform on Linux, macOS, and Windows.

@@ -8,6 +8,9 @@
 
 namespace mdnspp {
 
+/// Policy for packets received without an extractable IP TTL.
+enum class ttl_unknown_policy { accept, reject };
+
 /// Protocol tunables for RFC 6762 continuous querying, TTL refresh scheduling,
 /// and truncated-response accumulation.
 ///
@@ -233,6 +236,9 @@ struct mdns_options
     /// routers, which violates the mDNS link-local scoping requirement and
     /// enables cross-segment spoofing attacks.
     uint32_t receive_ttl_minimum{255};
+
+    /// Disposition for packets where the IP TTL could not be extracted.
+    ttl_unknown_policy unknown_ttl_policy{ttl_unknown_policy::accept};
 };
 
 }

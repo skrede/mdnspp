@@ -16,7 +16,7 @@ Four built-in policies cover most use cases:
 
 ## Primer
 
-All five mdnspp `basic_*` types are parameterized on `Policy`:
+All mdnspp `basic_*` types are parameterized on `Policy`:
 
 ```cpp
 template <Policy P>
@@ -33,6 +33,12 @@ class basic_service_server;
 
 template <Policy P, typename Clock = std::chrono::steady_clock>
 class basic_service_monitor;
+
+template <Policy P>
+class basic_nic_monitor;
+
+template <Policy P, template <typename> class... Peers>
+class basic_nic_group;
 ```
 
 A `Policy` struct must provide:

@@ -50,8 +50,60 @@ concept Policy = requires
     };
 ```
 
-`SocketLike` requires `async_receive`, `send`, and `close`. `TimerLike`
-requires `expires_after`, `async_wait`, and `cancel`.
+`SocketLike` requires `async_receive`, `send`, and `close`. The `async_receive`
+handler receives a `const recv_metadata &` (see below) and a `std::span<std::byte>`
+payload. `TimerLike` requires `expires_after`, `async_wait`, and `cancel`.
+
+## recv_metadata
+
+Every received packet is accompanied by a `recv_metadata` value carrying
+per-packet metadata extracted by the socket implementation:
+
+```cpp
+struct recv_metadata
+{
+    endpoint              sender;
+    std::optional<uint8_t> ttl;
+    uint32_t              recv_ifindex{0};
+};
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sender` | `endpoint` | Source address and port of the packet sender. |
+| `ttl` | `std::optional<uint8_t>` | IP TTL (IPv4) or hop limit (IPv6) of the received packet. `std::nullopt` when the platform did not supply the value (e.g. AsioSocket, Windows DefaultSocket). |
+| `recv_ifindex` | `uint32_t` | OS interface index on which the packet arrived (`IP_PKTINFO`). Zero when not available. |
+
+The `ttl` field enables RFC 6762 §11 receive-side enforcement: packets with
+a TTL below `mdns_options::receive_ttl_minimum` (default 255) are silently
+discarded. Packets where TTL extraction failed are handled according to
+`mdns_options::unknown_ttl_policy` (`accept` by default for backward
+compatibility with platforms that do not support TTL extraction).
+
+See [recv_metadata API reference](api/recv_metadata.md) and
+[Receive-Side TTL](rfc/receive-ttl.md) for platform extraction details.
+
+## Policy-parameterized types
+
+The following public types are parameterized on a Policy:
+
+```cpp
+mdnspp::basic_observer<P>
+mdnspp::basic_querier<P>
+mdnspp::basic_service_discovery<P>
+mdnspp::basic_service_server<P>
+mdnspp::basic_service_monitor<P>
+mdnspp::basic_nic_monitor<P>
+mdnspp::basic_nic_group<P, Peers...>
+```
+
+`basic_nic_monitor<P>` monitors OS-level NIC change events (interface up/down,
+address changes) and invokes callbacks on the Policy executor.
+`basic_nic_group<P, Peers...>` uses an owned `basic_nic_monitor` to
+automatically create and destroy per-NIC instances of each peer type
+(basic_service_monitor, basic_service_server, basic_observer) as interfaces
+appear and disappear. See [NIC Group guide](nic-group.md) and
+[nic_group API reference](api/nic_group.md).
 
 ## DefaultPolicy
 

@@ -8,9 +8,10 @@
 
 ## Primer
 
-`mdns_options` is a plain struct of protocol timing tunables passed to all five
-`basic_*` constructors in mdnspp. It controls how often queries are sent, when
-TTL refresh queries fire, and how long to wait for truncated-response packets.
+`mdns_options` is a plain struct of protocol timing tunables passed to `basic_*`
+constructors in mdnspp. It controls how often queries are sent, when TTL
+refresh queries fire, how long to wait for truncated-response packets, and the
+receive-side IP TTL enforcement threshold.
 
 All fields default to RFC 6762-compliant values. Use designated initializers to
 override specific fields:
@@ -42,7 +43,7 @@ mdnspp::observer obs{ctx, observer_opts, sock_opts, mdns_opts};
 
 // Non-throwing overloads (mdns_opts before std::error_code):
 std::error_code ec;
-mdnspp::service_monitor mon2{ctx, std::move(monitor_opts), sock_opts, mdns_opts, {}, ec};
+mdnspp::service_monitor mon2{ctx, std::move(monitor_opts), sock_opts, mdns_opts, {}, ec}; // cache_options then ec
 ```
 
 Pass `{}` for any earlier parameter you want to leave at its default:
@@ -202,6 +203,46 @@ means include all qualifying records.
 Risk of changing: Setting a low cap may cause responders to re-announce records
 the querier already holds, increasing traffic. Only useful to limit packet size
 on networks with unusually small MTUs.
+
+---
+
+### Receive-side TTL filtering (RFC 6762 §11)
+
+These two fields control enforcement of the receive-side IP TTL requirement.
+
+#### receive_ttl_minimum
+
+| | |
+|---|---|
+| **Type** | `uint32_t` |
+| **Default** | `255` |
+| **RFC section** | 6762 §11 |
+
+Minimum IP TTL (or IPv6 hop limit) for accepted incoming mDNS packets.
+Packets with a TTL below this value are silently discarded. The value 255
+enforces link-local-only reception per RFC 6762 §11: any packet forwarded
+by a router has its TTL decremented below 255.
+
+Risk of changing: Reducing below 255 allows forwarded packets, violating the
+link-local scoping requirement and enabling cross-segment spoofing attacks.
+
+#### unknown_ttl_policy
+
+| | |
+|---|---|
+| **Type** | `ttl_unknown_policy` |
+| **Default** | `ttl_unknown_policy::accept` |
+
+Disposition for packets where the IP TTL could not be extracted (e.g., on
+platforms where TTL extraction is not supported, such as AsioSocket).
+
+| Value | Behaviour |
+|-------|-----------|
+| `ttl_unknown_policy::accept` | Packets without extractable TTL are accepted. Default for backward compatibility. |
+| `ttl_unknown_policy::reject` | Packets without extractable TTL are discarded. Strict enforcement; not suitable on platforms without TTL extraction support. |
+
+See [recv_metadata](api/recv_metadata.md) and [Receive-Side TTL](rfc/receive-ttl.md)
+for platform extraction capabilities.
 
 ---
 

@@ -191,14 +191,14 @@ int main()
     mdnspp::monitor_options opts{
         .on_found = [](const mdnspp::resolved_service &svc)
         {
-            std::cout << "found: " << svc.instance_name
-                      << " at " << svc.hostname << ":" << svc.port << "\n";
+            std::cout << "found: " << svc.instance_name.str()
+                      << " at " << svc.hostname.str() << ":" << svc.port << "\n";
         },
         .on_updated = [](const mdnspp::resolved_service &svc,
                          mdnspp::update_event event,
                          mdnspp::dns_type type)
         {
-            std::cout << "updated: " << svc.instance_name
+            std::cout << "updated: " << svc.instance_name.str()
                       << " event=" << (event == mdnspp::update_event::added ? "added" : "removed")
                       << " type=" << to_string(type) << "\n";
         },
@@ -207,7 +207,7 @@ int main()
             const char *why = reason == mdnspp::loss_reason::timeout   ? "timeout"
                             : reason == mdnspp::loss_reason::goodbye   ? "goodbye"
                                                                        : "unwatched";
-            std::cout << "lost: " << svc.instance_name << " reason=" << why << "\n";
+            std::cout << "lost: " << svc.instance_name.str() << " reason=" << why << "\n";
         },
     };
 

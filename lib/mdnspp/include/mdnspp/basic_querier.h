@@ -280,7 +280,8 @@ private:
                 return process_response_packet(meta.sender, cdata);
             },
             [this]() { fire_completion(); },
-            this->m_mdns_opts.receive_ttl_minimum);
+            this->m_mdns_opts.receive_ttl_minimum,
+            this->m_mdns_opts.unknown_ttl_policy);
     }
 
     // QU: send immediately, then start recv_loop.

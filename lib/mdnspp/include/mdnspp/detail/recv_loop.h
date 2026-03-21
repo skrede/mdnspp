@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_RECV_LOOP_H
 
 #include "mdnspp/policy.h"
+#include "mdnspp/mdns_options.h"
 #include "mdnspp/detail/compat.h"
 
 #include <span>
@@ -28,8 +29,10 @@ public:
         std::chrono::milliseconds silence_timeout,
         packet_handler on_packet,
         detail::move_only_function<void()> on_silence,
-        uint32_t receive_ttl_minimum = 0)
+        uint32_t receive_ttl_minimum = 0,
+        ttl_unknown_policy unknown_ttl_policy = ttl_unknown_policy::accept)
         : m_receive_ttl_minimum(receive_ttl_minimum)
+        , m_ttl_unknown_policy(unknown_ttl_policy)
         , m_stopped(false)
         , m_silence_timeout(silence_timeout)
         , m_socket(socket)
@@ -80,7 +83,15 @@ private:
                 {
                     return;
                 }
-                if(static_cast<uint32_t>(meta.ttl) < m_receive_ttl_minimum)
+                if(meta.ttl.has_value())
+                {
+                    if(static_cast<uint32_t>(*meta.ttl) < m_receive_ttl_minimum)
+                    {
+                        arm_receive();
+                        return;
+                    }
+                }
+                else if(m_ttl_unknown_policy == ttl_unknown_policy::reject)
                 {
                     arm_receive();
                     return;
@@ -107,6 +118,7 @@ private:
     }
 
     uint32_t m_receive_ttl_minimum;
+    ttl_unknown_policy m_ttl_unknown_policy;
     std::atomic<bool> m_stopped;
     std::chrono::milliseconds m_silence_timeout;
     socket_type &m_socket;

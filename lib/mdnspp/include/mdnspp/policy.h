@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <concepts>
+#include <optional>
 #include <system_error>
 
 namespace mdnspp {
@@ -29,7 +30,8 @@ struct always_false : std::false_type
 struct recv_metadata
 {
     endpoint sender;
-    uint8_t ttl{255};
+    std::optional<uint8_t> ttl;
+    uint32_t recv_ifindex{0};
 };
 
 // SocketLike<S>: satisfied by any type that provides the mDNS socket interface.

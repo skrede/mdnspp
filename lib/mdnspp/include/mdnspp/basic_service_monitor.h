@@ -158,7 +158,8 @@ public:
                 return handle_packet(meta.sender, data);
             },
             [] { /* silence handler -- no-op for monitor */ },
-            this->m_mdns_opts.receive_ttl_minimum);
+            this->m_mdns_opts.receive_ttl_minimum,
+            this->m_mdns_opts.unknown_ttl_policy);
 
         this->m_loop->start();
         arm_scheduler();

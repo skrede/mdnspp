@@ -29,6 +29,7 @@ struct mdns_options {
     std::size_t               max_query_payload{1472};
     std::chrono::microseconds tc_continuation_delay{0};
     uint32_t                  receive_ttl_minimum{255};
+    ttl_unknown_policy        unknown_ttl_policy{ttl_unknown_policy::accept};
 };
 ```
 
@@ -51,6 +52,7 @@ struct mdns_options {
 | `max_query_payload` | `std::size_t` | `1472` bytes | — | Maximum UDP payload size for an outgoing query packet before it must be split into TC continuation packets. Matches Ethernet MTU minus IPv4 and UDP headers. Reduce for lower-MTU links. |
 | `tc_continuation_delay` | `std::chrono::microseconds` | `0` | RFC 6762 §6 | Delay inserted between successive TC continuation packets. Zero means packets are sent back-to-back. A non-zero value rate-limits TC continuation bursts on congested links. |
 | `receive_ttl_minimum` | `uint32_t` | `255` | RFC 6762 §11 | Minimum IP TTL (hop limit) for received mDNS packets. Packets arriving with an IP TTL below this value are silently discarded. The value 255 enforces link-local-only reception: any forwarded packet has its IP TTL decremented below 255. |
+| `unknown_ttl_policy` | `ttl_unknown_policy` | `ttl_unknown_policy::accept` | RFC 6762 §11 | Disposition for packets where the IP TTL could not be extracted. `accept` passes such packets through (default, for backward compatibility on platforms without TTL extraction support). `reject` discards them. |
 
 **Note:** All defaults are RFC-compliant. Changing them is an advanced operation: incorrect settings may violate interoperability guarantees or cause excessive network traffic.
 
@@ -65,7 +67,7 @@ mdnspp::mdns_options opts{
 };
 ```
 
-`mdns_options` is passed as the last parameter before `std::error_code&` in all five `basic_*` constructors (throwing form: as last parameter; non-throwing form: before `ec`):
+`mdns_options` is passed as a constructor parameter in `basic_*` types (throwing form: as last positional parameter; non-throwing form: before `ec`):
 
 ```cpp
 // service_monitor (throwing)

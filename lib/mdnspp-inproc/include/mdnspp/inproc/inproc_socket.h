@@ -14,6 +14,7 @@
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <system_error>
 #include <utility>
 
@@ -93,10 +94,15 @@ public:
 
     void deliver(const endpoint &from, std::span<const std::byte> data)
     {
-        deliver(from, data, uint8_t{255});
+        deliver(from, data, std::optional<uint8_t>{uint8_t{255}});
     }
 
     void deliver(const endpoint &from, std::span<const std::byte> data, uint8_t ttl)
+    {
+        deliver(from, data, std::optional<uint8_t>{ttl});
+    }
+
+    void deliver(const endpoint &from, std::span<const std::byte> data, std::optional<uint8_t> ttl)
     {
         if(m_pending_receive)
         {
@@ -125,7 +131,7 @@ private:
     {
         std::vector<std::byte> data;
         endpoint from;
-        uint8_t ttl;
+        std::optional<uint8_t> ttl;
     };
 
     std::queue<queued_packet> m_recv_queue;

@@ -21,6 +21,8 @@
 
 #include "mdnspp/basic_querier.h"
 #include "mdnspp/basic_observer.h"
+#include "mdnspp/basic_nic_group.h"
+#include "mdnspp/basic_nic_monitor.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/network_interface.h"
 #include "mdnspp/basic_service_server.h"
@@ -45,6 +47,18 @@ using service_server = basic_service_server<DefaultPolicy>;
 
 /// Convenience alias — continuous mDNS service monitor with the default platform policy.
 using service_monitor = basic_service_monitor<DefaultPolicy>;
+
+/// Convenience alias — NIC change detector with the default platform policy.
+using nic_monitor = basic_nic_monitor<DefaultPolicy>;
+
+/// Convenience alias — multi-NIC peer group with the default platform policy.
+///
+/// Usage: mdnspp::nic_group<basic_service_monitor> grp{ctx.get_executor(), opts, monitors};
+template <template <typename...> class... Peers>
+using nic_group = basic_nic_group<DefaultPolicy, Peers...>;
+
+/// Convenience alias — dynamic (runtime-configured) multi-NIC group with the default platform policy.
+using dynamic_nic_grp = dynamic_nic_group<DefaultPolicy>;
 
 /// Convenience alias — the default event-loop context (run(), stop(), restart()).
 using context = DefaultContext;

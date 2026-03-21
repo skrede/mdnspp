@@ -25,6 +25,9 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/observer_options.h
     ${INCLUDE_DIRECTORY}/mdnspp/resolved_service.h
     ${INCLUDE_DIRECTORY}/mdnspp/network_interface.h
+    ${INCLUDE_DIRECTORY}/mdnspp/nic_group_options.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_nic_group.h
+    ${INCLUDE_DIRECTORY}/mdnspp/basic_nic_monitor.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_service_server.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_service_monitor.h
     ${INCLUDE_DIRECTORY}/mdnspp/basic_service_discovery.h
@@ -42,6 +45,8 @@ target_include_directories(mdnspp
 
 if (WIN32)
     target_link_libraries(mdnspp INTERFACE ws2_32 iphlpapi)
+elseif (APPLE)
+    target_link_libraries(mdnspp INTERFACE "-framework Network")
 endif ()
 
 install(TARGETS mdnspp

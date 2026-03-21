@@ -25,6 +25,7 @@
 #  include <winsock2.h>
 #  include <ws2tcpip.h>
 #  include <iphlpapi.h>
+#  include <mswsock.h>
 #else
 #  include <net/if.h>
 #  include <ifaddrs.h>
@@ -83,12 +84,18 @@ public:
     {
         m_receive_handler = std::move(handler);
         m_ctx.register_socket(m_fd,
-            [this](const endpoint &ep, uint8_t ttl, std::span<std::byte> data)
+            [this](const recv_metadata &meta, std::span<std::byte> data)
             {
-                recv_metadata meta{ep, ttl};
                 m_receive_handler(meta, data);
-            });
+            }
+#ifdef _WIN32
+            , m_fn_wsarecvmsg
+#endif
+            );
     }
+
+    /// Return the underlying native socket descriptor.
+    [[nodiscard]] auto native_handle() const noexcept { return m_fd; }
 
     /// Synchronous sendto().
     void send(const endpoint &dest, std::span<const std::byte> data)
@@ -141,6 +148,9 @@ private:
     DefaultContext &m_ctx;
     detail::native_socket_t m_fd{detail::invalid_socket};
     detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_receive_handler;
+#ifdef _WIN32
+    LPFN_WSARECVMSG m_fn_wsarecvmsg{nullptr};
+#endif
 
     // -------------------------------------------------------------------------
     // Address helpers
@@ -345,6 +355,24 @@ private:
             configure_ipv6(opts, ec);
         else
             configure_ipv4(opts, ec);
+
+        if(ec)
+            return;
+
+#ifdef _WIN32
+        {
+            GUID guid = WSAID_WSARECVMSG;
+            DWORD bytes_returned = 0;
+            if(::WSAIoctl(m_fd,
+                          SIO_GET_EXTENSION_FUNCTION_POINTER,
+                          &guid, sizeof(guid),
+                          &m_fn_wsarecvmsg, sizeof(m_fn_wsarecvmsg),
+                          &bytes_returned, nullptr, nullptr) == SOCKET_ERROR)
+            {
+                m_fn_wsarecvmsg = nullptr;
+            }
+        }
+#endif
     }
 
     // Throwing -- delegates to the ec overload.
@@ -419,10 +447,32 @@ private:
                 return;
         }
 
-#if !defined(_WIN32) && defined(IP_RECVTTL)
+#ifdef IP_RECVTTL
         {
             const int32_t opt = 1;
+#ifdef _WIN32
+            (void)::setsockopt(m_fd, IPPROTO_IP, IP_RECVTTL,
+                               reinterpret_cast<const char*>(&opt), sizeof(opt));
+#else
             (void)::setsockopt(m_fd, IPPROTO_IP, IP_RECVTTL, &opt, sizeof(opt));
+#endif
+        }
+#endif
+
+#if defined(IP_PKTINFO)
+        {
+            const int32_t opt = 1;
+#ifdef _WIN32
+            (void)::setsockopt(m_fd, IPPROTO_IP, IP_PKTINFO,
+                               reinterpret_cast<const char*>(&opt), sizeof(opt));
+#else
+            (void)::setsockopt(m_fd, IPPROTO_IP, IP_PKTINFO, &opt, sizeof(opt));
+#endif
+        }
+#elif defined(__APPLE__) && defined(IP_RECVIF)
+        {
+            const int32_t opt = 1;
+            (void)::setsockopt(m_fd, IPPROTO_IP, IP_RECVIF, &opt, sizeof(opt));
         }
 #endif
     }
@@ -481,10 +531,27 @@ private:
                 return;
         }
 
-#if !defined(_WIN32) && defined(IPV6_RECVHOPLIMIT)
+#ifdef IPV6_RECVHOPLIMIT
         {
             const int32_t opt = 1;
+#ifdef _WIN32
+            (void)::setsockopt(m_fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT,
+                               reinterpret_cast<const char*>(&opt), sizeof(opt));
+#else
             (void)::setsockopt(m_fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT, &opt, sizeof(opt));
+#endif
+        }
+#endif
+
+#ifdef IPV6_RECVPKTINFO
+        {
+            const int32_t opt = 1;
+#ifdef _WIN32
+            (void)::setsockopt(m_fd, IPPROTO_IPV6, IPV6_RECVPKTINFO,
+                               reinterpret_cast<const char*>(&opt), sizeof(opt));
+#else
+            (void)::setsockopt(m_fd, IPPROTO_IPV6, IPV6_RECVPKTINFO, &opt, sizeof(opt));
+#endif
         }
 #endif
     }

@@ -1,0 +1,8 @@
+add_executable(mdnspp_nic_group_01_basic 01_basic.cpp)
+target_link_libraries(mdnspp_nic_group_01_basic PRIVATE mdnspp::mdnspp)
+
+add_executable(mdnspp_nic_group_02_announce_and_monitor 02_announce_and_monitor.cpp)
+target_link_libraries(mdnspp_nic_group_02_announce_and_monitor PRIVATE mdnspp::mdnspp)
+
+add_executable(mdnspp_nic_group_03_dynamic 03_dynamic.cpp)
+target_link_libraries(mdnspp_nic_group_03_dynamic PRIVATE mdnspp::mdnspp)

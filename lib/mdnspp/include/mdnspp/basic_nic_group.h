@@ -49,7 +49,7 @@ namespace mdnspp {
 //   start(), stop(), services(), watch(), and unwatch() may be called from
 //   any thread. m_mutex protects m_instances and m_watch_set.
 
-template <Policy P, template <typename> class... Peers>
+template <Policy P, template <typename...> class... Peers>
 class basic_nic_group
 {
 public:
@@ -182,9 +182,9 @@ private:
     // -------------------------------------------------------------------------
 
     // Find the 0-based index of PeerTemplate in Peers...
-    template <template <typename> class PeerTemplate,
-              template <typename> class Head,
-              template <typename> class... Tail>
+    template <template <typename...> class PeerTemplate,
+              template <typename...> class Head,
+              template <typename...> class... Tail>
     static constexpr std::size_t peer_index_of_impl(std::size_t current)
     {
         if constexpr(std::is_same_v<PeerTemplate<P>, Head<P>>)
@@ -195,7 +195,7 @@ private:
             return peer_index_of_impl<PeerTemplate, Tail...>(current + 1);
     }
 
-    template <template <typename> class PeerTemplate>
+    template <template <typename...> class PeerTemplate>
     static constexpr std::size_t peer_index_of()
     {
         return peer_index_of_impl<PeerTemplate, Peers...>(0);

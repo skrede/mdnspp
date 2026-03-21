@@ -54,7 +54,7 @@ using nic_monitor = basic_nic_monitor<DefaultPolicy>;
 /// Convenience alias — multi-NIC peer group with the default platform policy.
 ///
 /// Usage: mdnspp::nic_group<basic_service_monitor> grp{ctx.get_executor(), opts, monitors};
-template <template <typename> class... Peers>
+template <template <typename...> class... Peers>
 using nic_group = basic_nic_group<DefaultPolicy, Peers...>;
 
 /// Convenience alias — dynamic (runtime-configured) multi-NIC group with the default platform policy.

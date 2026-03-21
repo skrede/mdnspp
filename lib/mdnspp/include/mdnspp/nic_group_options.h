@@ -40,7 +40,7 @@ struct nic_group_options
 };
 
 /// Primary template — specialised in detail/peer_traits.h for each supported peer type.
-template <template <typename> class Peer, typename P>
+template <template <typename...> class Peer, typename P>
 struct peer_traits;
 
 }

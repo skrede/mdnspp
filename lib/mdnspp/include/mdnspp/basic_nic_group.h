@@ -66,7 +66,7 @@ public:
     /// @param grp_opts   Group-level options (dedup mode, interface filter, socket factory).
     /// @param peer_opts  Per-peer-type options vectors (one argument per Peer in the pack).
     explicit basic_nic_group(executor_type ex,
-                             nic_group_options grp_opts,
+                             basic_nic_group_options<P> grp_opts,
                              std::vector<typename peer_traits<Peers, P>::options_type>... peer_opts)
         : m_executor(ex)
         , m_grp_opts(std::move(grp_opts))
@@ -229,7 +229,7 @@ private:
             return; // filtered out
 
         // Determine socket_options for this interface.
-        socket_options sock_opts;
+        policy_socket_options_t<P> sock_opts{};
         if(m_grp_opts.socket_options_factory)
         {
             sock_opts = m_grp_opts.socket_options_factory(nic);
@@ -263,14 +263,14 @@ private:
 
     template <std::size_t... Is>
     void create_instances_for_nic(instance_tuple &slot,
-                                  const socket_options &sock_opts,
+                                  const policy_socket_options_t<P> &sock_opts,
                                   std::index_sequence<Is...>)
     {
         (create_peer_instances<Is>(slot, sock_opts), ...);
     }
 
     template <std::size_t I>
-    void create_peer_instances(instance_tuple &slot, const socket_options &sock_opts)
+    void create_peer_instances(instance_tuple &slot, const policy_socket_options_t<P> &sock_opts)
     {
         using PeerType = std::tuple_element_t<I, std::tuple<Peers<P>...>>;
         // Extract the template template parameter at position I.
@@ -295,7 +295,7 @@ private:
     // copyable fields (service_info, service_options) and is passed as-is.
     template <typename PeerType, typename Options>
     std::unique_ptr<PeerType> make_peer_instance(const Options &opts,
-                                                  const socket_options &sock_opts)
+                                                  const policy_socket_options_t<P> &sock_opts)
     {
         if constexpr(std::is_same_v<PeerType, basic_service_monitor<P>>)
         {
@@ -494,7 +494,7 @@ private:
 
     std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
     executor_type m_executor;
-    nic_group_options m_grp_opts;
+    basic_nic_group_options<P> m_grp_opts;
     basic_nic_monitor<P> m_monitor;
     std::atomic<bool> m_stopped{true};
 
@@ -588,7 +588,7 @@ public:
     dynamic_nic_group(dynamic_nic_group &&) = delete;
     dynamic_nic_group &operator=(dynamic_nic_group &&) = delete;
 
-    explicit dynamic_nic_group(executor_type ex, nic_group_options opts = {})
+    explicit dynamic_nic_group(executor_type ex, basic_nic_group_options<P> opts = {})
         : m_executor(ex)
         , m_grp_opts(std::move(opts))
     {
@@ -713,7 +713,7 @@ public:
 
 private:
     executor_type m_executor;
-    nic_group_options m_grp_opts;
+    basic_nic_group_options<P> m_grp_opts;
     std::unique_ptr<detail::nic_group_concept> m_impl;
 
     std::optional<std::vector<monitor_options>> m_monitor_opts;

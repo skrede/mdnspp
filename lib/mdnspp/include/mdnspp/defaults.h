@@ -60,6 +60,9 @@ using nic_group = basic_nic_group<DefaultPolicy, Peers...>;
 /// Convenience alias — dynamic (runtime-configured) multi-NIC group with the default platform policy.
 using dynamic_nic_grp = dynamic_nic_group<DefaultPolicy>;
 
+/// Convenience alias — NIC group options with the default platform policy.
+using nic_group_options = basic_nic_group_options<DefaultPolicy>;
+
 /// Convenience alias — the default event-loop context (run(), stop(), restart()).
 using context = DefaultContext;
 

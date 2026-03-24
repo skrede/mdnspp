@@ -12,3 +12,8 @@ if(MDNSPP_BUILD_TESTS)
     add_subdirectory(mdnspp-testing)
     add_dependencies(mdnspp_testing mdnspp)
 endif()
+
+if(MDNSPP_ENABLE_ENCRYPT)
+    add_subdirectory(mdnspp-encrypt)
+    add_dependencies(mdnspp_encrypt mdnspp)
+endif()

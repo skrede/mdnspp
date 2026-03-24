@@ -30,7 +30,7 @@ int main()
     asio::io_context io;
     mdnspp::basic_nic_group<mdnspp::AsioPolicy, mdnspp::basic_service_monitor> grp{
         io,
-        mdnspp::nic_group_options{},
+        mdnspp::basic_nic_group_options<mdnspp::AsioPolicy>{},
         std::move(opts_vec)
     };
 

@@ -29,7 +29,7 @@ public:
     basic_mdns_peer_base &operator=(basic_mdns_peer_base &&) = delete;
 
 protected:
-    explicit basic_mdns_peer_base(executor_type ex, socket_options opts = {},
+    explicit basic_mdns_peer_base(executor_type ex, policy_socket_options_t<P> opts = {},
                                    mdns_options mdns_opts = {})
         : m_multicast_ep(opts.multicast_group)
         , m_executor(ex)
@@ -40,7 +40,7 @@ protected:
     {
     }
 
-    basic_mdns_peer_base(executor_type ex, socket_options opts, mdns_options mdns_opts,
+    basic_mdns_peer_base(executor_type ex, policy_socket_options_t<P> opts, mdns_options mdns_opts,
                          std::error_code &ec)
         : m_multicast_ep(opts.multicast_group)
         , m_executor(ex)

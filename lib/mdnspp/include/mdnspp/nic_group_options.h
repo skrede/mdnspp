@@ -1,6 +1,7 @@
 #ifndef HPP_GUARD_MDNSPP_NIC_GROUP_OPTIONS_H
 #define HPP_GUARD_MDNSPP_NIC_GROUP_OPTIONS_H
 
+#include "mdnspp/policy.h"
 #include "mdnspp/mdns_options.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/socket_options.h"
@@ -30,11 +31,12 @@ struct server_peer_options
     service_options opts{};
 };
 
-struct nic_group_options
+template <Policy P>
+struct basic_nic_group_options
 {
     dedup_mode dedup{dedup_mode::merged};
     detail::move_only_function<bool(const network_interface &)> interface_filter{};
-    detail::move_only_function<socket_options(const network_interface &)> socket_options_factory{};
+    detail::move_only_function<policy_socket_options_t<P>(const network_interface &)> socket_options_factory{};
     mdns_options mdns_opts{};
     nic_monitor_options monitor_opts{};
 };

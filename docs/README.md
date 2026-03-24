@@ -20,6 +20,15 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 - [Test Landscape](testing.md) -- Unit, integration, fuzz, and compile test categories
 - [NIC Group](nic-group.md) -- Multi-NIC orchestration: basic_nic_group, basic_nic_monitor, dynamic_nic_group
 
+## Encrypted mDNS
+
+- [Encrypted mDNS](encrypt/README.md) -- PSK-based encryption for mDNS multicast traffic (not RFC-defined)
+  - [Encrypted mDNS Guide](encrypt/encrypted-mdns.md) -- PSK setup, key rotation, auth-only mode, convenience aliases
+  - [Key Rotation](encrypt/key-rotation.md) -- Epoch-based dual-key overlap and grace period semantics
+  - [Auth-Only Mode](encrypt/auth-only-mode.md) -- Integrity without confidentiality
+  - [Threat Model](encrypt/threat-model.md) -- What PSK encryption protects and does not protect
+  - API Reference: [encrypt_options](encrypt/api/encrypt_options.md) | [encrypted_socket](encrypt/api/encrypted_socket.md) | [encrypted_policy](encrypt/api/encrypted_policy.md) | [secure_key](encrypt/api/secure_key.md) | [encrypt_socket_options](encrypt/api/encrypt_socket_options.md) | [encrypt_error](encrypt/api/encrypt_error.md) | [defaults](encrypt/api/defaults.md)
+
 ## API Reference
 
 ### Core Types
@@ -90,3 +99,4 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 - [examples/asio/](../examples/asio/) -- ASIO completion token variants (callbacks, coroutines, futures)
 - [examples/inproc_bus/](../examples/inproc_bus/) -- In-process mDNS scenario using inproc_bus
 - [examples/nic_group/](../examples/nic_group/) -- Multi-NIC grouping: monitor-only, announce+monitor, dynamic builder
+- [examples/encrypt/](../examples/encrypt/) -- Encrypted mDNS: PSK observer, key rotation, auth-only mode

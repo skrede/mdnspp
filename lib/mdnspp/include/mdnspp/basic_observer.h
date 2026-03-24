@@ -86,7 +86,7 @@ public:
     explicit basic_observer(executor_type ex, observer_options opts = {},
                             policy_socket_options_t<P> sock_opts = {},
                             mdns_options mdns_opts = {})
-        : base(ex, sock_opts, std::move(mdns_opts))
+        : base(ex, std::move(sock_opts), std::move(mdns_opts))
         , m_on_record(std::move(opts.on_record))
     {
     }
@@ -96,7 +96,7 @@ public:
     basic_observer(executor_type ex, observer_options opts,
                    policy_socket_options_t<P> sock_opts, mdns_options mdns_opts,
                    std::error_code &ec)
-        : base(ex, sock_opts, std::move(mdns_opts), ec)
+        : base(ex, std::move(sock_opts), std::move(mdns_opts), ec)
         , m_on_record(std::move(opts.on_record))
     {
     }

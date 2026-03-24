@@ -32,6 +32,10 @@ detail::expected<std::vector<std::byte>, encrypt_error> aead_decrypt(
 // Thread-safe; safe to call multiple times. Returns true on success.
 bool init_crypto();
 
+// Overwrite memory with zeros. Compiler-barrier prevents dead-store elimination.
+// Equivalent to sodium_memzero but without exposing the libsodium header to callers.
+void secure_zero(void *buf, std::size_t len) noexcept;
+
 }
 
 #endif

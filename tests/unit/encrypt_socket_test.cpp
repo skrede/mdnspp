@@ -253,6 +253,190 @@ TEST_CASE("SOCK-06: corrupted auth tag silently dropped", "[encrypted_socket][ta
 }
 
 // ---------------------------------------------------------------------------
+// SOCK-07: auth-only send produces flag=0 in header
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Auth-only: received payload matches sent plaintext", "[encrypted_socket][auth_only]")
+{
+    mdnspp::testing::mock_executor ex;
+
+    auto send_opts = make_test_opts(std::byte{0x42}, 1);
+    send_opts.encrypt.auth_only = true;
+
+    auto recv_opts = make_test_opts(std::byte{0x42}, 2);
+
+    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
+    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+
+    std::vector<std::byte> plaintext{std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE}, std::byte{0xEF}};
+    sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
+
+    REQUIRE(sender.inner().sent_packets().size() == 1);
+    const auto &sent_data = sender.inner().sent_packets()[0].data;
+
+    auto hdr = mdnspp::deserialize_header(sent_data.data());
+    CHECK(hdr.flags == 0);
+
+    receiver.inner().enqueue(sent_data);
+    bool handler_called = false;
+    std::vector<std::byte> received;
+    receiver.async_receive(
+        [&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+        {
+            handler_called = true;
+            received.assign(data.begin(), data.end());
+        });
+
+    CHECK(handler_called);
+    CHECK(received == plaintext);
+}
+
+// ---------------------------------------------------------------------------
+// SOCK-07: auth-only tampered payload dropped
+// ---------------------------------------------------------------------------
+
+TEST_CASE("Auth-only: tampered payload dropped", "[encrypted_socket][auth_only][tamper]")
+{
+    mdnspp::testing::mock_executor ex;
+
+    auto send_opts = make_test_opts(std::byte{0x42}, 1);
+    send_opts.encrypt.auth_only = true;
+
+    auto recv_opts = make_test_opts(std::byte{0x42}, 2);
+
+    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
+    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+
+    std::vector<std::byte> plaintext{std::byte{0xCA}, std::byte{0xFE}};
+    sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
+
+    REQUIRE(sender.inner().sent_packets().size() == 1);
+    auto tampered = sender.inner().sent_packets()[0].data;
+    tampered[mdnspp::encrypted_header_size] ^= std::byte{0xFF};
+
+    receiver.inner().enqueue(tampered);
+    bool handler_called = false;
+    receiver.async_receive(
+        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        {
+            handler_called = true;
+        });
+
+    CHECK_FALSE(handler_called);
+}
+
+// ---------------------------------------------------------------------------
+// SOCK-08: receive_mode::encrypted_only drops auth-only packets
+// ---------------------------------------------------------------------------
+
+TEST_CASE("receive_mode::encrypted_only drops auth-only packets", "[encrypted_socket][receive_mode]")
+{
+    mdnspp::testing::mock_executor ex;
+
+    auto send_opts = make_test_opts(std::byte{0x42}, 1);
+    send_opts.encrypt.auth_only = true;
+
+    auto recv_opts = make_test_opts(std::byte{0x42}, 2);
+    recv_opts.encrypt.recv_mode = mdnspp::receive_mode::encrypted_only;
+
+    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
+    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+
+    std::vector<std::byte> plaintext{std::byte{0x11}};
+    sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
+
+    REQUIRE(sender.inner().sent_packets().size() == 1);
+    receiver.inner().enqueue(sender.inner().sent_packets()[0].data);
+
+    bool handler_called = false;
+    receiver.async_receive(
+        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        {
+            handler_called = true;
+        });
+
+    CHECK_FALSE(handler_called);
+}
+
+// ---------------------------------------------------------------------------
+// SOCK-09: receive_mode::auth_only drops encrypted packets
+// ---------------------------------------------------------------------------
+
+TEST_CASE("receive_mode::auth_only drops encrypted packets", "[encrypted_socket][receive_mode]")
+{
+    mdnspp::testing::mock_executor ex;
+
+    auto send_opts = make_test_opts(std::byte{0x42}, 1);
+
+    auto recv_opts = make_test_opts(std::byte{0x42}, 2);
+    recv_opts.encrypt.recv_mode = mdnspp::receive_mode::auth_only;
+
+    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
+    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+
+    std::vector<std::byte> plaintext{std::byte{0x22}};
+    sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
+
+    REQUIRE(sender.inner().sent_packets().size() == 1);
+    receiver.inner().enqueue(sender.inner().sent_packets()[0].data);
+
+    bool handler_called = false;
+    receiver.async_receive(
+        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        {
+            handler_called = true;
+        });
+
+    CHECK_FALSE(handler_called);
+}
+
+// ---------------------------------------------------------------------------
+// SOCK-10: receive_mode::accept_both accepts both encrypted and auth-only
+// ---------------------------------------------------------------------------
+
+TEST_CASE("receive_mode::accept_both accepts both encrypted and auth-only", "[encrypted_socket][receive_mode]")
+{
+    mdnspp::testing::mock_executor ex;
+
+    auto enc_send_opts = make_test_opts(std::byte{0x42}, 1);
+
+    auto ao_send_opts = make_test_opts(std::byte{0x42}, 3);
+    ao_send_opts.encrypt.auth_only = true;
+
+    auto recv_opts = make_test_opts(std::byte{0x42}, 2);
+    recv_opts.encrypt.recv_mode = mdnspp::receive_mode::accept_both;
+
+    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> enc_sender(ex, enc_send_opts);
+    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> ao_sender(ex, ao_send_opts);
+    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+
+    std::vector<std::byte> plaintext{std::byte{0x33}};
+
+    enc_sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
+    ao_sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
+
+    REQUIRE(enc_sender.inner().sent_packets().size() == 1);
+    REQUIRE(ao_sender.inner().sent_packets().size() == 1);
+
+    receiver.inner().enqueue(enc_sender.inner().sent_packets()[0].data);
+    receiver.inner().enqueue(ao_sender.inner().sent_packets()[0].data);
+
+    int handler_count = 0;
+    receiver.async_receive(
+        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        {
+            ++handler_count;
+        });
+    receiver.async_receive(
+        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        {
+            ++handler_count;
+        });
+
+    CHECK(handler_count == 2);
+}
+
+// ---------------------------------------------------------------------------
 // SOCK-06: replayed sequence number silently dropped
 // ---------------------------------------------------------------------------
 

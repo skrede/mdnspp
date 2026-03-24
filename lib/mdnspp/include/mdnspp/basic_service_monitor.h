@@ -87,7 +87,7 @@ public:
                                    policy_socket_options_t<P> sock_opts = {},
                                    mdns_options mdns_opts = {},
                                    cache_options copts = {})
-        : base(ex, sock_opts, std::move(mdns_opts))
+        : base(ex, std::move(sock_opts), std::move(mdns_opts))
         , m_rng(std::random_device{}())
         , m_opts(std::move(opts))
         , m_cache_opts(std::move(copts))
@@ -114,7 +114,7 @@ public:
                           mdns_options mdns_opts,
                           cache_options copts,
                           std::error_code &ec)
-        : base(ex, sock_opts, std::move(mdns_opts), ec)
+        : base(ex, std::move(sock_opts), std::move(mdns_opts), ec)
         , m_rng(std::random_device{}())
         , m_opts(std::move(opts))
         , m_cache_opts(std::move(copts))

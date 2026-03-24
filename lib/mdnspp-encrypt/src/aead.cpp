@@ -146,6 +146,13 @@ encrypted_packet_header deserialize_header(const std::byte *buf)
     return hdr;
 }
 
+// --- secure_zero ---
+
+void secure_zero(void *buf, std::size_t len) noexcept
+{
+    sodium_memzero(buf, len);
+}
+
 // --- init_crypto ---
 
 bool init_crypto()

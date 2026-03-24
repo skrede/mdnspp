@@ -7,3 +7,7 @@ add_subdirectory(record_cache)
 add_subdirectory(asio)
 add_subdirectory(inproc_bus)
 add_subdirectory(nic_group)
+
+if (MDNSPP_ENABLE_ENCRYPT)
+    add_subdirectory(encrypt)
+endif ()

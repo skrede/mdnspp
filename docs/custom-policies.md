@@ -37,7 +37,7 @@ class basic_service_monitor;
 template <Policy P>
 class basic_nic_monitor;
 
-template <Policy P, template <typename> class... Peers>
+template <Policy P, template <typename...> class... Peers>
 class basic_nic_group;
 ```
 
@@ -50,6 +50,10 @@ A `Policy` struct must provide:
 
 All `basic_*` classes construct their socket and timer from the executor.
 That constructor form (e.g., `socket_type{ex}`) must be available.
+
+An optional fifth member is supported:
+
+5. `socket_options_type` -- a type derived from `socket_options` that the `basic_*` constructors accept instead of the base `socket_options` when present. Detected via the `policy_socket_options_t<P>` trait. Policies without this member use the base `socket_options` (the default). `encrypted_policy<Inner>` sets this to `encrypt_socket_options`.
 
 See [policies.md](policies.md) for DefaultPolicy, AsioPolicy, and MockPolicy
 usage examples and the `post()` threading model.

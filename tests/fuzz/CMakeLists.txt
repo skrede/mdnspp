@@ -36,3 +36,20 @@ add_custom_target(fuzz_corpus ALL
     DEPENDS generate_corpus
     COMMENT "Generating fuzz seed corpus"
 )
+
+if (MDNSPP_ENABLE_ENCRYPT)
+    function(make_encrypt_fuzz_target TARGET_FILE)
+        add_executable(${TARGET_FILE} "${TARGET_FILE}.cpp")
+        target_link_libraries(${TARGET_FILE} PRIVATE mdnspp::encrypt)
+        target_compile_options(${TARGET_FILE} PRIVATE
+            -fsanitize=fuzzer,address,undefined
+            -fno-sanitize-recover=all
+            -fno-omit-frame-pointer
+            -g
+            -O1
+        )
+        target_link_options(${TARGET_FILE} PRIVATE -fsanitize=fuzzer,address,undefined)
+    endfunction()
+
+    make_encrypt_fuzz_target(fuzz_encrypted_packet)
+endif ()

@@ -114,6 +114,7 @@ make_inproc_test(inproc_bus_legacy_unicast_test)
 make_inproc_test(encrypt_policy_trait_test)
 if (MDNSPP_ENABLE_ENCRYPT)
     target_link_libraries(encrypt_policy_trait_test PRIVATE mdnspp::encrypt)
+    target_compile_definitions(encrypt_policy_trait_test PRIVATE MDNSPP_ENABLE_ENCRYPT=1)
 endif ()
 
 if (MDNSPP_ENABLE_ENCRYPT)

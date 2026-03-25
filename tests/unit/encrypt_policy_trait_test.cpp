@@ -8,8 +8,10 @@
 
 #include "mdnspp/inproc/inproc_policy.h"
 
+#ifdef MDNSPP_ENABLE_ENCRYPT
 #include "mdnspp/encrypt/encrypted_policy.h"
 #include "mdnspp/encrypt/encrypt_socket_options.h"
+#endif
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -69,11 +71,13 @@ static_assert(mdnspp::Policy<mdnspp::InProcTestPolicy>,
 static_assert(mdnspp::Policy<MockExtendedPolicy>,
     "MockExtendedPolicy with socket_options_type must still satisfy Policy concept");
 
+#ifdef MDNSPP_ENABLE_ENCRYPT
 // POLX-04: basic_nic_group_options<encrypted_policy<DefaultPolicy>> factory return type
 static_assert(std::same_as<
     mdnspp::policy_socket_options_t<mdnspp::encrypted_policy<mdnspp::DefaultPolicy>>,
     mdnspp::encrypt_socket_options>,
     "policy_socket_options_t<encrypted_policy<DefaultPolicy>> must resolve to encrypt_socket_options");
+#endif
 
 // ---------------------------------------------------------------------------
 // Runtime test — confirms compilation with a trivial assertion
@@ -94,6 +98,7 @@ TEST_CASE("policy_socket_options_t resolves correctly at runtime", "[policy][tra
     }
 }
 
+#ifdef MDNSPP_ENABLE_ENCRYPT
 TEST_CASE("POLX-03/04: basic_nic_group_options<encrypted_policy<DefaultPolicy>> factory returns encrypt_socket_options",
           "[policy][trait][encrypt]")
 {
@@ -117,3 +122,4 @@ TEST_CASE("POLX-03/04: basic_nic_group_options<encrypted_policy<DefaultPolicy>> 
     // POLX-03: the returned options carry encrypt-specific fields
     REQUIRE(result.encrypt.sender_id == 99);
 }
+#endif

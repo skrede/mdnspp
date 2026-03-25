@@ -9,6 +9,7 @@
 #include <vector>
 #include <cstddef>
 #include <cstring>
+#include <algorithm>
 
 namespace {
 
@@ -24,6 +25,29 @@ std::vector<std::byte> make_payload(std::size_t size = 200)
     return std::vector<std::byte>(size, std::byte{0xAB});
 }
 
+}
+
+TEST_CASE("Encrypt benchmark smoke test", "[encrypt]")
+{
+    REQUIRE(mdnspp::init_crypto());
+
+    auto key = make_key();
+    auto payload = make_payload(200);
+
+    mdnspp::encrypted_packet_header hdr;
+    hdr.sender_id = 1;
+    hdr.sequence  = 1;
+    auto encrypted = mdnspp::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload);
+
+    REQUIRE(encrypted.size() > payload.size());
+
+    auto decrypted = mdnspp::aead_decrypt(
+        std::span<const std::byte, 32>(key),
+        std::span<const std::byte>(encrypted));
+
+    REQUIRE(decrypted.has_value());
+    REQUIRE(decrypted->size() == payload.size());
+    REQUIRE(std::ranges::equal(*decrypted, payload));
 }
 
 TEST_CASE("Cleartext baseline throughput", "[!benchmark][encrypt]")

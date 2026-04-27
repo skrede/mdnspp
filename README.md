@@ -333,6 +333,7 @@ FetchContent_MakeAvailable(mdnspp)
 
 target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 # or: target_link_libraries(my_app PRIVATE mdnspp::asio)
+# (mdnspp::asio requires -DMDNSPP_ENABLE_ASIO_POLICY=ON)
 ```
 
 For `find_package`, building from source, and all available CMake targets, see the [CMake Integration](docs/cmake-integration.md) guide.

@@ -1,7 +1,7 @@
 add_subdirectory(mdnspp)
 
-add_subdirectory(mdnspp-asio)
-if(TARGET mdnspp::asio)
+if(MDNSPP_ENABLE_ASIO_POLICY)
+    add_subdirectory(mdnspp-asio)
     add_dependencies(mdnspp_asio mdnspp)
 endif()
 

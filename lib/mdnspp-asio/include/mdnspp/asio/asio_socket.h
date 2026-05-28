@@ -52,6 +52,7 @@ public:
             m_socket.open(asio::ip::udp::v6());
             configure_ttl_extraction(true);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true));
+            apply_reuse_port();
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v6::any(), opts.multicast_group.port));
 
             if(!opts.interface_address.empty())
@@ -71,6 +72,7 @@ public:
             m_socket.open(asio::ip::udp::v4());
             configure_ttl_extraction(false);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true));
+            apply_reuse_port();
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), opts.multicast_group.port));
 
             if(!opts.interface_address.empty())
@@ -109,6 +111,7 @@ public:
             configure_ttl_extraction(true);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
             if(ec) return;
+            apply_reuse_port();
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v6::any(), opts.multicast_group.port), ec);
             if(ec) return;
 
@@ -135,6 +138,7 @@ public:
             configure_ttl_extraction(false);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
             if(ec) return;
+            apply_reuse_port();
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), opts.multicast_group.port), ec);
             if(ec) return;
 
@@ -401,6 +405,21 @@ public:
     auto native_handle() { return m_socket.native_handle(); }
 
 private:
+    // Apply SO_REUSEPORT in addition to asio's reuse_address (SO_REUSEADDR),
+    // mirroring DefaultSocket which sets both. For co-located same-port
+    // multicast sockets (e.g. an announcing server and a browsing monitor in
+    // one process, both bound to :5353), SO_REUSEPORT is the portable option
+    // for guaranteeing inbound multicast fan-out to every joined socket across
+    // kernels. Must be set before bind(). No-op where SO_REUSEPORT is absent.
+    void apply_reuse_port()
+    {
+#if !defined(_WIN32) && defined(SO_REUSEPORT)
+        const int one = 1;
+        (void)::setsockopt(m_socket.native_handle(), SOL_SOCKET, SO_REUSEPORT,
+                           reinterpret_cast<const char *>(&one), sizeof(one));
+#endif
+    }
+
     void configure_ttl_extraction(bool is_v6)
     {
 #ifdef _WIN32

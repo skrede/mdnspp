@@ -23,7 +23,25 @@ struct always_false : std::false_type
 {
 };
 
+template <typename P, typename = void>
+struct policy_socket_options
+{
+    using type = socket_options;
+};
+
+template <typename P>
+struct policy_socket_options<P,
+    std::void_t<std::enable_if_t<
+        std::derived_from<typename P::socket_options_type, socket_options>,
+        typename P::socket_options_type>>>
+{
+    using type = typename P::socket_options_type;
+};
+
 }
+
+template <typename P>
+using policy_socket_options_t = typename detail::policy_socket_options<P>::type;
 
 /// Metadata carried with each received packet.
 /// Passed to the socket handler and forwarded through recv_loop to packet handlers.
@@ -69,8 +87,8 @@ concept Policy = requires
     && std::constructible_from<typename P::timer_type, typename P::executor_type>
     && std::constructible_from<typename P::socket_type, typename P::executor_type, std::error_code&>
     && std::constructible_from<typename P::timer_type, typename P::executor_type, std::error_code&>
-    && std::constructible_from<typename P::socket_type, typename P::executor_type, const socket_options&>
-    && std::constructible_from<typename P::socket_type, typename P::executor_type, const socket_options&, std::error_code&>
+    && std::constructible_from<typename P::socket_type, typename P::executor_type, const policy_socket_options_t<P>&>
+    && std::constructible_from<typename P::socket_type, typename P::executor_type, const policy_socket_options_t<P>&, std::error_code&>
     && requires(typename P::executor_type ex, detail::move_only_function<void()> fn)
     {
         P::post(ex, std::move(fn));

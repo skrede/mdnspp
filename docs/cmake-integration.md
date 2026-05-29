@@ -30,7 +30,7 @@ add_executable(my_app main.cpp)
 target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 ```
 
-Link against `mdnspp::mdnspp` for standalone usage with the default policy, or `mdnspp::asio` for ASIO completion token support. The `mdnspp::asio` target is automatically available when standalone ASIO is found or fetched via `MDNSPP_CMAKE_FETCH_DEPS=ON`.
+Link against `mdnspp::mdnspp` for standalone usage with the default policy, or `mdnspp::asio` for ASIO completion token support. The `mdnspp::asio` target is built when `MDNSPP_ENABLE_ASIO_POLICY=ON`; ASIO is then discovered from the system (CMake config, pkg-config, or header search) or, if `MDNSPP_CMAKE_FETCH_DEPS=ON`, fetched via FetchContent.
 
 ## find_package
 
@@ -64,7 +64,7 @@ target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 | Target | Description |
 |--------|-------------|
 | `mdnspp::mdnspp` | DefaultPolicy with native sockets, all public headers; links `ws2_32` on Windows |
-| `mdnspp::asio` | AsioPolicy + async adapters; available when standalone ASIO is found or fetched |
+| `mdnspp::asio` | AsioPolicy + async adapters; built when `MDNSPP_ENABLE_ASIO_POLICY=ON` |
 | `mdnspp::inproc` | InProcPolicy for in-process multicast simulation and deterministic testing |
 | `mdnspp::testing` | MockPolicy and test utilities for unit testing without network access |
 
@@ -74,11 +74,13 @@ Most users want `mdnspp::mdnspp`. Add `mdnspp::asio` if you need ASIO completion
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `MDNSPP_CMAKE_FETCH_DEPS` | `OFF` | Use FetchContent to download dependencies (ASIO, Catch2) |
+| `MDNSPP_ENABLE_ASIO_POLICY` | `OFF` | Build the `mdnspp::asio` adapters (requires ASIO) |
+| `MDNSPP_ENABLE_ENCRYPT` | `OFF` | Build the `mdnspp::encrypt` library (requires libsodium) |
+| `MDNSPP_CMAKE_FETCH_DEPS` | `OFF` | Use FetchContent to download dependencies (ASIO, libsodium, Catch2) |
 | `MDNSPP_BUILD_EXAMPLES` | `OFF` | Build example programs |
 | `MDNSPP_BUILD_TESTS` | `OFF` | Build test suite |
 
-The `mdnspp::asio` target is automatically available when ASIO is found on the system or when `MDNSPP_CMAKE_FETCH_DEPS=ON` fetches it. No separate option is needed.
+`MDNSPP_ENABLE_ASIO_POLICY` and `MDNSPP_CMAKE_FETCH_DEPS` are orthogonal: the first turns the ASIO adapters on, the second decides where ASIO comes from. With `MDNSPP_ENABLE_ASIO_POLICY=ON` and `MDNSPP_CMAKE_FETCH_DEPS=OFF`, ASIO is discovered from the system (CMake config, pkg-config, or header lookup, in that order); with both `ON`, ASIO is fetched via FetchContent.
 
 ## Building from Source
 
@@ -98,6 +100,7 @@ cmake -B build \
     -DCMAKE_BUILD_TYPE=Release \
     -DMDNSPP_BUILD_EXAMPLES=ON \
     -DMDNSPP_BUILD_TESTS=ON \
+    -DMDNSPP_ENABLE_ASIO_POLICY=ON \
     -DMDNSPP_CMAKE_FETCH_DEPS=ON
 cmake --build build
 ctest --test-dir build

@@ -54,6 +54,7 @@ inline suppression_mask parse_known_answers(std::span<const std::byte> data, siz
         offset += 4;
         uint16_t rdlength = read_u16_be(buf + offset);
         offset += 2;
+        size_t rdata_offset = offset;
         offset += rdlength;
 
         if(offset > data.size())
@@ -68,7 +69,18 @@ inline suppression_mask parse_known_answers(std::span<const std::byte> data, siz
         {
             switch(rtype)
             {
-            case dns_type::ptr:  mask.ptr = true; break;
+            case dns_type::ptr:
+                // A PTR record is shared by owner name (the service type) across
+                // every instance of that type. RFC 6762 §7.1 suppression must only
+                // fire when the known answer names *this* server's instance — i.e.
+                // its rdata target equals info.service_name. Without this check a
+                // browse query carrying any *other* node's PTR known-answer (same
+                // owner name, different target) would wrongly suppress our PTR,
+                // so a live-but-silent responder never answers a peer's browse.
+                if(auto target = read_dns_name(data, rdata_offset);
+                   target.has_value() && dns_name{*target} == info.service_name)
+                    mask.ptr = true;
+                break;
             case dns_type::srv:  mask.srv = true; break;
             case dns_type::a:    mask.a = true; break;
             case dns_type::aaaa: mask.aaaa = true; break;

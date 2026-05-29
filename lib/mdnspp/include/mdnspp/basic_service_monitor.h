@@ -84,10 +84,10 @@ public:
     /// @param copts      Cache options (goodbye_grace, on_expired callback).
     explicit basic_service_monitor(executor_type ex,
                                    monitor_options opts = {},
-                                   socket_options sock_opts = {},
+                                   policy_socket_options_t<P> sock_opts = {},
                                    mdns_options mdns_opts = {},
                                    cache_options copts = {})
-        : base(ex, sock_opts, std::move(mdns_opts))
+        : base(ex, std::move(sock_opts), std::move(mdns_opts))
         , m_rng(std::random_device{}())
         , m_opts(std::move(opts))
         , m_cache_opts(std::move(copts))
@@ -110,11 +110,11 @@ public:
     /// @param ec         Receives the error code on failure, cleared on success.
     basic_service_monitor(executor_type ex,
                           monitor_options opts,
-                          socket_options sock_opts,
+                          policy_socket_options_t<P> sock_opts,
                           mdns_options mdns_opts,
                           cache_options copts,
                           std::error_code &ec)
-        : base(ex, sock_opts, std::move(mdns_opts), ec)
+        : base(ex, std::move(sock_opts), std::move(mdns_opts), ec)
         , m_rng(std::random_device{}())
         , m_opts(std::move(opts))
         , m_cache_opts(std::move(copts))

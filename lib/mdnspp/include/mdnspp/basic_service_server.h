@@ -139,9 +139,9 @@ public:
     // Throwing constructor
     explicit basic_service_server(executor_type ex, service_info info,
                                   service_options opts = {},
-                                  socket_options sock_opts = {},
+                                  policy_socket_options_t<P> sock_opts = {},
                                   mdns_options mdns_opts = {})
-        : base(ex, sock_opts, std::move(mdns_opts))
+        : base(ex, std::move(sock_opts), std::move(mdns_opts))
         , m_response_timer(ex)
         , m_tc_timer(ex)
         , m_info(std::move(info))
@@ -152,9 +152,9 @@ public:
 
     // Non-throwing constructor
     basic_service_server(executor_type ex, service_info info,
-                         service_options opts, socket_options sock_opts,
+                         service_options opts, policy_socket_options_t<P> sock_opts,
                          mdns_options mdns_opts, std::error_code &ec)
-        : base(ex, sock_opts, std::move(mdns_opts), ec)
+        : base(ex, std::move(sock_opts), std::move(mdns_opts), ec)
         , m_response_timer(ex)
         , m_tc_timer(ex)
         , m_info(std::move(info))

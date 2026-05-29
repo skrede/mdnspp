@@ -371,6 +371,9 @@ announcing, goodbye, and conflict resolution behavior.
 | ASIO integration | AsioPolicy | `mdnspp::asio` |
 | Unit testing | MockPolicy | `mdnspp::testing` |
 | In-process simulation / testing | InProcPolicy | `mdnspp::inproc` |
+| PSK-encrypted mDNS multicast | `encrypted_policy<Inner>` | `mdnspp::mdnspp_encrypt` |
+
+See [Encrypted mDNS](encrypt/README.md) for setup and the [encrypted_policy API reference](encrypt/api/encrypted_policy.md).
 
 ## Next steps
 

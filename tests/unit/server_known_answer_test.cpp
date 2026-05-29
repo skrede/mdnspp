@@ -32,9 +32,22 @@ static service_info make_test_info()
 }
 
 // Build a packet with header (1 question placeholder) and answer records.
-// offset_out: where the answer section starts
+// offset_out: where the answer section starts.
+//
+// A PTR answer's rdata is the target instance name it points to (defaults to
+// info.service_name, i.e. "this server's own instance"). RFC 6762 §7.1
+// suppression keys on that target, so the test surface must carry a real PTR
+// target rather than dummy bytes. Non-PTR answers keep minimal dummy rdata.
+struct answer_spec
+{
+    std::string_view name;
+    dns_type rtype;
+    uint32_t ttl;
+    std::string_view ptr_target{"MyApp._http._tcp.local."};
+};
+
 static std::vector<std::byte> build_answer_packet(
-    std::initializer_list<std::tuple<std::string_view, dns_type, uint32_t>> answers,
+    std::initializer_list<answer_spec> answers,
     size_t &offset_out)
 {
     std::vector<std::byte> pkt;
@@ -56,19 +69,30 @@ static std::vector<std::byte> build_answer_packet(
     offset_out = pkt.size();
 
     // Answer records
-    for(auto &[name, rtype, ttl] : answers)
+    for(const auto &a : answers)
     {
-        auto encoded_name = encode_dns_name(name);
+        auto encoded_name = encode_dns_name(a.name);
         pkt.insert(pkt.end(), encoded_name.begin(), encoded_name.end());
-        push_u16_be(pkt, std::to_underlying(rtype));
+        push_u16_be(pkt, std::to_underlying(a.rtype));
         push_u16_be(pkt, 0x0001); // class IN
-        push_u32_be(pkt, ttl);
-        // Minimal rdata: 4 bytes dummy
-        push_u16_be(pkt, 0x0004);
-        pkt.push_back(std::byte{0x00});
-        pkt.push_back(std::byte{0x00});
-        pkt.push_back(std::byte{0x00});
-        pkt.push_back(std::byte{0x00});
+        push_u32_be(pkt, a.ttl);
+
+        if(a.rtype == dns_type::ptr)
+        {
+            // Real PTR rdata: the encoded target instance name.
+            auto target = encode_dns_name(a.ptr_target);
+            push_u16_be(pkt, static_cast<uint16_t>(target.size()));
+            pkt.insert(pkt.end(), target.begin(), target.end());
+        }
+        else
+        {
+            // Minimal rdata: 4 bytes dummy
+            push_u16_be(pkt, 0x0004);
+            pkt.push_back(std::byte{0x00});
+            pkt.push_back(std::byte{0x00});
+            pkt.push_back(std::byte{0x00});
+            pkt.push_back(std::byte{0x00});
+        }
     }
 
     return pkt;
@@ -93,15 +117,29 @@ TEST_CASE("parse_known_answers", "[server_known_answer]")
         CHECK_FALSE(mask.txt);
     }
 
-    SECTION("sets ptr=true for matching PTR answer with TTL >= threshold")
+    SECTION("sets ptr=true for matching PTR answer naming our instance with TTL >= threshold")
     {
         size_t offset;
         auto pkt = build_answer_packet({
-            {"_http._tcp.local.", dns_type::ptr, 4500}
+            {"_http._tcp.local.", dns_type::ptr, 4500, "MyApp._http._tcp.local."}
         }, offset);
         auto mask = parse_known_answers(std::span(pkt), offset, info);
         CHECK(mask.ptr);
         CHECK_FALSE(mask.srv);
+    }
+
+    SECTION("does NOT suppress a PTR answer naming a DIFFERENT instance")
+    {
+        // RFC 6762 §7.1: a browse query's known answers list the responder's own
+        // instances. A PTR for some *other* node (same service type, different
+        // target) must not suppress our PTR — otherwise a live-but-silent
+        // responder never answers a peer's browse for the shared service type.
+        size_t offset;
+        auto pkt = build_answer_packet({
+            {"_http._tcp.local.", dns_type::ptr, 4500, "OtherApp._http._tcp.local."}
+        }, offset);
+        auto mask = parse_known_answers(std::span(pkt), offset, info);
+        CHECK_FALSE(mask.ptr);
     }
 
     SECTION("ignores answers with TTL < threshold")

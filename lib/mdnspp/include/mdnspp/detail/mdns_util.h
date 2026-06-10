@@ -3,6 +3,10 @@
 
 #include "mdnspp/detail/platform.h"
 
+#ifndef _WIN32
+#include <unistd.h>
+#endif
+
 #include <cstdio>
 #include <string>
 #include <cstdint>
@@ -98,6 +102,28 @@ inline std::string ip_address_to_string(const sockaddr_in6 &addr)
 {
     return ip_address_to_string(
         reinterpret_cast<const sockaddr*>(&addr), sizeof(sockaddr_in6));
+}
+
+// Returns the OS host name (the value reported by ::gethostname), or an empty
+// string on failure. On Windows ::gethostname requires an initialized Winsock;
+// service_info::make() must work without a running peer (peers initialize
+// Winsock through winsock_guard in default_context.h), so initialize it once
+// here, process-wide, mirroring the WSAStartup(2, 2) call in winsock_guard.
+inline std::string os_hostname()
+{
+#ifdef _WIN32
+    static const int wsa_rc = []
+    {
+        WSADATA data{};
+        return ::WSAStartup(MAKEWORD(2, 2), &data);
+    }();
+    if(wsa_rc != 0)
+        return {};
+#endif
+    char buf[256]{};
+    if(::gethostname(buf, sizeof(buf) - 1) != 0)
+        return {};
+    return std::string{buf};
 }
 
 }

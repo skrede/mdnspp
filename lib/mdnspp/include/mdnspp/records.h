@@ -7,7 +7,7 @@
 #include <string>
 #include <vector>
 #include <cstdint>
-#include <iosfwd>
+#include <ostream>
 #include <variant>
 #include <optional>
 
@@ -85,8 +85,7 @@ using mdns_record_variant = std::variant<
     record_txt
 >;
 
-template<typename CharT, typename Traits>
-std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> &str, const record_ptr &r)
+inline std::ostream &operator<<(std::ostream &str, const record_ptr &r)
 {
     str << r.sender_address << ": PTR " << r.name << " -> " << r.ptr_name
         << " rclass " << to_string(r.rclass)
@@ -94,8 +93,7 @@ std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> 
     return str;
 }
 
-template<typename CharT, typename Traits>
-std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> &str, const record_srv &r)
+inline std::ostream &operator<<(std::ostream &str, const record_srv &r)
 {
     str << r.sender_address << ": SRV " << r.name << " -> " << r.srv_name
         << " port " << r.port << " weight " << r.weight << " priority " << r.priority
@@ -104,8 +102,7 @@ std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> 
     return str;
 }
 
-template<typename CharT, typename Traits>
-std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> &str, const record_a &r)
+inline std::ostream &operator<<(std::ostream &str, const record_a &r)
 {
     str << r.sender_address << ": A " << r.name << " -> " << r.address_string
         << " rclass " << to_string(r.rclass)
@@ -113,8 +110,7 @@ std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> 
     return str;
 }
 
-template<typename CharT, typename Traits>
-std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> &str, const record_aaaa &r)
+inline std::ostream &operator<<(std::ostream &str, const record_aaaa &r)
 {
     str << r.sender_address << ": AAAA " << r.name << " -> " << r.address_string
         << " rclass " << to_string(r.rclass)
@@ -122,8 +118,7 @@ std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> 
     return str;
 }
 
-template<typename CharT, typename Traits>
-std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> &str, const record_txt &r)
+inline std::ostream &operator<<(std::ostream &str, const record_txt &r)
 {
     str << r.sender_address << ": TXT " << r.name;
     for(const auto &e : r.entries)

@@ -8,12 +8,11 @@
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_enums.h"
 
-#include <iosfwd>
+#include <ostream>
 
 namespace mdnspp {
 
-template <typename CharT, typename Traits>
-std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> &os, dns_type t)
+inline std::ostream &operator<<(std::ostream &os, dns_type t)
 {
     auto sv = to_string(t);
     if(sv != "unknown")
@@ -21,8 +20,7 @@ std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> 
     return os << "unknown(" << detail::to_underlying(t) << ")";
 }
 
-template <typename CharT, typename Traits>
-std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> &os, dns_class c)
+inline std::ostream &operator<<(std::ostream &os, dns_class c)
 {
     auto sv = to_string(c);
     if(sv != "unknown")

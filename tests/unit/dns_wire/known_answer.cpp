@@ -298,6 +298,13 @@ SCENARIO("build_dns_query_tc splits large known-answer list across packets",
                 for(std::size_t i = 0; i + 1 < packets.size(); ++i)
                     REQUIRE(has_tc_bit(packets[i]));
             }
+
+            THEN("only the first packet carries questions; continuations have qdcount=0 (RFC 6762 §7.2)")
+            {
+                REQUIRE(::read_u16_be(packets.front(), 4) == 1);
+                for(std::size_t i = 1; i < packets.size(); ++i)
+                    REQUIRE(::read_u16_be(packets[i], 4) == 0);
+            }
         }
     }
 }

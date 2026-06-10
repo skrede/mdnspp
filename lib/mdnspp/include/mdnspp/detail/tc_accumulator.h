@@ -6,8 +6,9 @@
 
 #include <chrono>
 #include <vector>
-#include <optional>
 #include <utility>
+#include <optional>
+#include <algorithm>
 #include <functional>
 #include <unordered_map>
 
@@ -23,53 +24,76 @@ struct endpoint_hash
     }
 };
 
+// Accumulates known-answer records from truncated (TC) queries per source
+// (RFC 6762 §7.2). Each source carries its own drain deadline; the owner arms
+// one timer for the earliest deadline and drains all expired sources on fire.
 template <typename Clock = std::chrono::steady_clock>
 struct tc_accumulator
 {
     using time_point = typename Clock::time_point;
 
+    // Bounds memory growth from spoofed source endpoints; when full, the entry
+    // with the earliest deadline (oldest) is dropped to admit the new source.
+    static constexpr std::size_t max_pending_sources = 64;
+
     void accumulate(const endpoint &source, std::vector<mdns_record_variant> new_records,
                     std::chrono::milliseconds tc_wait)
     {
-        (void)tc_wait; // timer is logical: inserted_at is set once on first packet
-
         auto it = m_entries.find(source);
-        if (it != m_entries.end())
+        if(it != m_entries.end())
         {
-            // Continuation packet: append records, do NOT reset inserted_at
+            // Continuation packet: append records, do NOT reset the deadline
             auto &records = it->second.records;
             records.insert(records.end(),
                            std::make_move_iterator(new_records.begin()),
                            std::make_move_iterator(new_records.end()));
+            return;
         }
-        else
-        {
-            // First packet from this source: arm the timer
-            m_entries.emplace(source, entry{std::move(new_records), Clock::now()});
-        }
+
+        if(m_entries.size() >= max_pending_sources)
+            drop_oldest();
+
+        m_entries.emplace(source, entry{std::move(new_records), Clock::now() + tc_wait});
     }
 
-    [[nodiscard]] std::optional<std::vector<mdns_record_variant>>
-    take_if_ready(const endpoint &source, time_point now,
-                  std::chrono::milliseconds tc_wait)
+    // Earliest pending deadline, or nullopt when no sources are pending.
+    [[nodiscard]] std::optional<time_point> next_deadline() const
     {
-        auto it = m_entries.find(source);
-        if (it == m_entries.end())
-            return std::nullopt;
-
-        if (now >= it->second.inserted_at + tc_wait)
+        std::optional<time_point> earliest;
+        for(const auto &[source, e] : m_entries)
         {
-            auto records = std::move(it->second.records);
-            m_entries.erase(it);
-            return records;
+            if(!earliest.has_value() || e.deadline < *earliest)
+                earliest = e.deadline;
         }
+        return earliest;
+    }
 
-        return std::nullopt;
+    // Removes and returns the merged record sets of ALL sources whose deadline
+    // has passed at `now`.
+    [[nodiscard]] std::vector<std::pair<endpoint, std::vector<mdns_record_variant>>>
+    take_expired(time_point now)
+    {
+        std::vector<std::pair<endpoint, std::vector<mdns_record_variant>>> expired;
+        for(auto it = m_entries.begin(); it != m_entries.end();)
+        {
+            if(now >= it->second.deadline)
+            {
+                expired.emplace_back(it->first, std::move(it->second.records));
+                it = m_entries.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+        return expired;
     }
 
     void clear() noexcept { m_entries.clear(); }
 
     [[nodiscard]] bool empty() const noexcept { return m_entries.empty(); }
+
+    [[nodiscard]] std::size_t size() const noexcept { return m_entries.size(); }
 
     [[nodiscard]] bool has_pending(const endpoint &source) const
     {
@@ -80,8 +104,16 @@ private:
     struct entry
     {
         std::vector<mdns_record_variant> records;
-        time_point inserted_at{};
+        time_point deadline{};
     };
+
+    void drop_oldest()
+    {
+        auto oldest = std::min_element(m_entries.begin(), m_entries.end(),
+            [](const auto &a, const auto &b) { return a.second.deadline < b.second.deadline; });
+        if(oldest != m_entries.end())
+            m_entries.erase(oldest);
+    }
 
     std::unordered_map<endpoint, entry, endpoint_hash> m_entries;
 };

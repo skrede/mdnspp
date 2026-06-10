@@ -106,7 +106,7 @@ Idempotent and callable from any thread. Posts the teardown to the executor, so 
 void update_service_info(service_info new_info);
 ```
 
-Replaces the service's metadata at runtime. When `service_name` and `hostname` are unchanged, an unsolicited announcement burst with all records (PTR, SRV, TXT, A/AAAA) is multicast per RFC 6762 section 8.4; the number of announcements and their interval are controlled by `service_options::announce_count` and `service_options::announce_interval`. A changed `service_name` or `hostname` is a new record set and re-enters probing first (RFC 6762 section 8.1).
+Replaces the service's metadata at runtime. When `service_name` and `hostname` are unchanged, an unsolicited announcement burst with all records (PTR, SRV, TXT, A/AAAA) is multicast per RFC 6762 section 8.4; the number of announcements and their interval are controlled by `service_options::announce_count` and `service_options::announce_interval`. A changed `service_name` or `hostname` is a new record set and re-enters probing first (RFC 6762 section 8.1). When the replacement info carries `auto_address` (a `service_info::make()` result), its unset address fields are re-resolved under the `async_start` rule before the announcement (see [service_info](service_info.md)).
 
 **Thread-safety:** May be called from any thread. Internally uses `P::post()` to schedule the update on the server's event loop, ensuring no data races with the receive loop.
 
@@ -206,12 +206,19 @@ struct service_info {
     std::optional<std::string> address_ipv6;   // e.g. "fe80::1"
     std::vector<service_txt>   txt_records;    // RFC 6763 key/value entries
     std::vector<std::string>   subtypes;       // e.g. {"_printer"} for subtype enumeration
+    bool                       auto_address{false}; // set by make(); see service_info docs
 };
 ```
 
-Defined in `<mdnspp/service_info.h>`. Describes the service to announce. The `subtypes` field lists DNS-SD subtype labels (RFC 6763 section 7.1) for subtype-filtered discovery and optional subtype announcement (see `service_options::announce_subtypes`).
+Defined in `<mdnspp/service_info.h>`; full reference in [service_info](service_info.md). Describes the service to announce. The `subtypes` field lists DNS-SD subtype labels (RFC 6763 section 7.1) for subtype-filtered discovery and optional subtype announcement (see `service_options::announce_subtypes`).
 
-Use C++20 designated initializers for readability:
+The validated factory `service_info::make()` derives `service_name`, `service_type`, and `hostname` from an instance label and a service type, and sets `auto_address`: the server then resolves the unset `address_ipv4` / `address_ipv6` fields from the announcing interface at `async_start` and after every `update_service_info()` (RFC 6762 section 6.2; see [service_info](service_info.md)):
+
+```cpp
+auto info = mdnspp::service_info::make("MyApp", "_http._tcp", 8080);
+```
+
+Alternatively, use C++20 designated initializers for the fully explicit form:
 
 ```cpp
 mdnspp::service_info info{

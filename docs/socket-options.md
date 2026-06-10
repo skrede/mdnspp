@@ -7,7 +7,9 @@ set the multicast TTL, and enable or disable multicast loopback. By default,
 mdnspp binds to all interfaces (`INADDR_ANY`). When you need to isolate mDNS
 traffic to a specific NIC &mdash; for example on a multi-homed server or an
 embedded device with separate management and data networks &mdash; construct your
-mdnspp types with a `socket_options` value.
+mdnspp types with a `socket_options` value. The interface can be selected by
+OS index (`interface_index`), by name (`interface_name`), or by address
+(`interface_address`).
 
 **Headers:**
 
@@ -28,6 +30,8 @@ enum class loopback_mode : uint8_t { enabled, disabled };
 struct socket_options
 {
     std::string interface_address{};
+    std::optional<std::string> interface_name{};
+    std::optional<uint32_t> interface_index{};
     endpoint multicast_group{"224.0.0.251", 5353};
     loopback_mode multicast_loopback{loopback_mode::enabled};
     std::optional<std::uint8_t> multicast_ttl{};
@@ -40,10 +44,32 @@ struct socket_options
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `interface_address` | `std::string` | `""` (empty) | IPv4 address of the NIC to bind. Empty string means `INADDR_ANY` (all interfaces). |
+| `interface_address` | `std::string` | `""` (empty) | Address of the NIC to bind, in the family of `multicast_group.address` (see below). Empty string means `INADDR_ANY` (all interfaces). |
+| `interface_name` | `std::optional<std::string>` | `std::nullopt` | OS interface name of the NIC to bind (e.g. `"eth0"`, `"en0"`). Resolved at socket open via `enumerate_interfaces()`. |
+| `interface_index` | `std::optional<uint32_t>` | `std::nullopt` | OS interface index of the NIC to bind. Resolved at socket open via `enumerate_interfaces()`. |
 | `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. Change this to isolate mDNS traffic to a custom namespace. |
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets are looped back to the sending host. Enabled by default so that services and clients on the same machine can communicate. |
 | `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | Multicast time-to-live. When `socket_options` is used, defaults to 255 per RFC 6762 Section 11. `std::nullopt` leaves the OS default. |
+
+### Interface selection precedence and address family
+
+When more than one of the binding fields is set, the precedence at socket
+open is `interface_index` > `interface_name` > `interface_address`: a set
+`interface_index` is resolved by index only, and an unmatched index fails
+socket construction with `std::errc::invalid_argument` rather than falling
+back to the name or address (the same applies to an unmatched
+`interface_name`). An `interface_index` or `interface_name` is translated to
+the matching interface's address via `enumerate_interfaces()` and then
+follows the same code path as `interface_address`.
+
+The family of `multicast_group.address` selects the socket family, and the
+effective interface address must be of the same family: a dotted-decimal
+IPv4 address for IPv4 sockets (applied through `IP_MULTICAST_IF` /
+`IP_ADD_MEMBERSHIP`), or a colon-hex IPv6 address for IPv6 sockets
+(translated internally to the owning interface's index for
+`IPV6_MULTICAST_IF` / `IPV6_JOIN_GROUP`). A NIC selected by index or name
+that has no address of the socket family fails with
+`std::errc::invalid_argument`.
 
 Policies may extend `socket_options`: a policy declaring a
 `socket_options_type` derived from `socket_options` substitutes its own
@@ -130,46 +156,46 @@ int main()
 
 ### Binding to a specific NIC
 
-Enumerate interfaces, pick the one you want, and pass its address via
-`socket_options`:
+Name the interface directly &mdash; the address of the socket family is resolved
+at socket open:
 
 ```cpp
 #include <mdnspp/defaults.h>
 #include <mdnspp/service_info.h>
 
 #include <iostream>
-#include <ranges>
 
 int main()
 {
-    auto ifaces = mdnspp::enumerate_interfaces();
-
-    // Pick the first non-loopback interface that is up and has an IPv4 address
-    auto it = std::ranges::find_if(ifaces, [](const auto &iface) {
-        return iface.is_up && !iface.is_loopback && !iface.ipv4_address.empty();
-    });
-
-    if (it == ifaces.end())
-    {
-        std::cerr << "no suitable interface found" << std::endl;
-        return 1;
-    }
-
-    mdnspp::socket_options opts{.interface_address = it->ipv4_address};
+    mdnspp::socket_options opts{.interface_name = "eth0"};
 
     mdnspp::context ctx;
-    mdnspp::service_info info{
-        .service_name = "MyApp._http._tcp.local.",
-        .service_type = "_http._tcp.local.",
-        .hostname     = "myhost.local.",
-        .port         = 8080,
-        .address_ipv4 = it->ipv4_address,
-    };
+    auto info = mdnspp::service_info::make("MyApp", "_http._tcp", 8080);
+    if (!info.has_value())
+        return 1;
 
-    mdnspp::service_server srv{ctx, std::move(info), {}, opts};
+    // The server announces the A/AAAA addresses of the bound interface
+    // (service_info::make() leaves them unset; see service_info docs).
+    mdnspp::service_server srv{ctx, std::move(*info), {}, opts};
     srv.async_start();
     ctx.run();
 }
+```
+
+Alternatively, enumerate interfaces and pass an address explicitly:
+
+```cpp
+auto ifaces = mdnspp::enumerate_interfaces();
+
+// Pick the first non-loopback interface that is up and has an IPv4 address
+auto it = std::ranges::find_if(ifaces, [](const auto &iface) {
+    return iface.is_up && !iface.is_loopback && !iface.ipv4_address.empty();
+});
+
+if (it == ifaces.end())
+    return 1;
+
+mdnspp::socket_options opts{.interface_address = it->ipv4_address};
 ```
 
 ### Setting TTL for RFC 6762 compliance

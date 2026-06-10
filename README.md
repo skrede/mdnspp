@@ -56,6 +56,11 @@ mdnspp provides four record-consuming peer types plus the service server. They d
 
 ### Announce a Service
 
+`service_info::make()` builds the full record set from an instance label and
+a service type: the hostname is derived from the OS, ".local." is appended to
+a bare type, and the A/AAAA addresses are resolved from the announcing
+interface when the server starts.
+
 ```cpp
 #include <mdnspp/defaults.h>
 
@@ -66,17 +71,12 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_info info{
-        .service_name = "MyApp._http._tcp.local.",
-        .service_type = "_http._tcp.local.",
-        .hostname     = "myhost.local.",
-        .port         = 8080,
-        .address_ipv4 = "192.168.1.69",
-        .address_ipv6 = {},
-        .txt_records  = {{"path", "/index.html"}},
-    };
+    auto info = mdnspp::service_info::make("MyApp", "_http._tcp", 8080,
+                                           {.txt_records = {{"path", "/index.html"}}});
+    if(!info.has_value())
+        return 1; // mdns_error::invalid_name or mdns_error::invalid_argument
 
-    mdnspp::service_server srv{ctx, std::move(info)};
+    mdnspp::service_server srv{ctx, std::move(*info)};
 
     srv.async_start(
         [](std::error_code ec)
@@ -108,6 +108,21 @@ int main()
 [mdnspp@dev ~]$ ./serve
 Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)
 Service is live
+```
+
+Every field can also be specified explicitly with an aggregate-initialized
+`service_info`; addresses are then announced exactly as given (unset fields
+are omitted):
+
+```cpp
+mdnspp::service_info info{
+    .service_name = "MyApp._http._tcp.local.",
+    .service_type = "_http._tcp.local.",
+    .hostname     = "myhost.local.",
+    .port         = 8080,
+    .address_ipv4 = "192.168.1.69",
+    .txt_records  = {{"path", "/index.html"}},
+};
 ```
 
 ### Discover Services

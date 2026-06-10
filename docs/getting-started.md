@@ -106,16 +106,16 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::service_info info{
-        .service_name = "MyApp._http._tcp.local.",
-        .service_type = "_http._tcp.local.",
-        .hostname     = "myhost.local.",
-        .port         = 8080,
-        .address_ipv4 = "192.168.1.69",
-        .txt_records  = {{"path", "/index.html"}},
-    };
+    auto info = mdnspp::service_info::make("MyApp", "_http._tcp", 8080,
+                                           {.txt_records = {{"path", "/index.html"}}});
+    if(!info.has_value())
+    {
+        std::cerr << "invalid service description: "
+                  << make_error_code(info.error()).message() << std::endl;
+        return 1;
+    }
 
-    mdnspp::service_server srv{ctx, std::move(info)};
+    mdnspp::service_server srv{ctx, std::move(*info)};
 
     std::thread shutdown{[&srv] {
         std::this_thread::sleep_for(std::chrono::seconds(30));
@@ -140,9 +140,17 @@ int main()
 }
 ```
 
-`service_info` uses designated initializers to describe the service. The
-server probes for name uniqueness, announces, and then responds to mDNS
-queries. `async_start` takes two handlers: `on_ready` fires once with the
+`service_info::make()` returns `expected<service_info, mdns_error>`: it
+validates the service type (`mdns_error::invalid_name`) and the port
+(`mdns_error::invalid_argument`), escapes the instance label per
+RFC 1035 §5.1, appends `".local."` to a bare type, derives the hostname from
+the OS host name, and marks the unset A/AAAA addresses for resolution from
+the announcing interface at `async_start` (RFC 6762 §6.2). Every field can
+instead be specified explicitly with an aggregate-initialized `service_info`
+using designated initializers — addresses are then announced exactly as
+given, and unset fields are omitted (see
+[service_info](api/service_info.md)). The server probes for name uniqueness,
+announces, and then responds to mDNS queries. `async_start` takes two handlers: `on_ready` fires once with the
 startup outcome (`std::error_code{}` when live, `mdns_error::probe_conflict`
 when another responder holds the name and no `on_conflict` rename is
 provided), and `on_done` always fires after teardown completes. A background

@@ -102,10 +102,13 @@ server announces on the wrong network.
   multicast at all, so traffic sent into the tunnel disappears silently.
 - **Interface selection.** When the host has multiple candidate interfaces
   (Ethernet, Wi-Fi, `tun0`, container bridges, libvirt/VirtualBox host-only
-  adapters), bind explicitly: set
-  `socket_options::interface_address` to the IPv4 address of the interface
-  to use. Unset, the OS routing table chooses the egress interface for
-  multicast — frequently the VPN or a virtual bridge.
+  adapters), bind explicitly: set `socket_options::interface_name` (e.g.
+  `"eth0"`), `socket_options::interface_index`, or
+  `socket_options::interface_address` to select the interface to use
+  (precedence: index > name > address; see
+  [socket-options.md](socket-options.md)). Unset, the OS routing table
+  chooses the egress interface for multicast — frequently the VPN or a
+  virtual bridge.
 - **Multiple real interfaces.** To operate on all physical interfaces at
   once, use `nic_group` / `dynamic_nic_group` with an `interface_filter`
   excluding virtual adapters, rather than one peer on an unspecified

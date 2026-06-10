@@ -28,7 +28,8 @@ enum class mdns_error : uint32_t
     probe_conflict       = 8,
     invalid_ipv4_address = 9,
     invalid_ipv6_address = 10,
-    invalid_name         = 11
+    invalid_name         = 11,
+    invalid_argument     = 12
 };
 
 }
@@ -57,7 +58,8 @@ The category name is `"mdns"`; `ec.message()` yields a human-readable string
 | `probe_conflict` | RFC 6762 §8/§9 conflict resolution failed permanently; delivered to `basic_service_server`'s `on_ready` handler. |
 | `invalid_ipv4_address` | `service_info::address_ipv4` could not be encoded. |
 | `invalid_ipv6_address` | `service_info::address_ipv6` could not be encoded. |
-| `invalid_name` | A DNS name failed RFC 1035 §5.1 presentation-format validation (bad escape, empty label, label over 63 octets, name over 255 octets). Returned by `dns_name::parse()`, `parse_service_type_checked()`, and the name-taking `async_*` initiating functions. |
+| `invalid_name` | A DNS name failed RFC 1035 §5.1 presentation-format validation (bad escape, empty label, label over 63 octets, name over 255 octets). Returned by `dns_name::parse()`, `parse_service_type_checked()`, `service_info::make()`, and the name-taking `async_*` initiating functions. |
+| `invalid_argument` | A non-name argument failed validation. Returned by `service_info::make()` for `port == 0` — the `expected`-returning counterpart of the `std::errc::invalid_argument` used by constructors and initiating functions. |
 
 ## std::error_code conventions
 

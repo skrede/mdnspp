@@ -276,18 +276,19 @@ then `on_done` fires with `std::error_code{}` after teardown completes.
 ```cpp
 mdnspp::context ctx;
 
-mdnspp::service_info info{
-    .service_name = "MyApp._http._tcp.local.",
-    .service_type = "_http._tcp.local.",
-    .hostname     = "myhost.local.",
-    .port         = 8080,
-    .address_ipv4 = "192.168.1.10",
-};
+auto info = mdnspp::service_info::make("MyApp", "_http._tcp", 8080);
+if(!info.has_value())
+    return 1;
 
-mdnspp::service_server srv{ctx, std::move(info)};
+mdnspp::service_server srv{ctx, std::move(*info)};
 srv.async_start();
 ctx.run();
 ```
+
+`service_info::make()` derives the hostname from the OS and resolves the
+A/AAAA addresses from the announcing interface at `async_start`; the
+aggregate form specifies every field explicitly (see
+[service_info](service_info.md)).
 
 ### With conflict resolution
 

@@ -61,6 +61,7 @@ Guides and API reference for the mdnspp C++20 mDNS/DNS-SD library.
 ### Service Announcement
 
 - [service_server](api/service_server.md) -- mDNS service responder
+- [service_info](api/service_info.md) -- Service description struct, service_info::make(), address auto-detection
 - [service_options](api/service_options.md) -- Service announcement configuration
 
 ### Cache

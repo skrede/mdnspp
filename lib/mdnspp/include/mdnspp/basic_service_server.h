@@ -8,6 +8,7 @@
 #include "mdnspp/callback_types.h"
 #include "mdnspp/service_options.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/network_interface.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
@@ -15,6 +16,7 @@
 #include "mdnspp/detail/dns_query.h"
 #include "mdnspp/detail/tc_accumulator.h"
 #include "mdnspp/detail/server_validate.h"
+#include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/server_query_match.h"
 #include "mdnspp/detail/server_known_answer.h"
 #include "mdnspp/detail/basic_mdns_peer_base.h"
@@ -48,7 +50,11 @@ namespace mdnspp {
 //      Options are validated at construction; invalid combinations fail with
 //      std::errc::invalid_argument (thrown as std::system_error, or reported
 //      through the error_code overload).
-//   2. async_start(on_ready, on_done) -- begins probe -> announce -> live sequence
+//   2. async_start(on_ready, on_done) -- begins probe -> announce -> live sequence.
+//      When service_info::auto_address is set (service_info::make()), the
+//      unset address fields are resolved from the bound interface first
+//      (RFC 6762 section 6.2); update_service_info re-resolves under the
+//      same rule.
 //      on_ready fires with error_code{} when live. On permanent probe failure
 //      (conflict with no replacement name, or an unencodable name) on_ready
 //      fires with the failure reason (mdns_error::probe_conflict /
@@ -113,13 +119,14 @@ public:
                                   service_options opts = {},
                                   policy_socket_options_t<P> sock_opts = {},
                                   mdns_options mdns_opts = {})
-        : base(ex, std::move(sock_opts), std::move(mdns_opts))
+        : base(ex, sock_opts, std::move(mdns_opts))
         , m_response_timer(ex)
         , m_delay_timer(ex)
         , m_tc_timer(ex)
         , m_info(std::move(info))
         , m_opts(std::move(opts))
         , m_rng(std::random_device{}())
+        , m_binding(detail::extract_interface_binding(sock_opts))
     {
         if(auto ec = detail::validate_server_options(m_info, m_opts, this->m_mdns_opts))
             throw std::system_error(ec, "basic_service_server options");
@@ -129,13 +136,14 @@ public:
     basic_service_server(executor_type ex, service_info info,
                          service_options opts, policy_socket_options_t<P> sock_opts,
                          mdns_options mdns_opts, std::error_code &ec)
-        : base(ex, std::move(sock_opts), std::move(mdns_opts), ec)
+        : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_response_timer(ex)
         , m_delay_timer(ex)
         , m_tc_timer(ex)
         , m_info(std::move(info))
         , m_opts(std::move(opts))
         , m_rng(std::random_device{}())
+        , m_binding(detail::extract_interface_binding(sock_opts))
     {
         if(!ec)
             ec = detail::validate_server_options(m_info, m_opts, this->m_mdns_opts);
@@ -236,6 +244,7 @@ public:
             bool renamed = info.service_name != m_info.service_name
                         || info.hostname != m_info.hostname;
             m_info = std::move(info);
+            resolve_auto_addresses();
             if(renamed)
             {
                 start_probing();
@@ -263,6 +272,8 @@ private:
 
     void do_start()
     {
+        resolve_auto_addresses();
+
         this->m_loop = std::make_unique<detail::recv_loop<P>>(
             this->m_socket,
             this->m_timer,
@@ -398,6 +409,27 @@ private:
                 send_update_announce();
             });
         }
+    }
+
+    // RFC 6762 §6.2: advertised addresses must be valid on the announcing
+    // link. When service_info::auto_address is set (service_info::make()),
+    // fill the unset address fields from the interface the socket is bound to
+    // (socket_options interface_index / interface_name / interface_address),
+    // or, unbound, from the lowest-index non-loopback running interface per
+    // family (see detail::resolve_advertised_addresses). Runs at async_start
+    // and after every update_service_info.
+    void resolve_auto_addresses()
+    {
+        if(!m_info.auto_address)
+            return;
+        std::error_code ec;
+        auto interfaces = enumerate_interfaces(ec);
+        if(ec)
+        {
+            report_error(ec, "interface enumeration");
+            return;
+        }
+        detail::resolve_advertised_addresses(interfaces, m_binding, m_info);
     }
 
     // Validates address fields in m_info against the encode functions and invokes
@@ -1002,6 +1034,7 @@ private:
     completion_handler m_on_ready;
     completion_handler m_on_completion;
     std::mt19937 m_rng;
+    detail::interface_binding m_binding;
     detail::probe_announce_state m_pa_state;
     detail::pending_response m_pending;
     detail::tc_accumulator<clock_type> m_tc_acc;

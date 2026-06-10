@@ -11,6 +11,7 @@
 #include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/validate_multicast.h"
 #include "mdnspp/default/default_context.h"
 
@@ -326,6 +327,12 @@ private:
         const bool v6 = is_ipv6(opts.multicast_group.address);
         const int32_t family = v6 ? AF_INET6 : AF_INET;
 
+        // Translate interface_index / interface_name to the interface address
+        // of the socket family; precedence index > name > address. An unknown
+        // index or name fails with std::errc::invalid_argument.
+        const std::string iface_address = detail::resolve_socket_interface_address(opts, v6, ec);
+        if(ec) return;
+
         m_fd = ::socket(family, SOCK_DGRAM, IPPROTO_UDP);
         if(m_fd == detail::invalid_socket)
         {
@@ -352,9 +359,9 @@ private:
         }
 
         if(v6)
-            configure_ipv6(opts, ec);
+            configure_ipv6(opts, iface_address, ec);
         else
-            configure_ipv4(opts, ec);
+            configure_ipv4(opts, iface_address, ec);
 
         if(ec)
             return;
@@ -388,7 +395,8 @@ private:
     // IPv4 configuration
     // -------------------------------------------------------------------------
 
-    void configure_ipv4(const socket_options &opts, std::error_code &ec)
+    void configure_ipv4(const socket_options &opts, const std::string &iface_address,
+                        std::error_code &ec)
     {
         // Bind
         {
@@ -404,9 +412,9 @@ private:
 
         // Interface address
         in_addr iface_addr{};
-        if(opts.interface_address.empty())
+        if(iface_address.empty())
             iface_addr.s_addr = htonl(INADDR_ANY);
-        else if(::inet_pton(AF_INET, opts.interface_address.c_str(), &iface_addr) != 1)
+        else if(::inet_pton(AF_INET, iface_address.c_str(), &iface_addr) != 1)
         {
             ec = std::make_error_code(std::errc::invalid_argument);
             cleanup_on_error();
@@ -414,7 +422,7 @@ private:
         }
 
         // IP_MULTICAST_IF
-        if(!opts.interface_address.empty())
+        if(!iface_address.empty())
         {
             if(!set_sock_opt(IPPROTO_IP, IP_MULTICAST_IF, &iface_addr,
                              sizeof(iface_addr), ec))
@@ -481,7 +489,8 @@ private:
     // IPv6 configuration
     // -------------------------------------------------------------------------
 
-    void configure_ipv6(const socket_options &opts, std::error_code &ec)
+    void configure_ipv6(const socket_options &opts, const std::string &iface_address,
+                        std::error_code &ec)
     {
         // Bind
         {
@@ -495,10 +504,10 @@ private:
                 return;
         }
 
-        unsigned int iface_idx = resolve_ipv6_interface_index(opts.interface_address);
+        unsigned int iface_idx = resolve_ipv6_interface_index(iface_address);
 
         // IPV6_MULTICAST_IF
-        if(!opts.interface_address.empty())
+        if(!iface_address.empty())
         {
             if(!set_sock_opt(IPPROTO_IPV6, IPV6_MULTICAST_IF, &iface_idx,
                              sizeof(iface_idx), ec))

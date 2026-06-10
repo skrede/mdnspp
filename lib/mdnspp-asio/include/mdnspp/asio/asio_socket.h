@@ -6,6 +6,7 @@
 #include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/validate_multicast.h"
 
 #include <asio.hpp>
@@ -24,6 +25,7 @@
 
 #include <span>
 #include <array>
+#include <string>
 #include <vector>
 #include <optional>
 #include <system_error>
@@ -51,6 +53,18 @@ public:
         detail::validate_multicast_address(opts.multicast_group.address);
         const auto multicast_addr = asio::ip::make_address(opts.multicast_group.address);
 
+        // Translate interface_index / interface_name to the interface address
+        // of the socket family; precedence index > name > address. An unknown
+        // index or name fails with std::errc::invalid_argument.
+        std::string iface_address;
+        {
+            std::error_code resolve_ec;
+            iface_address = detail::resolve_socket_interface_address(
+                opts, multicast_addr.is_v6(), resolve_ec);
+            if(resolve_ec)
+                throw std::system_error(resolve_ec, "asio_socket interface resolution");
+        }
+
         if(multicast_addr.is_v6())
         {
             m_socket.open(asio::ip::udp::v6());
@@ -60,9 +74,9 @@ public:
             apply_reuse_port();
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v6::any(), opts.multicast_group.port));
 
-            if(!opts.interface_address.empty())
+            if(!iface_address.empty())
             {
-                auto iface_v6 = asio::ip::make_address_v6(opts.interface_address);
+                auto iface_v6 = asio::ip::make_address_v6(iface_address);
                 m_socket.set_option(asio::ip::multicast::outbound_interface(
                     static_cast<unsigned int>(iface_v6.scope_id())));
                 m_socket.set_option(asio::ip::multicast::join_group(multicast_addr));
@@ -81,9 +95,9 @@ public:
             apply_reuse_port();
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), opts.multicast_group.port));
 
-            if(!opts.interface_address.empty())
+            if(!iface_address.empty())
             {
-                auto iface_addr = asio::ip::make_address_v4(opts.interface_address);
+                auto iface_addr = asio::ip::make_address_v4(iface_address);
                 m_socket.set_option(asio::ip::multicast::outbound_interface(iface_addr));
                 m_socket.set_option(asio::ip::multicast::join_group(multicast_addr.to_v4(), iface_addr));
             }
@@ -110,6 +124,10 @@ public:
         const auto multicast_addr = asio::ip::make_address(opts.multicast_group.address, ec);
         if(ec) return;
 
+        const std::string iface_address = detail::resolve_socket_interface_address(
+            opts, multicast_addr.is_v6(), ec);
+        if(ec) return;
+
         if(multicast_addr.is_v6())
         {
             m_socket.open(asio::ip::udp::v6(), ec);
@@ -123,9 +141,9 @@ public:
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v6::any(), opts.multicast_group.port), ec);
             if(ec) return;
 
-            if(!opts.interface_address.empty())
+            if(!iface_address.empty())
             {
-                auto iface_v6 = asio::ip::make_address_v6(opts.interface_address, ec);
+                auto iface_v6 = asio::ip::make_address_v6(iface_address, ec);
                 if(ec) return;
                 m_socket.set_option(asio::ip::multicast::outbound_interface(
                     static_cast<unsigned int>(iface_v6.scope_id())), ec);
@@ -152,9 +170,9 @@ public:
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), opts.multicast_group.port), ec);
             if(ec) return;
 
-            if(!opts.interface_address.empty())
+            if(!iface_address.empty())
             {
-                auto iface_addr = asio::ip::make_address_v4(opts.interface_address, ec);
+                auto iface_addr = asio::ip::make_address_v4(iface_address, ec);
                 if(ec) return;
                 m_socket.set_option(asio::ip::multicast::outbound_interface(iface_addr), ec);
                 if(ec) return;

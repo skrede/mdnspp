@@ -73,6 +73,10 @@ jobs:
             [fuzz_walk_dns_frame_smart]=walk_frame
             [fuzz_roundtrip_name]=roundtrip
             [fuzz_roundtrip_dns_name]=roundtrip
+            [fuzz_match_queries]=server_query
+            [fuzz_parse_known_answers]=server_query
+            [fuzz_extract_authority]=server_query
+            [fuzz_tc_accumulate]=walk_frame
             [fuzz_encrypted_packet]=walk_frame
           )
 

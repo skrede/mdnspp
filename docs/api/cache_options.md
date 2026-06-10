@@ -24,7 +24,7 @@ struct cache_options {
 | `on_cache_flush` | `move_only_function<void(const cache_entry &, std::vector<cache_entry>)>` | `{}` | RFC 6762 §10.2 | Fires when a cache-flush record schedules other records for rapid expiry. The first argument is the authoritative record (with `cache_flush == true`) from the announcing host; the second is the list of same-name/same-type records from other origins that will be flushed. Called with the cache lock temporarily released. If not set, cache-flush events are silently handled (the records are still flushed). |
 | `goodbye_grace` | `std::chrono::seconds` | `1s` | RFC 6762 §10.1 | Grace period for goodbye records (TTL=0) before they are evicted from the cache. When a record is received with TTL=0 it is retained for this duration so that the application can observe the goodbye before eviction. |
 
-**Note:** All callbacks are optional. If not set, the cache still correctly implements RFC 6762 TTL expiry, cache-flush semantics, and goodbye handling -- the callbacks are pure observation hooks.
+**Note:** All callbacks are optional. If not set, the cache still correctly implements RFC 6762 TTL expiry, cache-flush semantics, and goodbye handling &mdash; the callbacks are pure observation hooks.
 
 All fields are move-only (`detail::move_only_function`). Use `std::move` when passing a named `cache_options` to the `record_cache` constructor.
 
@@ -80,6 +80,6 @@ int main()
 
 ## See Also
 
-- [record_cache](record_cache.md) -- the cache that consumes these options
-- [cache_entry](cache_entry.md) -- the value type passed to both callbacks
-- [record-cache](../record-cache.md) -- conceptual guide to cache semantics
+- [record_cache](record_cache.md) &mdash; the cache that consumes these options
+- [cache_entry](cache_entry.md) &mdash; the value type passed to both callbacks
+- [record-cache](../record-cache.md) &mdash; conceptual guide to cache semantics

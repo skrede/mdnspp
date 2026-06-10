@@ -107,7 +107,7 @@ o.async_observe([](std::error_code ec) {
 
 ## See Also
 
-- [querier](querier.md) -- uses `querier_completion_handler` and `record_callback`
+- [querier](querier.md) &mdash; uses `querier_completion_handler` and `record_callback`
 - [observer](observer.md) -- uses `observer_completion_handler` and `record_callback`
 - [service_discovery](service_discovery.md) -- uses `discovery_completion_handler`
 - [service_server](service_server.md) -- uses `server_completion_handler` and `error_handler`

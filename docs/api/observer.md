@@ -1,6 +1,6 @@
 # observer
 
-Listens for mDNS multicast traffic on the local network and delivers each parsed DNS record to a user-provided callback. No queries are sent -- `basic_observer` is a pure listener.
+Listens for mDNS multicast traffic on the local network and delivers each parsed DNS record to a user-provided callback. No queries are sent &mdash; `basic_observer` is a pure listener.
 
 ## Header and Alias
 
@@ -170,8 +170,8 @@ int main()
 
 ## See Also
 
-- [observer_options](observer_options.md) -- per-record callback configuration
-- [querier](querier.md) -- send a query and collect matching records
-- [service_discovery](service_discovery.md) -- discover services by type
-- [resolved_service](resolved_service.md) -- aggregated service view
-- [Socket Options](../socket-options.md) -- network interface selection, multicast TTL, loopback control
+- [observer_options](observer_options.md) &mdash; per-record callback configuration
+- [querier](querier.md) &mdash; send a query and collect matching records
+- [service_discovery](service_discovery.md) &mdash; discover services by type
+- [resolved_service](resolved_service.md) &mdash; aggregated service view
+- [Socket Options](../socket-options.md) &mdash; network interface selection, multicast TTL, loopback control

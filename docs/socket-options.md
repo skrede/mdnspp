@@ -5,8 +5,8 @@
 `socket_options` lets you control which network interface mDNS operates on,
 set the multicast TTL, and enable or disable multicast loopback. By default,
 mdnspp binds to all interfaces (`INADDR_ANY`). When you need to isolate mDNS
-traffic to a specific NIC -- for example on a multi-homed server or an
-embedded device with separate management and data networks -- construct your
+traffic to a specific NIC &mdash; for example on a multi-homed server or an
+embedded device with separate management and data networks &mdash; construct your
 mdnspp types with a `socket_options` value.
 
 **Headers:**
@@ -208,20 +208,20 @@ The `multicast_group` field controls which multicast address and port mdnspp
 joins and transmits on. The default is the IANA-assigned mDNS group
 `224.0.0.251:5353` (IPv4) or `[ff02::fb]:5353` (IPv6, Link-Local).
 
-Changing the group lets you create isolated namespaces -- for example, a test
+Changing the group lets you create isolated namespaces &mdash; for example, a test
 environment that does not interfere with production mDNS traffic on the same
 segment.
 
 ### Recommended address ranges
 
-**IPv4 -- isolated namespaces**
+**IPv4 &mdash; isolated namespaces**
 
 | Range | Scope | Notes |
 |-------|-------|-------|
 | `239.0.0.0/8` | Organization-Local (RFC 2365) | Preferred for private mDNS namespaces; routers do not forward this range by default |
 | `224.0.0.251` | Link-Local (IANA mDNS) | Standard mDNS group; use only for RFC 6762 production traffic |
 
-**IPv6 -- isolated namespaces**
+**IPv6 &mdash; isolated namespaces**
 
 | Range | Scope | Notes |
 |-------|-------|-------|
@@ -290,8 +290,8 @@ extraction is enabled:
 
 | Platform | DefaultSocket | AsioSocket |
 |----------|--------------|------------|
-| Linux | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` -- ASIO does not expose ancillary data from `async_receive_from` |
-| macOS | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` -- same ASIO limitation |
+| Linux | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` &mdash; ASIO does not expose ancillary data from `async_receive_from` |
+| macOS | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` &mdash; same ASIO limitation |
 | Windows | Real TTL via `WSARecvMsg` + `IP_RECVTTL` | `std::nullopt` -- same ASIO limitation |
 
 When TTL extraction fails silently (setsockopt error, platform unsupported),

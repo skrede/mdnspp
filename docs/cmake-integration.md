@@ -108,5 +108,5 @@ ctest --test-dir build
 
 ## Next Steps
 
-- [Getting Started](getting-started.md) -- Run your first query or service announcement
-- [Policies](policies.md) -- Learn about DefaultPolicy, AsioPolicy, and MockPolicy
+- [Getting Started](getting-started.md) &mdash; Run your first query or service announcement
+- [Policies](policies.md) &mdash; Learn about DefaultPolicy, AsioPolicy, and MockPolicy

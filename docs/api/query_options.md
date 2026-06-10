@@ -5,7 +5,7 @@
 `query_options` controls the behavior of a querier or service discovery
 instance: an optional per-record callback invoked as records arrive, and a
 silence timeout that determines how long to wait after the last relevant
-packet before completing. Both fields have sensible defaults -- construct
+packet before completing. Both fields have sensible defaults &mdash; construct
 with `query_options{}` and the silence timeout is 3 seconds with no
 per-record callback.
 
@@ -48,7 +48,7 @@ struct query_options
 
 Called each time a DNS record is parsed from an incoming mDNS response. The
 callback receives the sender endpoint (address and port) and the record
-variant. Use this for streaming output -- printing or processing records as
+variant. Use this for streaming output &mdash; printing or processing records as
 they arrive rather than waiting for the final result set.
 
 **Default:** None (records are still accumulated internally).
@@ -72,7 +72,7 @@ waits after receiving the last relevant packet before firing the completion
 handler. A shorter timeout completes faster but may miss late responders; a
 longer timeout catches slow devices but delays completion.
 
-**Default:** `3000ms` (3 seconds) -- a conventional mDNS default.
+**Default:** `3000ms` (3 seconds) &mdash; a conventional mDNS default.
 
 ```cpp
 mdnspp::query_options opts{.silence_timeout = std::chrono::seconds(5)};

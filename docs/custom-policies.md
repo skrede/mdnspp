@@ -2,7 +2,7 @@
 
 Every `basic_*` class template in mdnspp is parameterized on a `Policy`. A
 Policy is a struct (or class) that provides an executor type, a socket type, and
-a timer type -- letting you plug in any I/O backend without changing any mdnspp
+a timer type &mdash; letting you plug in any I/O backend without changing any mdnspp
 internals.
 
 Four built-in policies cover most use cases:
@@ -43,9 +43,9 @@ class basic_nic_group;
 
 A `Policy` struct must provide:
 
-1. `executor_type` -- the executor associated type
-2. `socket_type` -- satisfies `SocketLike<socket_type>`
-3. `timer_type` -- satisfies `TimerLike<timer_type>`
+1. `executor_type` &mdash; the executor associated type
+2. `socket_type` &mdash; satisfies `SocketLike<socket_type>`
+3. `timer_type` &mdash; satisfies `TimerLike<timer_type>`
 4. A static `post(executor_type, move_only_function<void()>)` function
 
 All `basic_*` classes construct their socket and timer from the executor.
@@ -53,7 +53,7 @@ That constructor form (e.g., `socket_type{ex}`) must be available.
 
 An optional fifth member is supported:
 
-5. `socket_options_type` -- a type derived from `socket_options` that the `basic_*` constructors accept instead of the base `socket_options` when present. Detected via the `policy_socket_options_t<P>` trait. Policies without this member use the base `socket_options` (the default). `encrypted_policy<Inner>` sets this to `encrypt_socket_options`.
+5. `socket_options_type` &mdash; a type derived from `socket_options` that the `basic_*` constructors accept instead of the base `socket_options` when present. Detected via the `policy_socket_options_t<P>` trait. Policies without this member use the base `socket_options` (the default). `encrypted_policy<Inner>` sets this to `encrypt_socket_options`.
 
 See [policies.md](policies.md) for DefaultPolicy, AsioPolicy, and MockPolicy
 usage examples and the `post()` threading model.
@@ -139,7 +139,7 @@ cancelled. `cancel` stops a pending wait immediately with an error code.
 ### Implementing a minimal custom Policy
 
 The following shows a minimal Policy that wraps a hypothetical custom event
-loop. It is illustrative -- real implementations will follow the pattern of
+loop. It is illustrative &mdash; real implementations will follow the pattern of
 `DefaultPolicy` or `AsioPolicy`.
 
 **Step 1: Define executor, socket, and timer types**
@@ -232,7 +232,7 @@ ex.run();
 
 `post()` must be thread-safe. mdnspp calls it from arbitrary threads (e.g., when
 `watch()` or `unwatch()` are called from a background thread). The posted
-function must execute on the correct executor thread -- the same thread that
+function must execute on the correct executor thread &mdash; the same thread that
 drives the event loop.
 
 Internally, every `post()` call goes through a `std::weak_ptr<bool>` guard. If
@@ -342,6 +342,6 @@ for building your own.
 
 ## See Also
 
-- [policies.md](policies.md) -- DefaultPolicy, AsioPolicy, and MockPolicy usage
+- [policies.md](policies.md) &mdash; DefaultPolicy, AsioPolicy, and MockPolicy usage
 - [API reference: policy.h](api/observer.md) -- SocketLike and TimerLike concept definitions
 - [Async Patterns](async-patterns.md) -- ASIO completion token forms (AsioPolicy)

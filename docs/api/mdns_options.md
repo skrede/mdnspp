@@ -125,7 +125,7 @@ mdnspp::mdns_options opts{.record_ttl = std::chrono::seconds{120}};
 
 ## See Also
 
-- [mdns-options](../mdns-options.md) -- conceptual guide: how backoff, TTL refresh, and TC handling interact
-- [query-backoff](../rfc/query-backoff.md) -- RFC 6762 §5.2 continuous querying implementation details
-- [tc-handling](../rfc/tc-handling.md) -- RFC 6762 §6 truncated-response accumulation
-- [service_monitor](service_monitor.md) -- primary consumer of `mdns_options` tunables
+- [mdns-options](../mdns-options.md) &mdash; conceptual guide: how backoff, TTL refresh, and TC handling interact
+- [query-backoff](../rfc/query-backoff.md) &mdash; RFC 6762 §5.2 continuous querying implementation details
+- [tc-handling](../rfc/tc-handling.md) &mdash; RFC 6762 §6 truncated-response accumulation
+- [service_monitor](service_monitor.md) &mdash; primary consumer of `mdns_options` tunables

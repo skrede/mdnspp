@@ -16,7 +16,7 @@ If you are new to ASIO, here is a minimal mental model:
 
 All examples below share this common setup. Configure mdnspp with
 `-DMDNSPP_ENABLE_ASIO_POLICY=ON` to build the adapters, then link
-`mdnspp::asio` -- the `MDNSPP_ENABLE_ASIO_POLICY` compile definition is
+`mdnspp::asio` &mdash; the `MDNSPP_ENABLE_ASIO_POLICY` compile definition is
 propagated to consumers automatically.
 
 ```cmake
@@ -213,5 +213,5 @@ All adapters accept any completion token satisfying
 
 ## Next steps
 
-- [Policies](policies.md) -- understand the policy architecture
-- [API Reference](api/) -- full type documentation
+- [Policies](policies.md) &mdash; understand the policy architecture
+- [API Reference](api/) &mdash; full type documentation

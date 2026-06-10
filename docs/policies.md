@@ -19,7 +19,7 @@ This design exists for two reasons:
 1. **Testability.** `MockPolicy` replaces real sockets and timers with
    in-process fakes, so unit tests run without network access.
 2. **Framework independence.** Swapping the policy swaps the entire I/O
-   backend -- native sockets, ASIO, or any custom executor -- without
+   backend &mdash; native sockets, ASIO, or any custom executor &mdash; without
    changing application code.
 
 ## The Policy concept
@@ -346,12 +346,12 @@ directly for custom thread-safe operations on the executor.
 When using `basic_service_server`, the server progresses through a defined
 state machine after `async_start()` is called:
 
-- **idle** -- constructed but not yet started.
-- **probing** -- sends 3 probe queries at 250 ms intervals (with a random
+- **idle** &mdash; constructed but not yet started.
+- **probing** &mdash; sends 3 probe queries at 250 ms intervals (with a random
   0--250 ms initial delay) to verify name uniqueness (RFC 6762 section 8.1).
   Any conflicting response triggers the `service_options::on_conflict`
   callback.
-- **announcing** -- sends a configurable burst of unsolicited announcements
+- **announcing** &mdash; sends a configurable burst of unsolicited announcements
   (`announce_count` packets at `announce_interval` intervals, default 2
   packets at 1 second) per RFC 6762 section 8.3.
 - **live** -- the server responds to matching queries with RFC 6762-delayed

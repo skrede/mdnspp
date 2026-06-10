@@ -87,7 +87,7 @@ The exponential backoff interval is capped at this value. Once reached, the
 monitor sends one query per `max_interval` indefinitely (until stopped).
 
 Risk of changing: Reducing to seconds or minutes is appropriate for networks
-with rapid service churn -- the monitor will re-query more frequently at
+with rapid service churn &mdash; the monitor will re-query more frequently at
 steady state. This increases query traffic proportionally and should only be
 done when the extra traffic is acceptable.
 
@@ -264,7 +264,7 @@ mdnspp::mdns_options opts{
 
 ## See Also
 
-- [RFC 6762 section 5.2](rfc/query-backoff.md) -- query backoff specification
-- [RFC 6762 section 10.2](rfc/tc-handling.md) -- TC handling specification
-- [Service Monitor](service-monitor.md) -- uses mdns_options for continuous discovery
-- [Policies](policies.md) -- how mdns_options fits into the constructor signature
+- [RFC 6762 section 5.2](rfc/query-backoff.md) &mdash; query backoff specification
+- [RFC 6762 section 10.2](rfc/tc-handling.md) &mdash; TC handling specification
+- [Service Monitor](service-monitor.md) &mdash; uses mdns_options for continuous discovery
+- [Policies](policies.md) &mdash; how mdns_options fits into the constructor signature

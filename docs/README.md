@@ -4,19 +4,19 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 
 ## Getting Started
 
-- [Getting Started](getting-started.md) -- Install mdnspp and run your first query or service announcement
+- [Getting Started](getting-started.md) &mdash; Install mdnspp and run your first query or service announcement
 
 ## Guides
 
-- [Policies](policies.md) -- Understand DefaultPolicy, AsioPolicy, and MockPolicy
-- [Socket Options](socket-options.md) -- Network interface selection, multicast TTL, and loopback control
-- [Async Patterns](async-patterns.md) -- ASIO completion tokens: callbacks, futures, coroutines, deferred
-- [CMake Integration](cmake-integration.md) -- FetchContent, find_package, and building from source
-- [Service Monitor](service-monitor.md) -- Continuous service tracking: monitoring modes, TTL refresh, loss detection
-- [Record Cache](record-cache.md) -- Standalone TTL-aware record cache: standalone vs wired usage, cache-flush semantics
-- [mDNS Options](mdns-options.md) -- Protocol timing tunables: query backoff, TTL refresh thresholds, TC handling
-- [Custom Policies](custom-policies.md) -- Writing your own Policy, SocketLike, and TimerLike implementations
-- [In-Process Bus](inproc-bus.md) -- InProcPolicy and shared bus for in-process mDNS scenarios
+- [Policies](policies.md) &mdash; Understand DefaultPolicy, AsioPolicy, and MockPolicy
+- [Socket Options](socket-options.md) &mdash; Network interface selection, multicast TTL, and loopback control
+- [Async Patterns](async-patterns.md) &mdash; ASIO completion tokens: callbacks, futures, coroutines, deferred
+- [CMake Integration](cmake-integration.md) &mdash; FetchContent, find_package, and building from source
+- [Service Monitor](service-monitor.md) &mdash; Continuous service tracking: monitoring modes, TTL refresh, loss detection
+- [Record Cache](record-cache.md) &mdash; Standalone TTL-aware record cache: standalone vs wired usage, cache-flush semantics
+- [mDNS Options](mdns-options.md) &mdash; Protocol timing tunables: query backoff, TTL refresh thresholds, TC handling
+- [Custom Policies](custom-policies.md) &mdash; Writing your own Policy, SocketLike, and TimerLike implementations
+- [In-Process Bus](inproc-bus.md) &mdash; InProcPolicy and shared bus for in-process mDNS scenarios
 - [Test Landscape](testing.md) -- Unit, integration, fuzz, and compile test categories
 - [NIC Group](nic-group.md) -- Multi-NIC orchestration: basic_nic_group, basic_nic_monitor, dynamic_nic_group
 

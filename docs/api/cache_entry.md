@@ -87,5 +87,5 @@ void print_cache(const mdnspp::record_cache<> &cache)
 
 ## See Also
 
-- [record_cache](record_cache.md) -- the cache that produces `cache_entry` values
-- [cache_options](cache_options.md) -- `on_expired` and `on_cache_flush` callbacks receive `cache_entry` values
+- [record_cache](record_cache.md) &mdash; the cache that produces `cache_entry` values
+- [cache_options](cache_options.md) &mdash; `on_expired` and `on_cache_flush` callbacks receive `cache_entry` values

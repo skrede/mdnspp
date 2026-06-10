@@ -162,7 +162,7 @@ See also the full [record_cache examples](../../examples/record_cache/) director
 
 ## See Also
 
-- [record-cache](../record-cache.md) -- conceptual guide: standalone vs wired usage, cache-flush semantics
-- [cache_options](cache_options.md) -- expiry and cache-flush callbacks
+- [record-cache](../record-cache.md) &mdash; conceptual guide: standalone vs wired usage, cache-flush semantics
+- [cache_options](cache_options.md) &mdash; expiry and cache-flush callbacks
 - [cache_entry](cache_entry.md) -- the value type returned by `find()`, `snapshot()`, `erase_expired()`
 - [service_monitor](service_monitor.md) -- uses `record_cache` internally for TTL-aware service tracking

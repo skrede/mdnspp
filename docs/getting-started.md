@@ -78,7 +78,7 @@ int main()
 ```
 
 `mdnspp::context` is the event loop. `ctx.run()` blocks until `ctx.stop()` is
-called -- without that call in the completion callback, the program hangs.
+called &mdash; without that call in the completion callback, the program hangs.
 
 The `query_options` struct holds a per-record callback (invoked as records
 arrive) and a silence timeout (default 3 seconds). The lambda passed to
@@ -86,7 +86,7 @@ arrive) and a silence timeout (default 3 seconds). The lambda passed to
 finishes (silence timeout or error).
 
 For resolved service instances (hostname, port, addresses) instead of raw
-records, use `async_browse` -- it returns `std::vector<resolved_service>`
+records, use `async_browse` &mdash; it returns `std::vector<resolved_service>`
 directly. For service type enumeration and subtype discovery, see
 [service_discovery](api/service_discovery.md).
 
@@ -134,7 +134,7 @@ server begins responding to mDNS queries after `async_start()` is called.
 A background thread stops the context after 30 seconds; in a real application,
 you would tie the stop to your own shutdown signal.
 
-Multiple mdnspp components can share the same context -- for example, two
+Multiple mdnspp components can share the same context &mdash; for example, two
 `service_server` instances or a `service_server` and an `observer` on one
 event loop. Each component creates its own socket, and the context
 multiplexes them all. See the `multi_serve` example.
@@ -180,9 +180,9 @@ dynamic builder, dedup modes, and interface filtering patterns.
 
 ## What's next
 
-- [Service Options](api/service_options.md) -- conflict resolution, goodbye, announcement tuning
-- [RFC Compliance](rfc/README.md) -- RFC 6762/6763 conformance status and feature documentation
-- [Policies](policies.md) -- understand the DefaultPolicy, AsioPolicy, and MockPolicy architecture
-- [Async Patterns](async-patterns.md) -- use ASIO completion tokens (futures, coroutines, deferred)
-- [NIC Group](nic-group.md) -- multi-NIC orchestration guide
-- [API Reference](api/) -- full type documentation
+- [Service Options](api/service_options.md) &mdash; conflict resolution, goodbye, announcement tuning
+- [RFC Compliance](rfc/README.md) &mdash; RFC 6762/6763 conformance status and feature documentation
+- [Policies](policies.md) &mdash; understand the DefaultPolicy, AsioPolicy, and MockPolicy architecture
+- [Async Patterns](async-patterns.md) &mdash; use ASIO completion tokens (futures, coroutines, deferred)
+- [NIC Group](nic-group.md) &mdash; multi-NIC orchestration guide
+- [API Reference](api/) &mdash; full type documentation

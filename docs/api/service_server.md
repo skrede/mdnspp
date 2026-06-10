@@ -111,7 +111,7 @@ Replaces the service's metadata at runtime and multicasts an unsolicited announc
 
 **Thread-safety:** May be called from any thread. Internally uses `P::post()` to schedule the update on the server's event loop, ensuring no data races with the receive loop.
 
-**Liveness guard:** The posted work captures a `std::weak_ptr` to the server's internal liveness sentinel. If the server is destroyed or stopped before the posted work executes, the update is silently discarded -- no dangling pointer access.
+**Liveness guard:** The posted work captures a `std::weak_ptr` to the server's internal liveness sentinel. If the server is destroyed or stopped before the posted work executes, the update is silently discarded &mdash; no dangling pointer access.
 
 **Precondition:** Must only be called on a running server (after `async_start()`, before `stop()`).
 

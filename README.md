@@ -11,15 +11,15 @@
 
 ## Features
 
-- **Cross-platform** -- Linux, macOS, and Windows.
-- **Standalone native networking** -- no external dependencies for the default policy.
-- **Network interface selection** -- run mDNS services on any NIC or bind to a specific NIC.
-- **Multi-NIC orchestration** -- `nic_group` and `dynamic_nic_grp` manage peer instances across all active interfaces automatically; `nic_monitor` detects interface changes at runtime.
-- **Receive-side TTL verification** -- RFC 6762 §11 enforcement via `recv_metadata::ttl` with platform-native extraction (`IP_RECVTTL`, `IP_PKTINFO`, `WSARecvMsg`).
-- **Thread-safe service updates** -- safely modify the records of running mDNS service server from any thread.
-- **Policy-based architecture** -- swap socket/timer/executor implementations at compile time.
-- **Optional ASIO support** -- networking and completion token support (callbacks, futures, coroutines, and deferred operations).
-- **[RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762)/[6763](https://datatracker.ietf.org/doc/html/rfc6763) compliance** -- probing, goodbye packets, known-answer suppression, traffic reduction, and [DNS-SD](docs/rfc/README.md).
+- **Cross-platform** &mdash; Linux, macOS, and Windows.
+- **Standalone native networking** &mdash; no external dependencies for the default policy.
+- **Network interface selection** &mdash; run mDNS services on any NIC or bind to a specific NIC.
+- **Multi-NIC orchestration** &mdash; `nic_group` and `dynamic_nic_grp` manage peer instances across all active interfaces automatically; `nic_monitor` detects interface changes at runtime.
+- **Receive-side TTL verification** &mdash; RFC 6762 §11 enforcement via `recv_metadata::ttl` with platform-native extraction (`IP_RECVTTL`, `IP_PKTINFO`, `WSARecvMsg`).
+- **Thread-safe service updates** &mdash; safely modify the records of running mDNS service server from any thread.
+- **Policy-based architecture** &mdash; swap socket/timer/executor implementations at compile time.
+- **Optional ASIO support** &mdash; networking and completion token support (callbacks, futures, coroutines, and deferred operations).
+- **[RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762)/[6763](https://datatracker.ietf.org/doc/html/rfc6763) compliance** &mdash; probing, goodbye packets, known-answer suppression, traffic reduction, and [DNS-SD](docs/rfc/README.md).
 
 ## Quick Start
 
@@ -252,7 +252,7 @@ int main()
 
 ### Unicast responses (QU bit)
 
-All mDNS traffic is multicast by default -- every device on the network sees every response.
+All mDNS traffic is multicast by default &mdash; every device on the network sees every response.
 However, a querier can set the QU bit (RFC 6762 §5.4) to request a unicast reply sent directly back to it, skipping the multicast group entirely.
 This can be useful when a device first joins the network and wants a fast answer without waiting for the usual multicast delay.
 
@@ -269,7 +269,7 @@ q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,
 ```
 
 On the server side, `service_server` detects the QU bit automatically and routes the response accordingly.
-To log incoming queries, set `service_options::on_query` -- `service_server` handles responses internally:
+To log incoming queries, set `service_options::on_query` &mdash; `service_server` handles responses internally:
 
 ```cpp
 mdnspp::service_options opts;
@@ -340,15 +340,15 @@ For `find_package`, building from source, and all available CMake targets, see t
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md) -- Install mdnspp and run your first query or service announcement
-- [Policies](docs/policies.md) -- Understand DefaultPolicy, AsioPolicy, and MockPolicy
-- [Socket Options](docs/socket-options.md) -- Network interface selection, multicast TTL, and loopback control
-- [Async Patterns](docs/async-patterns.md) -- ASIO completion tokens: callbacks, futures, coroutines, deferred
-- [CMake Integration](docs/cmake-integration.md) -- FetchContent, find_package, and building from source
-- [Service Options](docs/api/service_options.md) -- Conflict resolution, goodbye, announcement tuning
-- [RFC Compliance](docs/rfc/README.md) -- RFC 6762/6763 conformance status and feature documentation
+- [Getting Started](docs/getting-started.md) &mdash; Install mdnspp and run your first query or service announcement
+- [Policies](docs/policies.md) &mdash; Understand DefaultPolicy, AsioPolicy, and MockPolicy
+- [Socket Options](docs/socket-options.md) &mdash; Network interface selection, multicast TTL, and loopback control
+- [Async Patterns](docs/async-patterns.md) &mdash; ASIO completion tokens: callbacks, futures, coroutines, deferred
+- [CMake Integration](docs/cmake-integration.md) &mdash; FetchContent, find_package, and building from source
+- [Service Options](docs/api/service_options.md) &mdash; Conflict resolution, goodbye, announcement tuning
+- [RFC Compliance](docs/rfc/README.md) &mdash; RFC 6762/6763 conformance status and feature documentation
 - [API Reference](docs/api/)
 
 ## License
 
-Apache 2.0 License -- see [LICENSE](LICENSE) for details.
+Apache 2.0 License &mdash; see [LICENSE](LICENSE) for details.

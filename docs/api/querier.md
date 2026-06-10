@@ -53,7 +53,7 @@ explicit basic_querier(executor_type ex,
                        mdns_options mdns_opts = {});
 ```
 
-Constructs the querier from an executor, optional [`query_options`](query_options.md) (per-record callback and silence timeout), optional [`socket_options`](../socket-options.md) (network interface, multicast TTL, loopback), and optional [`mdns_options`](mdns_options.md) (query backoff, TTL refresh tunables). All options default to sensible values -- construct with just an executor for a 3-second silence timeout and no per-record callback. Throws on socket construction failure.
+Constructs the querier from an executor, optional [`query_options`](query_options.md) (per-record callback and silence timeout), optional [`socket_options`](../socket-options.md) (network interface, multicast TTL, loopback), and optional [`mdns_options`](mdns_options.md) (query backoff, TTL refresh tunables). All options default to sensible values &mdash; construct with just an executor for a 3-second silence timeout and no per-record callback. Throws on socket construction failure.
 
 ### Non-throwing
 
@@ -87,7 +87,7 @@ For multicast (QM) queries, the query is not sent immediately. Instead:
 1. The receive loop starts first to listen for traffic.
 2. A random delay of 20--120 ms is chosen (RFC 6762 section 5.2).
 3. During the delay window, incoming QM queries with a matching name and type are checked for duplicate question suppression (RFC 6762 section 7.3).
-4. If a duplicate is detected, the outgoing query is suppressed entirely -- another host has already asked the same question.
+4. If a duplicate is detected, the outgoing query is suppressed entirely &mdash; another host has already asked the same question.
 5. If no duplicate is seen, the query is sent after the delay expires.
 
 For unicast (QU) queries, the query is sent immediately with no delay and no duplicate suppression.
@@ -114,7 +114,7 @@ Sets a handler invoked when a fire-and-forget send operation fails. The handler 
 const std::vector<mdns_record_variant>& results() const noexcept;
 ```
 
-Returns a reference to the accumulated results. Remains valid after completion -- the completion handler receives a copy.
+Returns a reference to the accumulated results. Remains valid after completion &mdash; the completion handler receives a copy.
 
 ### Accessors
 
@@ -202,8 +202,8 @@ int main()
 
 ## See Also
 
-- [query_options](query_options.md) -- per-record callback and silence timeout configuration
-- [observer](observer.md) -- passively listen to all mDNS traffic
-- [service_discovery](service_discovery.md) -- higher-level service browsing
-- [resolved_service](resolved_service.md) -- aggregated service view
-- [Socket Options](../socket-options.md) -- network interface selection, multicast TTL, loopback control
+- [query_options](query_options.md) &mdash; per-record callback and silence timeout configuration
+- [observer](observer.md) &mdash; passively listen to all mDNS traffic
+- [service_discovery](service_discovery.md) &mdash; higher-level service browsing
+- [resolved_service](resolved_service.md) &mdash; aggregated service view
+- [Socket Options](../socket-options.md) &mdash; network interface selection, multicast TTL, loopback control

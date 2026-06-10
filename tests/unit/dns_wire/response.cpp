@@ -323,7 +323,7 @@ SCENARIO("build_dns_response ANY sets cache-flush on unique records only", "[bui
 
                 for(auto [rtype, rclass] : rrs)
                 {
-                    if(rtype == std::to_underlying(mdnspp::dns_type::ptr))
+                    if(rtype == mdnspp::detail::to_underlying(mdnspp::dns_type::ptr))
                         REQUIRE(rclass == 0x0001);
                     else
                         REQUIRE(rclass == 0x8001);

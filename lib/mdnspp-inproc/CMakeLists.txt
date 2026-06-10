@@ -3,6 +3,8 @@ set(INCLUDE_DIRECTORY include)
 add_library(mdnspp_inproc INTERFACE)
 add_library(mdnspp::inproc ALIAS mdnspp_inproc)
 
+target_compile_features(mdnspp_inproc INTERFACE cxx_std_20)
+
 target_include_directories(mdnspp_inproc INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>

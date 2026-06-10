@@ -3,6 +3,8 @@ set(INCLUDE_DIRECTORY include)
 add_library(mdnspp_testing INTERFACE)
 add_library(mdnspp::testing ALIAS mdnspp_testing)
 
+target_compile_features(mdnspp_testing INTERFACE cxx_std_20)
+
 target_include_directories(mdnspp_testing INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>

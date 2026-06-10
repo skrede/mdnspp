@@ -37,6 +37,8 @@ add_library(mdnspp INTERFACE ${PUBLIC_HEADERS})
 
 add_library(mdnspp::mdnspp ALIAS mdnspp)
 
+target_compile_features(mdnspp INTERFACE cxx_std_20)
+
 target_include_directories(mdnspp
     INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>

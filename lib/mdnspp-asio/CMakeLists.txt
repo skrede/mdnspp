@@ -67,6 +67,8 @@ set(PUBLIC_HEADERS
 add_library(mdnspp_asio INTERFACE)
 add_library(mdnspp::asio ALIAS mdnspp_asio)
 
+target_compile_features(mdnspp_asio INTERFACE cxx_std_20)
+
 target_include_directories(mdnspp_asio INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>

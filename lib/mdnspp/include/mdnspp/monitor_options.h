@@ -83,7 +83,7 @@ struct monitor_options
     /// Fires only when the minimum resolution threshold is met:
     /// PTR + SRV + at least one A or AAAA address record. Partial records are
     /// accumulated silently; users always receive a usable @c resolved_service.
-    detail::move_only_function<void(const resolved_service &)> on_found{};
+    move_only_function<void(const resolved_service &)> on_found{};
 
     /// Callback invoked when a record change alters an already-resolved service.
     ///
@@ -91,14 +91,14 @@ struct monitor_options
     /// degradations (address removed, TXT removed) while the SRV anchor record
     /// is still alive. Does not fire on TTL refreshes with identical rdata.
     /// One callback fires per changed record type within a single packet.
-    detail::move_only_function<void(const resolved_service &, update_event, dns_type)> on_updated{};
+    move_only_function<void(const resolved_service &, update_event, dns_type)> on_updated{};
 
     /// Callback invoked when a service is no longer reachable.
     ///
     /// Fires when the SRV anchor record expires or is explicitly withdrawn.
     /// Delivers the last-known fully-resolved @c resolved_service together with
     /// the reason for loss.
-    detail::move_only_function<void(const resolved_service &, loss_reason)> on_lost{};
+    move_only_function<void(const resolved_service &, loss_reason)> on_lost{};
 
     /// Query scheduling strategy.
     ///

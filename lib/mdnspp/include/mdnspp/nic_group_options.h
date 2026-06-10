@@ -35,8 +35,8 @@ template <Policy P>
 struct basic_nic_group_options
 {
     dedup_mode dedup{dedup_mode::merged};
-    detail::move_only_function<bool(const network_interface &)> interface_filter{};
-    detail::move_only_function<policy_socket_options_t<P>(const network_interface &)> socket_options_factory{};
+    move_only_function<bool(const network_interface &)> interface_filter{};
+    move_only_function<policy_socket_options_t<P>(const network_interface &)> socket_options_factory{};
     mdns_options mdns_opts{};
     nic_monitor_options monitor_opts{};
 };

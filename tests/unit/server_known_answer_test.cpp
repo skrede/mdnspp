@@ -63,7 +63,7 @@ static std::vector<std::byte> build_answer_packet(
     // A dummy question section (so offset starts after it)
     auto qname = encode_dns_name("_http._tcp.local.");
     pkt.insert(pkt.end(), qname.begin(), qname.end());
-    push_u16_be(pkt, std::to_underlying(dns_type::ptr));
+    push_u16_be(pkt, mdnspp::detail::to_underlying(dns_type::ptr));
     push_u16_be(pkt, 0x0001); // IN class
 
     offset_out = pkt.size();
@@ -73,7 +73,7 @@ static std::vector<std::byte> build_answer_packet(
     {
         auto encoded_name = encode_dns_name(a.name);
         pkt.insert(pkt.end(), encoded_name.begin(), encoded_name.end());
-        push_u16_be(pkt, std::to_underlying(a.rtype));
+        push_u16_be(pkt, mdnspp::detail::to_underlying(a.rtype));
         push_u16_be(pkt, 0x0001); // class IN
         push_u32_be(pkt, a.ttl);
 

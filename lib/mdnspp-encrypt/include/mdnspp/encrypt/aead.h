@@ -24,7 +24,7 @@ std::vector<std::byte> aead_encrypt(
 // Decrypt a full wire packet (header + ciphertext + tag).
 // Returns decrypted plaintext on success, encrypt_error on failure.
 // Verifies auth tag over ciphertext with header as AAD.
-detail::expected<std::vector<std::byte>, encrypt_error> aead_decrypt(
+expected<std::vector<std::byte>, encrypt_error> aead_decrypt(
     std::span<const std::byte, 32> key,
     std::span<const std::byte> packet);
 

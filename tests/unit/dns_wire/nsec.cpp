@@ -104,7 +104,7 @@ SCENARIO("build_probe_query produces valid probe packet with question and author
                 uint16_t qtype = read_u16_be(pkt.data() + offset);
                 uint16_t qclass = read_u16_be(pkt.data() + offset + 2);
 
-                REQUIRE(qtype == std::to_underlying(mdnspp::dns_type::any));
+                REQUIRE(qtype == mdnspp::detail::to_underlying(mdnspp::dns_type::any));
                 REQUIRE(qclass == 0x8001);
             }
 
@@ -112,7 +112,7 @@ SCENARIO("build_probe_query produces valid probe packet with question and author
             {
                 auto rrs = collect_rr_type_class(pkt);
                 REQUIRE(rrs.size() == 1);
-                REQUIRE(rrs[0].first == std::to_underlying(mdnspp::dns_type::srv));
+                REQUIRE(rrs[0].first == mdnspp::detail::to_underlying(mdnspp::dns_type::srv));
             }
 
             THEN("the question name matches the service_name")

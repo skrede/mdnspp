@@ -5,6 +5,7 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/mdns_error.h"
 
+#include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/mdns_util.h"
@@ -35,7 +36,7 @@ static std::string extract_owner_name(std::span<const std::byte> buffer, const r
     return name ? std::move(*name) : std::string{};
 }
 
-inline detail::expected<mdns_record_variant, mdns_error>
+inline expected<mdns_record_variant, mdns_error>
 a(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     if(buffer.size() < meta.record_offset + meta.record_length)
@@ -60,7 +61,7 @@ a(std::span<const std::byte> buffer, const record_metadata &meta)
     return r;
 }
 
-inline detail::expected<mdns_record_variant, mdns_error>
+inline expected<mdns_record_variant, mdns_error>
 aaaa(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     if(buffer.size() < meta.record_offset + meta.record_length)
@@ -85,7 +86,7 @@ aaaa(std::span<const std::byte> buffer, const record_metadata &meta)
     return r;
 }
 
-inline detail::expected<mdns_record_variant, mdns_error>
+inline expected<mdns_record_variant, mdns_error>
 ptr(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     if(buffer.size() < meta.record_offset + meta.record_length)
@@ -106,7 +107,7 @@ ptr(std::span<const std::byte> buffer, const record_metadata &meta)
     return r;
 }
 
-inline detail::expected<mdns_record_variant, mdns_error>
+inline expected<mdns_record_variant, mdns_error>
 srv(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     if(buffer.size() < meta.record_offset + meta.record_length)
@@ -138,7 +139,7 @@ srv(std::span<const std::byte> buffer, const record_metadata &meta)
     return r;
 }
 
-inline detail::expected<mdns_record_variant, mdns_error>
+inline expected<mdns_record_variant, mdns_error>
 txt(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     if(buffer.size() < meta.record_offset + meta.record_length)
@@ -192,7 +193,7 @@ txt(std::span<const std::byte> buffer, const record_metadata &meta)
     return r;
 }
 
-inline detail::expected<mdns_record_variant, mdns_error>
+inline expected<mdns_record_variant, mdns_error>
 record(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     switch(meta.rtype)

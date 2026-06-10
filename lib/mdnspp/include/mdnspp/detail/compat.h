@@ -14,6 +14,14 @@
 
 namespace mdnspp::detail {
 
+// --- std::to_underlying compat (C++23, P1682) ---
+
+template <typename E>
+constexpr std::underlying_type_t<E> to_underlying(E e) noexcept
+{
+    return static_cast<std::underlying_type_t<E>>(e);
+}
+
 // --- move_only_function compat ---
 
 #if defined(__cpp_lib_move_only_function) && __cpp_lib_move_only_function >= 202110L
@@ -89,6 +97,9 @@ template <typename T, typename E>
 using expected = std::expected<T, E>;
 
 template <typename E>
+using unexpected = std::unexpected<E>;
+
+template <typename E>
 auto make_unexpected(E e) { return std::unexpected<E>(std::move(e)); }
 #else
 
@@ -146,6 +157,17 @@ template <typename E>
 constexpr auto make_unexpected(E e) { return unexpected<E>(std::move(e)); }
 
 #endif
+
+}
+
+namespace mdnspp {
+
+// Public names for the compat vocabulary types. These resolve to the std::
+// C++23 types when the standard library provides them, so a future migration
+// off the compat layer changes only detail/compat.h.
+using detail::expected;
+using detail::unexpected;
+using detail::move_only_function;
 
 }
 

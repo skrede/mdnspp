@@ -3,8 +3,16 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <sstream>
+#include <string>
+#include <string_view>
 
 using namespace mdnspp;
+
+// std::string::contains is C++23; the project targets C++20.
+static bool contains(const std::string &s, std::string_view needle)
+{
+    return s.find(needle) != std::string::npos;
+}
 
 TEST_CASE("record_ptr streams correctly", "[records][operator<<]")
 {
@@ -21,11 +29,11 @@ TEST_CASE("record_ptr streams correctly", "[records][operator<<]")
     os << r;
 
     const auto s = os.str();
-    REQUIRE(s.contains("192.168.1.10"));
-    REQUIRE(s.contains("PTR"));
-    REQUIRE(s.contains("_http._tcp.local."));
-    REQUIRE(s.contains("myservice._http._tcp.local."));
-    REQUIRE(s.contains("120"));
+    REQUIRE(contains(s, "192.168.1.10"));
+    REQUIRE(contains(s, "PTR"));
+    REQUIRE(contains(s, "_http._tcp.local."));
+    REQUIRE(contains(s, "myservice._http._tcp.local."));
+    REQUIRE(contains(s, "120"));
 }
 
 TEST_CASE("record_srv streams correctly", "[records][operator<<]")
@@ -46,10 +54,10 @@ TEST_CASE("record_srv streams correctly", "[records][operator<<]")
     os << r;
 
     const auto s = os.str();
-    REQUIRE(s.contains("10.0.0.1"));
-    REQUIRE(s.contains("SRV"));
-    REQUIRE(s.contains("myhost.local."));
-    REQUIRE(s.contains("8080"));
+    REQUIRE(contains(s, "10.0.0.1"));
+    REQUIRE(contains(s, "SRV"));
+    REQUIRE(contains(s, "myhost.local."));
+    REQUIRE(contains(s, "8080"));
 }
 
 TEST_CASE("record_a streams correctly", "[records][operator<<]")
@@ -67,10 +75,10 @@ TEST_CASE("record_a streams correctly", "[records][operator<<]")
     os << r;
 
     const auto s = os.str();
-    REQUIRE(s.contains("192.168.1.10"));
-    REQUIRE(s.contains("A"));
-    REQUIRE(s.contains("192.168.1.42"));
-    REQUIRE(s.contains("300"));
+    REQUIRE(contains(s, "192.168.1.10"));
+    REQUIRE(contains(s, "A"));
+    REQUIRE(contains(s, "192.168.1.42"));
+    REQUIRE(contains(s, "300"));
 }
 
 TEST_CASE("record_aaaa streams correctly", "[records][operator<<]")
@@ -88,10 +96,10 @@ TEST_CASE("record_aaaa streams correctly", "[records][operator<<]")
     os << r;
 
     const auto s = os.str();
-    REQUIRE(s.contains("fe80::1"));
-    REQUIRE(s.contains("AAAA"));
-    REQUIRE(s.contains("fe80::42"));
-    REQUIRE(s.contains("300"));
+    REQUIRE(contains(s, "fe80::1"));
+    REQUIRE(contains(s, "AAAA"));
+    REQUIRE(contains(s, "fe80::42"));
+    REQUIRE(contains(s, "300"));
 }
 
 TEST_CASE("record_txt streams correctly", "[records][operator<<]")
@@ -112,10 +120,10 @@ TEST_CASE("record_txt streams correctly", "[records][operator<<]")
     os << r;
 
     const auto s = os.str();
-    REQUIRE(s.contains("10.0.0.5"));
-    REQUIRE(s.contains("TXT"));
-    REQUIRE(s.contains("path=/api"));
-    REQUIRE(s.contains("flag"));
-    REQUIRE_FALSE(s.contains("flag="));
-    REQUIRE(s.contains("4500"));
+    REQUIRE(contains(s, "10.0.0.5"));
+    REQUIRE(contains(s, "TXT"));
+    REQUIRE(contains(s, "path=/api"));
+    REQUIRE(contains(s, "flag"));
+    REQUIRE_FALSE(contains(s, "flag="));
+    REQUIRE(contains(s, "4500"));
 }

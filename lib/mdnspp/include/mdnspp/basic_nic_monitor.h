@@ -75,13 +75,13 @@ public:
     }
 
     /// Register a callback fired (on the executor) when a NIC is added or changes.
-    void on_added(detail::move_only_function<void(const network_interface &)> cb)
+    void on_added(move_only_function<void(const network_interface &)> cb)
     {
         m_on_added = std::move(cb);
     }
 
     /// Register a callback fired (on the executor) when a NIC is removed or changes.
-    void on_removed(detail::move_only_function<void(const network_interface &)> cb)
+    void on_removed(move_only_function<void(const network_interface &)> cb)
     {
         m_on_removed = std::move(cb);
     }
@@ -268,8 +268,8 @@ private:
     std::atomic<bool> m_stopped{true};
     nic_monitor_options m_opts;
 
-    detail::move_only_function<void(const network_interface &)> m_on_added;
-    detail::move_only_function<void(const network_interface &)> m_on_removed;
+    move_only_function<void(const network_interface &)> m_on_added;
+    move_only_function<void(const network_interface &)> m_on_removed;
 
     mutable std::mutex m_snapshot_mutex;
     std::shared_ptr<const std::vector<network_interface>> m_snapshot;

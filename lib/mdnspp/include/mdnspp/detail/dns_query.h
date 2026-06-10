@@ -4,6 +4,7 @@
 #include "mdnspp/records.h"
 #include "mdnspp/service_info.h"
 
+#include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/dns_write.h"
 #include "mdnspp/detail/dns_enums.h"
@@ -57,7 +58,7 @@ inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qt
     packet.insert(packet.end(), encoded.begin(), encoded.end());
 
     // QTYPE (big-endian)
-    push_u16_be(packet, std::to_underlying(qtype));
+    push_u16_be(packet, detail::to_underlying(qtype));
 
     // QCLASS: IN (0x0001) with optional QU bit (bit 15) per RFC 6762 §5.4
     push_u16_be(packet, mode == response_mode::unicast ? uint16_t{0x8001} : uint16_t{0x0001});
@@ -98,7 +99,7 @@ inline std::vector<std::byte> build_probe_query(const service_info &info,
 
     // Question section: service_name, QTYPE=ANY, QCLASS=IN|QU
     packet.insert(packet.end(), name_service.begin(), name_service.end());
-    push_u16_be(packet, std::to_underlying(dns_type::any)); // QTYPE = ANY (0x00FF)
+    push_u16_be(packet, detail::to_underlying(dns_type::any)); // QTYPE = ANY (0x00FF)
     push_u16_be(packet, uint16_t{0x8001}); // QCLASS = IN | QU bit
 
     // Authority section: proposed SRV record

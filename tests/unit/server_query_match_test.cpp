@@ -57,7 +57,7 @@ static std::vector<std::byte> build_query_packet(std::string_view qname, dns_typ
 
     auto encoded = encode_dns_name(qname);
     pkt.insert(pkt.end(), encoded.begin(), encoded.end());
-    push_u16_be(pkt, std::to_underlying(qtype));
+    push_u16_be(pkt, mdnspp::detail::to_underlying(qtype));
     uint16_t qclass = 0x0001; // IN
     if(qu_bit)
         qclass |= 0x8000;
@@ -83,7 +83,7 @@ static std::vector<std::byte> build_multi_query_packet(
     {
         auto encoded = encode_dns_name(name);
         pkt.insert(pkt.end(), encoded.begin(), encoded.end());
-        push_u16_be(pkt, std::to_underlying(qtype));
+        push_u16_be(pkt, mdnspp::detail::to_underlying(qtype));
         uint16_t qclass = 0x0001;
         if(qu_bit)
             qclass |= 0x8000;

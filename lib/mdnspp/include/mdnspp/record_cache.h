@@ -6,6 +6,7 @@
 #include "mdnspp/cache_entry.h"
 #include "mdnspp/cache_options.h"
 
+#include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_enums.h"
 
 #include <mutex>
@@ -36,7 +37,7 @@ struct record_name_type_hash
     std::size_t operator()(const record_name_type &k) const noexcept
     {
         auto h1 = std::hash<dns_name>{}(k.name);
-        auto h2 = std::hash<uint16_t>{}(std::to_underlying(k.type));
+        auto h2 = std::hash<uint16_t>{}(detail::to_underlying(k.type));
         return h1 ^ (h2 << 16);
     }
 };

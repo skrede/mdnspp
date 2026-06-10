@@ -35,7 +35,7 @@ inline void append_dns_rr(std::vector<std::byte> &buf,
     if(name.empty() || rdata.size() > UINT16_MAX)
         return;
     buf.insert(buf.end(), name.begin(), name.end());
-    push_u16_be(buf, std::to_underlying(rtype));
+    push_u16_be(buf, detail::to_underlying(rtype));
     push_u16_be(buf, cache_flush ? uint16_t{0x8001} : uint16_t{0x0001});
     push_u32_be(buf, ttl);
     push_u16_be(buf, static_cast<uint16_t>(rdata.size()));
@@ -136,15 +136,15 @@ inline std::vector<std::byte> build_nsec_bitmap(const mdnspp::service_info &info
     };
 
     // Always set PTR(12), TXT(16), SRV(33)
-    set_bit(std::to_underlying(dns_type::ptr));  // 12
-    set_bit(std::to_underlying(dns_type::txt));  // 16
-    set_bit(std::to_underlying(dns_type::srv));  // 33
+    set_bit(detail::to_underlying(dns_type::ptr));  // 12
+    set_bit(detail::to_underlying(dns_type::txt));  // 16
+    set_bit(detail::to_underlying(dns_type::srv));  // 33
 
     // Conditionally set A(1) and AAAA(28)
     if(info.address_ipv4.has_value())
-        set_bit(std::to_underlying(dns_type::a));    // 1
+        set_bit(detail::to_underlying(dns_type::a));    // 1
     if(info.address_ipv6.has_value())
-        set_bit(std::to_underlying(dns_type::aaaa)); // 28
+        set_bit(detail::to_underlying(dns_type::aaaa)); // 28
 
     // Trim trailing zero bytes
     while(!bitmap.empty() && bitmap.back() == 0)

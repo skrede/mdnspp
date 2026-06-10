@@ -28,6 +28,8 @@ add_library(mdnspp_encrypt STATIC
 )
 add_library(mdnspp::encrypt ALIAS mdnspp_encrypt)
 
+target_compile_features(mdnspp_encrypt PUBLIC cxx_std_20)
+
 target_include_directories(mdnspp_encrypt PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
     $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>

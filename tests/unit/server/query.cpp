@@ -28,7 +28,7 @@ static std::vector<std::byte> make_multi_question_query(std::initializer_list<qu
     {
         auto encoded = encode_dns_name(q.name);
         packet.insert(packet.end(), encoded.begin(), encoded.end());
-        push_u16_be(packet, std::to_underlying(q.qtype));
+        push_u16_be(packet, mdnspp::detail::to_underlying(q.qtype));
         push_u16_be(packet, q.qu_bit ? uint16_t{0x8001} : uint16_t{0x0001});
     }
 

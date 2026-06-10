@@ -59,7 +59,7 @@ SCENARIO("NSEC in Additional for unmatched type", "[nsec]")
                     offset += 4; // ttl
                     uint16_t rdlen = read_u16_be(pkt.data() + offset);
                     offset += 2;
-                    if(rtype == std::to_underlying(dns_type::nsec))
+                    if(rtype == mdnspp::detail::to_underlying(dns_type::nsec))
                         found_nsec = true;
                     offset += rdlen;
                 }
@@ -105,7 +105,7 @@ SCENARIO("No NSEC in announcements", "[nsec][announce]")
                     if(!skip_dns_name(cdata, offset) || offset + 10 > sp.data.size())
                         break;
                     uint16_t rtype = read_u16_be(sp.data.data() + offset);
-                    REQUIRE(rtype != std::to_underlying(dns_type::nsec));
+                    REQUIRE(rtype != mdnspp::detail::to_underlying(dns_type::nsec));
                     offset += 2;
                     offset += 2; // rclass
                     offset += 4; // ttl
@@ -138,7 +138,7 @@ static std::vector<std::byte> make_query_with_known_answer(
     // Question section
     auto encoded_qname = encode_dns_name(qname);
     packet.insert(packet.end(), encoded_qname.begin(), encoded_qname.end());
-    push_u16_be(packet, std::to_underlying(qtype));
+    push_u16_be(packet, mdnspp::detail::to_underlying(qtype));
     push_u16_be(packet, 0x0001); // qclass=IN (multicast)
 
     // Answer section

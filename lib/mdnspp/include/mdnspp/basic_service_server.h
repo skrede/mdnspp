@@ -242,7 +242,7 @@ private:
         this->m_loop = std::make_unique<detail::recv_loop<P>>(
             this->m_socket,
             this->m_timer,
-            std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())
+            detail::infinite_silence_timeout, // run until stop()
             [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
             {
                 on_packet(meta.sender, data);

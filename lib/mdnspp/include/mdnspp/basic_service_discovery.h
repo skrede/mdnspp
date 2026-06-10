@@ -231,7 +231,7 @@ public:
     // Thread safety: the buffer is mutated on the executor thread while the
     // operation is in flight. Read it only after completion or from the
     // executor thread.
-    const std::vector<mdns_record_variant> &results() const noexcept
+    [[nodiscard]] const std::vector<mdns_record_variant> &results() const noexcept
     {
         return m_results;
     }
@@ -239,7 +239,7 @@ public:
     // Access aggregated resolved_service values produced by async_browse.
     // Populated at silence timeout (or stop()) -- empty until browse completes.
     // Same thread-safety contract as results().
-    const std::vector<resolved_service> &services() const noexcept
+    [[nodiscard]] const std::vector<resolved_service> &services() const noexcept
     {
         return m_services;
     }

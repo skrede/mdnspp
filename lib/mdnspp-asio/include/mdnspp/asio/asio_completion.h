@@ -8,6 +8,8 @@
 #include <asio/recycling_allocator.hpp>
 #include <asio/associated_allocator.hpp>
 
+#include <utility>
+
 namespace mdnspp {
 
 /// Dispatch a completion handler back onto its associated executor.

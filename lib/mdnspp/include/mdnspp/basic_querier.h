@@ -142,7 +142,7 @@ public:
     // Thread safety: the buffer is mutated on the executor thread while the
     // query is in flight. Read it only after completion or from the executor
     // thread.
-    const std::vector<mdns_record_variant> &results() const noexcept
+    [[nodiscard]] const std::vector<mdns_record_variant> &results() const noexcept
     {
         return m_results;
     }

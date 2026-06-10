@@ -255,7 +255,7 @@ public:
     /// Thread-safe via a mutex-guarded shared_ptr copy (the lock is held only
     /// long enough to copy the pointer). Always returns a consistent, immutable
     /// vector. Empty before any services are discovered.
-    std::vector<resolved_service> services() const
+    [[nodiscard]] std::vector<resolved_service> services() const
     {
         std::shared_ptr<const std::vector<resolved_service>> snap;
         {

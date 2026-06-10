@@ -187,6 +187,67 @@ SCENARIO("parse_service_type splits PTR name into components", "[dns_wire][parse
     }
 }
 
+SCENARIO("parse_service_type_checked rejects structurally incomplete names",
+         "[dns_wire][parse_service_type]")
+{
+    GIVEN("a complete service type")
+    {
+        auto result = mdnspp::parse_service_type_checked("_http._tcp.local.");
+
+        THEN("parsing succeeds with all components populated")
+        {
+            REQUIRE(result.has_value());
+            REQUIRE(result->type_name == "_http");
+            REQUIRE(result->protocol == "_tcp");
+            REQUIRE(result->domain == "local");
+        }
+    }
+
+    GIVEN("a name missing the domain label")
+    {
+        auto result = mdnspp::parse_service_type_checked("_http._tcp");
+
+        THEN("parsing fails with invalid_name")
+        {
+            REQUIRE_FALSE(result.has_value());
+            REQUIRE(result.error() == mdnspp::mdns_error::invalid_name);
+        }
+    }
+
+    GIVEN("a single label")
+    {
+        auto result = mdnspp::parse_service_type_checked("_http");
+
+        THEN("parsing fails with invalid_name")
+        {
+            REQUIRE_FALSE(result.has_value());
+            REQUIRE(result.error() == mdnspp::mdns_error::invalid_name);
+        }
+    }
+
+    GIVEN("an empty label between dots")
+    {
+        auto result = mdnspp::parse_service_type_checked("_http..local");
+
+        THEN("parsing fails with invalid_name")
+        {
+            REQUIRE_FALSE(result.has_value());
+            REQUIRE(result.error() == mdnspp::mdns_error::invalid_name);
+        }
+    }
+
+    GIVEN("an empty string")
+    {
+        auto result = mdnspp::parse_service_type_checked("");
+
+        THEN("parsing fails with invalid_name")
+        {
+            REQUIRE_FALSE(result.has_value());
+            REQUIRE(result.error() == mdnspp::mdns_error::invalid_name);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // build_dns_query_tc tests -- RFC 6762 §7.1 known-answer TC splitting
 // ---------------------------------------------------------------------------

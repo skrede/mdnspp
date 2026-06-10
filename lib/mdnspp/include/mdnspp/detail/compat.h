@@ -59,6 +59,7 @@ class move_only_function<R(Args...)>
 
 public:
     move_only_function() = default;
+    ~move_only_function() = default;
 
     move_only_function(std::nullptr_t) noexcept
     {
@@ -138,7 +139,7 @@ public:
     }
 
     constexpr explicit operator bool() const noexcept { return m_storage.index() == 0; }
-    constexpr bool has_value() const noexcept { return m_storage.index() == 0; }
+    [[nodiscard]] constexpr bool has_value() const noexcept { return m_storage.index() == 0; }
 
     constexpr T &operator*() & { return std::get<0>(m_storage); }
     constexpr const T &operator*() const & { return std::get<0>(m_storage); }
@@ -147,10 +148,10 @@ public:
     constexpr T *operator->() { return &std::get<0>(m_storage); }
     constexpr const T *operator->() const { return &std::get<0>(m_storage); }
 
-    constexpr T &value() & { return std::get<0>(m_storage); }
-    constexpr const T &value() const & { return std::get<0>(m_storage); }
+    [[nodiscard]] constexpr T &value() & { return std::get<0>(m_storage); }
+    [[nodiscard]] constexpr const T &value() const & { return std::get<0>(m_storage); }
 
-    constexpr const E &error() const & { return std::get<1>(m_storage).value; }
+    [[nodiscard]] constexpr const E &error() const & { return std::get<1>(m_storage).value; }
 };
 
 template <typename E>

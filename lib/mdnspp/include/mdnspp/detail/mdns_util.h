@@ -31,13 +31,13 @@ inline std::string ip_address_to_string(const sockaddr *addr, size_t addrlen)
 
         // Read 8 groups of 16-bit values (network byte order)
         uint16_t groups[8];
-        for(int i = 0; i < 8; ++i)
+        for(int32_t i = 0; i < 8; ++i)
             groups[i] = static_cast<uint16_t>((b[i * 2] << 8) | b[i * 2 + 1]);
 
         // Find longest run of zero groups for :: compression
-        int best_start = -1, best_len = 0;
-        int cur_start = -1, cur_len = 0;
-        for(int i = 0; i < 8; ++i)
+        int32_t best_start = -1, best_len = 0;
+        int32_t cur_start = -1, cur_len = 0;
+        for(int32_t i = 0; i < 8; ++i)
         {
             if(groups[i] == 0)
             {
@@ -63,7 +63,7 @@ inline std::string ip_address_to_string(const sockaddr *addr, size_t addrlen)
         if(best_len < 2) best_start = -1; // only compress runs of 2+
 
         std::string host;
-        for(int i = 0; i < 8;)
+        for(int32_t i = 0; i < 8;)
         {
             if(i == best_start)
             {

@@ -7,22 +7,22 @@ Listens for mDNS multicast traffic on the local network and delivers each parsed
 | Form | Header |
 |------|--------|
 | `basic_observer<P>` | `#include <mdnspp/basic_observer.h>` |
-| `mdnspp::observer` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
+| `mdnspp::observer` (default_policy alias) | `#include <mdnspp/defaults.h>` |
 
 ```cpp
 // Template form
-template <Policy P>
+template <policy_like P>
 class basic_observer;
 
-// DefaultPolicy alias (from defaults.h)
-using observer = basic_observer<DefaultPolicy>;
+// default_policy alias (from defaults.h)
+using observer = basic_observer<default_policy>;
 ```
 
 ## Template Parameters
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `P` | satisfies `Policy` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
+| `P` | satisfies `policy_like` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
 
 ## Type Aliases
 

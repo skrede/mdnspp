@@ -1,6 +1,6 @@
 # encrypted_socket
 
-Transparent encrypt/decrypt wrapper around any `SocketLike` socket. Satisfies the `SocketLike` concept itself, so it can be composed directly into `encrypted_policy`. Outgoing packets are encrypted with XChaCha20-Poly1305 AEAD; incoming packets are decrypted and anti-replay-checked before being delivered to the receive handler.
+Transparent encrypt/decrypt wrapper around any `socket_like` socket. Satisfies the `socket_like` concept itself, so it can be composed directly into `encrypted_policy`. Outgoing packets are encrypted with XChaCha20-Poly1305 AEAD; incoming packets are decrypted and anti-replay-checked before being delivered to the receive handler.
 
 ## Header and Alias
 
@@ -9,7 +9,7 @@ Transparent encrypt/decrypt wrapper around any `SocketLike` socket. Satisfies th
 | `encrypted_socket<InnerSocket>` | `#include <mdnspp/encrypt/encrypted_socket.h>` |
 
 ```cpp
-template <SocketLike InnerSocket>
+template <socket_like InnerSocket>
 class encrypted_socket;
 ```
 
@@ -17,7 +17,7 @@ class encrypted_socket;
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `InnerSocket` | satisfies `SocketLike` | The underlying socket used for actual network I/O. Typically the `socket_type` of a concrete policy such as `DefaultSocket` or `AsioSocket`. |
+| `InnerSocket` | satisfies `socket_like` | The underlying socket used for actual network I/O. Typically the `socket_type` of a concrete policy such as `default_socket` or `asio_socket`. |
 
 ## Constructors
 
@@ -145,7 +145,7 @@ InnerSocket &inner() noexcept;
 const InnerSocket &inner() const noexcept;
 ```
 
-Returns a reference to the wrapped inner socket. Provides access to socket-specific operations not exposed through `SocketLike` (e.g., `native_handle()` on platform socket types).
+Returns a reference to the wrapped inner socket. Provides access to socket-specific operations not exposed through `socket_like` (e.g., `native_handle()` on platform socket types).
 
 ## Key State
 
@@ -168,12 +168,12 @@ Returns a reference to the wrapped inner socket. Provides access to socket-speci
 std::array<std::byte, 32> raw_key{};
 // ... fill raw_key ...
 
-mdnspp::encrypt_socket_options sock_opts;
-sock_opts.encrypt.psk       = mdnspp::secure_key{raw_key};
+mdnspp::encrypt::encrypt_socket_options sock_opts;
+sock_opts.encrypt.psk       = mdnspp::encrypt::secure_key{raw_key};
 sock_opts.encrypt.sender_id = 1;
 
 mdnspp::context ctx;
-mdnspp::encrypted_observer obs{ctx, mdnspp::observer_options{}, std::move(sock_opts)};
+mdnspp::encrypt::encrypted_observer obs{ctx, mdnspp::observer_options{}, std::move(sock_opts)};
 obs.async_observe();
 ctx.run();
 ```

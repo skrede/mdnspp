@@ -1,7 +1,7 @@
 # Custom Policies
 
-Every `basic_*` class template in mdnspp is parameterized on a `Policy`. A
-Policy is a struct (or class) that provides an executor type, a socket type, and
+Every `basic_*` class template in mdnspp is parameterized on a policy. A
+policy is a struct (or class) that provides an executor type, a socket type, and
 a timer type &mdash; letting you plug in any I/O backend without changing any mdnspp
 internals.
 
@@ -9,43 +9,43 @@ Four built-in policies cover most use cases:
 
 | Policy | Header | Use case |
 |--------|--------|----------|
-| `DefaultPolicy` | `<mdnspp/defaults.h>` | Standalone, no external dependencies |
-| `AsioPolicy` | `<mdnspp/asio.h>` | Integration with ASIO (Boost.Asio or standalone Asio) |
-| `MockPolicy` | `<mdnspp/testing/mock_policy.h>` | Unit testing without network access |
-| `InProcPolicy` | `<mdnspp/inproc/inproc_policy.h>` | In-process multicast simulation |
+| `default_policy` | `<mdnspp/defaults.h>` | Standalone, no external dependencies |
+| `asio_policy` | `<mdnspp/asio.h>` | Integration with ASIO (Boost.Asio or standalone Asio) |
+| `mock_policy` | `<mdnspp/testing/mock_policy.h>` | Unit testing without network access |
+| `inproc_policy` | `<mdnspp/inproc/inproc_policy.h>` | In-process multicast simulation |
 
 ## Primer
 
-All mdnspp `basic_*` types are parameterized on `Policy`:
+All mdnspp `basic_*` types are on a policy type satisfying `policy_like`:
 
 ```cpp
-template <Policy P>
+template <policy_like P>
 class basic_observer;
 
-template <Policy P>
+template <policy_like P>
 class basic_querier;
 
-template <Policy P>
+template <policy_like P>
 class basic_service_discovery;
 
-template <Policy P>
+template <policy_like P>
 class basic_service_server;
 
-template <Policy P, typename Clock = std::chrono::steady_clock>
+template <policy_like P, typename Clock = std::chrono::steady_clock>
 class basic_service_monitor;
 
-template <Policy P>
+template <policy_like P>
 class basic_nic_monitor;
 
-template <Policy P, template <typename...> class... Peers>
+template <policy_like P, template <typename...> class... Peers>
 class basic_nic_group;
 ```
 
-A `Policy` struct must provide:
+A policy struct must provide:
 
 1. `executor_type` &mdash; the executor associated type
-2. `socket_type` &mdash; satisfies `SocketLike<socket_type>`
-3. `timer_type` &mdash; satisfies `TimerLike<timer_type>`
+2. `socket_type` &mdash; satisfies `socket_like<socket_type>`
+3. `timer_type` &mdash; satisfies `timer_like<timer_type>`
 4. A static `post(executor_type, move_only_function<void()>)` function
 
 All `basic_*` classes construct their socket and timer from the executor.
@@ -55,25 +55,25 @@ An optional fifth member is supported:
 
 5. `socket_options_type` &mdash; a type derived from `socket_options` that the `basic_*` constructors accept instead of the base `socket_options` when present. Detected via the `policy_socket_options_t<P>` trait. Policies without this member use the base `socket_options` (the default). `encrypted_policy<Inner>` sets this to `encrypt_socket_options`.
 
-See [policies.md](policies.md) for DefaultPolicy, AsioPolicy, and MockPolicy
+See [policies.md](policies.md) for default_policy, asio_policy, and mock_policy
 usage examples and the `post()` threading model.
 
 ## In-Depth
 
 ### Full concept requirements
 
-#### Policy concept
+#### The policy_like concept
 
 ```cpp
 template <typename P>
-concept Policy = requires
+concept policy_like = requires
     {
         typename P::executor_type;
         typename P::socket_type;
         typename P::timer_type;
     }
-    && SocketLike<typename P::socket_type>
-    && TimerLike<typename P::timer_type>
+    && socket_like<typename P::socket_type>
+    && timer_like<typename P::timer_type>
     && std::constructible_from<typename P::socket_type, typename P::executor_type>
     && std::constructible_from<typename P::timer_type, typename P::executor_type>
     && std::constructible_from<typename P::socket_type, typename P::executor_type, std::error_code&>
@@ -89,11 +89,11 @@ concept Policy = requires
 All four socket constructor forms are required to support both throwing and
 non-throwing construction, with and without explicit `socket_options`.
 
-#### SocketLike concept
+#### socket_like concept
 
 ```cpp
 template <typename S>
-concept SocketLike = requires(
+concept socket_like = requires(
     S &s,
     const endpoint &ep,
     std::span<const std::byte> send_data,
@@ -115,11 +115,11 @@ internally (i.e., it keeps listening until `close()` is called).
 `send` has two overloads: one that throws or ignores errors internally, and one
 that reports errors via the `std::error_code&` out-parameter.
 
-#### TimerLike concept
+#### timer_like concept
 
 ```cpp
 template <typename T>
-concept TimerLike = requires(
+concept timer_like = requires(
     T &t,
     std::chrono::milliseconds dur,
     detail::move_only_function<void(std::error_code)> handler)
@@ -136,15 +136,15 @@ cancelled. `cancel` stops a pending wait immediately with an error code.
 
 ---
 
-### Implementing a minimal custom Policy
+### Implementing a minimal custom policy
 
-The following shows a minimal Policy that wraps a hypothetical custom event
+The following shows a minimal policy that wraps a hypothetical custom event
 loop. It is illustrative &mdash; real implementations will follow the pattern of
-`DefaultPolicy` or `AsioPolicy`.
+`default_policy` or `asio_policy`.
 
 **Step 1: Define executor, socket, and timer types**
 
-Your socket must satisfy `SocketLike`, your timer must satisfy `TimerLike`, and
+Your socket must satisfy `socket_like`, your timer must satisfy `timer_like`, and
 both must be constructible from your executor type.
 
 ```cpp
@@ -159,13 +159,13 @@ struct MyTimer;
 ```cpp
 struct MySocket
 {
-    // Constructors required by Policy concept
+    // Constructors required by the policy_like concept
     explicit MySocket(MyExecutor ex);
     MySocket(MyExecutor ex, std::error_code &ec);
     MySocket(MyExecutor ex, const mdnspp::socket_options &opts);
     MySocket(MyExecutor ex, const mdnspp::socket_options &opts, std::error_code &ec);
 
-    // SocketLike interface
+    // socket_like interface
     void async_receive(
         mdnspp::detail::move_only_function<void(const mdnspp::recv_metadata &, std::span<std::byte>)> handler);
 
@@ -194,7 +194,7 @@ struct MyTimer
 };
 ```
 
-**Step 4: Define the Policy struct**
+**Step 4: Define the policy struct**
 
 ```cpp
 struct MyPolicy
@@ -211,7 +211,7 @@ struct MyPolicy
 };
 ```
 
-**Step 5: Use the custom Policy**
+**Step 5: Use the custom policy**
 
 ```cpp
 MyExecutor ex{...};
@@ -241,31 +241,31 @@ guard check fails silently and the work is discarded.
 
 ---
 
-### When to use a custom Policy
+### When to use a custom policy
 
 Custom policies are most useful when:
 
 - **Embedding in an existing event loop.** A game engine, GUI framework, or
   service daemon may have its own event loop that cannot be blocked. Wrap your
-  loop's async primitives in a custom Policy to drive mdnspp without spawning
+  loop's async primitives in a custom policy to drive mdnspp without spawning
   threads or running a separate loop.
 
 - **Custom logging or monitoring.** Wrap a real socket/timer pair to intercept
   every send/receive for diagnostic purposes.
 
 - **Alternative I/O libraries.** If you use libuv, libev, libevent, or another
-  event library, a custom Policy bridges that library to mdnspp without any
+  event library, a custom policy bridges that library to mdnspp without any
   mdnspp changes.
 
-- **Strict testability.** MockPolicy is provided for unit testing, but a custom
-  Policy can add richer injection capabilities (packet recording, simulated
+- **Strict testability.** mock_policy is provided for unit testing, but a custom
+  policy can add richer injection capabilities (packet recording, simulated
   latency, error injection).
 
 ---
 
-### InProcPolicy as a worked example
+### inproc_policy as a worked example
 
-`InProcPolicy` is the clearest in-tree example of how to satisfy the `Policy`
+`inproc_policy` is the clearest in-tree example of how to satisfy the `policy_like`
 concept with a custom executor model. Source:
 `lib/mdnspp-inproc/include/mdnspp/inproc/inproc_policy.h`
 
@@ -287,19 +287,19 @@ struct inproc_policy
 **`executor_type = inproc_executor<Clock>&`**
 
 The executor is a reference, not a value. This is the same pattern as
-`AsioPolicy` (whose `executor_type` is `asio::io_context&`). Every `basic_*`
+`asio_policy` (whose `executor_type` is `asio::io_context&`). Every `basic_*`
 component stores the reference and constructs its socket and timer from it.
 The `inproc_bus` is not part of `executor_type` directly — it is reachable via
 `ex.bus()`.
 
-This differs from `DefaultPolicy`, where `executor_type` is a value type
-(`context`) that owns its own internal state. `InProcPolicy` requires an
+This differs from `default_policy`, where `executor_type` is a value type
+(`context`) that owns its own internal state. `inproc_policy` requires an
 externally constructed `inproc_executor` because the bus must be shared across
 all components and its lifetime must outlast all of them.
 
 **`socket_type = inproc_socket<Clock>`**
 
-`inproc_socket<Clock>` satisfies `SocketLike`. On construction it registers
+`inproc_socket<Clock>` satisfies `socket_like`. On construction it registers
 itself with the bus via `ex.bus().register_socket(...)` and receives an
 assigned `127.0.0.1:NNNN` endpoint. `send()` enqueues packets onto the bus
 queue rather than delivering inline — this prevents re-entrancy when a receive
@@ -308,7 +308,7 @@ called by the bus when a packet arrives for this socket's endpoint.
 
 **`timer_type = inproc_timer<Clock>`**
 
-`inproc_timer<Clock>` satisfies `TimerLike`. On construction it registers with
+`inproc_timer<Clock>` satisfies `timer_like`. On construction it registers with
 `ex.register_timer(this)`. `expires_after()` sets the deadline; `try_fire(now)`
 is called by the executor on each `step()` and fires the stored handler if the
 deadline has passed.
@@ -316,14 +316,14 @@ deadline has passed.
 **`post()` threading model**
 
 `inproc_policy::post()` delegates to `ex.post()`, which appends to a
-`std::deque`. This is simpler than `DefaultPolicy` (which uses a mutex-protected
+`std::deque`. This is simpler than `default_policy` (which uses a mutex-protected
 queue) because `inproc_executor` is single-threaded by design — it is not safe to
 call `post()` from a thread other than the one driving `run()` unless the caller
 handles synchronisation externally.
 
 **Bus parameter vs. context model**
 
-The key structural difference from `DefaultPolicy`: `InProcPolicy` separates the
+The key structural difference from `default_policy`: `inproc_policy` separates the
 shared medium (the bus) from the executor. Multiple components sharing the same
 bus can be driven by a single executor, but the bus itself is not owned by the
 executor — it is passed in by reference. This makes it straightforward to test
@@ -332,16 +332,16 @@ network.
 
 See [inproc-bus.md](inproc-bus.md) for the full production usage guide.
 
-### DefaultPolicy and AsioPolicy as examples
+### default_policy and asio_policy as examples
 
-- `DefaultPolicy` source: `lib/mdnspp/include/mdnspp/default/default_policy.h`
-- `AsioPolicy` source: `lib/mdnspp-asio/include/mdnspp/asio/asio_policy.h`
+- `default_policy` source: `lib/mdnspp/include/mdnspp/default/default_policy.h`
+- `asio_policy` source: `lib/mdnspp-asio/include/mdnspp/asio/asio_policy.h`
 
-Both are real, production Policy implementations and are the best reference
+Both are real, production policy implementations and are the best reference
 for building your own.
 
 ## See Also
 
-- [policies.md](policies.md) &mdash; DefaultPolicy, AsioPolicy, and MockPolicy usage
-- [API reference: policy.h](api/observer.md) -- SocketLike and TimerLike concept definitions
-- [Async Patterns](async-patterns.md) -- ASIO completion token forms (AsioPolicy)
+- [policies.md](policies.md) &mdash; default_policy, asio_policy, and mock_policy usage
+- [API reference: policy.h](api/observer.md) -- socket_like and timer_like concept definitions
+- [Async Patterns](async-patterns.md) -- ASIO completion token forms (asio_policy)

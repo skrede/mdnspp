@@ -7,22 +7,22 @@ Discovers mDNS services by type on the local network. Offers three levels of abs
 | Form | Header |
 |------|--------|
 | `basic_service_discovery<P>` | `#include <mdnspp/basic_service_discovery.h>` |
-| `mdnspp::service_discovery` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
+| `mdnspp::service_discovery` (default_policy alias) | `#include <mdnspp/defaults.h>` |
 
 ```cpp
 // Template form
-template <Policy P>
+template <policy_like P>
 class basic_service_discovery;
 
-// DefaultPolicy alias (from defaults.h)
-using service_discovery = basic_service_discovery<DefaultPolicy>;
+// default_policy alias (from defaults.h)
+using service_discovery = basic_service_discovery<default_policy>;
 ```
 
 ## Template Parameters
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `P` | satisfies `Policy` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
+| `P` | satisfies `policy_like` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
 
 ## Type Aliases
 

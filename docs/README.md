@@ -8,17 +8,17 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 
 ## Guides
 
-- [Policies](policies.md) &mdash; Understand DefaultPolicy, AsioPolicy, and MockPolicy
+- [Policies](policies.md) &mdash; Understand default_policy, asio_policy, and mock_policy
 - [Socket Options](socket-options.md) &mdash; Network interface selection, multicast TTL, and loopback control
 - [Async Patterns](async-patterns.md) &mdash; ASIO completion tokens: callbacks, futures, coroutines, deferred
 - [CMake Integration](cmake-integration.md) &mdash; FetchContent, find_package, and building from source
 - [Service Monitor](service-monitor.md) &mdash; Continuous service tracking: monitoring modes, TTL refresh, loss detection
 - [Record Cache](record-cache.md) &mdash; Standalone TTL-aware record cache: standalone vs wired usage, cache-flush semantics
 - [mDNS Options](mdns-options.md) &mdash; Protocol timing tunables: query backoff, TTL refresh thresholds, TC handling
-- [Custom Policies](custom-policies.md) &mdash; Writing your own Policy, SocketLike, and TimerLike implementations
-- [In-Process Bus](inproc-bus.md) &mdash; InProcPolicy and shared bus for in-process mDNS scenarios
+- [Custom Policies](custom-policies.md) &mdash; Writing your own policy_like, socket_like, and timer_like implementations
+- [In-Process Bus](inproc-bus.md) &mdash; inproc_policy and shared bus for in-process mDNS scenarios
 - [Test Landscape](testing.md) -- Unit, integration, fuzz, and compile test categories
-- [NIC Group](nic-group.md) -- Multi-NIC orchestration: basic_nic_group, basic_nic_monitor, dynamic_nic_group
+- [NIC Group](nic-group.md) -- Multi-NIC orchestration: basic_nic_group, basic_nic_monitor, basic_dynamic_nic_group
 
 ## Encrypted mDNS
 
@@ -61,7 +61,7 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 
 ### Multi-NIC and Receive Metadata
 
-- [nic_group](api/nic_group.md) -- Multi-NIC orchestrator: basic_nic_group, basic_nic_monitor, dynamic_nic_group
+- [nic_group](api/nic_group.md) -- Multi-NIC orchestrator: basic_nic_group, basic_nic_monitor, basic_dynamic_nic_group
 - [nic_group_options](api/nic_group_options.md) -- nic_group_options, nic_monitor_options, server_peer_options, dedup_mode
 - [recv_metadata](api/recv_metadata.md) -- recv_metadata struct (sender, optional ttl, recv_ifindex) and ttl_unknown_policy
 

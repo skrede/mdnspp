@@ -45,7 +45,7 @@ int main()
 {
     asio::io_context io;
 
-    mdnspp::basic_observer<mdnspp::AsioPolicy> obs{io,
+    mdnspp::basic_observer<mdnspp::asio_policy> obs{io,
         mdnspp::observer_options{
             .on_record = [](const mdnspp::endpoint &sender,
                             const mdnspp::mdns_record_variant &rec)
@@ -89,7 +89,7 @@ int main()
 {
     asio::io_context io;
 
-    mdnspp::basic_querier<mdnspp::AsioPolicy> q{io};
+    mdnspp::basic_querier<mdnspp::asio_policy> q{io};
 
     std::future<std::vector<mdnspp::mdns_record_variant>> fut =
         mdnspp::async_query(q, "_http._tcp.local.", mdnspp::dns_type::ptr,
@@ -130,7 +130,7 @@ Spawn the coroutine with `asio::co_spawn`.
 
 asio::awaitable<void> discover(asio::io_context &io)
 {
-    mdnspp::basic_service_discovery<mdnspp::AsioPolicy> sd{io};
+    mdnspp::basic_service_discovery<mdnspp::asio_policy> sd{io};
 
     auto results = co_await mdnspp::async_discover(
         sd, "_http._tcp.local.", asio::use_awaitable);
@@ -177,7 +177,7 @@ int main()
         .txt_records  = {{"path", "/index.html"}},
     };
 
-    mdnspp::basic_service_server<mdnspp::AsioPolicy> srv{io, std::move(info)};
+    mdnspp::basic_service_server<mdnspp::asio_policy> srv{io, std::move(info)};
 
     auto op = mdnspp::async_start(srv, asio::deferred);
 

@@ -27,7 +27,7 @@ struct encrypt_socket_options : socket_options
 | `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. |
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets loop back to the local host. |
 | `multicast_ttl` | `std::optional<uint8_t>` | `std::nullopt` | IP multicast TTL. |
-| `port_override` | `std::optional<uint16_t>` | `std::nullopt` | InProcPolicy source port override for testing. |
+| `port_override` | `std::optional<uint16_t>` | `std::nullopt` | inproc_policy source port override for testing. |
 
 See [Socket Options](../../socket-options.md) for full field documentation.
 
@@ -52,11 +52,11 @@ See [Socket Options](../../socket-options.md) for full field documentation.
 std::array<std::byte, 32> raw_key{};
 // ... fill raw_key from your key source ...
 
-mdnspp::encrypt_socket_options opts;
+mdnspp::encrypt::encrypt_socket_options opts;
 opts.interface_address     = "192.168.1.10"; // inherited from socket_options
-opts.encrypt.psk           = mdnspp::secure_key{raw_key};
+opts.encrypt.psk           = mdnspp::encrypt::secure_key{raw_key};
 opts.encrypt.sender_id     = 42;
-opts.encrypt.recv_mode     = mdnspp::receive_mode::encrypted_only;
+opts.encrypt.recv_mode     = mdnspp::encrypt::receive_mode::encrypted_only;
 ```
 
 ## See Also

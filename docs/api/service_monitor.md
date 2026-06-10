@@ -7,22 +7,22 @@ Continuously tracks mDNS services with automatic discovery, TTL refresh, and los
 | Form | Header |
 |------|--------|
 | `basic_service_monitor<P, Clock>` | `#include <mdnspp/basic_service_monitor.h>` |
-| `mdnspp::service_monitor` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
+| `mdnspp::service_monitor` (default_policy alias) | `#include <mdnspp/defaults.h>` |
 
 ```cpp
 // Template form
-template <Policy P, typename Clock = std::chrono::steady_clock>
+template <policy_like P, typename Clock = std::chrono::steady_clock>
 class basic_service_monitor;
 
-// DefaultPolicy alias (from defaults.h)
-using service_monitor = basic_service_monitor<DefaultPolicy>;
+// default_policy alias (from defaults.h)
+using service_monitor = basic_service_monitor<default_policy>;
 ```
 
 ## Template Parameters
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `P` | satisfies `Policy` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
+| `P` | satisfies `policy_like` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
 | `Clock` | `std::chrono::is_clock_v<Clock>` | Clock used for TTL expiry and refresh scheduling. Default: `std::chrono::steady_clock`. Substitute `mdnspp::testing::test_clock` in unit tests for deterministic TTL control. |
 
 ## Type Aliases

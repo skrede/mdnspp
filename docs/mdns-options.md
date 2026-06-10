@@ -234,7 +234,7 @@ link-local scoping requirement and enabling cross-segment spoofing attacks.
 | **Default** | `ttl_unknown_policy::accept` |
 
 Disposition for packets where the IP TTL could not be extracted (e.g., on
-platforms where TTL extraction is not supported, such as AsioSocket).
+platforms where TTL extraction is not supported, such as asio_socket).
 
 | Value | Behaviour |
 |-------|-----------|

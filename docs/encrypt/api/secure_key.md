@@ -80,11 +80,11 @@ Returns a non-owning, fixed-extent span over the key material. The span is valid
 #include <cstddef>
 
 // Construct a key from raw bytes (e.g. from a configuration file or key exchange)
-std::array<std::byte, mdnspp::secure_key::key_size> raw_key{};
+std::array<std::byte, mdnspp::encrypt::secure_key::key_size> raw_key{};
 // ... fill raw_key from your key source ...
 
-mdnspp::encrypt_options opts;
-opts.psk = mdnspp::secure_key{raw_key};
+mdnspp::encrypt::encrypt_options opts;
+opts.psk = mdnspp::encrypt::secure_key{raw_key};
 opts.sender_id = 42;
 ```
 

@@ -7,22 +7,22 @@ Announces an mDNS service on the local network and responds to matching queries 
 | Form | Header |
 |------|--------|
 | `basic_service_server<P>` | `#include <mdnspp/basic_service_server.h>` |
-| `mdnspp::service_server` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
+| `mdnspp::service_server` (default_policy alias) | `#include <mdnspp/defaults.h>` |
 
 ```cpp
 // Template form
-template <Policy P>
+template <policy_like P>
 class basic_service_server;
 
-// DefaultPolicy alias (from defaults.h)
-using service_server = basic_service_server<DefaultPolicy>;
+// default_policy alias (from defaults.h)
+using service_server = basic_service_server<default_policy>;
 ```
 
 ## Template Parameters
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `P` | satisfies `Policy` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
+| `P` | satisfies `policy_like` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
 
 ## Type Aliases
 
@@ -275,7 +275,7 @@ int main()
 
 Multiple `service_server` instances can share the same executor. Each server
 creates its own socket, and the context multiplexes all of them. This works
-with both DefaultPolicy and AsioPolicy.
+with both default_policy and asio_policy.
 
 ```cpp
 mdnspp::context ctx;

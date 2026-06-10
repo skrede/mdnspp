@@ -63,14 +63,14 @@ Options bundle for a `basic_service_server` peer within `basic_nic_group`.
 ```cpp
 struct server_peer_options {
     service_info   info;
-    service_options opts{};
+    service_options service{};
 };
 ```
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `info` | `service_info` | (required) | Service identity: name, type, hostname, port, address. |
-| `opts` | `service_options` | `service_options{}` | Probing, announcement, and conflict configuration. |
+| `service` | `service_options` | `service_options{}` | Probing, announcement, and conflict configuration. |
 
 `server_peer_options` bundles `service_info` and `service_options` into a single struct so
 that `basic_nic_group`'s constructor can accept one vector per peer type uniformly.

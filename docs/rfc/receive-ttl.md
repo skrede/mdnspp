@@ -83,7 +83,7 @@ silently discarded regardless of their mDNS content.
 
 TTL extraction is configured at socket construction time using platform socket options.
 
-| Platform | DefaultSocket | AsioSocket |
+| Platform | default_socket | asio_socket |
 |----------|--------------|------------|
 | Linux | `recvmsg()` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` ancillary data; always available | `async_wait` + `recvmsg()` on `native_handle()`; same ancillary data path |
 | macOS | `recvmsg()` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` ancillary data; always available | `async_wait` + `recvmsg()` on `native_handle()`; same ancillary data path |

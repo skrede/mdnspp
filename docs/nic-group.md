@@ -140,10 +140,10 @@ Each element in the options vector corresponds to one instance created per inter
 An empty vector means no instance of that type is created per interface; a vector of
 three elements means three instances per interface.
 
-### dynamic_nic_group builder pattern
+### basic_dynamic_nic_group builder pattern
 
-When the peer composition is not known at compile time, use `dynamic_nic_grp` (a
-DefaultPolicy alias for `dynamic_nic_group<DefaultPolicy>`):
+When the peer composition is not known at compile time, use `dynamic_nic_group` (a
+default_policy alias for `basic_dynamic_nic_group<default_policy>`):
 
 ```cpp
 #include <mdnspp/defaults.h>
@@ -154,7 +154,7 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::dynamic_nic_grp grp{ctx};
+    mdnspp::dynamic_nic_group grp{ctx};
 
     grp.monitor({mdnspp::monitor_options{
         .on_found = [](const mdnspp::resolved_service &svc)
@@ -259,6 +259,6 @@ used on platforms without a native backend.
 
 ## See Also
 
-- [API reference: nic_group](api/nic_group.md) — constructor signatures, method tables, dynamic_nic_group
+- [API reference: nic_group](api/nic_group.md) — constructor signatures, method tables, basic_dynamic_nic_group
 - [API reference: nic_group_options](api/nic_group_options.md) — all option structs, dedup_mode, interface_filter, socket_options_factory
 - [examples/nic_group/](../examples/nic_group/) — runnable examples

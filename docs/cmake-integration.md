@@ -63,12 +63,12 @@ target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 
 | Target | Description |
 |--------|-------------|
-| `mdnspp::mdnspp` | DefaultPolicy with native sockets, all public headers; links `ws2_32` on Windows |
-| `mdnspp::asio` | AsioPolicy + async adapters; built when `MDNSPP_ENABLE_ASIO_POLICY=ON` |
-| `mdnspp::inproc` | InProcPolicy for in-process multicast simulation and deterministic testing |
-| `mdnspp::testing` | MockPolicy and test utilities for unit testing without network access |
+| `mdnspp::mdnspp` | default_policy with native sockets, all public headers; links `ws2_32` on Windows |
+| `mdnspp::asio` | asio_policy + async adapters; built when `MDNSPP_ENABLE_ASIO_POLICY=ON` |
+| `mdnspp::inproc` | inproc_policy for in-process multicast simulation and deterministic testing |
+| `mdnspp::testing` | mock_policy and test utilities for unit testing without network access |
 
-Most users want `mdnspp::mdnspp`. Add `mdnspp::asio` if you need ASIO completion token support (futures, coroutines, deferred). Link `mdnspp::inproc` for in-process bus scenarios. Link `mdnspp::testing` in your test targets for MockPolicy.
+Most users want `mdnspp::mdnspp`. Add `mdnspp::asio` if you need ASIO completion token support (futures, coroutines, deferred). Link `mdnspp::inproc` for in-process bus scenarios. Link `mdnspp::testing` in your test targets for mock_policy.
 
 ## CMake Options
 
@@ -109,4 +109,4 @@ ctest --test-dir build
 ## Next Steps
 
 - [Getting Started](getting-started.md) &mdash; Run your first query or service announcement
-- [Policies](policies.md) &mdash; Learn about DefaultPolicy, AsioPolicy, and MockPolicy
+- [Policies](policies.md) &mdash; Learn about default_policy, asio_policy, and mock_policy

@@ -8,29 +8,29 @@ instances of mDNS peers when network interfaces are added or removed.
 | Form | Header |
 |------|--------|
 | `basic_nic_group<P, Peers...>` | `#include <mdnspp/basic_nic_group.h>` |
-| `mdnspp::nic_group<Peers...>` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
+| `mdnspp::nic_group<Peers...>` (default_policy alias) | `#include <mdnspp/defaults.h>` |
 | `basic_nic_monitor<P>` | `#include <mdnspp/basic_nic_monitor.h>` |
-| `mdnspp::nic_monitor` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
-| `dynamic_nic_group<P>` | `#include <mdnspp/basic_nic_group.h>` |
-| `mdnspp::dynamic_nic_grp` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
+| `mdnspp::nic_monitor` (default_policy alias) | `#include <mdnspp/defaults.h>` |
+| `basic_dynamic_nic_group<P>` | `#include <mdnspp/basic_nic_group.h>` |
+| `mdnspp::dynamic_nic_group` (default_policy alias) | `#include <mdnspp/defaults.h>` |
 
 ```cpp
 // Template forms
-template <Policy P, template <typename> class... Peers>
+template <policy_like P, template <typename> class... Peers>
 class basic_nic_group;
 
-template <Policy P>
+template <policy_like P>
 class basic_nic_monitor;
 
-template <Policy P>
-class dynamic_nic_group;
+template <policy_like P>
+class basic_dynamic_nic_group;
 
-// DefaultPolicy aliases (from defaults.h)
+// default_policy aliases (from defaults.h)
 template <template <typename> class... Peers>
-using nic_group = basic_nic_group<DefaultPolicy, Peers...>;
+using nic_group = basic_nic_group<default_policy, Peers...>;
 
-using nic_monitor  = basic_nic_monitor<DefaultPolicy>;
-using dynamic_nic_grp = dynamic_nic_group<DefaultPolicy>;
+using nic_monitor  = basic_nic_monitor<default_policy>;
+using dynamic_nic_group = basic_dynamic_nic_group<default_policy>;
 ```
 
 ## Template Parameters
@@ -39,14 +39,14 @@ using dynamic_nic_grp = dynamic_nic_group<DefaultPolicy>;
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `P` | satisfies `Policy` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
+| `P` | satisfies `policy_like` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
 | `Peers...` | template template parameters | Any combination of `basic_service_monitor`, `basic_service_server`, and `basic_observer`. At least one must be provided. |
 
 ### basic_nic_monitor<P>
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `P` | satisfies `Policy` | Same policy as the owning `basic_nic_group`. |
+| `P` | satisfies `policy_like` | Same policy as the owning `basic_nic_group`. |
 
 ## Type Aliases
 
@@ -58,7 +58,7 @@ using executor_type = typename P::executor_type;
 using executor_type = typename P::executor_type;
 using timer_type    = typename P::timer_type;
 
-// dynamic_nic_group
+// basic_dynamic_nic_group
 using executor_type = typename P::executor_type;
 ```
 
@@ -71,7 +71,7 @@ using executor_type = typename P::executor_type;
 ```cpp
 explicit basic_nic_group(executor_type ex,
                          nic_group_options grp_opts,
-                         std::vector<typename peer_traits<Peers, P>::options_type>... peer_opts);
+                         std::vector<typename detail::peer_traits<Peers, P>::options_type>... peer_opts);
 ```
 
 Constructs the group. One `std::vector<options_type>` must be provided per `Peers...`
@@ -83,7 +83,7 @@ created per interface.
 
 | Parameter | Description |
 |-----------|-------------|
-| `ex` | Executor for all async operations. For DefaultPolicy this is `DefaultContext &`. |
+| `ex` | Executor for all async operations. For default_policy this is `default_context &`. |
 | `grp_opts` | Group-level options: dedup mode, interface filter, socket factory, shared mdns_options. |
 | `peer_opts...` | One options vector per peer type, in pack order. |
 
@@ -123,7 +123,7 @@ The destructor calls `stop()` automatically for RAII safety.
 
 ```cpp
 std::vector<resolved_service> services() const
-    requires ((peer_traits<Peers, P>::provides_services || ...));
+    requires ((detail::peer_traits<Peers, P>::provides_services || ...));
 ```
 
 Returns a snapshot of all currently-known services across all monitored interfaces.
@@ -139,7 +139,7 @@ Behavior is controlled by `nic_group_options::dedup`:
 
 ```cpp
 void watch(std::string_view service_type)
-    requires ((peer_traits<Peers, P>::provides_services || ...));
+    requires ((detail::peer_traits<Peers, P>::provides_services || ...));
 ```
 
 Registers interest in a service type across all current and future per-interface
@@ -154,7 +154,7 @@ the `Peers` pack. Thread-safe.
 
 ```cpp
 void unwatch(std::string_view service_type)
-    requires ((peer_traits<Peers, P>::provides_services || ...));
+    requires ((detail::peer_traits<Peers, P>::provides_services || ...));
 ```
 
 Deregisters interest in a service type across all per-interface `basic_service_monitor`
@@ -228,7 +228,7 @@ long enough to copy the internal `shared_ptr`.
 
 ---
 
-## dynamic_nic_group
+## basic_dynamic_nic_group
 
 Type-erased wrapper that selects the concrete `basic_nic_group` instantiation at `start()`
 time based on which builder methods were called.
@@ -236,7 +236,7 @@ time based on which builder methods were called.
 ### Constructor
 
 ```cpp
-explicit dynamic_nic_group(executor_type ex, nic_group_options opts = {});
+explicit basic_dynamic_nic_group(executor_type ex, nic_group_options opts = {});
 ```
 
 | Parameter | Description |
@@ -315,7 +315,7 @@ construct -> watch() -> start() -> [running] -> stop() -> [stopped]
 `watch()` may be called before or after `start()`. Watches are accumulated and applied
 to each per-interface monitor instance when it is created.
 
-### dynamic_nic_group
+### basic_dynamic_nic_group
 
 ```
 construct -> monitor()/announce()/observe() -> start() -> watch() -> [running] -> stop()

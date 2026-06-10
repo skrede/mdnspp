@@ -45,7 +45,7 @@ struct socket_options
 | `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. Change this to isolate mDNS traffic to a custom namespace. |
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets are looped back to the sending host. Enabled by default so that services and clients on the same machine can communicate. |
 | `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | Multicast time-to-live. When `socket_options` is used, defaults to 255 per RFC 6762 Section 11. `std::nullopt` leaves the OS default. |
-| `port_override` | `std::optional<uint16_t>` | `std::nullopt` | Overrides the source port assigned by `inproc_bus`. Used in InProcPolicy tests to simulate legacy unicast queries (source port != 5353). Has no effect on real sockets. |
+| `port_override` | `std::optional<uint16_t>` | `std::nullopt` | Overrides the source port assigned by `inproc_bus`. Used in inproc_policy tests to simulate legacy unicast queries (source port != 5353). Has no effect on real sockets. |
 
 ### loopback_mode enum
 
@@ -177,9 +177,9 @@ explicitly:
 mdnspp::socket_options opts{.multicast_ttl = 255};
 ```
 
-### Using socket_options with DefaultPolicy convenience aliases
+### Using socket_options with default_policy convenience aliases
 
-All DefaultPolicy convenience aliases (`mdnspp::observer`, `mdnspp::querier`,
+All default_policy convenience aliases (`mdnspp::observer`, `mdnspp::querier`,
 `mdnspp::service_discovery`, `mdnspp::service_server`) accept `socket_options`
 as an optional constructor parameter:
 
@@ -191,7 +191,7 @@ mdnspp::observer obs{ctx, mdnspp::observer_options{.on_record = on_record}, opts
 mdnspp::querier  q{ctx, {}, opts};
 ```
 
-### Using socket_options with AsioPolicy
+### Using socket_options with asio_policy
 
 The `basic_*` templates accept `socket_options` the same way:
 
@@ -199,7 +199,7 @@ The `basic_*` templates accept `socket_options` the same way:
 asio::io_context io;
 mdnspp::socket_options opts{.interface_address = "192.168.1.10"};
 
-mdnspp::basic_observer<mdnspp::AsioPolicy> obs{io, mdnspp::observer_options{.on_record = on_record}, opts};
+mdnspp::basic_observer<mdnspp::asio_policy> obs{io, mdnspp::observer_options{.on_record = on_record}, opts};
 ```
 
 ## Multicast Group and Port
@@ -288,7 +288,7 @@ extraction is enabled:
 
 ### Platform matrix
 
-| Platform | DefaultSocket | AsioSocket |
+| Platform | default_socket | asio_socket |
 |----------|--------------|------------|
 | Linux | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` &mdash; ASIO does not expose ancillary data from `async_receive_from` |
 | macOS | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` &mdash; same ASIO limitation |

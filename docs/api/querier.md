@@ -9,22 +9,22 @@ For multicast (QM) queries, the querier implements a 20--120 ms random delay bef
 | Form | Header |
 |------|--------|
 | `basic_querier<P>` | `#include <mdnspp/basic_querier.h>` |
-| `mdnspp::querier` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
+| `mdnspp::querier` (default_policy alias) | `#include <mdnspp/defaults.h>` |
 
 ```cpp
 // Template form
-template <Policy P>
+template <policy_like P>
 class basic_querier;
 
-// DefaultPolicy alias (from defaults.h)
-using querier = basic_querier<DefaultPolicy>;
+// default_policy alias (from defaults.h)
+using querier = basic_querier<default_policy>;
 ```
 
 ## Template Parameters
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `P` | satisfies `Policy` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
+| `P` | satisfies `policy_like` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
 
 ## Type Aliases
 

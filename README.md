@@ -14,7 +14,7 @@
 - **Cross-platform** &mdash; Linux, macOS, and Windows.
 - **Standalone native networking** &mdash; no external dependencies for the default policy.
 - **Network interface selection** &mdash; run mDNS services on any NIC or bind to a specific NIC.
-- **Multi-NIC orchestration** &mdash; `nic_group` and `dynamic_nic_grp` manage peer instances across all active interfaces automatically; `nic_monitor` detects interface changes at runtime.
+- **Multi-NIC orchestration** &mdash; `nic_group` and `dynamic_nic_group` manage peer instances across all active interfaces automatically; `nic_monitor` detects interface changes at runtime.
 - **Receive-side TTL verification** &mdash; RFC 6762 §11 enforcement via `recv_metadata::ttl` with platform-native extraction (`IP_RECVTTL`, `IP_PKTINFO`, `WSARecvMsg`).
 - **Thread-safe service updates** &mdash; safely modify the records of running mDNS service server from any thread.
 - **Policy-based architecture** &mdash; swap socket/timer/executor implementations at compile time.
@@ -102,7 +102,7 @@ Service is live
 ### Discover Services
 
 ```cpp
-// Discover HTTP services on the local network using DefaultPolicy.
+// Discover HTTP services on the local network using default_policy.
 // Self-terminates after 3 seconds of silence.
 
 #include <mdnspp/defaults.h>
@@ -153,7 +153,7 @@ Discovery complete: 4 record(s)
 ### Query for Records
 
 ```cpp
-// Query for mDNS PTR records using DefaultPolicy.
+// Query for mDNS PTR records using default_policy.
 // Self-terminates after 3 seconds of silence.
 
 #include <mdnspp/defaults.h>
@@ -204,7 +204,7 @@ Query complete -- 4 record(s)
 ### Observe mDNS Traffic
 
 ```cpp
-// Observe mDNS multicast traffic using DefaultPolicy.
+// Observe mDNS multicast traffic using default_policy.
 // Prints each record to stdout, stops after 10 records.
 
 #include <mdnspp/defaults.h>
@@ -341,7 +341,7 @@ For `find_package`, building from source, and all available CMake targets, see t
 ## Documentation
 
 - [Getting Started](docs/getting-started.md) &mdash; Install mdnspp and run your first query or service announcement
-- [Policies](docs/policies.md) &mdash; Understand DefaultPolicy, AsioPolicy, and MockPolicy
+- [Policies](docs/policies.md) &mdash; Understand default_policy, asio_policy, and mock_policy
 - [Socket Options](docs/socket-options.md) &mdash; Network interface selection, multicast TTL, and loopback control
 - [Async Patterns](docs/async-patterns.md) &mdash; ASIO completion tokens: callbacks, futures, coroutines, deferred
 - [CMake Integration](docs/cmake-integration.md) &mdash; FetchContent, find_package, and building from source

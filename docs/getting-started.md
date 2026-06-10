@@ -21,7 +21,7 @@ FetchContent_MakeAvailable(mdnspp)
 target_link_libraries(my_app PRIVATE mdnspp::mdnspp)
 ```
 
-This pulls mdnspp and links the DefaultPolicy target, which provides native
+This pulls mdnspp and links the default_policy target, which provides native
 socket and timer implementations with no external dependencies.
 
 ### find_package
@@ -182,7 +182,7 @@ dynamic builder, dedup modes, and interface filtering patterns.
 
 - [Service Options](api/service_options.md) &mdash; conflict resolution, goodbye, announcement tuning
 - [RFC Compliance](rfc/README.md) &mdash; RFC 6762/6763 conformance status and feature documentation
-- [Policies](policies.md) &mdash; understand the DefaultPolicy, AsioPolicy, and MockPolicy architecture
+- [Policies](policies.md) &mdash; understand the default_policy, asio_policy, and mock_policy architecture
 - [Async Patterns](async-patterns.md) &mdash; use ASIO completion tokens (futures, coroutines, deferred)
 - [NIC Group](nic-group.md) &mdash; multi-NIC orchestration guide
 - [API Reference](api/) &mdash; full type documentation

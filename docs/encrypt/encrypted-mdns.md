@@ -23,7 +23,7 @@ tag.
 
 ## PSK Setup
 
-A PSK is a 32-byte symmetric key represented by `mdnspp::secure_key`. The
+A PSK is a 32-byte symmetric key represented by `mdnspp::encrypt::secure_key`. The
 `secure_key` constructor takes a `std::array<std::byte, 32>` and zeroes the
 array in its destructor, preventing key material from lingering in memory.
 
@@ -35,7 +35,7 @@ array in its destructor, preventing key material from lingering in memory.
 std::array<std::byte, 32> raw_key{};
 // ... populate raw_key ...
 
-mdnspp::secure_key psk{raw_key};
+mdnspp::encrypt::secure_key psk{raw_key};
 ```
 
 `secure_key` is move-only (copy-constructor and copy-assignment are deleted).
@@ -45,7 +45,7 @@ The `sender_id` identifies this peer in the wire header; it must be unique
 across all senders on the multicast group and must not be zero:
 
 ```cpp
-mdnspp::encrypt_options enc_opts{
+mdnspp::encrypt::encrypt_options enc_opts{
     .psk       = std::move(psk),
     .sender_id = 0x00000001,    // must be non-zero; unique per sender
 };
@@ -69,7 +69,7 @@ address, multicast TTL, and other socket parameters) with a nested
 `encrypt_options encrypt` field:
 
 ```cpp
-mdnspp::encrypt_socket_options sock_opts{
+mdnspp::encrypt::encrypt_socket_options sock_opts{
     .encrypt = {
         .psk       = std::move(psk),
         .sender_id = 0x00000001,
@@ -79,11 +79,11 @@ mdnspp::encrypt_socket_options sock_opts{
 
 ## Basic Usage
 
-The convenience alias `mdnspp::encrypted_observer` is defined in
+The convenience alias `mdnspp::encrypt::encrypted_observer` is defined in
 `mdnspp/encrypt/defaults.h`:
 
 ```cpp
-using encrypted_observer = basic_observer<encrypted_policy<DefaultPolicy>>;
+using encrypted_observer = basic_observer<encrypted_policy<default_policy>>;
 ```
 
 It is constructed identically to `mdnspp::observer`, except it takes an
@@ -98,14 +98,14 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::encrypt_socket_options opts{
+    mdnspp::encrypt::encrypt_socket_options opts{
         .encrypt = {
-            .psk       = mdnspp::secure_key{raw_key},
+            .psk       = mdnspp::encrypt::secure_key{raw_key},
             .sender_id = 0x00000001,
         },
     };
 
-    mdnspp::encrypted_observer obs{
+    mdnspp::encrypt::encrypted_observer obs{
         ctx,
         mdnspp::observer_options{
             .on_record = [](const mdnspp::endpoint &sender,
@@ -133,7 +133,7 @@ from peers that have not yet rotated. Rotation is performed by calling
 `update_key()` on the underlying `encrypted_socket`:
 
 ```cpp
-socket.update_key(new_psk, mdnspp::grace_period{
+socket.update_key(new_psk, mdnspp::encrypt::grace_period{
     .duration     = std::chrono::seconds{30},
     .packet_count = 1000,
 });
@@ -155,18 +155,18 @@ See [Auth-Only Mode](auth-only-mode.md) for the wire format difference and
 ## Convenience Aliases
 
 `mdnspp/encrypt/defaults.h` provides aliases for all seven mdnspp peer types
-parameterized on `encrypted_policy<DefaultPolicy>`:
+parameterized on `encrypted_policy<default_policy>`:
 
 | Alias | Underlying type |
 |---|---|
-| `encrypted_observer` | `basic_observer<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_querier` | `basic_querier<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_service_discovery` | `basic_service_discovery<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_service_server` | `basic_service_server<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_service_monitor` | `basic_service_monitor<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_nic_monitor` | `basic_nic_monitor<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_nic_group_options` | `basic_nic_group_options<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_dynamic_nic_group` | `dynamic_nic_group<encrypted_policy<DefaultPolicy>>` |
+| `encrypted_observer` | `basic_observer<encrypted_policy<default_policy>>` |
+| `encrypted_querier` | `basic_querier<encrypted_policy<default_policy>>` |
+| `encrypted_service_discovery` | `basic_service_discovery<encrypted_policy<default_policy>>` |
+| `encrypted_service_server` | `basic_service_server<encrypted_policy<default_policy>>` |
+| `encrypted_service_monitor` | `basic_service_monitor<encrypted_policy<default_policy>>` |
+| `encrypted_nic_monitor` | `basic_nic_monitor<encrypted_policy<default_policy>>` |
+| `encrypted_nic_group_options` | `basic_nic_group_options<encrypted_policy<default_policy>>` |
+| `encrypted_dynamic_nic_group` | `basic_dynamic_nic_group<encrypted_policy<default_policy>>` |
 
 The template alias `encrypted_nic_group<Peers...>` is also provided for
 variadic multi-NIC group scenarios.

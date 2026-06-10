@@ -1,6 +1,6 @@
 # encrypted defaults
 
-Convenience type aliases for all public mdnspp types instantiated with `encrypted_policy<DefaultPolicy>`. These aliases mirror the standard `defaults.h` aliases (`observer`, `querier`, etc.) and are the recommended way to use encrypted mDNS without writing angle-bracket templates.
+Convenience type aliases for all public mdnspp types instantiated with `encrypted_policy<default_policy>`. These aliases mirror the standard `defaults.h` aliases (`observer`, `querier`, etc.) and are the recommended way to use encrypted mDNS without writing angle-bracket templates.
 
 ## Header
 
@@ -12,39 +12,39 @@ Convenience type aliases for all public mdnspp types instantiated with `encrypte
 
 | Alias | Expansion | Base Template |
 |-------|-----------|---------------|
-| `encrypted_observer` | `basic_observer<encrypted_policy<DefaultPolicy>>` | `basic_observer` |
-| `encrypted_querier` | `basic_querier<encrypted_policy<DefaultPolicy>>` | `basic_querier` |
-| `encrypted_service_discovery` | `basic_service_discovery<encrypted_policy<DefaultPolicy>>` | `basic_service_discovery` |
-| `encrypted_service_server` | `basic_service_server<encrypted_policy<DefaultPolicy>>` | `basic_service_server` |
-| `encrypted_service_monitor` | `basic_service_monitor<encrypted_policy<DefaultPolicy>>` | `basic_service_monitor` |
-| `encrypted_nic_monitor` | `basic_nic_monitor<encrypted_policy<DefaultPolicy>>` | `basic_nic_monitor` |
-| `encrypted_nic_group_options` | `basic_nic_group_options<encrypted_policy<DefaultPolicy>>` | `basic_nic_group_options` |
-| `encrypted_dynamic_nic_group` | `dynamic_nic_group<encrypted_policy<DefaultPolicy>>` | `dynamic_nic_group` |
-| `encrypted_nic_group<Peers...>` | `basic_nic_group<encrypted_policy<DefaultPolicy>, Peers...>` | `basic_nic_group` |
+| `encrypted_observer` | `basic_observer<encrypted_policy<default_policy>>` | `basic_observer` |
+| `encrypted_querier` | `basic_querier<encrypted_policy<default_policy>>` | `basic_querier` |
+| `encrypted_service_discovery` | `basic_service_discovery<encrypted_policy<default_policy>>` | `basic_service_discovery` |
+| `encrypted_service_server` | `basic_service_server<encrypted_policy<default_policy>>` | `basic_service_server` |
+| `encrypted_service_monitor` | `basic_service_monitor<encrypted_policy<default_policy>>` | `basic_service_monitor` |
+| `encrypted_nic_monitor` | `basic_nic_monitor<encrypted_policy<default_policy>>` | `basic_nic_monitor` |
+| `encrypted_nic_group_options` | `basic_nic_group_options<encrypted_policy<default_policy>>` | `basic_nic_group_options` |
+| `encrypted_dynamic_nic_group` | `basic_dynamic_nic_group<encrypted_policy<default_policy>>` | `basic_dynamic_nic_group` |
+| `encrypted_nic_group<Peers...>` | `basic_nic_group<encrypted_policy<default_policy>, Peers...>` | `basic_nic_group` |
 
 The last entry is a template alias:
 
 ```cpp
 template <template <typename...> class... Peers>
-using encrypted_nic_group = basic_nic_group<encrypted_policy<DefaultPolicy>, Peers...>;
+using encrypted_nic_group = basic_nic_group<encrypted_policy<default_policy>, Peers...>;
 ```
 
 ## Declarations
 
 ```cpp
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
-using encrypted_observer          = basic_observer<encrypted_policy<DefaultPolicy>>;
-using encrypted_querier           = basic_querier<encrypted_policy<DefaultPolicy>>;
-using encrypted_service_discovery = basic_service_discovery<encrypted_policy<DefaultPolicy>>;
-using encrypted_service_server    = basic_service_server<encrypted_policy<DefaultPolicy>>;
-using encrypted_service_monitor   = basic_service_monitor<encrypted_policy<DefaultPolicy>>;
-using encrypted_nic_monitor       = basic_nic_monitor<encrypted_policy<DefaultPolicy>>;
-using encrypted_nic_group_options = basic_nic_group_options<encrypted_policy<DefaultPolicy>>;
-using encrypted_dynamic_nic_group = dynamic_nic_group<encrypted_policy<DefaultPolicy>>;
+using encrypted_observer          = basic_observer<encrypted_policy<default_policy>>;
+using encrypted_querier           = basic_querier<encrypted_policy<default_policy>>;
+using encrypted_service_discovery = basic_service_discovery<encrypted_policy<default_policy>>;
+using encrypted_service_server    = basic_service_server<encrypted_policy<default_policy>>;
+using encrypted_service_monitor   = basic_service_monitor<encrypted_policy<default_policy>>;
+using encrypted_nic_monitor       = basic_nic_monitor<encrypted_policy<default_policy>>;
+using encrypted_nic_group_options = basic_nic_group_options<encrypted_policy<default_policy>>;
+using encrypted_dynamic_nic_group = basic_dynamic_nic_group<encrypted_policy<default_policy>>;
 
 template <template <typename...> class... Peers>
-using encrypted_nic_group = basic_nic_group<encrypted_policy<DefaultPolicy>, Peers...>;
+using encrypted_nic_group = basic_nic_group<encrypted_policy<default_policy>, Peers...>;
 
 }
 ```
@@ -56,11 +56,11 @@ using encrypted_nic_group = basic_nic_group<encrypted_policy<DefaultPolicy>, Pee
 - `<mdnspp/encrypt/encrypted_policy.h>` (and its dependencies)
 - `<mdnspp/default/default_policy.h>`
 
-A single `#include <mdnspp/encrypt/defaults.h>` is sufficient for all encrypted mDNS usage with `DefaultPolicy`.
+A single `#include <mdnspp/encrypt/defaults.h>` is sufficient for all encrypted mDNS usage with `default_policy`.
 
 ## Constructor Signatures
 
-Each alias inherits the full constructor set of its base template. Because `encrypted_policy<DefaultPolicy>` declares `socket_options_type = encrypt_socket_options`, the constructors accepting options take `encrypt_socket_options` (not the base `socket_options`).
+Each alias inherits the full constructor set of its base template. Because `encrypted_policy<default_policy>` declares `socket_options_type = encrypt_socket_options`, the constructors accepting options take `encrypt_socket_options` (not the base `socket_options`).
 
 All aliases offer the same two-constructor pattern as their base type:
 
@@ -79,7 +79,7 @@ encrypted_observer(executor_type ex,
                    std::error_code &ec);
 ```
 
-The `executor_type` for all aliases is `mdnspp::context` (the `DefaultPolicy` executor).
+The `executor_type` for all aliases is `mdnspp::context` (the `default_policy` executor).
 
 ## Usage Example
 
@@ -95,13 +95,13 @@ int main()
     std::array<std::byte, 32> raw_key{};
     // ... populate raw_key ...
 
-    mdnspp::encrypt_socket_options sock_opts;
-    sock_opts.encrypt.psk       = mdnspp::secure_key{raw_key};
+    mdnspp::encrypt::encrypt_socket_options sock_opts;
+    sock_opts.encrypt.psk       = mdnspp::encrypt::secure_key{raw_key};
     sock_opts.encrypt.sender_id = 1;
 
     mdnspp::context ctx;
 
-    mdnspp::encrypted_observer obs{
+    mdnspp::encrypt::encrypted_observer obs{
         ctx,
         mdnspp::observer_options{
             .on_record = [](const mdnspp::endpoint &sender,

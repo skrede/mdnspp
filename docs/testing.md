@@ -8,14 +8,14 @@ run it.
 
 **Location:** `tests/unit/`
 **Framework:** [Catch2](https://github.com/catchorg/Catch2)
-**Policy:** `MockPolicy` (no real sockets or timers)
+**Policy:** `mock_policy` (no real sockets or timers)
 
-Unit tests exercise individual components in isolation. `MockPolicy` replaces
+Unit tests exercise individual components in isolation. `mock_policy` replaces
 real network I/O with controllable in-process fakes:
 
-- `MockSocket` — exposes `sent_packets()` for inspection and accepts manually
+- `mock_socket` — exposes `sent_packets()` for inspection and accepts manually
   enqueued inbound packets.
-- `MockTimer` — supports manual `fire()` and `cancel()` for deterministic
+- `mock_timer` — supports manual `fire()` and `cancel()` for deterministic
   timer control.
 - `mock_executor` — holds a posted-work deque that drains with
   `drain_posted()`.
@@ -38,7 +38,7 @@ Unit tests cover:
 - Observer raw packet delivery (observer_test)
 - Querier query construction and result delivery (querier_test, query_backoff_test)
 - Endpoint and socket option handling (endpoint_test, socket_options_test)
-- Policy concept conformance for all three built-in policies
+- policy_like concept conformance for all three built-in policies
   (concept_conformance_test, default_conformance_test, inproc_conformance_test,
   asio_conformance_test)
 
@@ -60,7 +60,7 @@ ctest --test-dir build -R dns_name_test
 
 **Location:** `tests/unit/inproc_bus_*.cpp` (compiled with the unit test suite)
 **Framework:** Catch2
-**Policy:** `InProcTestPolicy` (test_clock via `inproc_harness`)
+**Policy:** `inproc_test_policy` (test_clock via `inproc_harness`)
 
 Integration tests exercise multi-party mDNS scenarios end-to-end using the
 deterministic in-process bus. All network I/O stays in-process. `inproc_harness`
@@ -157,6 +157,6 @@ Compile tests run as part of the standard build and are included in `ctest`.
 
 ## See also
 
-- [inproc-bus.md](inproc-bus.md) — InProcPolicy production guide (steady_clock, `run()`)
-- [policies.md](policies.md) — MockPolicy unit testing setup
-- [custom-policies.md](custom-policies.md) — InProcPolicy concept walkthrough
+- [inproc-bus.md](inproc-bus.md) — inproc_policy production guide (steady_clock, `run()`)
+- [policies.md](policies.md) — mock_policy unit testing setup
+- [custom-policies.md](custom-policies.md) — inproc_policy concept walkthrough

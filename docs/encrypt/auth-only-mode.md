@@ -23,9 +23,9 @@ Set `encrypt_options::auth_only = true` to make the sender produce auth-only
 packets:
 
 ```cpp
-mdnspp::encrypt_socket_options opts{
+mdnspp::encrypt::encrypt_socket_options opts{
     .encrypt = {
-        .psk       = mdnspp::secure_key{raw_key},
+        .psk       = mdnspp::encrypt::secure_key{raw_key},
         .sender_id = 0x00000002,
         .auth_only = true,
     },
@@ -83,17 +83,17 @@ int main()
     std::array<std::byte, 32> raw_key{};
     // ... load raw_key ...
 
-    mdnspp::encrypt_socket_options opts{
+    mdnspp::encrypt::encrypt_socket_options opts{
         .encrypt = {
-            .psk       = mdnspp::secure_key{raw_key},
+            .psk       = mdnspp::encrypt::secure_key{raw_key},
             .sender_id = 0x00000002,
             .auth_only = true,
-            .recv_mode = mdnspp::receive_mode::auth_only,
+            .recv_mode = mdnspp::encrypt::receive_mode::auth_only,
         },
     };
 
     mdnspp::context ctx;
-    mdnspp::encrypted_observer obs{
+    mdnspp::encrypt::encrypted_observer obs{
         ctx,
         mdnspp::observer_options{
             .on_record = [](const mdnspp::endpoint &,

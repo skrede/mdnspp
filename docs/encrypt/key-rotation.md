@@ -79,8 +79,8 @@ std::array<std::byte, 32> new_raw_key{};
 // ... populate new_raw_key from a secure source ...
 
 socket.update_key(
-    mdnspp::secure_key{new_raw_key},
-    mdnspp::grace_period{.duration = std::chrono::seconds{30}}
+    mdnspp::encrypt::secure_key{new_raw_key},
+    mdnspp::encrypt::grace_period{.duration = std::chrono::seconds{30}}
 );
 ```
 
@@ -93,16 +93,16 @@ for all in-flight packets from the old epoch to be delivered.
 ```cpp
 // Peer A (sender): rotate to new_key, allow 30 s for Peer B to catch up
 socket_a.update_key(
-    mdnspp::secure_key{new_raw_key},
-    mdnspp::grace_period{.duration = std::chrono::seconds{30}}
+    mdnspp::encrypt::secure_key{new_raw_key},
+    mdnspp::encrypt::grace_period{.duration = std::chrono::seconds{30}}
 );
 
 // Peer B (receiver): must also rotate to new_key within the grace window.
 // Until Peer B rotates, it decrypts Peer A's packets with the previous key.
 // After Peer B rotates, it uses the new key for both sends and receives.
 socket_b.update_key(
-    mdnspp::secure_key{new_raw_key},
-    mdnspp::grace_period{.duration = std::chrono::seconds{30}}
+    mdnspp::encrypt::secure_key{new_raw_key},
+    mdnspp::encrypt::grace_period{.duration = std::chrono::seconds{30}}
 );
 ```
 

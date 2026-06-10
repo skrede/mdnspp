@@ -1,6 +1,7 @@
 #ifndef HPP_GUARD_MDNSPP_MONITOR_OPTIONS_H
 #define HPP_GUARD_MDNSPP_MONITOR_OPTIONS_H
 
+#include "mdnspp/callback_types.h"
 #include "mdnspp/resolved_service.h"
 
 #include "mdnspp/detail/compat.h"
@@ -99,6 +100,10 @@ struct monitor_options
     /// Delivers the last-known fully-resolved @c resolved_service together with
     /// the reason for loss.
     move_only_function<void(const resolved_service &, loss_reason)> on_lost{};
+
+    /// Optional handler invoked on fire-and-forget send failures and fatal
+    /// receive errors.
+    error_handler on_error{};
 
     /// Query scheduling strategy.
     ///

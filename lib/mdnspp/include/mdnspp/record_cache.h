@@ -19,6 +19,7 @@
 #include <functional>
 #include <string_view>
 #include <shared_mutex>
+#include <system_error>
 #include <unordered_map>
 
 namespace mdnspp {
@@ -139,9 +140,24 @@ class record_cache
     using map_type = std::unordered_multimap<key_type, internal_entry, detail::record_name_type_hash>;
 
 public:
+    /// Throwing constructor. Throws std::system_error(std::errc::invalid_argument)
+    /// when opts.goodbye_grace is not positive.
     explicit record_cache(cache_options opts = {})
         : m_options(std::move(opts))
     {
+        if(auto ec = validate(); ec)
+            throw std::system_error(ec);
+    }
+
+    /// Non-throwing constructor -- ec is set to std::errc::invalid_argument on
+    /// invalid options and goodbye_grace is clamped to one second so the cache
+    /// remains safe to use.
+    record_cache(cache_options opts, std::error_code &ec)
+        : m_options(std::move(opts))
+    {
+        ec = validate();
+        if(ec)
+            m_options.goodbye_grace = std::chrono::seconds(1);
     }
 
     record_cache(const record_cache &) = delete;
@@ -255,11 +271,23 @@ public:
     }
 
 private:
+    [[nodiscard]] std::error_code validate() const noexcept
+    {
+        if(m_options.goodbye_grace.count() <= 0)
+            return std::make_error_code(std::errc::invalid_argument);
+        return {};
+    }
+
     void apply_cache_flush(const key_type &key, const endpoint &origin,
                            std::unique_lock<std::shared_mutex> &lock)
     {
         auto now = Clock::now();
         auto deadline = now + m_options.goodbye_grace;
+
+        // RFC 6762 section 10.2: only records received more than one second ago
+        // are marked for deletion -- younger records are exempt so that bursts
+        // from multiple interfaces or co-located responders are not flushed.
+        auto exemption_cutoff = now - std::chrono::seconds(1);
 
         std::vector<cache_entry> affected;
         cache_entry authoritative;
@@ -273,7 +301,7 @@ private:
                 if (entry.cache_flush)
                     authoritative = to_cache_entry(entry, now);
             }
-            else
+            else if (entry.inserted_at <= exemption_cutoff)
             {
                 if (!entry.flush_deadline || *entry.flush_deadline > deadline)
                     entry.flush_deadline = deadline;

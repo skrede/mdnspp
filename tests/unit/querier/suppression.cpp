@@ -106,6 +106,50 @@ SCENARIO("duplicate QM question suppresses pending query", "[querier][suppressio
     }
 }
 
+SCENARIO("duplicate question carrying known answers does NOT suppress", "[querier][suppression][7.3]")
+{
+    GIVEN("a querier with a pending QM query")
+    {
+        mock_executor ex;
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
+
+        q.async_query("myhost.local.", dns_type::a,
+                      [](std::error_code, std::vector<mdns_record_variant>)
+                      {
+                      });
+
+        REQUIRE(q.socket().sent_packets().empty());
+        REQUIRE(q.delay_timer().has_pending());
+
+        WHEN("a matching QM query with a non-empty known-answer section is injected")
+        {
+            // RFC 6762 section 7.3: suppression is permitted only when the
+            // observed known-answer section contains nothing we do not also
+            // hold. We hold no answers, so a KA-bearing query must not
+            // suppress ours.
+            auto dup_query = make_dns_query_packet("myhost.local.", 1, false);
+            auto ka = make_a_response("myhost.local.", 192, 168, 1, 1);
+
+            // Splice the response's answer record into the query packet and
+            // bump ancount to 1 (the answer RR starts after the 12-byte header).
+            dup_query.insert(dup_query.end(), ka.begin() + 12, ka.end());
+            dup_query[7] = static_cast<std::byte>(0x01);
+
+            q.socket().inject_receive(endpoint{}, dup_query);
+
+            AND_WHEN("the delay timer fires")
+            {
+                q.delay_timer().fire();
+
+                THEN("the query packet WAS sent (KA-bearing query does not suppress)")
+                {
+                    REQUIRE_FALSE(q.socket().sent_packets().empty());
+                }
+            }
+        }
+    }
+}
+
 SCENARIO("QU duplicate does NOT suppress pending QM query", "[querier][suppression]")
 {
     GIVEN("a querier with a pending QM query")

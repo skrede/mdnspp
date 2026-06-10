@@ -9,6 +9,7 @@
 #include <asio/deferred.hpp>
 #include <asio/detached.hpp>
 #include <asio/use_future.hpp>
+#include <asio/as_tuple.hpp>
 #include <asio/use_awaitable.hpp>
 
 #ifdef ASIO_HAS_CO_AWAIT
@@ -248,13 +249,18 @@ SCENARIO("async_observe with use_awaitable suspends until stop", "[completion_to
         stop_timer.async_wait([obs](std::error_code) { obs->stop(); });
 
         bool completed = false;
+        std::error_code completion_ec;
         // After the co_await resumes (stop() was called), stop the io_context
         // so io.run_for() returns — observer's recv_loop keeps io.run() alive otherwise.
+        // stop() completes the observation with operation_canceled; as_tuple
+        // surfaces the error_code instead of throwing.
         asio::co_spawn(
             io,
-            [obs, &completed, &io]() -> asio::awaitable<void>
+            [obs, &completed, &completion_ec, &io]() -> asio::awaitable<void>
             {
-                co_await mdnspp::async_observe(*obs, asio::use_awaitable);
+                auto [ec] = co_await mdnspp::async_observe(
+                    *obs, asio::as_tuple(asio::use_awaitable));
+                completion_ec = ec;
                 completed = true;
                 io.stop(); // allow io.run_for() to return
             },
@@ -263,6 +269,7 @@ SCENARIO("async_observe with use_awaitable suspends until stop", "[completion_to
         // run_for provides an upper bound; normal completion is ~150ms
         io.run_for(std::chrono::seconds(5));
         REQUIRE(completed);
+        REQUIRE(completion_ec == std::errc::operation_canceled);
     }
     catch(const std::exception &e)
     {

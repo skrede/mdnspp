@@ -2,6 +2,9 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <type_traits>
+#include <system_error>
+
 SCENARIO("service_discovery non-throwing constructor sets ec on success", "[service_discovery][create][non-throwing]")
 {
     GIVEN("a mock_executor and an error_code")
@@ -23,21 +26,160 @@ SCENARIO("service_discovery non-throwing constructor sets ec on success", "[serv
     }
 }
 
-SCENARIO("service_discovery is move-constructible before async_discover", "[service_discovery][move]")
+SCENARIO("service_discovery is neither copyable nor movable", "[service_discovery][move]")
 {
-    GIVEN("a service_discovery constructed but not started")
+    STATIC_REQUIRE_FALSE(std::is_copy_constructible_v<basic_service_discovery<mock_policy>>);
+    STATIC_REQUIRE_FALSE(std::is_copy_assignable_v<basic_service_discovery<mock_policy>>);
+    STATIC_REQUIRE_FALSE(std::is_move_constructible_v<basic_service_discovery<mock_policy>>);
+    STATIC_REQUIRE_FALSE(std::is_move_assignable_v<basic_service_discovery<mock_policy>>);
+}
+
+SCENARIO("stop() vs natural completion error codes", "[service_discovery][stop][cancel]")
+{
+    GIVEN("a service_discovery with a PTR response enqueued")
+    {
+        mock_executor ex;
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
+        sd.socket().enqueue(make_ptr_response("_http._tcp.local.", "Svc._http._tcp.local."));
+
+        std::error_code received_ec;
+        bool callback_fired = false;
+
+        sd.async_discover("_http._tcp.local.",
+                          [&](std::error_code ec, std::vector<mdns_record_variant>)
+                          {
+                              callback_fired = true;
+                              received_ec = ec;
+                          });
+
+        WHEN("the silence timer fires (natural completion)")
+        {
+            sd.timer().fire();
+
+            THEN("the completion fires with success")
+            {
+                REQUIRE(callback_fired);
+                REQUIRE_FALSE(received_ec);
+            }
+        }
+
+        WHEN("stop() is called before the silence timeout")
+        {
+            sd.stop();
+            ex.drain_posted();
+
+            THEN("the completion fires with operation_canceled")
+            {
+                REQUIRE(callback_fired);
+                REQUIRE(received_ec == std::errc::operation_canceled);
+            }
+        }
+    }
+}
+
+SCENARIO("destruction with a pending discover completes the handler with operation_canceled", "[service_discovery][destructor]")
+{
+    GIVEN("a started discovery that is destroyed without completing")
+    {
+        mock_executor ex;
+        std::error_code received_ec;
+        bool callback_fired = false;
+
+        {
+            basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
+            sd.async_discover("_http._tcp.local.",
+                              [&](std::error_code ec, std::vector<mdns_record_variant>)
+                              {
+                                  callback_fired = true;
+                                  received_ec = ec;
+                              });
+        } // destroyed with the operation pending
+
+        THEN("the completion handler fired with operation_canceled")
+        {
+            REQUIRE(callback_fired);
+            REQUIRE(received_ec == std::errc::operation_canceled);
+        }
+    }
+}
+
+SCENARIO("operations on one service_discovery are mutually exclusive", "[service_discovery][one-shot]")
+{
+    GIVEN("a service_discovery with a discover in flight")
     {
         mock_executor ex;
         basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
-        WHEN("move-constructed into a new instance")
-        {
-            basic_service_discovery<mock_policy> moved{std::move(sd)};
+        sd.async_discover("_http._tcp.local.",
+                          [](std::error_code, std::vector<mdns_record_variant>)
+                          {
+                          });
 
-            THEN("the moved-to instance is usable")
+        WHEN("async_browse() is called while discover is running")
+        {
+            std::error_code received_ec;
+            bool callback_fired = false;
+
+            sd.async_browse("_http._tcp.local.",
+                            [&](std::error_code ec, std::vector<resolved_service> svcs)
+                            {
+                                callback_fired = true;
+                                received_ec = ec;
+                                REQUIRE(svcs.empty());
+                            });
+            ex.drain_posted();
+
+            THEN("the browse handler fires with operation_in_progress")
             {
-                REQUIRE(moved.socket().queue_empty());
-                REQUIRE(moved.results().empty());
+                REQUIRE(callback_fired);
+                REQUIRE(received_ec == std::errc::operation_in_progress);
+            }
+        }
+
+        WHEN("async_discover() is called a second time")
+        {
+            std::error_code received_ec;
+            bool callback_fired = false;
+
+            sd.async_discover("_ftp._tcp.local.",
+                              [&](std::error_code ec, std::vector<mdns_record_variant>)
+                              {
+                                  callback_fired = true;
+                                  received_ec = ec;
+                              });
+            ex.drain_posted();
+
+            THEN("the second handler fires with operation_in_progress")
+            {
+                REQUIRE(callback_fired);
+                REQUIRE(received_ec == std::errc::operation_in_progress);
+            }
+        }
+    }
+
+    GIVEN("a service_discovery stopped before ever starting")
+    {
+        mock_executor ex;
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
+        sd.stop();
+
+        WHEN("async_discover() is called")
+        {
+            std::error_code received_ec;
+            bool callback_fired = false;
+
+            sd.async_discover("_http._tcp.local.",
+                              [&](std::error_code ec, std::vector<mdns_record_variant>)
+                              {
+                                  callback_fired = true;
+                                  received_ec = ec;
+                              });
+            ex.drain_posted();
+
+            THEN("the handler fires with invalid_argument")
+            {
+                REQUIRE(callback_fired);
+                REQUIRE(received_ec == std::errc::invalid_argument);
             }
         }
     }

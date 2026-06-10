@@ -122,12 +122,19 @@ SCENARIO("async_discover sends DNS PTR query to multicast address", "[service_di
         mock_executor ex;
         basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
-        WHEN("async_discover() is called for _http._tcp.local.")
+        WHEN("async_discover() is called for _http._tcp.local. and the section 5.2 delay elapses")
         {
             sd.async_discover("_http._tcp.local.",
                               [](std::error_code, std::vector<mdns_record_variant>)
                               {
                               });
+
+            // QM queries are delayed by 20-120 ms (RFC 6762 section 5.2)
+            REQUIRE(sd.socket().sent_packets().empty());
+            REQUIRE(sd.delay_timer().has_pending());
+            REQUIRE(sd.delay_timer().last_duration() >= 20ms);
+            REQUIRE(sd.delay_timer().last_duration() <= 120ms);
+            sd.delay_timer().fire();
 
             THEN("a DNS query was sent to 224.0.0.251:5353")
             {
@@ -152,6 +159,33 @@ SCENARIO("async_discover sends DNS PTR query to multicast address", "[service_di
                 // ANCOUNT: 0
                 REQUIRE(static_cast<uint8_t>(data[6]) == 0x00);
                 REQUIRE(static_cast<uint8_t>(data[7]) == 0x00);
+            }
+        }
+    }
+}
+
+SCENARIO("async_discover ignores answer records carried in query packets", "[service_discovery][qr-flag]")
+{
+    GIVEN("a service_discovery and a QUERY packet (QR=0) carrying a PTR known answer")
+    {
+        auto pkt = make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local.");
+        pkt[2] = std::byte{0x00};
+        pkt[3] = std::byte{0x00};
+
+        mock_executor ex;
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
+        sd.socket().enqueue(pkt);
+
+        WHEN("async_discover() is called for the matching type")
+        {
+            sd.async_discover("_http._tcp.local.",
+                              [](std::error_code, std::vector<mdns_record_variant>)
+                              {
+                              });
+
+            THEN("results() stays empty -- query packets are not answers")
+            {
+                REQUIRE(sd.results().empty());
             }
         }
     }

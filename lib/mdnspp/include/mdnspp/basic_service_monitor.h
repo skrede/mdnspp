@@ -22,6 +22,7 @@
 #include "mdnspp/detail/basic_mdns_peer_base.h"
 
 #include <span>
+#include <array>
 #include <mutex>
 #include <chrono>
 #include <memory>
@@ -57,6 +58,12 @@ namespace mdnspp {
 //   watch(), unwatch(), query_service_type(), query_service_instance(), and
 //   services() may be called from any thread. All mutations are posted to the
 //   executor thread via P::post() using a weak_ptr guard.
+//
+// Completion semantics:
+//   async_start()'s on_done fires with error_code{} (success) when stop() is
+//   called -- stopping IS the monitor's natural completion. A second
+//   async_start() completes on_done with std::errc::operation_in_progress;
+//   starting after stop() completes with std::errc::invalid_argument.
 
 template <policy_like P, typename Clock = std::chrono::steady_clock>
 class basic_service_monitor : detail::basic_mdns_peer_base<P>
@@ -95,6 +102,7 @@ public:
         , m_scheduler_timer(ex)
         , m_tc_send_timer(ex)
     {
+        detail::throw_on_error(validate());
     }
 
     /// Non-throwing constructor.
@@ -122,11 +130,18 @@ public:
         , m_scheduler_timer(ex)
         , m_tc_send_timer(ex)
     {
+        if(!ec)
+            ec = validate();
     }
 
     ~basic_service_monitor()
     {
+        this->m_alive.reset();
         stop();
+        // The posted stop() teardown is dropped by the expired alive guard;
+        // complete a still-pending handler instead of silently dropping it.
+        if(auto cb = std::exchange(m_on_done, {}); cb)
+            cb(std::make_error_code(std::errc::operation_canceled));
     }
 
     // -------------------------------------------------------------------------
@@ -138,28 +153,48 @@ public:
     ///
     /// @p on_done fires once when stop() is called. May be @c nullptr.
     ///
-    /// Calling async_start() more than once is a logic error.
+    /// A second async_start() (or async_start() after stop()) completes
+    /// @p on_done with operation_in_progress / invalid_argument without
+    /// touching the running monitor.
     void async_start(monitor_completion_handler on_done = {})
     {
+        if(auto misuse = check_start_misuse())
+        {
+            if(on_done)
+                this->post_guarded([h = std::move(on_done), misuse]() mutable
+                {
+                    h(misuse);
+                });
+            return;
+        }
         m_on_done = std::move(on_done);
 
-        // Create the recv_loop with an "infinite" silence timeout.
-        // The monitor has no silence semantics -- it runs until stop().
-        using hours = std::chrono::hours;
-        constexpr auto infinite = std::chrono::duration_cast<std::chrono::milliseconds>(
-            hours{24 * 365});
+        // Re-seed the first-query deadlines so the RFC 6762 section 5.2 initial
+        // 20-120 ms delay is measured from start, not from watch().
+        auto now = Clock::now();
+        for(auto &[svc_type, ws] : m_watches)
+        {
+            if(ws.backoff.first)
+                ws.next_query_at = now + initial_query_delay();
+        }
 
+        // The monitor has no silence semantics -- it runs until stop().
         this->m_loop = std::make_unique<detail::recv_loop<P>>(
             this->m_socket,
             this->m_timer,
-            infinite,
+            detail::infinite_silence_timeout,
             [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
             {
                 return handle_packet(meta.sender, data);
             },
             [] { /* silence handler -- no-op for monitor */ },
             this->m_mdns_opts.receive_ttl_minimum,
-            this->m_mdns_opts.unknown_ttl_policy);
+            this->m_mdns_opts.unknown_ttl_policy,
+            [this](std::error_code ec)
+            {
+                if(m_opts.on_error)
+                    m_opts.on_error(ec, "receive");
+            });
 
         this->m_loop->start();
         arm_scheduler();
@@ -249,7 +284,8 @@ public:
         });
     }
 
-    /// Send immediate SRV and A/AAAA queries for a specific service instance.
+    /// Send one immediate multi-question SRV/TXT/A/AAAA query for a specific
+    /// service instance (RFC 6762 §5 question aggregation).
     ///
     /// Thread-safe: posts to executor thread.
     void query_service_instance(std::string_view instance_name)
@@ -281,6 +317,9 @@ public:
     /// exposing it through the public API.
     timer_type &scheduler_timer_for_test() noexcept { return m_scheduler_timer; }
 
+    /// Test-support accessor for the number of active TTL-refresh schedules.
+    std::size_t refresh_schedule_count_for_test() const noexcept { return m_refresh_schedules.size(); }
+
 private:
     // -------------------------------------------------------------------------
     // Private constructor helpers
@@ -290,15 +329,50 @@ private:
     /// Moves from m_cache_opts (preserving user-supplied goodbye_grace and
     /// any other fields), then wires in the on_expired callback.
     /// Called exactly once during construction; m_cache_opts is left in
-    /// a valid but unspecified state after this call.
+    /// a valid but unspecified state after this call (goodbye_grace remains
+    /// readable for validate()).
+    ///
+    /// An invalid goodbye_grace is clamped here so the record_cache member can
+    /// always be constructed; validate() reports the error to the caller.
     cache_options make_cache_options()
     {
         cache_options copts = std::move(m_cache_opts);
+        if(copts.goodbye_grace.count() <= 0)
+            copts.goodbye_grace = std::chrono::seconds(1);
         copts.on_expired = [this](std::vector<cache_entry> expired)
         {
             handle_expired(std::move(expired));
         };
         return copts;
+    }
+
+    /// Validates the protocol tunables and cache options supplied at
+    /// construction. Returns std::errc::invalid_argument on failure.
+    [[nodiscard]] std::error_code validate() const noexcept
+    {
+        if(m_cache_opts.goodbye_grace.count() <= 0)
+            return std::make_error_code(std::errc::invalid_argument);
+        return detail::validate_mdns_options(this->m_mdns_opts);
+    }
+
+    /// Detects async_start misuse: a second start or reuse after stop().
+    [[nodiscard]] std::error_code check_start_misuse() const noexcept
+    {
+        if(this->m_loop)
+            return std::make_error_code(std::errc::operation_in_progress);
+        if(this->m_stopped.load(std::memory_order_acquire))
+            return std::make_error_code(std::errc::invalid_argument);
+        return {};
+    }
+
+    /// Random first-query delay in [response_delay_min, response_delay_max]
+    /// (RFC 6762 section 5.2: 20-120 ms by default).
+    [[nodiscard]] std::chrono::milliseconds initial_query_delay()
+    {
+        std::uniform_int_distribution<int32_t> dist(
+            static_cast<int32_t>(this->m_mdns_opts.response_delay_min.count()),
+            static_cast<int32_t>(this->m_mdns_opts.response_delay_max.count()));
+        return std::chrono::milliseconds(dist(m_rng));
     }
 
     // -------------------------------------------------------------------------
@@ -316,10 +390,17 @@ private:
     };
 
     /// Per watched service-type state: independent backoff schedule and query
-    /// timing. Keyed by service type string in @c m_watches.
+    /// deadline. Keyed by service type in @c m_watches.
+    ///
+    /// @c next_query_at is the absolute deadline of this watch's next PTR
+    /// query. The shared scheduler timer fires at the minimum deadline across
+    /// all watches; only watches whose own deadline has passed send a query
+    /// (RFC 6762 section 5.2 -- per-name backoff, minimum one second between
+    /// queries for the same name).
     struct watched_type_state
     {
         detail::query_backoff_state backoff;
+        typename Clock::time_point next_query_at{};
     };
 
     // -------------------------------------------------------------------------
@@ -330,11 +411,22 @@ private:
     /// Returns true if the packet contained at least one relevant record
     /// (used by recv_loop to reset the silence timer, though the monitor
     /// always uses an infinite silence timeout).
+    ///
+    /// Only response packets (QR=1) are consumed: records in query packets are
+    /// known-answer lists of other queriers (RFC 6762 section 7.1) or
+    /// Authority-section probe proposals, which MUST NOT be cached
+    /// (section 8.2). Authority-section records of responses are likewise
+    /// ignored -- mDNS responses carry answers in the Answer and Additional
+    /// sections only.
     bool handle_packet(const endpoint &sender, std::span<std::byte> data)
     {
         bool relevant{false};
-        detail::walk_dns_frame(data, sender, [&](mdns_record_variant rec)
+        detail::walk_dns_frame(data, sender,
+            [&](mdns_record_variant rec, const detail::dns_frame_header &header,
+                detail::dns_section section)
         {
+            if(!header.is_response() || section == detail::dns_section::authority)
+                return;
             if(!is_relevant(rec))
                 return;
             relevant = true;
@@ -419,14 +511,14 @@ private:
             m_known_hostnames.insert(r.srv_name);
             // Build SRV refresh schedule now that we have the wire TTL
             if(r.ttl > 0)
-                rebuild_refresh_schedule(r.name.str() + ":srv", r.ttl);
+                rebuild_refresh_schedule({r.name, dns_type::srv}, r.ttl);
             check_resolved(r.name);
         }
         else if(auto lit = m_live_services.find(r.name); lit != m_live_services.end())
         {
             // SRV TTL refresh for an already-live service: rebuild schedule and update
             if(r.ttl > 0)
-                rebuild_refresh_schedule(r.name.str() + ":srv", r.ttl);
+                rebuild_refresh_schedule({r.name, dns_type::srv}, r.ttl);
 
             bool changed = (lit->second.hostname != r.srv_name || lit->second.port != r.port);
             if(changed)
@@ -597,6 +689,10 @@ private:
 
     void handle_expired_srv(const record_srv &r)
     {
+        // The anchor record is gone -- its refresh schedule must go with it
+        // (m_refresh_schedules would otherwise grow without bound).
+        m_refresh_schedules.erase({r.name, dns_type::srv});
+
         auto it = m_live_services.find(r.name);
         if(it == m_live_services.end())
         {
@@ -669,10 +765,15 @@ private:
 
     void do_watch(std::string svc_type)
     {
-        m_watches.try_emplace(dns_name(std::move(svc_type)));
+        auto [it, inserted] = m_watches.try_emplace(dns_name(std::move(svc_type)));
+
+        // First query after a randomized 20-120 ms delay (RFC 6762 section 5.2);
+        // async_start() re-seeds this for watches registered before start.
+        if(inserted)
+            it->second.next_query_at = Clock::now() + initial_query_delay();
 
         // If the monitor is already running, re-arm the scheduler so the new
-        // watch type receives its first query at the next scheduled tick.
+        // watch type receives its first query at its own deadline.
         if(this->m_loop)
             arm_scheduler();
     }
@@ -725,7 +826,13 @@ private:
                 type_to_remove.push_back(inst_name);
         }
         for(const auto &inst_name : type_to_remove)
+        {
             m_instance_type.erase(inst_name);
+            // Goodbye state and refresh schedules are per instance -- erase
+            // only the unwatched type's instances, not those of other types.
+            m_goodbye_instances.erase(inst_name);
+            m_refresh_schedules.erase({inst_name, dns_type::srv});
+        }
 
         // Rebuild m_known_hostnames from remaining live/partial instances
         m_known_hostnames.clear();
@@ -741,7 +848,6 @@ private:
         }
 
         m_watches.erase(normalized_type);
-        m_goodbye_instances.clear(); // clear any goodbye state for this type
         update_snapshot();
     }
 
@@ -752,7 +858,7 @@ private:
     /// Compute the earliest upcoming deadline and arm the scheduler timer.
     ///
     /// The wakeup is the minimum of:
-    ///   - The next backoff deadline across all watched types (discover mode)
+    ///   - The per-watch next_query_at deadlines (discover mode)
     ///   - The next TTL-refresh fire_point across all active refresh schedules
     ///     (discover + ttl_refresh modes)
     ///   - now + 1 s as a periodic expiry-sweep floor (all modes)
@@ -772,29 +878,9 @@ private:
         {
             for(auto &[svc_type, ws] : m_watches)
             {
-                // Peek at the interval that will be used on the NEXT tick:
-                //   - If never queried (first==true), the next tick fires at initial_interval.
-                //   - Otherwise, the interval doubles: min(current * multiplier, max_interval).
-                std::chrono::milliseconds interval{};
-                if(ws.backoff.first)
+                if(!has_scheduled_event || ws.next_query_at < next)
                 {
-                    interval = this->m_mdns_opts.initial_interval;
-                }
-                else
-                {
-                    using namespace std::chrono;
-                    auto next_fp = static_cast<double>(ws.backoff.current_interval.count())
-                                   * this->m_mdns_opts.backoff_multiplier;
-                    auto next_ms = duration_cast<milliseconds>(
-                        std::chrono::duration<double, std::milli>(next_fp));
-                    interval = (next_ms < this->m_mdns_opts.max_interval)
-                                   ? next_ms
-                                   : this->m_mdns_opts.max_interval;
-                }
-                auto deadline = now + interval;
-                if(!has_scheduled_event || deadline < next)
-                {
-                    next = deadline;
+                    next = ws.next_query_at;
                     has_scheduled_event = true;
                 }
             }
@@ -839,6 +925,12 @@ private:
 
     /// Scheduler tick handler: drives cache expiry, backoff queries, and TTL
     /// refresh queries, then re-arms the timer.
+    ///
+    /// The shared timer fires at the minimum deadline across all watches and
+    /// refresh schedules; each watch sends a query only when its OWN deadline
+    /// has passed, so an unrelated TTL-refresh fire point or a second watched
+    /// type cannot trigger premature queries (RFC 6762 section 5.2 minimum
+    /// one-second interval and doubling per name).
     void on_scheduler_tick()
     {
         if(this->m_stopped.load(std::memory_order_acquire))
@@ -849,16 +941,18 @@ private:
 
         auto now = Clock::now();
 
-        // Backoff queries -- discover mode only
+        // Backoff queries -- discover mode only; fire only watches that are due
         if(m_opts.mode == monitor_mode::discover)
         {
             for(auto &[svc_type, ws] : m_watches)
             {
-                // On first invocation advance_backoff returns initial_interval and
-                // clears the first flag.  Subsequent calls double the interval.
-                // We send the query unconditionally: the timer was set to fire at
-                // the backoff deadline, so it is always time to query when we get here.
-                (void)detail::advance_backoff(ws.backoff, this->m_mdns_opts);
+                if(ws.next_query_at > now)
+                    continue;
+                // advance_backoff returns initial_interval on the first call
+                // (clearing the first flag) and the doubled, max-clamped
+                // interval on subsequent calls -- the gap until the next query.
+                auto interval = detail::advance_backoff(ws.backoff, this->m_mdns_opts);
+                ws.next_query_at = now + interval;
                 send_ptr_query(svc_type);
             }
         }
@@ -866,21 +960,21 @@ private:
         // TTL refresh queries -- discover + ttl_refresh modes
         if(m_opts.mode == monitor_mode::discover || m_opts.mode == monitor_mode::ttl_refresh)
         {
-            for(auto &[key, sched] : m_refresh_schedules)
+            for(auto it = m_refresh_schedules.begin(); it != m_refresh_schedules.end(); )
             {
+                auto &[key, sched] = *it;
                 while(sched.next_idx < sched.fire_at.size()
                       && sched.fire_at[sched.next_idx] <= now)
                 {
-                    // Extract instance name from key ("{instance_name}:{type}")
-                    // and send the appropriate refresh query.
-                    auto sep = key.rfind(':');
-                    if(sep != std::string::npos)
-                    {
-                        std::string inst = key.substr(0, sep);
-                        send_instance_queries(inst);
-                    }
+                    send_instance_queries(key.name.str());
                     ++sched.next_idx;
                 }
+
+                // Prune exhausted schedules -- a fresh record rebuilds them
+                if(sched.next_idx >= sched.fire_at.size())
+                    it = m_refresh_schedules.erase(it);
+                else
+                    ++it;
             }
         }
 
@@ -888,13 +982,12 @@ private:
         arm_scheduler();
     }
 
-    /// Build or rebuild the TTL refresh schedule for a record identified by
-    /// @p key ("{instance_name}:{dns_type_tag}") using @p wire_ttl and the
-    /// current insertion time from the clock.
+    /// Build or rebuild the TTL refresh schedule for the record identified by
+    /// @p key using @p wire_ttl and the current insertion time from the clock.
     ///
     /// Called whenever a new or refreshed record is inserted for a live or
     /// partial instance in discover or ttl_refresh mode.
-    void rebuild_refresh_schedule(const std::string &key, uint32_t wire_ttl)
+    void rebuild_refresh_schedule(const detail::record_name_type &key, uint32_t wire_ttl)
     {
         if(m_opts.mode != monitor_mode::discover && m_opts.mode != monitor_mode::ttl_refresh)
             return;
@@ -905,6 +998,11 @@ private:
         auto inserted_at = Clock::now();
         m_refresh_schedules[key] = detail::make_refresh_schedule<Clock>(
             wire_ttl, this->m_mdns_opts, inserted_at, m_rng);
+
+        // Wake the scheduler at the new fire point -- a long backoff deadline
+        // must not sleep past it.
+        if(this->m_loop)
+            arm_scheduler();
     }
 
     // -------------------------------------------------------------------------
@@ -944,8 +1042,13 @@ private:
         if(idx >= packets.size() || this->m_stopped.load(std::memory_order_acquire))
             return;
 
-        this->m_socket.send(this->multicast_endpoint(),
-                            std::span<const std::byte>(packets[idx]));
+        {
+            std::error_code ec;
+            this->m_socket.send(this->multicast_endpoint(),
+                                std::span<const std::byte>(packets[idx]), ec);
+            if(ec && m_opts.on_error)
+                m_opts.on_error(ec, "query send");
+        }
 
         if(idx + 1 < packets.size())
         {
@@ -969,23 +1072,44 @@ private:
         }
     }
 
-    /// Send SRV + A + AAAA queries for a specific service instance.
+    /// Send one aggregated SRV + TXT + A + AAAA query for a service instance.
     ///
     /// Per RFC 6762 §5.2, refreshing a service instance requires querying the
-    /// SRV record (authoritative) and both address record types to cover dual-
-    /// stack hosts.
+    /// SRV record (authoritative), the TXT record (which would otherwise
+    /// silently expire), and both address record types to cover dual-stack
+    /// hosts. §5 recommends aggregating multiple questions into a single
+    /// multi-question message rather than separate packets.
     void send_instance_queries(std::string_view inst_name)
     {
-        auto srv_pkt  = detail::build_dns_query(inst_name, dns_type::srv);
-        auto a_pkt    = detail::build_dns_query(inst_name, dns_type::a);
-        auto aaaa_pkt = detail::build_dns_query(inst_name, dns_type::aaaa);
+        auto encoded = detail::encode_dns_name(inst_name);
+        if(encoded.empty())
+            return;
 
+        static constexpr std::array<dns_type, 4> qtypes{dns_type::srv, dns_type::txt,
+                                                        dns_type::a, dns_type::aaaa};
+
+        std::vector<std::byte> packet;
+        packet.reserve(12 + (encoded.size() + 4) * qtypes.size());
+
+        detail::push_u16_be(packet, 0x0000); // id = 0
+        detail::push_u16_be(packet, 0x0000); // flags = standard query
+        detail::push_u16_be(packet, static_cast<uint16_t>(qtypes.size())); // qdcount
+        detail::push_u16_be(packet, 0x0000); // ancount
+        detail::push_u16_be(packet, 0x0000); // nscount
+        detail::push_u16_be(packet, 0x0000); // arcount
+
+        for(dns_type qtype : qtypes)
+        {
+            packet.insert(packet.end(), encoded.begin(), encoded.end());
+            detail::push_u16_be(packet, detail::to_underlying(qtype));
+            detail::push_u16_be(packet, 0x0001); // QCLASS = IN
+        }
+
+        std::error_code ec;
         this->m_socket.send(this->multicast_endpoint(),
-                            std::span<const std::byte>(srv_pkt));
-        this->m_socket.send(this->multicast_endpoint(),
-                            std::span<const std::byte>(a_pkt));
-        this->m_socket.send(this->multicast_endpoint(),
-                            std::span<const std::byte>(aaaa_pkt));
+                            std::span<const std::byte>(packet), ec);
+        if(ec && m_opts.on_error)
+            m_opts.on_error(ec, "instance query send");
     }
 
     // -------------------------------------------------------------------------
@@ -1046,7 +1170,8 @@ private:
     std::unordered_map<dns_name, watched_type_state> m_watches;
     std::unordered_map<dns_name, incomplete_instance> m_partial;
     std::unordered_map<dns_name, resolved_service> m_live_services;
-    std::unordered_map<std::string, detail::ttl_refresh_schedule<Clock>> m_refresh_schedules;
+    std::unordered_map<detail::record_name_type, detail::ttl_refresh_schedule<Clock>,
+                       detail::record_name_type_hash> m_refresh_schedules;
 
     // ---- Sets ----
     std::unordered_set<dns_name> m_known_hostnames;

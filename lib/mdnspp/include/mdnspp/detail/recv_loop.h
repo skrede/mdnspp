@@ -12,6 +12,11 @@
 
 namespace mdnspp::detail {
 
+/// Effectively-infinite silence timeout for peers without silence semantics
+/// (observer, monitor) -- the recv_loop runs until stop().
+inline constexpr std::chrono::milliseconds infinite_silence_timeout =
+    std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::hours(24 * 365));
+
 template <policy_like P>
 class recv_loop
 {

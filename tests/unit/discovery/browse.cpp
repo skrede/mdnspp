@@ -183,6 +183,7 @@ SCENARIO("async_enumerate_types returns parsed service types", "[service_discove
                     received_types = std::move(types);
                 });
 
+            sd.delay_timer().fire(); // section 5.2 first-query delay
             sd.timer().fire();
 
             THEN("a PTR query for _services._dns-sd._udp.local was sent")
@@ -233,6 +234,7 @@ SCENARIO("async_discover_subtype discovers subtype instances", "[service_discove
                     received_results = results;
                 });
 
+            sd.delay_timer().fire(); // section 5.2 first-query delay
             sd.timer().fire();
 
             THEN("a PTR query for _printer._sub._http._tcp.local was sent")
@@ -268,6 +270,8 @@ SCENARIO("discover query uses known-answer overload of build_dns_query", "[servi
                               [](std::error_code, const std::vector<mdns_record_variant> &)
                               {
                               });
+
+            sd.delay_timer().fire(); // section 5.2 first-query delay
 
             THEN("a valid DNS query packet was sent with ancount=0 (no known answers on first query)")
             {

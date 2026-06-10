@@ -46,6 +46,7 @@ automatically for every incoming query.
 |--------|--------|-------|
 | Implemented | QU bit detection | Reads the top bit of QCLASS in incoming questions |
 | Implemented | Unicast response routing | QU queries receive a unicast response to the sender |
+| Implemented | Quarter-TTL multicast rule (§5.4) | A QU question is answered via multicast instead when the records have not been multicast within the last quarter of their TTL |
 | Implemented | Multicast response routing | QM queries receive a multicast response |
 | Implemented | Probe QU queries | Outgoing probes use QU to reduce multicast load during probing |
 
@@ -69,14 +70,16 @@ unicast response. This is used in two scenarios:
 A question without the QU bit set (the default) expects a multicast response.
 This is appropriate for queries that seek all responders, not just one.
 
-### Response routing rules (RFC 6762 §6)
+### Response routing rules (RFC 6762 §5.4, §6)
 
 When a `service_server` receives a query:
-- If the QU bit is set and the server has recently sent a multicast answer for
-  this record, it may suppress the unicast response (the recent multicast answer
-  already satisfies the querier).
-- If the QU bit is set and no recent multicast answer is available, the response
-  is sent unicast to the querier's address and port.
+- If the QU bit is set and the planned records have been multicast within the
+  last quarter of their TTL, the response is sent unicast to the querier's
+  address and port.
+- If the QU bit is set but the records have NOT been multicast within the
+  last quarter of their TTL (computed from the smallest TTL among the planned
+  record types), the response is multicast instead, so passive listeners and
+  new joiners on the segment also see the record (§5.4).
 - If the QU bit is clear (QM query), the response is multicast to `224.0.0.251:5353`
   (IPv4) or `[ff02::fb]:5353` (IPv6).
 

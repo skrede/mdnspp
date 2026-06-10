@@ -27,10 +27,10 @@ int main()
                               std::vector<mdnspp::cache_entry> affected)
     {
         std::cout << "cache flush: " << affected.size()
-                  << " stale record(s) marked for eviction\n";
-        std::cout << "  authoritative from: " << authoritative.origin.address << "\n";
+                  << " stale record(s) marked for eviction" << std::endl;
+        std::cout << "  authoritative from: " << authoritative.origin.address << std::endl;
         for (const auto &e : affected)
-            std::cout << "  evicting from: " << e.origin.address << "\n";
+            std::cout << "  evicting from: " << e.origin.address << std::endl;
     };
 
     mdnspp::record_cache cache{std::move(opts)};
@@ -48,7 +48,8 @@ See also: [examples/record_cache/](../../examples/record_cache/)
 |--------|--------|-------|
 | Implemented | Cache-flush bit extraction from wire format | Top bit of rrclass; actual class preserved in lower 15 bits |
 | Implemented | Propagation through all record types to cache | All five record types carry `cache_flush` field |
-| Implemented | 1-second grace period before flushing stale records | `flush_deadline = now + 1s` on conflicting entries |
+| Implemented | Grace period before flushing stale records | `flush_deadline = now + goodbye_grace` (default 1 s) on conflicting entries |
+| Implemented | Young-record exemption (section 10.2) | Only records received more than one second ago are marked for eviction; younger records are exempt |
 | Implemented | `on_cache_flush` callback notification | Fired immediately when flush deadline is assigned |
 | Related | Goodbye (TTL=0) handling in cache (section 10.1) | Also implemented; see [goodbye.md](goodbye.md) |
 
@@ -70,9 +71,15 @@ iterates all existing entries under the same `(name, type)` key and:
 
 1. **Same origin** — the authoritative entry is identified for use in the
    callback but is not marked for eviction.
-2. **Different origin** — each entry gets a `flush_deadline` of
-   `now + std::chrono::seconds(1)`. If an entry already has a closer deadline
+2. **Different origin, received more than one second ago** — the entry gets a
+   `flush_deadline` of `now + goodbye_grace` (default one second,
+   `cache_options::goodbye_grace`). If an entry already has a closer deadline
    it is left unchanged.
+3. **Different origin, received within the last second** — the entry is
+   exempt. RFC 6762 section 10.2 only resets records "received more than one
+   second ago"; this exemption protects bursts arriving via multiple
+   interfaces or from co-located responders from being flushed by each
+   other's announcements.
 
 The `on_cache_flush` callback is fired immediately (while `apply_cache_flush`
 temporarily releases the internal lock) with the authoritative entry and the
@@ -83,8 +90,8 @@ actual eviction happens.
 
 Actual eviction happens lazily during the next `erase_expired()` call.
 `is_expired` returns `true` for any entry whose `flush_deadline` is in the
-past, independently of its TTL. The 1-second grace period means a record
-cannot be evicted before `now + 1s` from the flush event, which gives
+past, independently of its TTL. The grace period means a record
+cannot be evicted before `now + goodbye_grace` from the flush event, which gives
 simultaneous announcers time to complete their own announcements before
 any host starts discarding records.
 

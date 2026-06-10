@@ -32,7 +32,7 @@ int main()
     mdnspp::monitor_options mon_opts{
         .on_found = [](const mdnspp::resolved_service &svc)
         {
-            std::cout << "found: " << svc.instance_name << "\n";
+            std::cout << "found: " << svc.instance_name << std::endl;
         },
     };
 

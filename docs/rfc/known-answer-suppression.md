@@ -35,7 +35,7 @@ int main()
         [](std::error_code ec)
         {
             if (!ec)
-                std::cout << "server is live with KAS enabled\n";
+                std::cout << "server is live with KAS enabled" << std::endl;
         },
         [&ctx](std::error_code)
         {
@@ -62,20 +62,29 @@ See also: [examples/service_server/](../../examples/service_server/)
 | Status | Aspect | Notes |
 |--------|--------|-------|
 | Implemented | Server-side known-answer suppression | Enabled by default; configurable via `suppress_known_answers` |
+| Implemented | Rdata matching (§7.1) | A known answer suppresses only when its name, type, class AND rdata match the record the server would send; a stale SRV (old port) does not suppress the correct answer |
 | Implemented | Per-record-type suppression | PTR, SRV, A, AAAA, TXT suppressed independently |
 | Implemented | Full-response suppression when all records are suppressed | Response skipped if nothing remains to send |
-| Implemented | Client-side known-answer inclusion | Querier and discovery classes append known records to outgoing queries |
-| Implemented | 50% TTL threshold | Record suppressed only when known TTL >= half of original TTL |
+| Implemented | Client-side known-answer inclusion | The continuous service monitor appends cached records to its scheduled PTR queries; one-shot querier and discovery operations start with an empty cache and send no known answers |
+| Implemented | Half-TTL threshold per record type | Record suppressed only when known TTL >= `ka_suppression_fraction` (default 0.5) of the per-type TTL the server would send |
 
 ## In-Depth
 
 ### Server side
 
 When the server receives a query that contains answer records in its Answer
-section, it compares each answer against its own authoritative records. If an
-answer record's TTL is at least half of the record's original TTL (the
-suppression threshold is `4500 / 2 = 2250` seconds), the server suppresses
-that record type from its response.
+section, it compares each answer against its own authoritative records.
+Suppression requires the known answer to assert exactly the server's record:
+matching owner name, type, class, and rdata (byte-exact for SRV/A/AAAA/TXT;
+for PTR, the rdata target must equal the service instance name). A querier
+holding stale rdata — for example an SRV with an old port — therefore still
+receives the correct answer.
+
+In addition, the known answer's TTL must be at least
+`mdns_options::ka_suppression_fraction` (default 0.5, the RFC's half-TTL
+rule) of the per-type TTL the server would send: `ptr_ttl`, `srv_ttl`,
+`txt_ttl`, `a_ttl`, or `aaaa_ttl` from `service_options`. With the defaults
+this is 2250 s for PTR/TXT and 60 s for SRV/A/AAAA.
 
 If all record types that would have been included in the response are
 suppressed, the server skips the response entirely. Partial suppression is
@@ -89,14 +98,20 @@ records would have been sent regardless.
 
 ### Client side
 
-The querier and service discovery classes include known records in their query
-packets. When sending a PTR query, the known-answer records from previous
-results are appended to the query's Answer section, allowing responding
-servers to suppress records the querier already has.
+The continuous `service_monitor` includes known answers in its scheduled PTR
+queries: cached PTR records whose remaining TTL exceeds
+`ka_suppression_fraction` (default 0.5) of their wire TTL are appended to
+the query's Answer section, allowing responding servers to suppress records
+the monitor already has. Queries exceeding
+`mdns_options::max_query_payload` are split into TC continuation packets
+(see [tc-handling.md](tc-handling.md)).
 
-Client-side known-answer inclusion is always active and requires no
-configuration. The maximum number of known-answer records included per query
-is configurable via `mdns_options::max_known_answers` (default: 0, unlimited).
+One-shot operations (`querier`, `service_discovery`) hold no record cache
+when their single query is built, so their queries carry an empty Answer
+section — they never suppress any responder.
+
+The maximum number of known-answer records included per query is
+configurable via `mdns_options::max_known_answers` (default: 0, unlimited).
 
 ### Relationship to duplicate answer suppression
 

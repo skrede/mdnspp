@@ -6,10 +6,11 @@
 
 #include <span>
 #include <chrono>
-#include <cstdint>
-#include <optional>
 #include <vector>
 #include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <system_error>
 
 using namespace mdnspp;
 using namespace mdnspp::testing;
@@ -271,4 +272,73 @@ TEST_CASE("recv_loop passes populated TTL at or above receive_ttl_minimum")
     loop.start();
 
     REQUIRE(received == 1);
+}
+
+TEST_CASE("recv_loop re-arms the receive after a transient error")
+{
+    mock_executor ex;
+    MockSocket sock{ex};
+    MockTimer timer{ex};
+
+    int received = 0;
+    std::vector<std::error_code> errors;
+    recv_loop<MockPolicy> loop{
+        sock,
+        timer,
+        SILENCE_TIMEOUT,
+        [&](const recv_metadata &, std::span<std::byte>) -> bool
+        {
+            ++received;
+            return true;
+        },
+        [](){},
+        0,
+        ttl_unknown_policy::accept,
+        [&](std::error_code ec) { errors.push_back(ec); }
+    };
+
+    loop.start();
+    REQUIRE(sock.has_pending_receive());
+
+    sock.inject_error(std::make_error_code(std::errc::connection_reset));
+
+    REQUIRE(errors.empty());
+    REQUIRE(sock.has_pending_receive());
+
+    sock.inject_receive(endpoint{}, make_packet(4));
+    REQUIRE(received == 1);
+}
+
+TEST_CASE("recv_loop reports a fatal error and stops re-arming")
+{
+    mock_executor ex;
+    MockSocket sock{ex};
+    MockTimer timer{ex};
+
+    int received = 0;
+    std::vector<std::error_code> errors;
+    recv_loop<MockPolicy> loop{
+        sock,
+        timer,
+        SILENCE_TIMEOUT,
+        [&](const recv_metadata &, std::span<std::byte>) -> bool
+        {
+            ++received;
+            return true;
+        },
+        [](){},
+        0,
+        ttl_unknown_policy::accept,
+        [&](std::error_code ec) { errors.push_back(ec); }
+    };
+
+    loop.start();
+    REQUIRE(sock.has_pending_receive());
+
+    sock.inject_error(std::make_error_code(std::errc::operation_canceled));
+
+    REQUIRE(errors.size() == 1);
+    REQUIRE(errors[0] == std::make_error_code(std::errc::operation_canceled));
+    REQUIRE_FALSE(sock.has_pending_receive());
+    REQUIRE(received == 0);
 }

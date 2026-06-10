@@ -119,7 +119,7 @@ TEST_CASE("PLCY-02: encrypted_policy<MockPolicy> socket round-trip", "[encrypted
     bool handler_called = false;
     std::vector<std::byte> received;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
         {
             handler_called = true;
             received.assign(data.begin(), data.end());

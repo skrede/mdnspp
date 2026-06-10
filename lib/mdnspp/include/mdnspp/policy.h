@@ -38,6 +38,10 @@ struct policy_socket_options<P,
     using type = typename P::socket_options_type;
 };
 
+// RFC 6762 §17: multicast DNS messages must fit in a single packet of at most
+// 9000 bytes including IP and UDP headers. Receive buffers use the full bound.
+inline constexpr std::size_t max_udp_payload = 9000;
+
 }
 
 template <typename P>
@@ -53,8 +57,10 @@ struct recv_metadata
 };
 
 // SocketLike<S>: satisfied by any type that provides the mDNS socket interface.
+// The receive handler is invoked with the error code first (asio convention);
+// on error the metadata is empty and the data span is empty.
 template <typename S>
-concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
+concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
 {
     { s.async_receive(std::move(handler)) } -> std::same_as<void>;
     { s.send(ep, send_data) } -> std::same_as<void>;
@@ -64,7 +70,7 @@ concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byt
 
 // TimerLike<T>: satisfied by any type that provides the mDNS timer interface.
 template <typename T>
-concept TimerLike = requires(T &t, std::chrono::milliseconds dur, detail::move_only_function<void(std::error_code)> handler)
+concept TimerLike = requires(T &t, std::chrono::milliseconds dur, move_only_function<void(std::error_code)> handler)
 {
     t.expires_after(dur); // no return constraint — asio::steady_timer returns std::size_t
     { t.async_wait(std::move(handler)) } -> std::same_as<void>;
@@ -89,7 +95,7 @@ concept Policy = requires
     && std::constructible_from<typename P::timer_type, typename P::executor_type, std::error_code&>
     && std::constructible_from<typename P::socket_type, typename P::executor_type, const policy_socket_options_t<P>&>
     && std::constructible_from<typename P::socket_type, typename P::executor_type, const policy_socket_options_t<P>&, std::error_code&>
-    && requires(typename P::executor_type ex, detail::move_only_function<void()> fn)
+    && requires(typename P::executor_type ex, move_only_function<void()> fn)
     {
         P::post(ex, std::move(fn));
     };

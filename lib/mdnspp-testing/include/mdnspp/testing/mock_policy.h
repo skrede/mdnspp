@@ -41,7 +41,7 @@ struct sent_packet
 class MockSocket
 {
 public:
-    // Default constructor — backward compatibility during transition (removed in Plan 03).
+    // Default constructor — backward compatibility.
     MockSocket() = default;
 
     // Concept-satisfying constructors — take mock_executor& (no-op).
@@ -95,14 +95,14 @@ public:
         m_receive_queue.push({std::move(packet), std::move(from), ttl});
     }
 
-    void async_receive(detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
     {
         if(!m_receive_queue.empty())
         {
             auto [packet, sender, ttl] = std::move(m_receive_queue.front());
             m_receive_queue.pop();
             recv_metadata meta{std::move(sender), ttl};
-            handler(meta, std::span<std::byte>(packet));
+            handler(std::error_code{}, meta, std::span<std::byte>(packet));
         }
         else
         {
@@ -124,13 +124,25 @@ public:
         {
             auto h = std::exchange(m_pending_receive, nullptr);
             recv_metadata meta{std::move(from), ttl};
-            h(meta, std::span<std::byte>(packet));
+            h(std::error_code{}, meta, std::span<std::byte>(packet));
         }
         else
         {
             enqueue(std::move(packet), std::move(from), ttl);
         }
     }
+
+    // Deliver a receive error to the pending handler, simulating a socket-level failure.
+    void inject_error(std::error_code ec)
+    {
+        if(m_pending_receive)
+        {
+            auto h = std::exchange(m_pending_receive, nullptr);
+            h(ec, recv_metadata{}, std::span<std::byte>{});
+        }
+    }
+
+    bool has_pending_receive() const noexcept { return m_pending_receive != nullptr; }
 
     void send(const endpoint &dest, std::span<const std::byte> data)
     {
@@ -170,7 +182,7 @@ private:
         std::optional<uint8_t> ttl;
     };
     std::queue<queued_item> m_receive_queue;
-    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_pending_receive;
+    move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_pending_receive;
     std::vector<sent_packet> m_sent_packets;
     socket_options m_opts{};
 
@@ -181,7 +193,7 @@ private:
 class MockTimer
 {
 public:
-    // Default constructor — backward compatibility during transition (removed in Plan 03).
+    // Default constructor — backward compatibility.
     MockTimer() = default;
 
     // Concept-satisfying constructors — take mock_executor& (no-op).

@@ -98,7 +98,7 @@ TEST_CASE("KEYM-02: previous epoch packets accepted during grace window", "[encr
     bool handler_called = false;
     std::vector<std::byte> received;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
         {
             handler_called = true;
             received.assign(data.begin(), data.end());
@@ -135,7 +135,7 @@ TEST_CASE("KEYM-02: unknown epoch packets rejected immediately", "[encrypted_soc
     receiver.inner().enqueue(epoch0_pkt);
     bool handler_called = false;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             handler_called = true;
         });
@@ -170,7 +170,7 @@ TEST_CASE("KEYM-03: time-based grace expiry drops previous epoch packets", "[enc
     receiver.inner().enqueue(epoch0_pkt);
     bool handler_called = false;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             handler_called = true;
         });
@@ -210,7 +210,7 @@ TEST_CASE("KEYM-03: count-based grace expiry drops previous epoch packets after 
     receiver.inner().enqueue(pkt1);
     bool called1 = false;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             called1 = true;
         });
@@ -219,7 +219,7 @@ TEST_CASE("KEYM-03: count-based grace expiry drops previous epoch packets after 
     receiver.inner().enqueue(pkt2);
     bool called2 = false;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             called2 = true;
         });
@@ -228,7 +228,7 @@ TEST_CASE("KEYM-03: count-based grace expiry drops previous epoch packets after 
     receiver.inner().enqueue(pkt3);
     bool called3 = false;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             called3 = true;
         });
@@ -263,7 +263,7 @@ TEST_CASE("KEYM-04: update_key bumps epoch and encrypts with new key", "[encrypt
     receiver1.inner().enqueue(pkt_epoch0);
     bool recv1_called = false;
     receiver1.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             recv1_called = true;
         });
@@ -288,7 +288,7 @@ TEST_CASE("KEYM-04: update_key bumps epoch and encrypts with new key", "[encrypt
     bool recv2_called = false;
     std::vector<std::byte> recv2_data;
     receiver2.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
         {
             recv2_called = true;
             recv2_data.assign(data.begin(), data.end());

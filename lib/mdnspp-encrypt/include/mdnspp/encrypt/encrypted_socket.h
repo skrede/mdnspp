@@ -102,12 +102,17 @@ public:
     }
 
     void async_receive(
-        detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
+        move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
     {
         m_inner.async_receive(
-            [this, h = std::move(handler)](const recv_metadata &meta,
+            [this, h = std::move(handler)](std::error_code ec, const recv_metadata &meta,
                                            std::span<std::byte> raw) mutable
             {
+                if(ec)
+                {
+                    h(ec, meta, raw);
+                    return;
+                }
                 handle_received(meta, raw, h);
             });
     }
@@ -190,7 +195,7 @@ private:
     void handle_received(
         const recv_metadata &meta,
         std::span<std::byte> raw,
-        detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> &handler)
+        move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> &handler)
     {
         const bool has_magic = raw.size() >= 2
             && raw[0] == std::byte{0x4D}
@@ -202,7 +207,7 @@ private:
         if (m_detection == cleartext_detection::magic_byte && !has_magic)
         {
             if (m_accept_cleartext)
-                handler(meta, raw);
+                handler(std::error_code{}, meta, raw);
             return;
         }
 
@@ -239,7 +244,7 @@ private:
         if (!result.has_value())
         {
             if (m_detection == cleartext_detection::attempt_decrypt && m_accept_cleartext && !has_magic)
-                handler(meta, raw);
+                handler(std::error_code{}, meta, raw);
             return;
         }
 
@@ -249,7 +254,7 @@ private:
         if (selected_key == &prev_span)
             ++m_grace.packets_seen;
 
-        handler(meta, std::span<std::byte>(result->data(), result->size()));
+        handler(std::error_code{}, meta, std::span<std::byte>(result->data(), result->size()));
     }
 };
 

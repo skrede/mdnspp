@@ -150,7 +150,12 @@ private:
                 /* no-op on silence */
             },
             this->m_mdns_opts.receive_ttl_minimum,
-            this->m_mdns_opts.unknown_ttl_policy);
+            this->m_mdns_opts.unknown_ttl_policy,
+            [this](std::error_code ec)
+            {
+                if(m_on_error)
+                    m_on_error(ec, "receive");
+            });
 
         this->m_loop->start();
     }

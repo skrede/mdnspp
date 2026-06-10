@@ -58,7 +58,7 @@ TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to h
     endpoint received_from;
     std::vector<std::byte> received_data;
 
-    sock.async_receive([&](const mdnspp::recv_metadata &meta, std::span<std::byte> data)
+    sock.async_receive([&](std::error_code, const mdnspp::recv_metadata &meta, std::span<std::byte> data)
     {
         received_from = meta.sender;
         received_data.assign(data.begin(), data.end());
@@ -80,7 +80,7 @@ TEST_CASE("MockSocket::enqueue(packet) delivers endpoint{}", "[mock_socket][enqu
     sock.enqueue(pkt);
 
     endpoint received_from{"nonzero", 9999}; // will be overwritten
-    sock.async_receive([&](const mdnspp::recv_metadata &meta, std::span<std::byte>)
+    sock.async_receive([&](std::error_code, const mdnspp::recv_metadata &meta, std::span<std::byte>)
     {
         received_from = meta.sender;
     });

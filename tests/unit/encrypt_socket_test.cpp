@@ -102,7 +102,7 @@ TEST_CASE("SOCK-03: async_receive decrypts valid packet and calls handler", "[en
     std::vector<std::byte> received;
 
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
         {
             handler_called = true;
             received.assign(data.begin(), data.end());
@@ -135,7 +135,7 @@ TEST_CASE("SOCK-04: recv_metadata forwarded unchanged", "[encrypted_socket][meta
 
     mdnspp::recv_metadata captured_meta;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &meta, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &meta, std::span<std::byte>)
         {
             captured_meta = meta;
         });
@@ -165,7 +165,7 @@ TEST_CASE("SOCK-05: cleartext handling with magic_byte detection", "[encrypted_s
 
         bool handler_called = false;
         sock.async_receive(
-            [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+            [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
             {
                 handler_called = true;
             });
@@ -185,7 +185,7 @@ TEST_CASE("SOCK-05: cleartext handling with magic_byte detection", "[encrypted_s
 
         bool handler_called = false;
         sock.async_receive(
-            [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+            [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
             {
                 handler_called = true;
             });
@@ -214,7 +214,7 @@ TEST_CASE("SOCK-05: cleartext_detection::reject_all drops all non-encrypted",
 
     bool handler_called = false;
     sock.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             handler_called = true;
         });
@@ -244,7 +244,7 @@ TEST_CASE("SOCK-06: corrupted auth tag silently dropped", "[encrypted_socket][ta
 
     bool handler_called = false;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             handler_called = true;
         });
@@ -281,7 +281,7 @@ TEST_CASE("Auth-only: received payload matches sent plaintext", "[encrypted_sock
     bool handler_called = false;
     std::vector<std::byte> received;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
         {
             handler_called = true;
             received.assign(data.begin(), data.end());
@@ -317,7 +317,7 @@ TEST_CASE("Auth-only: tampered payload dropped", "[encrypted_socket][auth_only][
     receiver.inner().enqueue(tampered);
     bool handler_called = false;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             handler_called = true;
         });
@@ -350,7 +350,7 @@ TEST_CASE("receive_mode::encrypted_only drops auth-only packets", "[encrypted_so
 
     bool handler_called = false;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             handler_called = true;
         });
@@ -382,7 +382,7 @@ TEST_CASE("receive_mode::auth_only drops encrypted packets", "[encrypted_socket]
 
     bool handler_called = false;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             handler_called = true;
         });
@@ -423,12 +423,12 @@ TEST_CASE("receive_mode::accept_both accepts both encrypted and auth-only", "[en
 
     int handler_count = 0;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             ++handler_count;
         });
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             ++handler_count;
         });
@@ -458,7 +458,7 @@ TEST_CASE("SOCK-06: replayed sequence silently dropped", "[encrypted_socket][rep
     receiver.inner().enqueue(encrypted_pkt);
     bool first_called = false;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             first_called = true;
         });
@@ -468,7 +468,7 @@ TEST_CASE("SOCK-06: replayed sequence silently dropped", "[encrypted_socket][rep
     receiver.inner().enqueue(encrypted_pkt);
     bool second_called = false;
     receiver.async_receive(
-        [&](const mdnspp::recv_metadata &, std::span<std::byte>)
+        [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
         {
             second_called = true;
         });

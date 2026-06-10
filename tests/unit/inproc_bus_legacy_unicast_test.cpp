@@ -156,7 +156,7 @@ TEST_CASE("Legacy unicast query from non-5353 port gets unicast response with ca
     endpoint received_from{};
 
     legacy_client.async_receive(
-        [&](const recv_metadata &meta, std::span<std::byte> data)
+        [&](std::error_code, const recv_metadata &meta, std::span<std::byte> data)
         {
             received_from = meta.sender;
             received_data.assign(data.begin(), data.end());

@@ -46,7 +46,7 @@ public:
     using completion_handler = mdnspp::discovery_completion_handler;
 
     /// Completion callback for async_enumerate_types.
-    using enumerate_handler = detail::move_only_function<void(std::error_code, std::vector<service_type_info>)>;
+    using enumerate_handler = move_only_function<void(std::error_code, std::vector<service_type_info>)>;
 
     /// Error handler invoked on fire-and-forget send failures.
     using error_handler = mdnspp::error_handler;
@@ -122,7 +122,7 @@ public:
     /// Completion signature: void(std::error_code, std::vector<resolved_service>).
     /// When mode is response_mode::unicast the QU bit (RFC 6762 section 5.4) is set.
     void async_browse(std::string_view service_type,
-                      detail::move_only_function<void(std::error_code, std::vector<resolved_service>)> on_done,
+                      move_only_function<void(std::error_code, std::vector<resolved_service>)> on_done,
                       response_mode mode = response_mode::multicast)
     {
         assert(m_browse_loop == nullptr); // one browse per lifetime
@@ -227,7 +227,7 @@ private:
     // with shared on_packet handler, and starts the loop.
     void do_query(std::string svc_type, response_mode mode,
                   std::unique_ptr<recv_loop<P>> &target_loop,
-                  detail::move_only_function<void()> on_silence_fn)
+                  move_only_function<void()> on_silence_fn)
     {
         m_results.clear();
         m_service_type = dns_name(std::move(svc_type));
@@ -282,7 +282,12 @@ private:
             },
             std::move(on_silence_fn),
             this->m_mdns_opts.receive_ttl_minimum,
-            this->m_mdns_opts.unknown_ttl_policy);
+            this->m_mdns_opts.unknown_ttl_policy,
+            [this](std::error_code ec)
+            {
+                if(m_on_error)
+                    m_on_error(ec, "receive");
+            });
 
         target_loop->start();
     }
@@ -342,7 +347,12 @@ private:
                     h(std::error_code{}, m_enumerated_types);
             },
             this->m_mdns_opts.receive_ttl_minimum,
-            this->m_mdns_opts.unknown_ttl_policy);
+            this->m_mdns_opts.unknown_ttl_policy,
+            [this](std::error_code ec)
+            {
+                if(m_on_error)
+                    m_on_error(ec, "receive");
+            });
 
         m_enumerate_loop->start();
     }
@@ -353,7 +363,7 @@ private:
     record_callback m_on_record;
     completion_handler m_on_completion;
     enumerate_handler m_on_enumerate_completion;
-    detail::move_only_function<void(std::error_code, std::vector<resolved_service>)> m_on_browse_completion;
+    move_only_function<void(std::error_code, std::vector<resolved_service>)> m_on_browse_completion;
     std::unique_ptr<recv_loop<P>> m_browse_loop;
     std::unique_ptr<recv_loop<P>> m_enumerate_loop;
     std::vector<mdns_record_variant> m_results;

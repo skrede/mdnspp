@@ -56,14 +56,14 @@ public:
     inproc_socket(inproc_socket &&) = delete;
     inproc_socket &operator=(inproc_socket &&) = delete;
 
-    void async_receive(detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
     {
         if(!m_recv_queue.empty())
         {
             auto [data, from, ttl] = std::move(m_recv_queue.front());
             m_recv_queue.pop();
             recv_metadata meta{from, ttl};
-            handler(meta, std::span<std::byte>(data));
+            handler(std::error_code{}, meta, std::span<std::byte>(data));
         }
         else
         {
@@ -109,7 +109,7 @@ public:
             m_recv_buf.assign(data.begin(), data.end());
             recv_metadata meta{from, ttl};
             auto h = std::exchange(m_pending_receive, nullptr);
-            h(meta, std::span<std::byte>(m_recv_buf));
+            h(std::error_code{}, meta, std::span<std::byte>(m_recv_buf));
         }
         else
         {
@@ -124,7 +124,7 @@ private:
     inproc_bus<Clock> *m_bus;
     socket_options m_opts;
     endpoint m_ep;
-    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_pending_receive;
+    move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_pending_receive;
     std::vector<std::byte> m_recv_buf;
 
     struct queued_packet

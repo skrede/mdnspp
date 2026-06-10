@@ -54,7 +54,7 @@ TEST_CASE("inproc_bus multicast delivery", "[inproc][bus]")
     mdnspp::endpoint sender_b;
     bool b_received = false;
 
-    sock_b.async_receive([&](const mdnspp::recv_metadata &meta, std::span<std::byte> data)
+    sock_b.async_receive([&](std::error_code, const mdnspp::recv_metadata &meta, std::span<std::byte> data)
     {
         sender_b = meta.sender;
         received_by_b.assign(data.begin(), data.end());
@@ -63,7 +63,7 @@ TEST_CASE("inproc_bus multicast delivery", "[inproc][bus]")
 
     std::vector<std::byte> received_by_a;
     bool a_received = false;
-    sock_a.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+    sock_a.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
     {
         received_by_a.assign(data.begin(), data.end());
         a_received = true;
@@ -93,12 +93,12 @@ TEST_CASE("inproc_bus unicast delivery", "[inproc][bus]")
     bool b_received = false;
     bool a_received = false;
 
-    sock_b.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte>)
+    sock_b.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
     {
         b_received = true;
     });
 
-    sock_a.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte>)
+    sock_a.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
     {
         a_received = true;
     });
@@ -130,12 +130,12 @@ TEST_CASE("inproc_bus loopback disabled", "[inproc][bus]")
     bool sender_received = false;
     bool receiver_received = false;
 
-    sender.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte>)
+    sender.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
     {
         sender_received = true;
     });
 
-    receiver.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte>)
+    receiver.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
     {
         receiver_received = true;
     });

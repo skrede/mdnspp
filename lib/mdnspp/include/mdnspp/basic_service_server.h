@@ -63,7 +63,7 @@ public:
 
     /// Optional callback invoked when an incoming query is received and parsed.
     /// Parameters: sender endpoint, qtype requested, response mode (unicast or multicast).
-    using query_callback = detail::move_only_function<void(const endpoint &sender, dns_type type, response_mode mode)>;
+    using query_callback = move_only_function<void(const endpoint &sender, dns_type type, response_mode mode)>;
 
     /// Completion callback fired once when stop() is called or on_ready event occurs.
     /// Receives error_code.
@@ -266,7 +266,12 @@ private:
                 // no-op on silence
             },
             this->m_mdns_opts.receive_ttl_minimum,
-            this->m_mdns_opts.unknown_ttl_policy);
+            this->m_mdns_opts.unknown_ttl_policy,
+            [this](std::error_code ec)
+            {
+                if(m_on_error)
+                    m_on_error(ec, "receive");
+            });
 
         start_probing();
         this->m_loop->start();
@@ -922,7 +927,7 @@ private:
             offset += 2;
             if(offset + rdlen > data.size()) return {};
 
-            if(rtype == std::to_underlying(dns_type::srv))
+            if(rtype == detail::to_underlying(dns_type::srv))
                 return std::vector<std::byte>(data.data() + offset,
                                              data.data() + offset + rdlen);
             offset += rdlen;

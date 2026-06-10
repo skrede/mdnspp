@@ -239,7 +239,7 @@ public:
     // -----------------------------------------------------------------------
 
     void register_socket(detail::native_socket_t fd,
-                          detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler
+                          move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler
 #ifdef _WIN32
                           , LPFN_WSARECVMSG fn_wsarecvmsg = nullptr
 #endif
@@ -293,7 +293,7 @@ private:
     struct socket_entry
     {
         detail::native_socket_t fd{detail::invalid_socket};
-        detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler;
+        move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler;
 #ifdef _WIN32
         LPFN_WSARECVMSG fn_wsarecvmsg{nullptr};
 #endif
@@ -317,7 +317,7 @@ private:
     std::atomic<bool> m_post_pending{false};
     std::vector<socket_entry> m_sockets;
     std::vector<DefaultTimer*> m_timers;
-    std::array<std::byte, 4096> m_recv_buf{};
+    std::array<std::byte, detail::max_udp_payload> m_recv_buf{};
     sockaddr_storage m_sender_addr{};
 
     // Stop-wakeup mechanism — platform-specific members.
@@ -559,6 +559,16 @@ private:
                 DWORD received = 0;
                 if(m_sockets[sock_idx].fn_wsarecvmsg(
                        m_sockets[sock_idx].fd, &wmsg, &received, nullptr, nullptr) == SOCKET_ERROR)
+                {
+                    const int err = ::WSAGetLastError();
+                    if(err == WSAEWOULDBLOCK || err == WSAEMSGSIZE) // no data / truncated datagram — drop
+                        continue;
+                    m_sockets[sock_idx].handler(
+                        std::error_code(err, std::system_category()),
+                        recv_metadata{}, std::span<std::byte>{});
+                    continue;
+                }
+                if(wmsg.dwFlags & MSG_PARTIAL) // truncated datagram — drop
                     continue;
 
                 bytes = static_cast<std::ptrdiff_t>(received);
@@ -610,7 +620,15 @@ private:
                     reinterpret_cast<sockaddr*>(&m_sender_addr),
                     &sender_len);
                 if(recv_bytes == SOCKET_ERROR)
+                {
+                    const int err = ::WSAGetLastError();
+                    if(err == WSAEWOULDBLOCK || err == WSAEMSGSIZE) // no data / truncated datagram — drop
+                        continue;
+                    m_sockets[sock_idx].handler(
+                        std::error_code(err, std::system_category()),
+                        recv_metadata{}, std::span<std::byte>{});
                     continue;
+                }
                 bytes = static_cast<std::ptrdiff_t>(recv_bytes);
             }
 #else
@@ -631,7 +649,18 @@ private:
             bytes = ::recvmsg(m_sockets[sock_idx].fd, &msg, 0);
 
             if(bytes < 0)
+            {
+                if(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+                    continue;
+                m_sockets[sock_idx].handler(
+                    std::error_code(errno, std::generic_category()),
+                    recv_metadata{}, std::span<std::byte>{});
                 continue;
+            }
+#ifdef MSG_TRUNC
+            if(msg.msg_flags & MSG_TRUNC) // truncated datagram — drop
+                continue;
+#endif
 
             for(cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg))
             {
@@ -701,6 +730,7 @@ private:
             };
 
             m_sockets[sock_idx].handler(
+                std::error_code{},
                 meta,
                 std::span<std::byte>{m_recv_buf.data(), static_cast<std::size_t>(bytes)});
         }

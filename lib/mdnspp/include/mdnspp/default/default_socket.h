@@ -80,13 +80,13 @@ public:
     DefaultSocket &operator=(DefaultSocket &&) = delete;
 
     /// Register this socket and its receive handler with DefaultContext.
-    void async_receive(detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
     {
         m_receive_handler = std::move(handler);
         m_ctx.register_socket(m_fd,
-            [this](const recv_metadata &meta, std::span<std::byte> data)
+            [this](std::error_code ec, const recv_metadata &meta, std::span<std::byte> data)
             {
-                m_receive_handler(meta, data);
+                m_receive_handler(ec, meta, data);
             }
 #ifdef _WIN32
             , m_fn_wsarecvmsg
@@ -147,7 +147,7 @@ public:
 private:
     DefaultContext &m_ctx;
     detail::native_socket_t m_fd{detail::invalid_socket};
-    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_receive_handler;
+    move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_receive_handler;
 #ifdef _WIN32
     LPFN_WSARECVMSG m_fn_wsarecvmsg{nullptr};
 #endif

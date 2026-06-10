@@ -108,7 +108,7 @@ TEST_CASE("TC continuation delay spaces packets", "[inproc][tc]")
 
     std::function<void()> arm_sniffer = [&]()
     {
-        sniffer.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+        sniffer.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
         {
             if(data.size() >= 3 &&
                (std::to_integer<uint8_t>(data[2]) & 0x80u) == 0)
@@ -161,7 +161,7 @@ TEST_CASE("TC continuation delay zero sends all packets immediately", "[inproc][
 
     std::function<void()> arm_sniffer = [&]()
     {
-        sniffer.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+        sniffer.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
         {
             if(data.size() >= 3 &&
                (std::to_integer<uint8_t>(data[2]) & 0x80u) == 0)

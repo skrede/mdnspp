@@ -209,7 +209,7 @@ private:
             offset += 2;
 
             bool is_qm = (q_class & 0x8000) == 0;
-            bool type_match = q_type == std::to_underlying(m_query_type);
+            bool type_match = q_type == detail::to_underlying(m_query_type);
 
             if(type_match && is_qm)
             {
@@ -281,7 +281,12 @@ private:
             },
             [this]() { fire_completion(); },
             this->m_mdns_opts.receive_ttl_minimum,
-            this->m_mdns_opts.unknown_ttl_policy);
+            this->m_mdns_opts.unknown_ttl_policy,
+            [this](std::error_code ec)
+            {
+                if(m_on_error)
+                    m_on_error(ec, "receive");
+            });
     }
 
     // QU: send immediately, then start recv_loop.

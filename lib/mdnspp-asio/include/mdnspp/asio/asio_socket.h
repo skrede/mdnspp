@@ -50,6 +50,7 @@ public:
         if(multicast_addr.is_v6())
         {
             m_socket.open(asio::ip::udp::v6());
+            m_socket.non_blocking(true);
             configure_ttl_extraction(true);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true));
             apply_reuse_port();
@@ -70,6 +71,7 @@ public:
         else
         {
             m_socket.open(asio::ip::udp::v4());
+            m_socket.non_blocking(true);
             configure_ttl_extraction(false);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true));
             apply_reuse_port();
@@ -92,7 +94,7 @@ public:
         m_socket.set_option(asio::ip::multicast::enable_loopback(
             opts.multicast_loopback == loopback_mode::enabled));
 
-        m_buffer.resize(4096);
+        m_buffer.resize(detail::max_udp_payload);
     }
 
     // Non-throwing constructor with socket_options.
@@ -107,6 +109,8 @@ public:
         if(multicast_addr.is_v6())
         {
             m_socket.open(asio::ip::udp::v6(), ec);
+            if(ec) return;
+            m_socket.non_blocking(true, ec);
             if(ec) return;
             configure_ttl_extraction(true);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
@@ -134,6 +138,8 @@ public:
         else
         {
             m_socket.open(asio::ip::udp::v4(), ec);
+            if(ec) return;
+            m_socket.non_blocking(true, ec);
             if(ec) return;
             configure_ttl_extraction(false);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
@@ -165,17 +171,20 @@ public:
             opts.multicast_loopback == loopback_mode::enabled), ec);
         if(ec) return;
 
-        m_buffer.resize(4096);
+        m_buffer.resize(detail::max_udp_payload);
     }
 
-    void async_receive(detail::move_only_function<void(const mdnspp::recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(move_only_function<void(std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)> handler)
     {
         m_socket.async_wait(
             asio::ip::udp::socket::wait_read,
             [this, handler = std::move(handler)](std::error_code ec) mutable
             {
                 if(ec)
+                {
+                    handler(ec, mdnspp::recv_metadata{}, std::span<std::byte>{});
                     return;
+                }
 
 #ifndef _WIN32
                 sockaddr_storage sender_addr{};
@@ -195,7 +204,23 @@ public:
 
                 const ssize_t n = ::recvmsg(m_socket.native_handle(), &msg, 0);
                 if(n < 0)
+                {
+                    if(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+                    {
+                        async_receive(std::move(handler)); // spurious readiness — re-arm
+                        return;
+                    }
+                    handler(std::error_code(errno, std::generic_category()),
+                            mdnspp::recv_metadata{}, std::span<std::byte>{});
                     return;
+                }
+#ifdef MSG_TRUNC
+                if(msg.msg_flags & MSG_TRUNC) // truncated datagram — drop and re-arm
+                {
+                    async_receive(std::move(handler));
+                    return;
+                }
+#endif
 
                 std::optional<uint8_t> ttl;
                 uint32_t recv_ifindex = 0;
@@ -260,7 +285,7 @@ public:
 
                 mdnspp::endpoint ep{addr_str, port};
                 mdnspp::recv_metadata meta{ep, ttl, recv_ifindex};
-                handler(meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(n)));
+                handler(std::error_code{}, meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(n)));
 
 #else // _WIN32
                 if(m_fn_wsarecvmsg)
@@ -283,7 +308,22 @@ public:
 
                     DWORD received = 0;
                     if(m_fn_wsarecvmsg(m_socket.native_handle(), &wmsg, &received, nullptr, nullptr) == SOCKET_ERROR)
+                    {
+                        const int err = ::WSAGetLastError();
+                        if(err == WSAEWOULDBLOCK || err == WSAEMSGSIZE) // spurious readiness / truncated datagram
+                        {
+                            async_receive(std::move(handler));
+                            return;
+                        }
+                        handler(std::error_code(err, std::system_category()),
+                                mdnspp::recv_metadata{}, std::span<std::byte>{});
                         return;
+                    }
+                    if(wmsg.dwFlags & MSG_PARTIAL) // truncated datagram — drop and re-arm
+                    {
+                        async_receive(std::move(handler));
+                        return;
+                    }
 
                     std::optional<uint8_t> ttl;
                     uint32_t recv_ifindex = 0;
@@ -338,7 +378,7 @@ public:
 
                     mdnspp::endpoint ep{addr_str, port};
                     mdnspp::recv_metadata meta{ep, ttl, recv_ifindex};
-                    handler(meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(received)));
+                    handler(std::error_code{}, meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(received)));
                 }
                 else
                 {
@@ -352,7 +392,17 @@ public:
                                              reinterpret_cast<sockaddr *>(&sender_addr),
                                              &namelen);
                     if(n == SOCKET_ERROR)
+                    {
+                        const int err = ::WSAGetLastError();
+                        if(err == WSAEWOULDBLOCK || err == WSAEMSGSIZE) // spurious readiness / truncated datagram
+                        {
+                            async_receive(std::move(handler));
+                            return;
+                        }
+                        handler(std::error_code(err, std::system_category()),
+                                mdnspp::recv_metadata{}, std::span<std::byte>{});
                         return;
+                    }
 
                     char addr_str[INET6_ADDRSTRLEN]{};
                     uint16_t port{};
@@ -371,7 +421,7 @@ public:
 
                     mdnspp::endpoint ep{addr_str, port};
                     mdnspp::recv_metadata meta{ep, std::nullopt};
-                    handler(meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(n)));
+                    handler(std::error_code{}, meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(n)));
                 }
 #endif
             });

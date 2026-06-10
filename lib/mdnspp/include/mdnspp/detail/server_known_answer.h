@@ -145,16 +145,15 @@ inline bool record_conflicts_ours(const mdns_record_variant &rec, const service_
 
 inline void mark_suppressed_type(suppression_mask &mask, const mdns_record_variant &rec)
 {
-    std::visit([&](const auto &r)
+    switch(record_type(rec))
     {
-        using T = std::decay_t<decltype(r)>;
-        (void)r;
-        if constexpr(std::is_same_v<T, record_ptr>)        mask.ptr  = true;
-        else if constexpr(std::is_same_v<T, record_srv>)   mask.srv  = true;
-        else if constexpr(std::is_same_v<T, record_a>)     mask.a    = true;
-        else if constexpr(std::is_same_v<T, record_aaaa>)  mask.aaaa = true;
-        else if constexpr(std::is_same_v<T, record_txt>)   mask.txt  = true;
-    }, rec);
+    case dns_type::ptr:  mask.ptr  = true; break;
+    case dns_type::srv:  mask.srv  = true; break;
+    case dns_type::a:    mask.a    = true; break;
+    case dns_type::aaaa: mask.aaaa = true; break;
+    case dns_type::txt:  mask.txt  = true; break;
+    default: break;
+    }
 }
 
 // Builds a suppression mask from parsed records (TC accumulation path).
@@ -170,16 +169,17 @@ inline suppression_mask suppress_from_records(std::span<const mdns_record_varian
         if(!record_matches_ours(rec, info))
             continue;
         uint32_t ttl = std::visit([](const auto &r) { return r.ttl; }, rec);
-        uint32_t threshold = std::visit([&](const auto &r) -> uint32_t
+        uint32_t threshold = [&]
         {
-            using T = std::decay_t<decltype(r)>;
-            (void)r;
-            if constexpr(std::is_same_v<T, record_ptr>)       return th.ptr;
-            else if constexpr(std::is_same_v<T, record_srv>)  return th.srv;
-            else if constexpr(std::is_same_v<T, record_a>)    return th.a;
-            else if constexpr(std::is_same_v<T, record_aaaa>) return th.aaaa;
-            else                                              return th.txt;
-        }, rec);
+            switch(record_type(rec))
+            {
+            case dns_type::ptr:  return th.ptr;
+            case dns_type::srv:  return th.srv;
+            case dns_type::a:    return th.a;
+            case dns_type::aaaa: return th.aaaa;
+            default:             return th.txt;
+            }
+        }();
         if(ttl >= threshold)
             mark_suppressed_type(mask, rec);
     }

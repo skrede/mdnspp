@@ -4,6 +4,8 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 
+#include "mdnspp/detail/hash_combine.h"
+
 #include <chrono>
 #include <vector>
 #include <utility>
@@ -20,7 +22,7 @@ struct endpoint_hash
     {
         auto h1 = std::hash<std::string>{}(ep.address);
         auto h2 = std::hash<uint16_t>{}(ep.port);
-        return h1 ^ (h2 << 16);
+        return hash_combine(h1, h2);
     }
 };
 

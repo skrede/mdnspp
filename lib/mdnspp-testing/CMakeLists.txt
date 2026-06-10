@@ -2,6 +2,7 @@ set(INCLUDE_DIRECTORY include)
 
 add_library(mdnspp_testing INTERFACE)
 add_library(mdnspp::testing ALIAS mdnspp_testing)
+set_target_properties(mdnspp_testing PROPERTIES EXPORT_NAME testing)
 
 target_compile_features(mdnspp_testing INTERFACE cxx_std_20)
 

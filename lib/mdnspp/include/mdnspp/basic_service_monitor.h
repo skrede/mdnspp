@@ -100,7 +100,6 @@ public:
         , m_cache_opts(std::move(copts))
         , m_cache(make_cache_options())
         , m_scheduler_timer(ex)
-        , m_tc_send_timer(ex)
     {
         detail::throw_on_error(validate());
     }
@@ -128,7 +127,6 @@ public:
         , m_cache_opts(std::move(copts))
         , m_cache(make_cache_options())
         , m_scheduler_timer(ex)
-        , m_tc_send_timer(ex)
     {
         if(!ec)
             ec = validate();
@@ -206,7 +204,9 @@ public:
         base::stop([this]()
         {
             m_scheduler_timer.cancel();
-            m_tc_send_timer.cancel();
+            for(auto &[id, chain] : m_tc_chains)
+                chain.timer.cancel();
+            m_tc_chains.clear();
             if(this->m_loop)
                 this->m_loop->stop();
             if(m_on_done)
@@ -320,6 +320,24 @@ public:
     /// Test-support accessor for the number of active TTL-refresh schedules.
     std::size_t refresh_schedule_count_for_test() const noexcept { return m_refresh_schedules.size(); }
 
+    /// Test-support accessor for the number of in-flight TC continuation chains.
+    std::size_t tc_chain_count_for_test() const noexcept { return m_tc_chains.size(); }
+
+    /// Test-support driver: fires every in-flight TC continuation timer once.
+    /// Only instantiable with policies whose timer exposes fire() (mock_policy).
+    void fire_tc_chains_for_test()
+    {
+        std::vector<uint64_t> ids;
+        ids.reserve(m_tc_chains.size());
+        for(auto &[id, chain] : m_tc_chains)
+            ids.push_back(id);
+        for(uint64_t id : ids)
+        {
+            if(auto it = m_tc_chains.find(id); it != m_tc_chains.end())
+                it->second.timer.fire();
+        }
+    }
+
 private:
     // -------------------------------------------------------------------------
     // Private constructor helpers
@@ -387,6 +405,29 @@ private:
         bool has_srv{false};
         bool has_address{false};
         resolved_service partial;
+    };
+
+    /// One in-flight TC continuation chain (RFC 6762 section 7.2): the
+    /// remaining query packets of a known-answer list that exceeded the
+    /// payload limit, plus the timer pacing them. Each chain owns its timer
+    /// so chains started by different watched types in the same scheduler
+    /// tick cannot cancel each other's continuation packets. Keyed by a
+    /// monotonically increasing id in @c m_tc_chains.
+    struct tc_chain
+    {
+        tc_chain(executor_type ex, std::vector<std::vector<std::byte>> pkts,
+                 std::size_t i, std::chrono::milliseconds d)
+            : timer(ex)
+            , packets(std::move(pkts))
+            , idx(i)
+            , delay(d)
+        {
+        }
+
+        timer_type timer;
+        std::vector<std::vector<std::byte>> packets;
+        std::size_t idx;
+        std::chrono::milliseconds delay;
     };
 
     /// Per watched service-type state: independent backoff schedule and query
@@ -1042,34 +1083,60 @@ private:
         if(idx >= packets.size() || this->m_stopped.load(std::memory_order_acquire))
             return;
 
+        send_tc_packet(packets[idx]);
+
+        if(idx + 1 >= packets.size())
+            return;
+
+        auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(
+            this->m_mdns_opts.tc_continuation_delay);
+        if(delay.count() <= 0)
         {
-            std::error_code ec;
-            this->m_socket.send(this->multicast_endpoint(),
-                                std::span<const std::byte>(packets[idx]), ec);
-            if(ec && m_opts.on_error)
-                m_opts.on_error(ec, "query send");
+            send_tc_packets(std::move(packets), idx + 1);
+            return;
         }
 
-        if(idx + 1 < packets.size())
+        uint64_t id = m_next_tc_chain++;
+        m_tc_chains.try_emplace(id, this->m_executor, std::move(packets), idx + 1, delay);
+        arm_tc_chain(id);
+    }
+
+    void arm_tc_chain(uint64_t id)
+    {
+        auto &chain = m_tc_chains.find(id)->second;
+        chain.timer.expires_after(chain.delay);
+        chain.timer.async_wait([this, id](std::error_code ec)
         {
-            auto delay = this->m_mdns_opts.tc_continuation_delay;
-            if(delay.count() > 0)
-            {
-                auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(delay);
-                m_tc_send_timer.expires_after(ms);
-                m_tc_send_timer.async_wait(
-                    [this, pkts = std::move(packets), idx](std::error_code ec) mutable
-                    {
-                        if(ec || this->m_stopped.load(std::memory_order_acquire))
-                            return;
-                        send_tc_packets(std::move(pkts), idx + 1);
-                    });
-            }
-            else
-            {
-                send_tc_packets(std::move(packets), idx + 1);
-            }
-        }
+            // ec is checked first and alone: on cancellation (stop teardown
+            // or destruction) the chain entry may already be gone.
+            if(ec)
+                return;
+            if(this->m_stopped.load(std::memory_order_acquire))
+                return;
+            continue_tc_chain(id);
+        });
+    }
+
+    void continue_tc_chain(uint64_t id)
+    {
+        auto it = m_tc_chains.find(id);
+        if(it == m_tc_chains.end())
+            return;
+        auto &chain = it->second;
+        send_tc_packet(chain.packets[chain.idx]);
+        if(++chain.idx < chain.packets.size())
+            arm_tc_chain(id);
+        else
+            m_tc_chains.erase(it);
+    }
+
+    void send_tc_packet(const std::vector<std::byte> &packet)
+    {
+        std::error_code ec;
+        this->m_socket.send(this->multicast_endpoint(),
+                            std::span<const std::byte>(packet), ec);
+        if(ec && m_opts.on_error)
+            m_opts.on_error(ec, "query send");
     }
 
     /// Send one aggregated SRV + TXT + A + AAAA query for a service instance.
@@ -1149,6 +1216,7 @@ private:
     // -------------------------------------------------------------------------
 
     // ---- Fundamental / simple types ----
+    uint64_t m_next_tc_chain{0};
     std::mt19937 m_rng;
 
     // ---- Options and callbacks ----
@@ -1161,12 +1229,12 @@ private:
 
     // ---- Timers ----
     timer_type m_scheduler_timer;
-    timer_type m_tc_send_timer;
 
     // ---- Synchronization ----
     mutable std::mutex m_snapshot_mutex;
 
     // ---- Maps (ascending by value-type complexity) ----
+    std::unordered_map<uint64_t, tc_chain> m_tc_chains;
     std::unordered_map<dns_name, dns_name> m_instance_type;
     std::unordered_map<dns_name, watched_type_state> m_watches;
     std::unordered_map<dns_name, incomplete_instance> m_partial;

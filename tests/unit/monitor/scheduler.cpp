@@ -489,3 +489,73 @@ TEST_CASE("refresh schedules are pruned on exhaustion and SRV expiry",
         CHECK(mon.refresh_schedule_count_for_test() == 0);
     }
 }
+
+TEST_CASE("scheduler: concurrent TC continuation chains for two watches do not cancel each other",
+          "[monitor][scheduler][tc]")
+{
+    mock_executor ex;
+    test_clock::reset();
+
+    mdnspp::mdns_options mdns_opts;
+    mdns_opts.ttl_refresh_thresholds = {};
+    mdns_opts.max_query_payload = 200; // force known-answer splitting
+    mdns_opts.tc_continuation_delay = std::chrono::milliseconds{20};
+
+    mdnspp::monitor_options opts;
+    opts.mode = mdnspp::monitor_mode::observe; // queries only via query_service_type
+
+    test_monitor mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts)};
+    mon.watch("_a._tcp.local");
+    mon.watch("_b._tcp.local");
+    ex.drain_posted();
+
+    mon.async_start();
+    ex.drain_posted();
+
+    auto &sock = mon.socket();
+
+    // Populate the cache with enough PTR records per type that the
+    // known-answer list of each PTR query exceeds max_query_payload.
+    for(int i = 0; i < 10; ++i)
+    {
+        auto inst = "Service" + std::to_string(i);
+        sock.inject_receive(default_sender(),
+            make_ptr_packet("_a._tcp.local", inst + "._a._tcp.local", "hosta.local", "10.0.0.1"));
+        sock.inject_receive(default_sender(),
+            make_ptr_packet("_b._tcp.local", inst + "._b._tcp.local", "hostb.local", "10.0.0.2"));
+    }
+    sock.clear_sent();
+
+    // Both queries issued in the same tick: each starts its own chain.
+    mon.query_service_type("_a._tcp.local");
+    mon.query_service_type("_b._tcp.local");
+    ex.drain_posted();
+
+    REQUIRE(mon.tc_chain_count_for_test() == 2);
+    REQUIRE(sock.sent_packets().size() == 2); // the first packet of each chain
+
+    // Drive both chains to completion.
+    for(int guard = 0; guard < 32 && mon.tc_chain_count_for_test() > 0; ++guard)
+        mon.fire_tc_chains_for_test();
+    REQUIRE(mon.tc_chain_count_for_test() == 0);
+
+    // Every packet of a chain except the final one carries the TC bit, so a
+    // completed pair of chains shows exactly two TC-clear query packets.
+    unsigned tc_set = 0;
+    unsigned tc_clear = 0;
+    for(const auto &pkt : sock.sent_packets())
+    {
+        REQUIRE(pkt.data.size() >= 12);
+        uint16_t flags = static_cast<uint16_t>(
+            (static_cast<uint16_t>(std::to_integer<uint8_t>(pkt.data[2])) << 8) |
+            static_cast<uint16_t>(std::to_integer<uint8_t>(pkt.data[3])));
+        if(flags & 0x8000)
+            continue; // not a query
+        if(flags & 0x0200)
+            ++tc_set;
+        else
+            ++tc_clear;
+    }
+    REQUIRE(tc_clear == 2);
+    REQUIRE(tc_set >= 2);
+}

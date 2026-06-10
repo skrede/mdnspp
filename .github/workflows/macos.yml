@@ -29,6 +29,12 @@ jobs:
       - name: Select Xcode ${{ matrix.xcode }}
         run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode }}.app
 
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ runner.os }}-xcode-${{ matrix.xcode }}-${{ hashFiles('lib/mdnspp-asio/CMakeLists.txt', 'lib/mdnspp-encrypt/CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
       - name: Configure
         run: |
           cmake . -B build -DCMAKE_BUILD_TYPE=Release \
@@ -48,11 +54,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ runner.os }}-install-${{ hashFiles('lib/mdnspp-asio/CMakeLists.txt', 'lib/mdnspp-encrypt/CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
       - name: Build and install
         run: |
           cmake . -B build -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install \
             -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+            -DMDNSPP_INSTALL_VENDORED_ASIO=ON \
             -DMDNSPP_CMAKE_FETCH_DEPS=ON
           cmake --build build
           cmake --install build

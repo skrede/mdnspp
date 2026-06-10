@@ -42,6 +42,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ runner.os }}-${{ matrix.compiler }}-${{ hashFiles('lib/mdnspp-asio/CMakeLists.txt', 'lib/mdnspp-encrypt/CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
       - name: Install gcovr
         if: matrix.coverage
         run: pip install gcovr
@@ -58,12 +64,14 @@ jobs:
               -DMDNSPP_BUILD_TESTS=ON \
               -DMDNSPP_BUILD_EXAMPLES=OFF \
               -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+              -DMDNSPP_ENABLE_ENCRYPT=ON \
               -DMDNSPP_CMAKE_FETCH_DEPS=ON
           else
             cmake . -B build -DCMAKE_BUILD_TYPE=Release \
               -DMDNSPP_BUILD_TESTS=ON \
               -DMDNSPP_BUILD_EXAMPLES=ON \
               -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+              -DMDNSPP_ENABLE_ENCRYPT=ON \
               -DMDNSPP_CMAKE_FETCH_DEPS=ON
           fi
 
@@ -81,6 +89,8 @@ jobs:
             --gcov-executable "${{ matrix.gcov_executable }}" \
             --filter 'lib/mdnspp/' \
             --filter 'lib/mdnspp-asio/' \
+            --filter 'lib/mdnspp-inproc/' \
+            --filter 'lib/mdnspp-encrypt/' \
             --exclude 'lib/mdnspp-testing/' \
             --gcov-ignore-errors=source_not_found \
             --xml coverage.xml
@@ -93,18 +103,141 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
+  sanitize:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: asan-ubsan
+            flags: "-fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer"
+          - name: tsan
+            flags: "-fsanitize=thread -fno-omit-frame-pointer"
+
+    runs-on: ubuntu-24.04
+    name: sanitize (${{ matrix.name }})
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ runner.os }}-sanitize-${{ matrix.name }}-${{ hashFiles('lib/mdnspp-asio/CMakeLists.txt', 'lib/mdnspp-encrypt/CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
+      - name: Configure
+        env:
+          CC: clang-18
+          CXX: clang++-18
+        run: |
+          cmake . -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_C_FLAGS="${{ matrix.flags }}" \
+            -DCMAKE_CXX_FLAGS="${{ matrix.flags }}" \
+            -DMDNSPP_BUILD_TESTS=ON \
+            -DMDNSPP_BUILD_EXAMPLES=OFF \
+            -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+            -DMDNSPP_ENABLE_ENCRYPT=ON \
+            -DMDNSPP_CMAKE_FETCH_DEPS=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: cd build && ctest --output-on-failure
+
+  clang-tidy:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-tidy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang-18 clang-tidy-18
+
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ runner.os }}-clang-tidy-${{ hashFiles('lib/mdnspp-asio/CMakeLists.txt', 'lib/mdnspp-encrypt/CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
+      - name: Configure
+        env:
+          CC: clang-18
+          CXX: clang++-18
+        run: |
+          cmake . -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+            -DMDNSPP_BUILD_TESTS=ON \
+            -DMDNSPP_BUILD_EXAMPLES=OFF \
+            -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+            -DMDNSPP_ENABLE_ENCRYPT=ON \
+            -DMDNSPP_CMAKE_FETCH_DEPS=ON
+
+      # Advisory for now: the codebase has not been tidied yet. The compile
+      # test TUs include the full public header surface; HeaderFilterRegex in
+      # .clang-tidy restricts diagnostics to lib/ headers.
+      - name: Run clang-tidy
+        run: |
+          run-clang-tidy-18 -p build -quiet 'tests/compile/.*\.cpp$' 2>/dev/null | tee clang-tidy-report.txt
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-tidy-report
+          path: clang-tidy-report.txt
+
   install-test:
     runs-on: ubuntu-24.04
 
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ runner.os }}-install-${{ hashFiles('lib/mdnspp-asio/CMakeLists.txt', 'lib/mdnspp-encrypt/CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
       - name: Build and install
         run: |
           cmake . -B build -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install \
             -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+            -DMDNSPP_INSTALL_VENDORED_ASIO=ON \
             -DMDNSPP_CMAKE_FETCH_DEPS=ON
+          cmake --build build
+          cmake --install build
+
+      - name: Build consumer project
+        run: |
+          cmake tests/integration -B build-consumer \
+            -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-consumer
+
+      - name: Run consumer test
+        run: ./build-consumer/integration_test
+
+  install-test-encrypt:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install libsodium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsodium-dev
+
+      - name: Build and install
+        run: |
+          cmake . -B build -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=${{ github.workspace }}/install \
+            -DMDNSPP_ENABLE_ENCRYPT=ON
           cmake --build build
           cmake --install build
 

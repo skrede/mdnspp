@@ -21,14 +21,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ runner.os }}-build-${{ hashFiles('lib/mdnspp-asio/CMakeLists.txt', 'lib/mdnspp-encrypt/CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
       - name: Configure
         run: |
           cmake . -B build -A x64 `
             -DMDNSPP_BUILD_TESTS=ON `
             -DMDNSPP_BUILD_EXAMPLES=ON `
             -DMDNSPP_ENABLE_ASIO_POLICY=ON `
-            -DMDNSPP_CMAKE_FETCH_DEPS=ON `
-            '-DCMAKE_CXX_FLAGS=/std:c++latest'
+            -DMDNSPP_CMAKE_FETCH_DEPS=ON
 
       - name: Build
         run: cmake --build build --config Release
@@ -41,13 +46,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ runner.os }}-install-${{ hashFiles('lib/mdnspp-asio/CMakeLists.txt', 'lib/mdnspp-encrypt/CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
       - name: Configure
         run: |
           cmake . -B build -A x64 `
             -DCMAKE_INSTALL_PREFIX="${{ github.workspace }}/install" `
             -DMDNSPP_ENABLE_ASIO_POLICY=ON `
-            -DMDNSPP_CMAKE_FETCH_DEPS=ON `
-            '-DCMAKE_CXX_FLAGS=/std:c++latest'
+            -DMDNSPP_INSTALL_VENDORED_ASIO=ON `
+            -DMDNSPP_CMAKE_FETCH_DEPS=ON
 
       - name: Build and install
         run: |
@@ -57,8 +68,7 @@ jobs:
       - name: Build consumer
         run: |
           cmake tests/integration -B build-consumer -A x64 `
-            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install" `
-            '-DCMAKE_CXX_FLAGS=/std:c++latest'
+            -DCMAKE_PREFIX_PATH="${{ github.workspace }}/install"
           cmake --build build-consumer --config Release
 
       - name: Run consumer test

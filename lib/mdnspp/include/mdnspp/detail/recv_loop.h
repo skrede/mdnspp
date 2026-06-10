@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdint>
+#include <algorithm>
 
 namespace mdnspp::detail {
 
@@ -20,6 +21,8 @@ inline constexpr std::chrono::milliseconds infinite_silence_timeout =
 template <policy_like P>
 class recv_loop
 {
+    using clock_type = std::chrono::steady_clock;
+
 public:
     using socket_type = typename P::socket_type;
     using timer_type = typename P::timer_type;
@@ -80,6 +83,14 @@ public:
     }
 
 private:
+    // Bounded backoff for consecutive transient receive failures (e.g. a
+    // persistent ENOMEM/ENOBUFS condition): the first failure re-arms
+    // immediately, each further consecutive failure delays the re-arm,
+    // doubling from 10 ms up to a 500 ms cap. A successful receive resets
+    // the counter.
+    static constexpr std::chrono::milliseconds transient_backoff_initial{10};
+    static constexpr std::chrono::milliseconds transient_backoff_cap{500};
+
     void arm_receive()
     {
         if(m_stopped.load(std::memory_order_acquire))
@@ -101,9 +112,15 @@ private:
                             m_on_error(ec);
                         return;
                     }
+                    if(++m_transient_failures > 1)
+                    {
+                        defer_rearm();
+                        return;
+                    }
                     arm_receive();
                     return;
                 }
+                m_transient_failures = 0;
                 if(meta.ttl.has_value())
                 {
                     if(static_cast<uint32_t>(*meta.ttl) < m_receive_ttl_minimum)
@@ -126,7 +143,14 @@ private:
 
     void arm_silence_timer()
     {
-        m_timer.expires_after(m_silence_timeout);
+        m_silence_deadline = clock_type::now() + m_silence_timeout;
+        wait_silence(m_silence_timeout);
+    }
+
+    void wait_silence(std::chrono::milliseconds delay)
+    {
+        m_silence_pending = true;
+        m_timer.expires_after(delay);
         m_timer.async_wait(
             [this](std::error_code ec)
             {
@@ -134,8 +158,47 @@ private:
                 {
                     return;
                 }
+                m_silence_pending = false;
                 m_on_silence();
             });
+    }
+
+    // Re-purposes the shared timer for the transient backoff delay, then
+    // restores a still-owed silence wait for the remainder of its window
+    // (the deadline is absolute, so the backoff does not extend it) before
+    // re-arming the receive. m_silence_pending stays true across the
+    // implicit cancellation by expires_after -- it means "a silence wait is
+    // owed", not "a wait is armed" -- and is false when the silence handler
+    // already fired, in which case no wait is restored. The timer cannot be
+    // double-booked: no receive is armed while the backoff wait is pending,
+    // so no packet can re-arm the silence wait underneath it.
+    void defer_rearm()
+    {
+        m_timer.expires_after(transient_backoff_delay());
+        m_timer.async_wait(
+            [this](std::error_code ec)
+            {
+                if(ec || m_stopped.load(std::memory_order_acquire))
+                {
+                    return;
+                }
+                if(m_silence_pending)
+                {
+                    auto now = clock_type::now();
+                    auto remaining = m_silence_deadline > now
+                        ? std::chrono::ceil<std::chrono::milliseconds>(m_silence_deadline - now)
+                        : std::chrono::milliseconds::zero();
+                    wait_silence(remaining);
+                }
+                arm_receive();
+            });
+    }
+
+    std::chrono::milliseconds transient_backoff_delay() const noexcept
+    {
+        const uint32_t doublings = (std::min)(m_transient_failures - 2, uint32_t{6});
+        return (std::min)(transient_backoff_initial * (uint32_t{1} << doublings),
+                          transient_backoff_cap);
     }
 
     // Errors that mean the socket can no longer deliver packets; everything
@@ -146,10 +209,13 @@ private:
             || ec == std::errc::bad_file_descriptor;
     }
 
+    bool m_silence_pending{false};
     uint32_t m_receive_ttl_minimum;
+    uint32_t m_transient_failures{0};
     ttl_unknown_policy m_ttl_unknown_policy;
     std::atomic<bool> m_stopped;
     std::chrono::milliseconds m_silence_timeout;
+    clock_type::time_point m_silence_deadline{};
     socket_type &m_socket;
     timer_type &m_timer;
     move_only_function<void()> m_on_silence;

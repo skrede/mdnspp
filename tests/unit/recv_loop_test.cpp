@@ -309,6 +309,98 @@ TEST_CASE("recv_loop re-arms the receive after a transient error")
     REQUIRE(received == 1);
 }
 
+TEST_CASE("recv_loop backs off on consecutive transient errors and resets on success")
+{
+    mock_executor ex;
+    mock_socket sock{ex};
+    mock_timer timer{ex};
+
+    int received = 0;
+    std::vector<std::error_code> errors;
+    detail::recv_loop<mock_policy> loop{
+        sock,
+        timer,
+        SILENCE_TIMEOUT,
+        [&](const recv_metadata &, std::span<std::byte>) -> bool
+        {
+            ++received;
+            return true;
+        },
+        [](){},
+        0,
+        ttl_unknown_policy::accept,
+        [&](std::error_code ec) { errors.push_back(ec); }
+    };
+
+    loop.start();
+    REQUIRE(sock.has_pending_receive());
+
+    // First transient failure: immediate re-arm, no backoff wait.
+    sock.inject_error(std::make_error_code(std::errc::not_enough_memory));
+    REQUIRE(sock.has_pending_receive());
+    REQUIRE(timer.last_duration() == SILENCE_TIMEOUT);
+
+    // Second consecutive failure: re-arm deferred by the initial 10 ms backoff.
+    sock.inject_error(std::make_error_code(std::errc::not_enough_memory));
+    REQUIRE_FALSE(sock.has_pending_receive());
+    REQUIRE(timer.last_duration() == std::chrono::milliseconds(10));
+
+    // Backoff fires: silence wait restored (remaining window), receive re-armed.
+    timer.fire();
+    REQUIRE(sock.has_pending_receive());
+    REQUIRE(timer.last_duration() <= SILENCE_TIMEOUT);
+
+    // Third consecutive failure: backoff doubles to 20 ms.
+    sock.inject_error(std::make_error_code(std::errc::no_buffer_space));
+    REQUIRE_FALSE(sock.has_pending_receive());
+    REQUIRE(timer.last_duration() == std::chrono::milliseconds(20));
+
+    timer.fire();
+    REQUIRE(sock.has_pending_receive());
+
+    // A successful receive resets the backoff state.
+    sock.inject_receive(endpoint{}, make_packet(4));
+    REQUIRE(received == 1);
+    REQUIRE(sock.has_pending_receive());
+
+    // The next transient failure re-arms immediately again.
+    sock.inject_error(std::make_error_code(std::errc::not_enough_memory));
+    REQUIRE(sock.has_pending_receive());
+
+    // No transient error was ever reported as fatal.
+    REQUIRE(errors.empty());
+}
+
+TEST_CASE("recv_loop backoff caps at 500 ms under persistent transient failure")
+{
+    mock_executor ex;
+    mock_socket sock{ex};
+    mock_timer timer{ex};
+
+    detail::recv_loop<mock_policy> loop{
+        sock,
+        timer,
+        SILENCE_TIMEOUT,
+        [](const recv_metadata &, std::span<std::byte>) -> bool { return true; },
+        [](){}
+    };
+
+    loop.start();
+
+    sock.inject_error(std::make_error_code(std::errc::no_buffer_space)); // immediate re-arm
+    std::chrono::milliseconds last{0};
+    for(int i = 0; i < 12; ++i)
+    {
+        sock.inject_error(std::make_error_code(std::errc::no_buffer_space));
+        REQUIRE_FALSE(sock.has_pending_receive());
+        last = timer.last_duration();
+        REQUIRE(last <= std::chrono::milliseconds(500));
+        timer.fire(); // backoff elapses, receive re-armed
+        REQUIRE(sock.has_pending_receive());
+    }
+    REQUIRE(last == std::chrono::milliseconds(500));
+}
+
 TEST_CASE("recv_loop reports a fatal error and stops re-arming")
 {
     mock_executor ex;

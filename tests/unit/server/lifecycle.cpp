@@ -2,6 +2,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
+#include <type_traits>
+#include <system_error>
+
 SCENARIO("service_server constructs with direct constructor", "[service_server][create]")
 {
     GIVEN("a mock_executor")
@@ -153,20 +157,130 @@ SCENARIO("service_server non-throwing constructor sets ec on success", "[service
     }
 }
 
-SCENARIO("service_server is move-constructible before async_start", "[service_server][move]")
+SCENARIO("service_server is neither copyable nor movable", "[service_server][move]")
 {
-    GIVEN("a service_server constructed but not started")
+    STATIC_CHECK_FALSE(std::is_copy_constructible_v<basic_service_server<mock_policy>>);
+    STATIC_CHECK_FALSE(std::is_copy_assignable_v<basic_service_server<mock_policy>>);
+    STATIC_CHECK_FALSE(std::is_move_constructible_v<basic_service_server<mock_policy>>);
+    STATIC_CHECK_FALSE(std::is_move_assignable_v<basic_service_server<mock_policy>>);
+}
+
+SCENARIO("async_start is one-shot", "[service_server][one-shot]")
+{
+    GIVEN("a started service_server")
     {
         mock_executor ex;
         basic_service_server<mock_policy> server{ex, make_test_info()};
+        server.async_start();
 
-        WHEN("move-constructed into a new server")
+        WHEN("async_start is called a second time")
         {
-            basic_service_server<mock_policy> moved{std::move(server)};
-
-            THEN("the moved-to server is usable")
+            bool ready_fired = false;
+            std::error_code ready_ec;
+            server.async_start([&](std::error_code ec)
             {
-                REQUIRE(moved.socket().queue_empty());
+                ready_fired = true;
+                ready_ec = ec;
+            });
+
+            THEN("on_ready completes with operation_in_progress")
+            {
+                REQUIRE(ready_fired);
+                REQUIRE(ready_ec == std::errc::operation_in_progress);
+            }
+        }
+
+        WHEN("async_start is called after stop()")
+        {
+            server.stop();
+            ex.drain_posted();
+
+            bool ready_fired = false;
+            std::error_code ready_ec;
+            server.async_start([&](std::error_code ec)
+            {
+                ready_fired = true;
+                ready_ec = ec;
+            });
+
+            THEN("on_ready completes with invalid_argument")
+            {
+                REQUIRE(ready_fired);
+                REQUIRE(ready_ec == std::errc::invalid_argument);
+            }
+        }
+    }
+}
+
+SCENARIO("constructor validates options", "[service_server][validation]")
+{
+    GIVEN("a mock_executor")
+    {
+        mock_executor ex;
+
+        WHEN("probe_count is 0")
+        {
+            service_options opts;
+            opts.probe_count = 0;
+            std::error_code ec;
+            basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts), {}, {}, ec};
+
+            THEN("the error_code constructor reports invalid_argument")
+            {
+                REQUIRE(ec == std::errc::invalid_argument);
+            }
+        }
+
+        WHEN("response_delay_min exceeds response_delay_max")
+        {
+            mdns_options mopts;
+            mopts.response_delay_min = std::chrono::milliseconds{200};
+            mopts.response_delay_max = std::chrono::milliseconds{100};
+            std::error_code ec;
+            basic_service_server<mock_policy> server{ex, make_test_info(), {}, {}, std::move(mopts), ec};
+
+            THEN("the error_code constructor reports invalid_argument")
+            {
+                REQUIRE(ec == std::errc::invalid_argument);
+            }
+        }
+
+        WHEN("backoff_multiplier is below 1.0")
+        {
+            mdns_options mopts;
+            mopts.backoff_multiplier = 0.5;
+            std::error_code ec;
+            basic_service_server<mock_policy> server{ex, make_test_info(), {}, {}, std::move(mopts), ec};
+
+            THEN("the error_code constructor reports invalid_argument")
+            {
+                REQUIRE(ec == std::errc::invalid_argument);
+            }
+        }
+
+        WHEN("a service name carries an oversized label")
+        {
+            auto info = make_test_info();
+            info.service_name = std::string(70, 'x') + "._http._tcp.local.";
+            std::error_code ec;
+            basic_service_server<mock_policy> server{ex, std::move(info), {}, {}, {}, ec};
+
+            THEN("the error_code constructor reports invalid_argument")
+            {
+                REQUIRE(ec == std::errc::invalid_argument);
+            }
+        }
+
+        WHEN("a ttl is zero")
+        {
+            service_options opts;
+            opts.srv_ttl = std::chrono::seconds{0};
+
+            THEN("the throwing constructor throws std::system_error")
+            {
+                REQUIRE_THROWS_AS(
+                    (basic_service_server<mock_policy>{ex, make_test_info(), std::move(opts)}),
+                    std::system_error);
             }
         }
     }
@@ -201,7 +315,10 @@ SCENARIO("stop discards pending posted work", "[service_server][update][stop]")
     GIVEN("a live service_server with posted update_service_info")
     {
         mock_executor ex;
-        basic_service_server<mock_policy> server{ex, make_test_info()};
+        // send_goodbye=false so the only packet the posted teardown could send
+        // (the goodbye) does not mask a wrongly-executed announcement.
+        basic_service_server<mock_policy> server{ex, make_test_info(),
+            service_options{.send_goodbye = false}};
         server.async_start();
         advance_to_live(server);
         server.update_service_info(make_test_info());

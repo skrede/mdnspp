@@ -12,7 +12,9 @@
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_query.h"
 #include "mdnspp/detail/tc_accumulator.h"
+#include "mdnspp/detail/server_validate.h"
 #include "mdnspp/detail/server_query_match.h"
 #include "mdnspp/detail/server_known_answer.h"
 #include "mdnspp/detail/basic_mdns_peer_base.h"
@@ -41,19 +43,32 @@ namespace mdnspp {
 //   P -- policy_like: provides executor_type, socket_type, timer_type
 //
 // Lifecycle:
-//   1. Construct with (ex, info, opts, sock_opts) or non-throwing overload
+//   1. Construct with (ex, info, opts, sock_opts) or non-throwing overload.
+//      Options are validated at construction; invalid combinations fail with
+//      std::errc::invalid_argument (thrown as std::system_error, or reported
+//      through the error_code overload).
 //   2. async_start(on_ready, on_done) -- begins probe -> announce -> live sequence
-//      on_ready fires with error_code{} when live, or probe_conflict on conflict
-//      on_done fires with error_code{} when stop() is called
-//   3. stop() -- idempotent; cancels probing/announcing, fires on_ready with
-//      operation_canceled if not yet live, then fires on_done
+//      on_ready fires with error_code{} when live. On permanent probe failure
+//      (conflict with no replacement name, or an unencodable name) on_ready
+//      fires with the failure reason (mdns_error::probe_conflict /
+//      std::errc::invalid_argument), the full teardown runs, and on_done then
+//      fires with error_code{}.
+//      async_start is one-shot: a second call (or a call after stop()) fails
+//      deterministically by completing on_ready with
+//      std::errc::operation_in_progress / std::errc::invalid_argument.
+//   3. stop() -- idempotent; posts the teardown (including the goodbye send)
+//      to the executor, fires on_ready with operation_canceled if not yet
+//      live, then fires on_done with error_code{}
 //   4. ~basic_service_server() -- calls stop() for RAII safety
+//
+// Non-copyable and non-movable: completion handlers capture `this`.
 
 template <policy_like P>
 class basic_service_server : detail::basic_mdns_peer_base<P>
 {
     using base = detail::basic_mdns_peer_base<P>;
     using server_state = detail::server_state;
+    using clock_type = std::chrono::steady_clock;
 
 public:
     using typename base::executor_type;
@@ -69,64 +84,11 @@ public:
     /// Receives error_code.
     using completion_handler = mdnspp::server_completion_handler;
 
-    /// Error handler invoked on fire-and-forget send failures.
-    /// Receives the error_code and a context string identifying the send site.
-    using error_handler = mdnspp::error_handler;
-
-    // Non-copyable
+    // Non-copyable, non-movable
     basic_service_server(const basic_service_server &) = delete;
     basic_service_server &operator=(const basic_service_server &) = delete;
-
-    // Movable only before async_start() is called (m_loop must be null).
-    // Moving a started server is a logic error.
-    basic_service_server(basic_service_server &&other) noexcept
-        : base(std::move(other))
-        , m_response_timer(std::move(other.m_response_timer))
-        , m_tc_timer(std::move(other.m_tc_timer))
-        , m_info(std::move(other.m_info))
-        , m_opts(std::move(other.m_opts))
-        , m_on_ready(std::move(other.m_on_ready))
-        , m_on_completion(std::move(other.m_on_completion))
-        , m_on_error(std::move(other.m_on_error))
-        , m_rng(std::move(other.m_rng))
-        , m_pa_state(other.m_pa_state)
-        , m_pending(other.m_pending)
-        , m_tc_acc(std::move(other.m_tc_acc))
-        , m_dup_suppression(std::move(other.m_dup_suppression))
-    {
-    }
-
-    basic_service_server &operator=(basic_service_server &&other) noexcept
-    {
-        if(this == &other)
-            return *this;
-        assert(this->m_loop == nullptr);       // this server must not be started
-        assert(other.m_loop == nullptr); // source must not be started
-        // Move base members via a placement trick is not possible with private
-        // inheritance, so we move each accessible member individually.
-        this->m_alive = std::move(other.m_alive);
-        this->m_executor = other.m_executor;
-        this->m_socket = std::move(other.m_socket);
-        this->m_timer = std::move(other.m_timer);
-        this->m_loop = std::move(other.m_loop);
-        this->m_stopped.store(other.m_stopped.load(std::memory_order_acquire),
-                              std::memory_order_release);
-        other.m_stopped.store(true, std::memory_order_release);
-        this->m_mdns_opts = std::move(other.m_mdns_opts);
-        m_response_timer = std::move(other.m_response_timer);
-        m_tc_timer = std::move(other.m_tc_timer);
-        m_info = std::move(other.m_info);
-        m_opts = std::move(other.m_opts);
-        m_on_ready = std::move(other.m_on_ready);
-        m_on_completion = std::move(other.m_on_completion);
-        m_on_error = std::move(other.m_on_error);
-        m_rng = std::move(other.m_rng);
-        m_pa_state = other.m_pa_state;
-        m_pending = other.m_pending;
-        m_tc_acc = std::move(other.m_tc_acc);
-        m_dup_suppression = std::move(other.m_dup_suppression);
-        return *this;
-    }
+    basic_service_server(basic_service_server &&) = delete;
+    basic_service_server &operator=(basic_service_server &&) = delete;
 
     ~basic_service_server()
     {
@@ -148,6 +110,8 @@ public:
         , m_opts(std::move(opts))
         , m_rng(std::random_device{}())
     {
+        if(auto ec = detail::validate_server_options(m_info, m_opts, this->m_mdns_opts))
+            throw std::system_error(ec, "basic_service_server options");
     }
 
     // Non-throwing constructor
@@ -161,15 +125,29 @@ public:
         , m_opts(std::move(opts))
         , m_rng(std::random_device{}())
     {
+        if(!ec)
+            ec = detail::validate_server_options(m_info, m_opts, this->m_mdns_opts);
     }
 
     // async_start() -- begins the probe -> announce -> live sequence.
-    // on_ready fires after probe+announce completes (success) or on conflict.
-    // on_done fires when stop() is called.
-    // Must only be called once; calling async_start() twice is a logic error.
+    // on_ready fires after probe+announce completes (success) or on permanent
+    // probe failure. on_done fires after teardown completes.
+    // One-shot: a second call completes on_ready with operation_in_progress;
+    // a call after stop() completes on_ready with invalid_argument.
     void async_start(completion_handler on_ready = {}, completion_handler on_done = {})
     {
-        assert(m_pa_state.state == server_state::idle);
+        if(this->m_stopped.load(std::memory_order_acquire))
+        {
+            if(on_ready)
+                on_ready(std::make_error_code(std::errc::invalid_argument));
+            return;
+        }
+        if(m_pa_state.state != server_state::idle)
+        {
+            if(on_ready)
+                on_ready(std::make_error_code(std::errc::operation_in_progress));
+            return;
+        }
         if(on_ready)
             m_on_ready = std::move(on_ready);
         if(on_done)
@@ -177,26 +155,34 @@ public:
         do_start();
     }
 
-    /// Sets the error handler invoked on fire-and-forget send failures.
-    void on_error(error_handler handler) { m_on_error = std::move(handler); }
-
     // stop() -- idempotent; posts teardown to the executor thread, ensuring all
-    // state mutations happen on the executor (no cross-thread data race).
-    //
-    // The goodbye send happens on the caller thread (best-effort, before posting)
-    // because the destructor invalidates m_alive before stop() runs, and the
-    // goodbye must complete before that invalidation.
+    // state mutations and the goodbye send happen on the executor (no
+    // cross-thread data race). The goodbye packet is prebuilt here and moved
+    // into the posted teardown, which sends it only when the server was
+    // announcing or live (RFC 6762 section 10.1).
     void stop()
     {
         if(this->m_stopped.exchange(true, std::memory_order_acq_rel))
             return;
 
-        send_goodbye_if_needed();
+        std::vector<std::byte> goodbye;
+        if(m_opts.send_goodbye)
+            goodbye = build_goodbye_packet();
 
         auto guard = std::weak_ptr<bool>(this->m_alive);
-        P::post(this->m_executor, [this, guard]()
+        P::post(this->m_executor, [this, guard, goodbye = std::move(goodbye)]()
         {
             if(!guard.lock()) return;
+
+            if(!goodbye.empty()
+               && (m_pa_state.state == server_state::live
+                   || m_pa_state.state == server_state::announcing))
+            {
+                std::error_code ec;
+                this->m_socket.send(this->multicast_endpoint(),
+                                    std::span<const std::byte>(goodbye), ec);
+                report_error(ec, "goodbye send");
+            }
 
             if(m_pa_state.state == server_state::probing || m_pa_state.state == server_state::announcing)
             {
@@ -204,14 +190,7 @@ public:
                     h(std::make_error_code(std::errc::operation_canceled));
             }
 
-            m_pa_state.state = server_state::stopped;
-            m_pending.armed = false;
-            m_response_timer.cancel();
-            m_tc_timer.cancel();
-            m_tc_acc.clear();
-
-            if(this->m_loop)
-                this->m_loop->stop();
+            teardown();
 
             if(auto h = std::exchange(m_on_completion, nullptr); h)
                 h(std::error_code{});
@@ -219,8 +198,9 @@ public:
     }
 
     // update_service_info() -- posts a service info replacement to the event loop.
-    // After the update executes, an announcement burst is sent with announce_count
-    // announcements at announce_interval intervals per RFC 6762 section 8.4.
+    // When service_name and hostname are unchanged, an announcement burst is
+    // sent (RFC 6762 section 8.4). A changed service_name or hostname is a new
+    // record set and re-enters probing first (RFC 6762 section 8.1).
     // Must only be called on a running server (after async_start(), before stop()).
     // Thread-safe: may be called from any thread.
     void update_service_info(service_info new_info)
@@ -231,7 +211,14 @@ public:
         {
             if(!guard.lock()) return;
             if(this->m_stopped.load(std::memory_order_acquire)) return;
+            bool renamed = info.service_name != m_info.service_name
+                        || info.hostname != m_info.hostname;
             m_info = std::move(info);
+            if(renamed)
+            {
+                start_probing();
+                return;
+            }
             m_pa_state.announce_count = 0;
             send_update_announce();
         });
@@ -269,8 +256,7 @@ private:
             this->m_mdns_opts.unknown_ttl_policy,
             [this](std::error_code ec)
             {
-                if(m_on_error)
-                    m_on_error(ec, "receive");
+                report_error(ec, "receive");
             });
 
         start_probing();
@@ -280,15 +266,25 @@ private:
     void start_probing()
     {
         detail::begin_probing(m_pa_state);
+        m_pending.reset();
+        m_dup_suppression.reset();
 
-        // Generate a random transaction ID for our probes so we can
-        // distinguish our own looped-back packets from another host's probes.
-        std::uniform_int_distribution<uint16_t> id_dist(1, 0xFFFF);
-        m_pa_state.probe_id = id_dist(m_rng);
-
-        // Random delay [0, probe_initial_delay_max] before first probe (RFC 6762 section 8.1)
-        std::uniform_int_distribution<int32_t> dist(0, static_cast<int32_t>(m_opts.probe_initial_delay_max.count()));
-        m_response_timer.expires_after(std::chrono::milliseconds(dist(m_rng)));
+        // Random delay [0, probe_initial_delay_max] before the first probe
+        // (RFC 6762 section 8.1). After 15 conflicts within 10 s, every probe
+        // attempt waits at least 5 s instead (RFC 6762 section 8.1).
+        std::chrono::milliseconds delay;
+        if(m_rate_limiter.throttled())
+        {
+            delay = std::chrono::duration_cast<std::chrono::milliseconds>(
+                detail::probe_rate_limiter<clock_type>::probe_delay);
+        }
+        else
+        {
+            std::uniform_int_distribution<std::chrono::milliseconds::rep> dist(
+                0, m_opts.probe_initial_delay_max.count());
+            delay = std::chrono::milliseconds(dist(m_rng));
+        }
+        m_response_timer.expires_after(delay);
         m_response_timer.async_wait([this](std::error_code ec)
         {
             if(ec || m_pa_state.state != server_state::probing) return;
@@ -303,11 +299,17 @@ private:
         if(this->m_stopped.load(std::memory_order_acquire)) return;
 
         auto probe = detail::build_probe_query(m_info, static_cast<uint32_t>(m_opts.probe_authority_ttl.count()));
-        probe[0] = static_cast<std::byte>(m_pa_state.probe_id >> 8);
-        probe[1] = static_cast<std::byte>(m_pa_state.probe_id & 0xFF);
+        if(probe.empty())
+        {
+            // Name encoding failed (label > 63 or name > 255 bytes) — the
+            // record set can never be announced; abort startup.
+            abort_startup(std::make_error_code(std::errc::invalid_argument));
+            return;
+        }
+
         std::error_code ec;
         this->m_socket.send(this->multicast_endpoint(), std::span<const std::byte>(probe), ec);
-        if(ec && m_on_error) m_on_error(ec, "probe send");
+        report_error(ec, "probe send");
 
         bool more = detail::advance_probe(m_pa_state, m_opts.probe_count);
         m_response_timer.expires_after(m_opts.probe_interval);
@@ -375,26 +377,22 @@ private:
     }
 
     // Validates address fields in m_info against the encode functions and invokes
-    // m_on_error for any that fail. Called before building DNS responses.
+    // the error handler for any that fail. Called before building DNS responses.
     void validate_addresses()
     {
         if(m_info.address_ipv4.has_value())
         {
             auto enc = detail::encode_ipv4(*m_info.address_ipv4);
-            if(!enc.has_value() && m_on_error)
-            {
-                m_on_error(make_error_code(enc.error()),
-                           "invalid IPv4 address: " + *m_info.address_ipv4);
-            }
+            if(!enc.has_value())
+                report_error(make_error_code(enc.error()),
+                             "invalid IPv4 address: " + *m_info.address_ipv4);
         }
         if(m_info.address_ipv6.has_value())
         {
             auto enc = detail::encode_ipv6(*m_info.address_ipv6);
-            if(!enc.has_value() && m_on_error)
-            {
-                m_on_error(make_error_code(enc.error()),
-                           "invalid IPv6 address: " + *m_info.address_ipv6);
-            }
+            if(!enc.has_value())
+                report_error(make_error_code(enc.error()),
+                             "invalid IPv6 address: " + *m_info.address_ipv6);
         }
     }
 
@@ -405,7 +403,10 @@ private:
         validate_addresses();
         auto response = detail::build_dns_response(m_info, dns_type::any, m_opts);
         if(!response.empty())
+        {
             send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "announcement send");
+            m_last_multicast = clock_type::now();
+        }
 
         if(m_opts.respond_to_meta_queries)
         {
@@ -435,37 +436,30 @@ private:
     {
         m_response_timer.cancel();
 
+        if(ct == conflict_type::tiebreak_deferred)
+        {
+            if(m_opts.on_conflict)
+                (void)m_opts.on_conflict(m_info.service_name, m_pa_state.conflict_attempt, ct);
+            defer_and_reprobe();
+            return;
+        }
+
+        m_rate_limiter.record_conflict();
+
         if(m_opts.on_conflict)
         {
-            std::string new_name;
-            if(m_opts.on_conflict(m_info.service_name.str(), new_name, m_pa_state.conflict_attempt, ct))
+            auto new_name = m_opts.on_conflict(m_info.service_name, m_pa_state.conflict_attempt, ct);
+            if(new_name.has_value())
             {
-                if(ct == conflict_type::name_conflict)
-                {
-                    m_info.service_name = std::move(new_name);
-                    ++m_pa_state.conflict_attempt;
-                }
-                if(ct == conflict_type::tiebreak_deferred)
-                {
-                    defer_and_reprobe();
-                    return;
-                }
+                m_info.service_name = std::move(*new_name);
+                ++m_pa_state.conflict_attempt;
                 start_probing();
                 return;
             }
         }
 
-        if(ct == conflict_type::tiebreak_deferred)
-        {
-            defer_and_reprobe();
-            return;
-        }
-
-        // No callback or callback returned false -- fail
-        m_pa_state.state = server_state::stopped;
-        this->m_stopped.store(true, std::memory_order_release);
-        if(auto h = std::exchange(m_on_ready, nullptr); h)
-            h(mdns_error::probe_conflict);
+        // No callback or callback gave up -- permanent failure, full teardown
+        abort_startup(mdns_error::probe_conflict);
     }
 
     void defer_and_reprobe()
@@ -478,18 +472,41 @@ private:
         });
     }
 
+    // Permanent startup failure: fire on_ready with the failure reason, run
+    // the full teardown, then fire on_done with success. Runs on the executor.
+    void abort_startup(std::error_code reason)
+    {
+        if(this->m_stopped.exchange(true, std::memory_order_acq_rel))
+            return;
+
+        if(auto h = std::exchange(m_on_ready, nullptr); h)
+            h(reason);
+
+        teardown();
+
+        if(auto h = std::exchange(m_on_completion, nullptr); h)
+            h(std::error_code{});
+    }
+
+    void teardown()
+    {
+        m_pa_state.state = server_state::stopped;
+        m_pending.reset();
+        m_response_timer.cancel();
+        m_tc_timer.cancel();
+        m_tc_acc.clear();
+        m_tc_timer_armed = false;
+
+        if(this->m_loop)
+            this->m_loop->stop();
+    }
+
     // -------------------------------------------------------------------------
     // Goodbye
     // -------------------------------------------------------------------------
 
-    void send_goodbye_if_needed()
+    std::vector<std::byte> build_goodbye_packet() const
     {
-        if(!m_opts.send_goodbye)
-            return;
-        if(m_pa_state.state != server_state::live && m_pa_state.state != server_state::announcing)
-            return;
-
-        std::error_code ec;
         service_options goodbye_opts;
         goodbye_opts.ptr_ttl    = std::chrono::seconds{0};
         goodbye_opts.srv_ttl    = std::chrono::seconds{0};
@@ -497,15 +514,11 @@ private:
         goodbye_opts.a_ttl      = std::chrono::seconds{0};
         goodbye_opts.aaaa_ttl   = std::chrono::seconds{0};
         goodbye_opts.record_ttl = std::chrono::seconds{0};
-        auto goodbye = detail::build_dns_response(m_info, dns_type::any, goodbye_opts);
-        if(!goodbye.empty())
-            this->m_socket.send(this->multicast_endpoint(),
-                          std::as_bytes(std::span(goodbye)), ec);
-        if(ec && m_on_error) m_on_error(ec, "goodbye send");
+        return detail::build_dns_response(m_info, dns_type::any, goodbye_opts);
     }
 
     // -------------------------------------------------------------------------
-    // Packet dispatch -- decomposed on_query
+    // Packet dispatch
     // -------------------------------------------------------------------------
 
     void on_packet(const endpoint &sender, std::span<std::byte> data)
@@ -519,7 +532,7 @@ private:
             return;
         }
 
-        if(m_pa_state.state != server_state::live)
+        if(m_pa_state.state != server_state::live && m_pa_state.state != server_state::announcing)
             return;
 
         if(data.size() < 12)
@@ -528,17 +541,30 @@ private:
         uint16_t flags = detail::read_u16_be(data.data() + 2);
         bool is_response = (flags & 0x8000) != 0;
         bool tc_set = (flags & 0x0200) != 0;
+        uint16_t qdcount = detail::read_u16_be(data.data() + 4);
         auto cdata = std::span<const std::byte>(data.data(), data.size());
 
         if(is_response)
         {
-            observe_multicast_response(cdata);
+            handle_incoming_response(cdata);
             return;
         }
+
+        if(m_pa_state.state != server_state::live)
+            return; // queries are not answered while announcing
 
         if(tc_set)
         {
             handle_tc_query(sender, cdata);
+            return;
+        }
+
+        // RFC 6762 section 7.2: a compliant querier's FINAL continuation packet
+        // has TC clear and no questions; merge its known answers into the
+        // pending TC state before the suppression decision.
+        if(qdcount == 0 && m_tc_acc.has_pending(sender))
+        {
+            m_tc_acc.accumulate(sender, parse_answer_records(cdata), this->m_mdns_opts.tc_wait_min);
             return;
         }
 
@@ -553,6 +579,7 @@ private:
             return;
 
         uint16_t flags = detail::read_u16_be(data.data() + 2);
+        auto cdata = std::span<const std::byte>(data.data(), data.size());
 
         if(flags & 0x8000)
         {
@@ -563,71 +590,130 @@ private:
         }
 
         // Query -- check for simultaneous probe (RFC 6762 section 8.2)
-        uint16_t id = detail::read_u16_be(data.data());
         uint16_t nscount = detail::read_u16_be(data.data() + 8);
-        if(id == m_pa_state.probe_id || nscount == 0 || !response_conflicts(data))
+        if(nscount == 0 || !response_conflicts(data))
             return;
 
-        // RFC 6762 section 8.2 tiebreaking
-        auto our_rdata   = build_our_srv_rdata();
-        auto their_rdata = extract_authority_srv_rdata(
-            std::span<const std::byte>(data.data(), data.size()));
-
-        if(their_rdata.empty())
+        // RFC 6762 section 8.2.1 tiebreaking over the full proposed record
+        // sets, compared in DNS uncompressed form ordered by class, type,
+        // rdata. Our own looped-back probe carries an identical record set
+        // and compares equal — an exact tie is NOT a conflict.
+        auto theirs = detail::extract_authority_records(cdata);
+        if(theirs.empty())
         {
             handle_conflict(conflict_type::name_conflict);
             return;
         }
 
-        int32_t cmp = detail::compare_authority_records(
-            std::span<const std::byte>(our_rdata),
-            std::span<const std::byte>(their_rdata));
-
-        if(cmp <= 0)
+        int32_t cmp = detail::compare_record_sets(build_our_tiebreak_records(), std::move(theirs));
+        if(cmp < 0)
         {
             detail::begin_probing(m_pa_state);
             handle_conflict(conflict_type::tiebreak_deferred);
         }
     }
 
-    // RFC 6762 section 7.4: observe multicast responses during the active
-    // response delay window to suppress answers another responder already sent.
-    void observe_multicast_response(std::span<const std::byte> cdata)
+    // RFC 6762 sections 9 and 7.4: incoming responses while announcing or live
+    // are screened for conflicts (our unique name, different rdata) and, when a
+    // response delay window is pending, observed for duplicate suppression.
+    void handle_incoming_response(std::span<const std::byte> cdata)
     {
+        auto records = parse_answer_records(cdata);
+
+        for(const auto &rec : records)
+        {
+            if(detail::record_conflicts_ours(rec, m_info))
+            {
+                handle_conflict(conflict_type::name_conflict);
+                return;
+            }
+        }
+
         if(!m_pending.armed)
             return;
 
-        auto answer_records = parse_answer_records(cdata);
-        for(const auto &rec : answer_records)
+        for(const auto &rec : records)
         {
             uint32_t observed_ttl = std::visit([](const auto &r) { return r.ttl; }, rec);
             m_dup_suppression.observe(rec, observed_ttl);
         }
     }
 
-    // RFC 6762 section 6: TC bit set -- defer processing for 400-500ms.
+    // RFC 6762 section 7.2: TC bit set -- accumulate known answers per source
+    // and defer processing until the per-source deadline passes.
     void handle_tc_query(const endpoint &sender, std::span<const std::byte> cdata)
     {
-        auto answer_records = parse_answer_records(cdata);
-        bool is_first = !m_tc_acc.has_pending(sender);
-        m_tc_acc.accumulate(sender, std::move(answer_records),
-                            this->m_mdns_opts.tc_wait_min);
-
-        if(!is_first)
-            return;
-
-        std::uniform_int_distribution<int32_t> dist(
-            static_cast<int32_t>(this->m_mdns_opts.tc_wait_min.count()),
-            static_cast<int32_t>(this->m_mdns_opts.tc_wait_max.count()));
+        std::uniform_int_distribution<std::chrono::milliseconds::rep> dist(
+            this->m_mdns_opts.tc_wait_min.count(),
+            this->m_mdns_opts.tc_wait_max.count());
         auto tc_wait = std::chrono::milliseconds(dist(m_rng));
 
-        m_tc_timer.expires_after(tc_wait);
-        m_tc_timer.async_wait([this, sender, tc_wait](std::error_code ec)
+        m_tc_acc.accumulate(sender, parse_answer_records(cdata), tc_wait);
+        arm_tc_timer();
+    }
+
+    // Arms the single TC timer for the EARLIEST pending deadline; sources
+    // whose deadlines pass are all drained when it fires, then the timer is
+    // re-armed for the next pending deadline.
+    void arm_tc_timer()
+    {
+        auto next = m_tc_acc.next_deadline();
+        if(!next.has_value())
+        {
+            m_tc_timer_armed = false;
+            return;
+        }
+        if(m_tc_timer_armed && *next >= m_tc_deadline)
+            return;
+
+        m_tc_timer_armed = true;
+        m_tc_deadline = *next;
+
+        auto now = clock_type::now();
+        auto delay = *next > now
+            ? std::chrono::ceil<std::chrono::milliseconds>(*next - now)
+            : std::chrono::milliseconds::zero();
+        m_tc_timer.expires_after(delay);
+        m_tc_timer.async_wait([this](std::error_code ec)
         {
             if(ec || this->m_stopped.load(std::memory_order_acquire))
                 return;
-            on_tc_wait_expired(sender, tc_wait);
+            on_tc_timer_expired();
         });
+    }
+
+    void on_tc_timer_expired()
+    {
+        m_tc_timer_armed = false;
+        if(m_pa_state.state != server_state::live)
+            return;
+
+        // Coarse timers may fire marginally before the stored deadline; drain
+        // everything due at the armed deadline.
+        auto now = (std::max)(clock_type::now(), m_tc_deadline);
+        for(auto &[sender, merged] : m_tc_acc.take_expired(now))
+            process_tc_known_answers(sender, merged);
+
+        arm_tc_timer();
+    }
+
+    void process_tc_known_answers(const endpoint &sender,
+                                  const std::vector<mdns_record_variant> &merged)
+    {
+        if(m_opts.on_tc_continuation)
+            m_opts.on_tc_continuation(sender, merged.size());
+
+        auto plan = detail::plan_all_answers(m_info);
+        if(m_opts.suppress_known_answers)
+        {
+            auto th = detail::make_ka_thresholds(m_opts, this->m_mdns_opts.tc_suppression_fraction);
+            auto mask = detail::suppress_from_records(merged, m_info, th);
+            detail::apply_suppression(plan, mask);
+        }
+        if(plan.empty())
+            return;
+
+        schedule_multicast_response(plan);
     }
 
     // Normal (non-TC) query processing.
@@ -647,9 +733,8 @@ private:
         detail::suppression_mask suppression;
         if(m_opts.suppress_known_answers && qmr.any_matched)
         {
-            uint32_t ka_threshold = static_cast<uint32_t>(
-                static_cast<double>(this->m_mdns_opts.record_ttl.count()) * this->m_mdns_opts.ka_suppression_fraction);
-            suppression = detail::parse_known_answers(cdata, qmr.offset_after_questions, m_info, ka_threshold);
+            auto th = detail::make_ka_thresholds(m_opts, this->m_mdns_opts.ka_suppression_fraction);
+            suppression = detail::parse_known_answers(cdata, qmr.offset_after_questions, m_info, th);
         }
 
         if(m_opts.on_query && qmr.any_matched)
@@ -660,32 +745,63 @@ private:
         if(!qmr.any_matched)
             return;
 
-        if(m_opts.suppress_known_answers && detail::all_suppressed(suppression, qmr.accumulated_qtype, m_info))
+        auto plan = detail::plan_answers(qmr.matched, m_info);
+        if(m_opts.suppress_known_answers)
+            detail::apply_suppression(plan, suppression);
+        if(plan.empty())
             return;
 
         if(qmr.mode == response_mode::unicast)
         {
-            auto pkt = detail::build_response_with_nsec(m_info, qmr.accumulated_qtype,
-                                                        qmr.needs_nsec, suppression,
-                                                        m_opts.suppress_known_answers,
-                                                        m_opts);
-            if(!pkt.empty())
-                send_to(response_mode::unicast, sender, std::span<const std::byte>(pkt), "response send");
+            // RFC 6762 section 5.4: answer a QU question via multicast instead
+            // when the records have not been multicast within the last quarter
+            // of their TTL.
+            if(!detail::qu_requires_multicast(m_last_multicast, clock_type::now(),
+                                              detail::min_planned_ttl(plan, m_opts)))
+            {
+                auto pkt = detail::build_answer_response(m_info, plan, m_opts);
+                if(!pkt.empty())
+                    send_to(response_mode::unicast, sender, std::span<const std::byte>(pkt), "response send");
+                return;
+            }
+        }
+
+        // RFC 6762 section 6: responses carrying only unique, probe-verified
+        // records may go immediately; shared records (PTR) take the 20-120 ms
+        // random delay, as does anything merged into a pending window.
+        if(!m_pending.armed && !plan.has_shared())
+        {
+            send_multicast_plan(plan);
             return;
         }
 
-        schedule_multicast_response(qmr, suppression);
+        schedule_multicast_response(plan);
     }
 
-    // Respond to queries from non-5353 ports per RFC 6762 section 6.7.
+    // Respond to queries from non-5353 ports per RFC 6762 section 6.7: the
+    // response repeats the query ID and question, never sets the cache-flush
+    // bit, and caps TTLs at legacy_unicast_ttl.
     void handle_legacy_unicast(const endpoint &sender, std::span<const std::byte> cdata)
     {
         auto qmr = detail::match_queries(cdata, m_info, m_opts);
         if(!qmr.any_matched)
             return;
 
-        uint32_t legacy_cap = static_cast<uint32_t>(this->m_mdns_opts.legacy_unicast_ttl.count());
-        auto pkt = detail::build_dns_response(m_info, qmr.accumulated_qtype, m_opts, legacy_cap);
+        auto plan = detail::plan_answers(qmr.matched, m_info);
+        if(!plan.has_answers())
+            return;
+
+        auto [questions, qdcount] = detail::rebuild_question_section(cdata);
+
+        detail::response_header_options hdr;
+        hdr.id = qmr.query_id;
+        hdr.cache_flush = false;
+        hdr.include_nsec = false;
+        hdr.ttl_cap = static_cast<uint32_t>(this->m_mdns_opts.legacy_unicast_ttl.count());
+        hdr.questions = std::span<const std::byte>(questions);
+        hdr.qdcount = qdcount;
+
+        auto pkt = detail::build_answer_response(m_info, plan, m_opts, hdr);
         if(!pkt.empty())
             send_to(response_mode::unicast, sender, std::span<const std::byte>(pkt), "legacy unicast response");
     }
@@ -709,20 +825,19 @@ private:
     }
 
     // -------------------------------------------------------------------------
-    // Multicast response scheduling and TC handling
+    // Multicast response scheduling
     // -------------------------------------------------------------------------
 
-    void schedule_multicast_response(const detail::query_match_result &qmr,
-                                     const detail::suppression_mask &suppression)
+    void schedule_multicast_response(const detail::answer_plan &plan)
     {
         bool was_armed = m_pending.armed;
-        m_pending.merge(qmr.accumulated_qtype, qmr.needs_nsec, suppression);
+        m_pending.merge(plan);
         if(was_armed)
             return;
 
-        std::uniform_int_distribution<int32_t> dist(
-            static_cast<int32_t>(this->m_mdns_opts.response_delay_min.count()),
-            static_cast<int32_t>(this->m_mdns_opts.response_delay_max.count()));
+        std::uniform_int_distribution<std::chrono::milliseconds::rep> dist(
+            this->m_mdns_opts.response_delay_min.count(),
+            this->m_mdns_opts.response_delay_max.count());
         m_response_timer.expires_after(std::chrono::milliseconds(dist(m_rng)));
         m_response_timer.async_wait([this](std::error_code ec)
         {
@@ -736,27 +851,33 @@ private:
 
     void fire_pending_response()
     {
-        // RFC 6762 section 7.4: merge duplicate suppression observations.
-        auto combined = build_combined_suppression();
+        auto plan = m_pending.plan;
+        m_pending.reset();
+
+        apply_duplicate_suppression(plan);
         m_dup_suppression.reset();
 
-        auto response = detail::build_response_with_nsec(m_info, m_pending.qtype,
-                                                         m_pending.needs_nsec,
-                                                         combined,
-                                                         m_opts.suppress_known_answers,
-                                                         m_opts);
-        m_pending.reset();
-        if(!response.empty())
-            send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "response send");
+        if(plan.empty())
+            return;
+
+        send_multicast_plan(plan);
     }
 
-    detail::suppression_mask build_combined_suppression()
+    void send_multicast_plan(const detail::answer_plan &plan)
     {
-        uint32_t dup_threshold = static_cast<uint32_t>(m_opts.record_ttl.count());
-        auto combined = m_pending.suppression;
+        auto response = detail::build_answer_response(m_info, plan, m_opts);
+        if(response.empty())
+            return;
+        send_to(response_mode::multicast, {}, std::span<const std::byte>(response), "response send");
+        m_last_multicast = clock_type::now();
+    }
 
+    // RFC 6762 section 7.4: suppress record types another responder already
+    // multicast (with TTL at least ours) during the pending delay window.
+    void apply_duplicate_suppression(detail::answer_plan &plan)
+    {
         if(m_dup_suppression.empty())
-            return combined;
+            return;
 
         auto candidate_pkt = detail::build_dns_response(m_info, dns_type::any, m_opts);
         std::vector<mdns_record_variant> candidates;
@@ -765,80 +886,25 @@ private:
             endpoint{},
             [&](mdns_record_variant rv) { candidates.push_back(std::move(rv)); });
 
+        detail::suppression_mask mask;
         for(const auto &rec : candidates)
         {
-            if(!m_dup_suppression.is_suppressed(rec, dup_threshold))
-                continue;
-            mark_suppressed(combined, rec);
+            uint32_t our_ttl = std::visit([](const auto &r) { return r.ttl; }, rec);
+            if(m_dup_suppression.is_suppressed(rec, our_ttl))
+                detail::mark_suppressed_type(mask, rec);
         }
-        return combined;
-    }
-
-    static void mark_suppressed(detail::suppression_mask &mask, const mdns_record_variant &rec)
-    {
-        std::visit([&](const auto &r)
-        {
-            using T = std::decay_t<decltype(r)>;
-            if constexpr (std::is_same_v<T, record_ptr>)   mask.ptr  = true;
-            else if constexpr (std::is_same_v<T, record_srv>)  mask.srv  = true;
-            else if constexpr (std::is_same_v<T, record_a>)    mask.a    = true;
-            else if constexpr (std::is_same_v<T, record_aaaa>) mask.aaaa = true;
-            else if constexpr (std::is_same_v<T, record_txt>)  mask.txt  = true;
-        }, rec);
-    }
-
-    void on_tc_wait_expired(const endpoint &sender, std::chrono::milliseconds tc_wait)
-    {
-        if(this->m_stopped.load(std::memory_order_acquire))
-            return;
-        if(m_pa_state.state != server_state::live)
-            return;
-
-        auto merged = m_tc_acc.take_if_ready(sender,
-                                             (std::chrono::steady_clock::time_point::max)(), tc_wait);
-        if(!merged.has_value())
-            return;
-
-        if(m_opts.on_tc_continuation)
-            m_opts.on_tc_continuation(sender, merged->size());
-
-        auto suppression = build_tc_suppression(*merged);
-
-        detail::query_match_result qmr;
-        qmr.any_matched = true;
-        qmr.accumulated_qtype = dns_type::any;
-        qmr.mode = response_mode::multicast;
-        qmr.needs_nsec = false;
-
-        if(m_opts.suppress_known_answers && detail::all_suppressed(suppression, dns_type::any, m_info))
-            return;
-
-        schedule_multicast_response(qmr, suppression);
-    }
-
-    detail::suppression_mask build_tc_suppression(const std::vector<mdns_record_variant> &merged)
-    {
-        detail::suppression_mask suppression;
-        uint32_t ka_threshold = static_cast<uint32_t>(
-            static_cast<double>(this->m_mdns_opts.record_ttl.count()) * this->m_mdns_opts.tc_suppression_fraction);
-
-        for(const auto &rec : merged)
-        {
-            std::visit([&](const auto &r)
-            {
-                bool name_ok = (r.name == m_info.service_name
-                             || r.name == m_info.service_type
-                             || r.name == m_info.hostname);
-                if(name_ok && r.ttl >= ka_threshold)
-                    mark_suppressed(suppression, rec);
-            }, rec);
-        }
-        return suppression;
+        detail::apply_suppression(plan, mask);
     }
 
     // -------------------------------------------------------------------------
     // Wire helpers
     // -------------------------------------------------------------------------
+
+    void report_error(std::error_code ec, std::string_view context)
+    {
+        if(ec && m_opts.on_error)
+            m_opts.on_error(ec, context);
+    }
 
     void send_to(response_mode mode, const endpoint &sender,
                   std::span<const std::byte> packet, std::string_view context)
@@ -848,7 +914,7 @@ private:
             this->m_socket.send(sender, packet, ec);
         else
             this->m_socket.send(this->multicast_endpoint(), packet, ec);
-        if(ec && m_on_error) m_on_error(ec, context);
+        report_error(ec, context);
     }
 
     std::vector<mdns_record_variant> parse_answer_records(std::span<const std::byte> data)
@@ -876,64 +942,15 @@ private:
         return conflict;
     }
 
-    std::vector<std::byte> build_our_srv_rdata() const
+    std::vector<detail::tiebreak_record> build_our_tiebreak_records() const
     {
-        std::vector<std::byte> rdata;
-        detail::push_u16_be(rdata, m_info.priority);
-        detail::push_u16_be(rdata, m_info.weight);
-        detail::push_u16_be(rdata, m_info.port);
-        auto host = detail::encode_dns_name(m_info.hostname);
-        rdata.insert(rdata.end(), host.begin(), host.end());
-        return rdata;
-    }
-
-    std::vector<std::byte> extract_authority_srv_rdata(std::span<const std::byte> data) const
-    {
-        if(data.size() < 12) return {};
-
-        uint16_t qdcount = detail::read_u16_be(data.data() + 4);
-        uint16_t ancount = detail::read_u16_be(data.data() + 6);
-        uint16_t nscount = detail::read_u16_be(data.data() + 8);
-
-        if(nscount == 0) return {};
-
-        std::size_t offset = 12;
-
-        for(uint16_t i = 0; i < qdcount; ++i)
-        {
-            if(!detail::skip_dns_name(data, offset)) return {};
-            if(offset + 4 > data.size()) return {};
-            offset += 4;
-        }
-
-        for(uint16_t i = 0; i < ancount; ++i)
-        {
-            if(!detail::skip_dns_name(data, offset)) return {};
-            if(offset + 10 > data.size()) return {};
-            offset += 8;
-            uint16_t rdlen = detail::read_u16_be(data.data() + offset);
-            offset += 2;
-            if(offset + rdlen > data.size()) return {};
-            offset += rdlen;
-        }
-
-        for(uint16_t i = 0; i < nscount; ++i)
-        {
-            if(!detail::skip_dns_name(data, offset)) return {};
-            if(offset + 10 > data.size()) return {};
-            uint16_t rtype = detail::read_u16_be(data.data() + offset);
-            offset += 8;
-            uint16_t rdlen = detail::read_u16_be(data.data() + offset);
-            offset += 2;
-            if(offset + rdlen > data.size()) return {};
-
-            if(rtype == detail::to_underlying(dns_type::srv))
-                return std::vector<std::byte>(data.data() + offset,
-                                             data.data() + offset + rdlen);
-            offset += rdlen;
-        }
-
-        return {};
+        std::vector<detail::tiebreak_record> records;
+        for(auto &rec : detail::build_proposed_records(m_info))
+            records.push_back(detail::tiebreak_record{
+                detail::to_underlying(dns_class::in),
+                detail::to_underlying(rec.rtype),
+                std::move(rec.rdata)});
+        return records;
     }
 
     // -------------------------------------------------------------------------
@@ -951,12 +968,15 @@ private:
     service_options m_opts;
     completion_handler m_on_ready;
     completion_handler m_on_completion;
-    error_handler m_on_error;
     std::mt19937 m_rng;
     detail::probe_announce_state m_pa_state;
     detail::pending_response m_pending;
-    detail::tc_accumulator<> m_tc_acc;
+    detail::tc_accumulator<clock_type> m_tc_acc;
     detail::duplicate_suppression_state m_dup_suppression;
+    detail::probe_rate_limiter<clock_type> m_rate_limiter;
+    clock_type::time_point m_tc_deadline{};
+    clock_type::time_point m_last_multicast{};
+    bool m_tc_timer_armed{false};
 };
 
 }

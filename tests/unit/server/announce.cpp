@@ -136,9 +136,10 @@ SCENARIO("Server sends goodbye packet on stop when live", "[goodbye]")
         server.async_start();
         advance_to_live(server);
 
-        WHEN("stop() is called")
+        WHEN("stop() is called and the posted teardown runs")
         {
             server.stop();
+            ex.drain_posted();
 
             THEN("a goodbye packet with TTL=0 is sent")
             {
@@ -186,6 +187,7 @@ SCENARIO("Server does NOT send goodbye when stopped during probing", "[goodbye][
         WHEN("stop() is called during probing")
         {
             server.stop();
+            ex.drain_posted();
 
             THEN("no goodbye packet is sent")
             {
@@ -210,6 +212,7 @@ SCENARIO("Server skips goodbye when send_goodbye is false", "[goodbye][opt-out]"
         WHEN("stop() is called")
         {
             server.stop();
+            ex.drain_posted();
 
             THEN("no goodbye packet is sent")
             {
@@ -233,6 +236,7 @@ SCENARIO("Goodbye sent at most once on double stop", "[goodbye][idempotent]")
         {
             server.stop();
             server.stop();
+            ex.drain_posted();
 
             THEN("exactly one goodbye packet is sent")
             {
@@ -264,6 +268,7 @@ SCENARIO("Server sends goodbye when stopped during announcing", "[goodbye][annou
         WHEN("stop() is called during announcing")
         {
             server.stop();
+            ex.drain_posted();
 
             THEN("a goodbye packet is sent")
             {
@@ -317,21 +322,21 @@ SCENARIO("Server invokes on_error with invalid_ipv4_address when address encodin
     {
         mock_executor ex;
 
+        std::vector<std::error_code> error_codes;
+        std::vector<std::string> error_msgs;
+
         service_options opts;
         opts.respond_to_meta_queries = false;
+        opts.on_error = [&](std::error_code ec, std::string_view msg)
+        {
+            error_codes.push_back(ec);
+            error_msgs.push_back(std::string(msg));
+        };
 
         service_info info = make_test_info();
         info.address_ipv4 = "999.1.2.3";  // intentionally malformed
 
         basic_service_server<mock_policy> server{ex, std::move(info), std::move(opts)};
-
-        std::vector<std::error_code> error_codes;
-        std::vector<std::string> error_msgs;
-        server.on_error([&](std::error_code ec, std::string_view msg)
-        {
-            error_codes.push_back(ec);
-            error_msgs.push_back(std::string(msg));
-        });
 
         server.async_start();
         advance_to_live(server);

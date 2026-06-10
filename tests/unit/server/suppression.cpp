@@ -292,3 +292,88 @@ SCENARIO("Multicast response from another host suppresses our answer during dela
         }
     }
 }
+
+SCENARIO("known answer with stale rdata does NOT suppress the answer", "[known-answer-suppression][rdata]")
+{
+    GIVEN("a live service server")
+    {
+        mock_executor ex;
+        basic_service_server<mock_policy> server{ex, make_test_info()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("an SRV query carries a known answer with a stale port")
+        {
+            // RFC 6762 §7.1: suppression requires matching rdata. A querier
+            // holding a stale SRV (old port) must still receive our answer.
+            std::vector<std::byte> stale_rdata;
+            push_u16_be(stale_rdata, 0);    // priority
+            push_u16_be(stale_rdata, 0);    // weight
+            push_u16_be(stale_rdata, 9999); // stale port (ours is 8080)
+            auto target = encode_dns_name("myhost.local.");
+            stale_rdata.insert(stale_rdata.end(), target.begin(), target.end());
+
+            auto query = make_query_with_known_answer(
+                "MyService._http._tcp.local.", dns_type::srv,
+                "MyService._http._tcp.local.", dns_type::srv, 4500,
+                stale_rdata);
+
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.timer().fire(); // in case the response was delayed
+
+            THEN("the response contains our SRV record with the correct port")
+            {
+                bool has_correct_srv = false;
+                for(const auto &sp : server.socket().sent_packets())
+                {
+                    auto records = parse_response(sp.data);
+                    for(const auto &rv : records)
+                    {
+                        if(const auto *srv = std::get_if<record_srv>(&rv))
+                        {
+                            if(srv->port == 8080)
+                                has_correct_srv = true;
+                        }
+                    }
+                }
+                REQUIRE(has_correct_srv);
+            }
+        }
+
+        WHEN("an SRV query carries a known answer with matching rdata")
+        {
+            std::vector<std::byte> matching_rdata;
+            push_u16_be(matching_rdata, 0);
+            push_u16_be(matching_rdata, 0);
+            push_u16_be(matching_rdata, 8080);
+            auto target = encode_dns_name("myhost.local.");
+            matching_rdata.insert(matching_rdata.end(), target.begin(), target.end());
+
+            auto query = make_query_with_known_answer(
+                "MyService._http._tcp.local.", dns_type::srv,
+                "MyService._http._tcp.local.", dns_type::srv, 4500,
+                matching_rdata);
+
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.timer().fire();
+
+            THEN("no SRV answer is sent (suppressed)")
+            {
+                bool has_srv = false;
+                for(const auto &sp : server.socket().sent_packets())
+                {
+                    auto records = parse_response(sp.data);
+                    for(const auto &rv : records)
+                    {
+                        if(std::holds_alternative<record_srv>(rv))
+                            has_srv = true;
+                    }
+                }
+                REQUIRE_FALSE(has_srv);
+            }
+        }
+    }
+}

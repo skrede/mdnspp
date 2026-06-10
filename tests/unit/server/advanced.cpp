@@ -209,15 +209,18 @@ SCENARIO("on_error callback fires on send failure", "[service_server][on_error]"
     GIVEN("a service_server with on_error callback and send failure injection")
     {
         mock_executor ex;
-        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         std::error_code received_ec;
-        std::string_view received_context;
-        server.on_error([&](std::error_code ec, std::string_view ctx)
+        std::string received_context;
+
+        service_options opts;
+        opts.on_error = [&](std::error_code ec, std::string_view ctx)
         {
             received_ec = ec;
-            received_context = ctx;
-        });
+            received_context = std::string(ctx);
+        };
+
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
 
         mock_socket::set_fail_on_send(true);
 
@@ -504,6 +507,81 @@ SCENARIO("TC timer is cancelled on stop()", "[service_server][tc][stop]")
             THEN("the tc_timer has been cancelled (no pending handler)")
             {
                 REQUIRE_FALSE(server.tc_timer().has_pending());
+            }
+        }
+    }
+}
+
+SCENARIO("Legacy unicast response repeats query ID and question without cache-flush",
+         "[service_server][legacy_unicast][rfc6762-6.7]")
+{
+    GIVEN("a live server")
+    {
+        mock_executor ex;
+        basic_service_server<mock_policy> server{ex, make_test_info()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        endpoint legacy_sender{"10.0.0.1", 12345};
+        auto query = make_ptr_query("_http._tcp.local.");
+        query[0] = std::byte{0xBE};
+        query[1] = std::byte{0xEF};
+        server.socket().inject_receive(legacy_sender, query);
+
+        WHEN("the legacy unicast response is sent")
+        {
+            const sent_packet *response = nullptr;
+            for(const auto &pkt : server.socket().sent_packets())
+            {
+                if(pkt.dest == legacy_sender)
+                    response = &pkt;
+            }
+            REQUIRE(response != nullptr);
+            const auto &pkt = response->data;
+            REQUIRE(pkt.size() >= 12);
+
+            THEN("the response repeats the query ID")
+            {
+                REQUIRE(read_u16_be(pkt, 0) == 0xBEEF);
+            }
+
+            THEN("the response repeats the question (qdcount=1, same qname/qtype)")
+            {
+                REQUIRE(read_u16_be(pkt, 4) == 1);
+
+                auto span = std::span<const std::byte>(pkt);
+                auto qname = mdnspp::detail::read_dns_name(span, 12);
+                REQUIRE(qname.has_value());
+                REQUIRE(dns_name{*qname} == dns_name{"_http._tcp.local."});
+
+                size_t offset = 12;
+                REQUIRE(skip_dns_name(span, offset));
+                REQUIRE(read_u16_be(pkt, offset) == mdnspp::detail::to_underlying(dns_type::ptr));
+            }
+
+            THEN("no record carries the cache-flush bit")
+            {
+                auto span = std::span<const std::byte>(pkt);
+                size_t offset = 12;
+                uint16_t qdcount = read_u16_be(pkt, 4);
+                for(uint16_t i = 0; i < qdcount; ++i)
+                {
+                    REQUIRE(skip_dns_name(span, offset));
+                    offset += 4;
+                }
+                uint16_t ancount = read_u16_be(pkt, 6);
+                uint16_t arcount = read_u16_be(pkt, 10);
+                uint32_t total = static_cast<uint32_t>(ancount) + arcount;
+                REQUIRE(total >= 1);
+                for(uint32_t i = 0; i < total; ++i)
+                {
+                    REQUIRE(skip_dns_name(span, offset));
+                    uint16_t rclass = read_u16_be(pkt, offset + 2);
+                    REQUIRE((rclass & 0x8000) == 0);
+                    uint16_t rdlen = read_u16_be(pkt, offset + 8);
+                    offset += 10 + rdlen;
+                }
             }
         }
     }

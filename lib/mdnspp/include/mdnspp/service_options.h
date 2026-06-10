@@ -9,18 +9,29 @@
 #include <chrono>
 #include <string>
 #include <cstdint>
+#include <optional>
+#include <string_view>
+#include <system_error>
 
 namespace mdnspp {
 
 struct service_options
 {
+    /// Invoked when probing detects a name conflict (RFC 6762 §9). Returns
+    /// the replacement service instance name, or std::nullopt to give up;
+    /// giving up tears the server down (on_ready fires with
+    /// mdns_error::probe_conflict, then on_done fires).
     using conflict_callback = move_only_function<
-        bool(const std::string &conflicting_name, std::string &new_name, unsigned attempt, conflict_type type)>;
+        std::optional<std::string>(std::string_view conflicting_name, uint32_t attempt, conflict_type type)>;
 
     conflict_callback on_conflict{};
     move_only_function<void(const endpoint &sender, dns_type type, response_mode mode)> on_query{};
     /// Fired when TC continuation is processed: reports sender and number of accumulated continuation packets.
     move_only_function<void(const endpoint &sender, std::size_t continuation_count)> on_tc_continuation{};
+    /// Error handler invoked on fire-and-forget send failures and address
+    /// encoding errors. Receives the error_code and a context string
+    /// identifying the failure site.
+    move_only_function<void(std::error_code ec, std::string_view context)> on_error{};
     uint8_t announce_count{2};
     std::chrono::milliseconds announce_interval{1000};
     bool send_goodbye{true};
@@ -62,8 +73,8 @@ struct service_options
     /// Whether to respond to legacy unicast queries (RFC 6762 §6.7).
     ///
     /// Legacy unicast queries arrive from source port != 5353. Enabling this
-    /// causes the responder to send a unicast reply with TTLs capped at
-    /// @c mdns_options::legacy_unicast_ttl.
+    /// causes the responder to send a unicast reply that repeats the query ID
+    /// and question, with TTLs capped at @c mdns_options::legacy_unicast_ttl.
     ///
     /// RFC default: true (respond to legacy unicast).
     ///
@@ -71,23 +82,26 @@ struct service_options
     /// use legacy DNS-SD querying (e.g., some Windows implementations).
     bool respond_to_legacy_unicast{true};
 
-    /// TTL for PTR records in outgoing responses (RFC 6762 §11.3).
+    /// TTL for PTR records in outgoing responses (RFC 6762 §10).
     ///
-    /// RFC default: 4500 seconds (75 minutes).
+    /// RFC default: 4500 seconds (75 minutes) for records that do not contain
+    /// host names.
     ///
     /// Risk of changing: Reducing shortens how long queriers retain the
     /// service discovery entry, increasing re-query frequency.
     std::chrono::seconds ptr_ttl{4500};
 
-    /// TTL for SRV records in outgoing responses (RFC 6762 §11.3).
+    /// TTL for SRV records in outgoing responses (RFC 6762 §10).
     ///
-    /// RFC default: 4500 seconds (75 minutes).
+    /// RFC default: 120 seconds. SRV rdata contains a host name; RFC 6762 §10
+    /// recommends 120 s for host-name-containing records so stale host data
+    /// ages out quickly.
     ///
-    /// Risk of changing: Reducing causes resolvers to re-query the host/port
-    /// mapping more frequently.
-    std::chrono::seconds srv_ttl{4500};
+    /// Risk of changing: Increasing reduces re-query traffic but delays
+    /// detection of host/port changes by resolvers.
+    std::chrono::seconds srv_ttl{120};
 
-    /// TTL for TXT records in outgoing responses (RFC 6762 §11.3).
+    /// TTL for TXT records in outgoing responses (RFC 6762 §10).
     ///
     /// RFC default: 4500 seconds (75 minutes).
     ///
@@ -95,35 +109,38 @@ struct service_options
     /// frequently; increasing delays propagation of attribute changes.
     std::chrono::seconds txt_ttl{4500};
 
-    /// TTL for A records in outgoing responses (RFC 6762 §11.3).
+    /// TTL for A records in outgoing responses (RFC 6762 §10).
     ///
-    /// RFC default: 4500 seconds (75 minutes).
+    /// RFC default: 120 seconds. A records name a host; RFC 6762 §10
+    /// recommends 120 s for host-name-containing records.
     ///
-    /// Risk of changing: Reducing causes resolvers to re-query IPv4 addresses
-    /// more frequently; care should be taken on networks with dynamic addressing.
-    std::chrono::seconds a_ttl{4500};
+    /// Risk of changing: Increasing reduces re-query traffic but delays
+    /// detection of address changes; care should be taken on networks with
+    /// dynamic addressing.
+    std::chrono::seconds a_ttl{120};
 
-    /// TTL for AAAA records in outgoing responses (RFC 6762 §11.3).
+    /// TTL for AAAA records in outgoing responses (RFC 6762 §10).
     ///
-    /// RFC default: 4500 seconds (75 minutes).
+    /// RFC default: 120 seconds. Same rationale as @c a_ttl but for IPv6
+    /// addresses.
     ///
-    /// Risk of changing: Same trade-offs as @c a_ttl but for IPv6 addresses.
-    std::chrono::seconds aaaa_ttl{4500};
+    /// Risk of changing: Same trade-offs as @c a_ttl.
+    std::chrono::seconds aaaa_ttl{120};
 
     /// Fallback TTL used for NSEC and meta-query PTR records when no
-    /// per-record-type TTL is applicable (RFC 6762 §11.3).
+    /// per-record-type TTL is applicable (RFC 6762 §10).
     ///
-    /// RFC default: 4500 seconds (75 minutes).
+    /// Default: 4500 seconds (75 minutes).
     ///
     /// Risk of changing: This is the last-resort TTL; reducing it increases
     /// re-query frequency for these secondary records.
     std::chrono::seconds record_ttl{4500};
 
-    /// TTL for SRV records placed in the authority section of probe queries
+    /// TTL for records placed in the authority section of probe queries
     /// (RFC 6762 §8.2).
     ///
-    /// The authority SRV record is used for simultaneous-probe tiebreaking.
-    /// Its TTL is not cached by recipients but must be a valid non-zero value.
+    /// The authority records are used for simultaneous-probe tiebreaking.
+    /// Their TTL is not cached by recipients but must be a valid non-zero value.
     ///
     /// RFC default: 120 seconds.
     ///

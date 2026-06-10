@@ -83,21 +83,19 @@ TEST_CASE("Probe conflict resolution between two servers", "[inproc][discovery]"
     bool conflict_b = false;
 
     service_options opts_a;
-    opts_a.on_conflict = [&](const std::string &, std::string &new_name,
-                              unsigned, conflict_type) -> bool
+    opts_a.on_conflict = [&](std::string_view, uint32_t, conflict_type)
+        -> std::optional<std::string>
     {
         conflict_a = true;
-        new_name   = "SharedName-2._http._tcp.local.";
-        return true; // rename and re-probe
+        return "SharedName-2._http._tcp.local."; // rename and re-probe
     };
 
     service_options opts_b;
-    opts_b.on_conflict = [&](const std::string &, std::string &new_name,
-                              unsigned, conflict_type) -> bool
+    opts_b.on_conflict = [&](std::string_view, uint32_t, conflict_type)
+        -> std::optional<std::string>
     {
         conflict_b = true;
-        new_name   = "SharedName-3._http._tcp.local.";
-        return true; // rename and re-probe
+        return "SharedName-3._http._tcp.local."; // rename and re-probe
     };
 
     // Same service name, different ports (different SRV rdata => deterministic tiebreak)

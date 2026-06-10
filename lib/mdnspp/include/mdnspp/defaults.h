@@ -4,15 +4,15 @@
 // defaults.h — convenience header for default_policy users.
 //
 // Provides unqualified type aliases so users can write:
-//   mdnspp::observer obs{ctx, cb};          // no angle brackets
-//   mdnspp::querier  q{ctx, 500ms};
-//   mdnspp::service_discovery sd{ctx, 1s};
+//   mdnspp::context ctx;
+//   mdnspp::observer obs{ctx, mdnspp::observer_options{.on_record = cb}};
+//   mdnspp::querier  q{ctx, mdnspp::query_options{.silence_timeout = std::chrono::milliseconds(500)}};
+//   mdnspp::service_discovery sd{ctx, mdnspp::query_options{.silence_timeout = std::chrono::seconds(1)}};
 //   mdnspp::service_server    srv{ctx, info};
-//   mdnspp::context           ctx;
 //
 // ASIO users should instead include the basic_*.h headers directly and
 // instantiate with their own policy, e.g.:
-//   mdnspp::basic_observer<mdnspp::asio_policy> obs{io, cb};
+//   mdnspp::basic_observer<mdnspp::asio_policy> obs{io, mdnspp::observer_options{.on_record = cb}};
 //
 // NOTE: including this header transitively pulls in default_policy and its
 // dependencies (platform headers, system socket headers). If you are writing
@@ -53,7 +53,7 @@ using nic_monitor = basic_nic_monitor<default_policy>;
 
 /// Convenience alias — multi-NIC peer group with the default platform policy.
 ///
-/// Usage: mdnspp::nic_group<basic_service_monitor> grp{ctx, opts, monitors};
+/// Usage: mdnspp::nic_group<basic_service_monitor> grp{ctx, grp_opts, std::vector<mdnspp::monitor_options>{...}};
 template <template <typename...> class... Peers>
 using nic_group = basic_nic_group<default_policy, Peers...>;
 

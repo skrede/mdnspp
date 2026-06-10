@@ -54,7 +54,7 @@ enum class update_event
 ///                    presumed gone.
 ///
 /// - @c goodbye    -- A goodbye packet (TTL=0) was received. After the RFC 6762
-///                    section 11.3 one-second grace period the service is
+///                    section 10.1 one-second grace period the service is
 ///                    considered lost.
 ///
 /// - @c unwatched  -- The user called unwatch() for the service type. All

@@ -95,6 +95,65 @@ SCENARIO("update_service_info sends announcement burst", "[service_server][updat
     }
 }
 
+SCENARIO("update_service_info announce does not cancel a scheduled delayed response", "[service_server][update][delay]")
+{
+    GIVEN("a live service_server with a delayed shared-record response pending")
+    {
+        mock_executor ex;
+
+        service_options opts;
+        opts.announce_count = 2;
+        opts.respond_to_meta_queries = false;
+
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        // A multicast PTR query schedules a shared-record response on the
+        // dedicated delay timer (RFC 6762 section 6, 20-120 ms).
+        endpoint sender{"192.168.1.50", 5353};
+        server.socket().inject_receive(sender, make_ptr_query("_http._tcp.local."));
+        REQUIRE(server.delay_timer().has_pending());
+
+        WHEN("update_service_info fires an announce burst before the delay elapses")
+        {
+            auto new_info = make_test_info();
+            new_info.port = 9090;
+            server.update_service_info(std::move(new_info));
+            ex.drain_posted();
+
+            THEN("the announce burst armed the response timer without touching the delay timer")
+            {
+                REQUIRE(server.timer().has_pending());      // second announcement
+                REQUIRE(server.delay_timer().has_pending()); // delayed response intact
+            }
+
+            AND_WHEN("the delay timer fires")
+            {
+                auto sent_before = server.socket().sent_packets().size();
+                server.delay_timer().fire();
+
+                THEN("the delayed response still goes out")
+                {
+                    REQUIRE(server.socket().sent_packets().size() == sent_before + 1);
+                    const auto &pkt = server.socket().sent_packets().back();
+                    REQUIRE(pkt.dest == endpoint{"224.0.0.251", 5353});
+
+                    auto records = parse_response(pkt.data);
+                    bool has_ptr = false;
+                    for(const auto &rv : records)
+                    {
+                        if(std::holds_alternative<record_ptr>(rv))
+                            has_ptr = true;
+                    }
+                    REQUIRE(has_ptr);
+                }
+            }
+        }
+    }
+}
+
 // Helper: checks if a sent packet is a goodbye (all record TTLs are 0).
 static bool is_goodbye_packet(const std::vector<std::byte> &pkt)
 {

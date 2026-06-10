@@ -19,7 +19,7 @@ SCENARIO("NSEC in Additional for unmatched type", "[nsec]")
             auto query = build_dns_query("myhost.local.", dns_type::aaaa, response_mode::multicast);
             endpoint sender{"192.168.1.50", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the response contains an NSEC record in Additional")
             {
@@ -170,7 +170,7 @@ SCENARIO("known-answer suppression skips records with TTL >= 50%", "[known-answe
 
             endpoint sender{"192.168.1.50", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the response does not contain a PTR record (suppressed)")
             {
@@ -213,7 +213,7 @@ SCENARIO("suppress_known_answers=false sends full response", "[known-answer-supp
 
             endpoint sender{"192.168.1.50", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the response DOES contain a PTR record (suppression disabled)")
             {
@@ -254,7 +254,7 @@ SCENARIO("Multicast response from another host suppresses our answer during dela
         auto query_pkt = make_ptr_query("_http._tcp.local.");
         server.socket().inject_receive(endpoint{}, query_pkt);
 
-        REQUIRE(server.timer().has_pending());
+        REQUIRE(server.delay_timer().has_pending());
         auto sent_before = server.socket().sent_packets().size();
 
         WHEN("another host's PTR response arrives before the delay timer fires")
@@ -268,7 +268,7 @@ SCENARIO("Multicast response from another host suppresses our answer during dela
             {
                 // The observation happens inline; fire the delay timer and check suppression.
                 // If suppression works, the server may send fewer records or nothing at all.
-                server.timer().fire();
+                server.delay_timer().fire();
 
                 // The exact suppression effect depends on record identity match.
                 // The key invariant: the server did not crash and processed gracefully.
@@ -282,7 +282,7 @@ SCENARIO("Multicast response from another host suppresses our answer during dela
 
         WHEN("no other response arrives before the delay timer fires")
         {
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the server sends its own response normally")
             {
@@ -321,7 +321,7 @@ SCENARIO("known answer with stale rdata does NOT suppress the answer", "[known-a
 
             endpoint sender{"192.168.1.50", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire(); // in case the response was delayed
+            server.delay_timer().fire(); // in case the response was delayed
 
             THEN("the response contains our SRV record with the correct port")
             {
@@ -358,7 +358,7 @@ SCENARIO("known answer with stale rdata does NOT suppress the answer", "[known-a
 
             endpoint sender{"192.168.1.50", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("no SRV answer is sent (suppressed)")
             {

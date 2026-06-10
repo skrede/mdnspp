@@ -183,8 +183,14 @@ SCENARIO("async_start is one-shot", "[service_server][one-shot]")
                 ready_ec = ec;
             });
 
+            THEN("the misuse completion is posted, not invoked inline")
+            {
+                REQUIRE_FALSE(ready_fired);
+            }
+
             THEN("on_ready completes with operation_in_progress")
             {
+                ex.drain_posted();
                 REQUIRE(ready_fired);
                 REQUIRE(ready_ec == std::errc::operation_in_progress);
             }
@@ -203,10 +209,78 @@ SCENARIO("async_start is one-shot", "[service_server][one-shot]")
                 ready_ec = ec;
             });
 
+            THEN("the misuse completion is posted, not invoked inline")
+            {
+                REQUIRE_FALSE(ready_fired);
+            }
+
             THEN("on_ready completes with invalid_argument")
             {
+                ex.drain_posted();
                 REQUIRE(ready_fired);
                 REQUIRE(ready_ec == std::errc::invalid_argument);
+            }
+        }
+    }
+}
+
+SCENARIO("destruction completes pending handlers exactly once with operation_canceled", "[service_server][destructor][completion]")
+{
+    GIVEN("a mock_executor outliving the server")
+    {
+        mock_executor ex;
+        int ready_count = 0;
+        int done_count = 0;
+        std::error_code ready_ec;
+        std::error_code done_ec;
+
+        WHEN("a server is destroyed while async_start is still pending")
+        {
+            {
+                basic_service_server<mock_policy> server{ex, make_test_info()};
+                server.async_start(
+                    [&](std::error_code ec) { ++ready_count; ready_ec = ec; },
+                    [&](std::error_code ec) { ++done_count; done_ec = ec; });
+                // destroyed while probing -- neither handler has fired yet
+            }
+
+            THEN("on_ready fired exactly once with operation_canceled")
+            {
+                REQUIRE(ready_count == 1);
+                REQUIRE(ready_ec == std::errc::operation_canceled);
+            }
+
+            THEN("on_done fired exactly once with operation_canceled")
+            {
+                REQUIRE(done_count == 1);
+                REQUIRE(done_ec == std::errc::operation_canceled);
+            }
+
+            THEN("draining the dropped teardown does not complete them again")
+            {
+                REQUIRE_NOTHROW(ex.drain_posted());
+                REQUIRE(ready_count == 1);
+                REQUIRE(done_count == 1);
+            }
+        }
+
+        WHEN("stop() completed the handlers before destruction")
+        {
+            {
+                basic_service_server<mock_policy> server{ex, make_test_info()};
+                server.async_start(
+                    [&](std::error_code ec) { ++ready_count; ready_ec = ec; },
+                    [&](std::error_code ec) { ++done_count; done_ec = ec; });
+                server.stop();
+                ex.drain_posted(); // teardown runs: on_ready canceled, on_done {}
+            }
+
+            THEN("destruction does not complete the handlers a second time")
+            {
+                REQUIRE(ready_count == 1);
+                REQUIRE(ready_ec == std::errc::operation_canceled);
+                REQUIRE(done_count == 1);
+                REQUIRE(done_ec == std::error_code{});
             }
         }
     }

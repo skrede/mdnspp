@@ -23,6 +23,7 @@
 #include "mdnspp/detail/duplicate_answer_suppression.h"
 
 #include <span>
+#include <atomic>
 #include <chrono>
 #include <memory>
 #include <random>
@@ -54,12 +55,15 @@ namespace mdnspp {
 //      std::errc::invalid_argument), the full teardown runs, and on_done then
 //      fires with error_code{}.
 //      async_start is one-shot: a second call (or a call after stop()) fails
-//      deterministically by completing on_ready with
-//      std::errc::operation_in_progress / std::errc::invalid_argument.
-//   3. stop() -- idempotent; posts the teardown (including the goodbye send)
-//      to the executor, fires on_ready with operation_canceled if not yet
-//      live, then fires on_done with error_code{}
-//   4. ~basic_service_server() -- calls stop() for RAII safety
+//      deterministically by completing on_ready -- posted to the executor --
+//      with std::errc::operation_in_progress / std::errc::invalid_argument.
+//   3. stop() -- idempotent; posts the teardown (including building and
+//      sending the goodbye packet) to the executor, fires on_ready with
+//      operation_canceled if not yet live, then fires on_done with
+//      error_code{}. A goodbye is sent only if the executor runs after
+//      stop().
+//   4. ~basic_service_server() -- calls stop() for RAII safety and completes
+//      still-pending handlers with operation_canceled
 //
 // Non-copyable and non-movable: completion handlers capture `this`.
 
@@ -96,6 +100,12 @@ public:
         if(this->m_loop)
             this->m_loop->stop(); // synchronously close socket/timer before members die
         stop();                   // then stop (posts teardown; guard will fail safely)
+        // The posted stop() teardown is dropped by the expired alive guard;
+        // complete still-pending handlers instead of silently dropping them.
+        if(auto h = std::exchange(m_on_ready, nullptr); h)
+            h(std::make_error_code(std::errc::operation_canceled));
+        if(auto h = std::exchange(m_on_completion, nullptr); h)
+            h(std::make_error_code(std::errc::operation_canceled));
     }
 
     // Throwing constructor
@@ -105,6 +115,7 @@ public:
                                   mdns_options mdns_opts = {})
         : base(ex, std::move(sock_opts), std::move(mdns_opts))
         , m_response_timer(ex)
+        , m_delay_timer(ex)
         , m_tc_timer(ex)
         , m_info(std::move(info))
         , m_opts(std::move(opts))
@@ -120,6 +131,7 @@ public:
                          mdns_options mdns_opts, std::error_code &ec)
         : base(ex, std::move(sock_opts), std::move(mdns_opts), ec)
         , m_response_timer(ex)
+        , m_delay_timer(ex)
         , m_tc_timer(ex)
         , m_info(std::move(info))
         , m_opts(std::move(opts))
@@ -133,19 +145,27 @@ public:
     // on_ready fires after probe+announce completes (success) or on permanent
     // probe failure. on_done fires after teardown completes.
     // One-shot: a second call completes on_ready with operation_in_progress;
-    // a call after stop() completes on_ready with invalid_argument.
+    // a call after stop() completes on_ready with invalid_argument. Misuse is
+    // detected through atomic flags only (callable from any thread) and the
+    // misuse completion is posted to the executor, never invoked inline.
     void async_start(completion_handler on_ready = {}, completion_handler on_done = {})
     {
         if(this->m_stopped.load(std::memory_order_acquire))
         {
             if(on_ready)
-                on_ready(std::make_error_code(std::errc::invalid_argument));
+                this->post_guarded([h = std::move(on_ready)]() mutable
+                {
+                    h(std::make_error_code(std::errc::invalid_argument));
+                });
             return;
         }
-        if(m_pa_state.state != server_state::idle)
+        if(m_started.exchange(true, std::memory_order_acq_rel))
         {
             if(on_ready)
-                on_ready(std::make_error_code(std::errc::operation_in_progress));
+                this->post_guarded([h = std::move(on_ready)]() mutable
+                {
+                    h(std::make_error_code(std::errc::operation_in_progress));
+                });
             return;
         }
         if(on_ready)
@@ -156,32 +176,34 @@ public:
     }
 
     // stop() -- idempotent; posts teardown to the executor thread, ensuring all
-    // state mutations and the goodbye send happen on the executor (no
-    // cross-thread data race). The goodbye packet is prebuilt here and moved
-    // into the posted teardown, which sends it only when the server was
-    // announcing or live (RFC 6762 section 10.1).
+    // state mutations and the goodbye build and send happen on the executor
+    // (no cross-thread data race: m_info is written on the executor by
+    // update_service_info and conflict renames, so it must not be read on the
+    // caller thread). The posted teardown sends the goodbye only when the
+    // server was announcing or live (RFC 6762 section 10.1); consequently a
+    // goodbye goes out only if the executor runs after stop().
     void stop()
     {
         if(this->m_stopped.exchange(true, std::memory_order_acq_rel))
             return;
 
-        std::vector<std::byte> goodbye;
-        if(m_opts.send_goodbye)
-            goodbye = build_goodbye_packet();
-
         auto guard = std::weak_ptr<bool>(this->m_alive);
-        P::post(this->m_executor, [this, guard, goodbye = std::move(goodbye)]()
+        P::post(this->m_executor, [this, guard]()
         {
             if(!guard.lock()) return;
 
-            if(!goodbye.empty()
+            if(m_opts.send_goodbye
                && (m_pa_state.state == server_state::live
                    || m_pa_state.state == server_state::announcing))
             {
-                std::error_code ec;
-                this->m_socket.send(this->multicast_endpoint(),
-                                    std::span<const std::byte>(goodbye), ec);
-                report_error(ec, "goodbye send");
+                auto goodbye = build_goodbye_packet();
+                if(!goodbye.empty())
+                {
+                    std::error_code ec;
+                    this->m_socket.send(this->multicast_endpoint(),
+                                        std::span<const std::byte>(goodbye), ec);
+                    report_error(ec, "goodbye send");
+                }
             }
 
             if(m_pa_state.state == server_state::probing || m_pa_state.state == server_state::announcing)
@@ -227,6 +249,8 @@ public:
     // Server-specific timer accessors:
     const timer_type &timer() const noexcept { return m_response_timer; }
     timer_type &timer() noexcept { return m_response_timer; }
+    const timer_type &delay_timer() const noexcept { return m_delay_timer; }
+    timer_type &delay_timer() noexcept { return m_delay_timer; }
     const timer_type &tc_timer() const noexcept { return m_tc_timer; }
     timer_type &tc_timer() noexcept { return m_tc_timer; }
     const timer_type &recv_timer() const noexcept { return base::timer(); }
@@ -410,7 +434,7 @@ private:
 
         if(m_opts.respond_to_meta_queries)
         {
-            uint32_t ttl = static_cast<uint32_t>(m_opts.record_ttl.count());
+            uint32_t ttl = static_cast<uint32_t>(m_opts.fallback_record_ttl.count());
             auto pkt = detail::build_meta_query_response(m_info, ttl);
             if(!pkt.empty())
                 send_to(response_mode::multicast, {}, std::span<const std::byte>(pkt), "announcement send");
@@ -418,7 +442,7 @@ private:
 
         if(m_opts.announce_subtypes)
         {
-            uint32_t ttl = static_cast<uint32_t>(m_opts.record_ttl.count());
+            uint32_t ttl = static_cast<uint32_t>(m_opts.fallback_record_ttl.count());
             for(const auto &sub : m_info.subtypes)
             {
                 auto pkt = detail::build_subtype_response(sub, m_info, ttl);
@@ -493,6 +517,7 @@ private:
         m_pa_state.state = server_state::stopped;
         m_pending.reset();
         m_response_timer.cancel();
+        m_delay_timer.cancel();
         m_tc_timer.cancel();
         m_tc_acc.clear();
         m_tc_timer_armed = false;
@@ -513,7 +538,7 @@ private:
         goodbye_opts.txt_ttl    = std::chrono::seconds{0};
         goodbye_opts.a_ttl      = std::chrono::seconds{0};
         goodbye_opts.aaaa_ttl   = std::chrono::seconds{0};
-        goodbye_opts.record_ttl = std::chrono::seconds{0};
+        goodbye_opts.fallback_record_ttl = std::chrono::seconds{0};
         return detail::build_dns_response(m_info, dns_type::any, goodbye_opts);
     }
 
@@ -811,14 +836,14 @@ private:
     {
         if(qmr.meta_matched)
         {
-            uint32_t meta_ttl = static_cast<uint32_t>(m_opts.record_ttl.count());
+            uint32_t meta_ttl = static_cast<uint32_t>(m_opts.fallback_record_ttl.count());
             auto pkt = detail::build_meta_query_response(m_info, meta_ttl);
             send_to(qmr.mode, sender, std::span<const std::byte>(pkt), "meta-query response send");
         }
 
         if(!qmr.matched_subtype.empty())
         {
-            uint32_t sub_ttl = static_cast<uint32_t>(m_opts.record_ttl.count());
+            uint32_t sub_ttl = static_cast<uint32_t>(m_opts.fallback_record_ttl.count());
             auto pkt = detail::build_subtype_response(qmr.matched_subtype, m_info, sub_ttl);
             send_to(qmr.mode, sender, std::span<const std::byte>(pkt), "subtype response send");
         }
@@ -828,6 +853,13 @@ private:
     // Multicast response scheduling
     // -------------------------------------------------------------------------
 
+    // Scheduled RFC 6762 section 6 delayed responses run on m_delay_timer,
+    // never on m_response_timer: the probe/announce duties of
+    // m_response_timer (initial probe delay, probe interval, announce
+    // interval, update-announce interval, defer-reprobe) belong to mutually
+    // exclusive m_pa_state states, but an update_service_info announce burst
+    // can overlap a pending delayed response while live -- a shared timer
+    // would let the announce expires_after cancel the scheduled response.
     void schedule_multicast_response(const detail::answer_plan &plan)
     {
         bool was_armed = m_pending.armed;
@@ -838,8 +870,8 @@ private:
         std::uniform_int_distribution<std::chrono::milliseconds::rep> dist(
             this->m_mdns_opts.response_delay_min.count(),
             this->m_mdns_opts.response_delay_max.count());
-        m_response_timer.expires_after(std::chrono::milliseconds(dist(m_rng)));
-        m_response_timer.async_wait([this](std::error_code ec)
+        m_delay_timer.expires_after(std::chrono::milliseconds(dist(m_rng)));
+        m_delay_timer.async_wait([this](std::error_code ec)
         {
             if(ec || this->m_stopped.load(std::memory_order_acquire))
                 return;
@@ -958,11 +990,12 @@ private:
     // within each group: ascending by type length, then name length, then alpha.
     // -------------------------------------------------------------------------
 
-    // NOTE: m_response_timer and m_tc_timer cannot be reordered below m_info/m_opts
-    // because they must be initialized from the executor before the service_info
-    // and service_options parameters are moved from in the constructor init list.
+    // NOTE: the timers cannot be reordered below m_info/m_opts because they
+    // must be initialized from the executor before the service_info and
+    // service_options parameters are moved from in the constructor init list.
 
     timer_type m_response_timer;
+    timer_type m_delay_timer;
     timer_type m_tc_timer;
     service_info m_info;
     service_options m_opts;
@@ -976,6 +1009,7 @@ private:
     detail::probe_rate_limiter<clock_type> m_rate_limiter;
     clock_type::time_point m_tc_deadline{};
     clock_type::time_point m_last_multicast{};
+    std::atomic<bool> m_started{false};
     bool m_tc_timer_armed{false};
 };
 

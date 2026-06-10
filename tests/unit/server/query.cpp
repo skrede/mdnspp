@@ -169,7 +169,7 @@ SCENARIO("response delay timer armed after query receipt in live state", "[servi
             {
                 // Timer's last usage was during the announce phase
                 // No queries were received in live state yet
-                REQUIRE_FALSE(server.timer().has_pending());
+                REQUIRE_FALSE(server.delay_timer().has_pending());
             }
         }
     }
@@ -192,7 +192,7 @@ SCENARIO("service_server ignores non-matching query", "[service_server][query][n
             {
                 // Only probes and announcements in sent packets
                 // No response to the wrong query
-                server.timer().fire(); // in case timer was armed
+                server.delay_timer().fire(); // in case timer was armed
                 bool found_response_with_wrong_type = false;
                 for(const auto &pkt : server.socket().sent_packets())
                 {
@@ -273,7 +273,7 @@ SCENARIO("Multi-question query produces combined response", "[multi-question]")
 
             AND_WHEN("the response timer fires")
             {
-                server.timer().fire();
+                server.delay_timer().fire();
 
                 THEN("a combined response is sent with both PTR and SRV records")
                 {
@@ -313,7 +313,7 @@ SCENARIO("Unmatched questions are silently skipped", "[multi-question][skip]")
             });
             endpoint sender{"192.168.1.50", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the response contains only our PTR record, no crash")
             {
@@ -375,7 +375,7 @@ SCENARIO("All-QU queries get unicast response, mixed get multicast", "[multi-que
             });
             endpoint sender{"10.0.0.1", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the response is sent to multicast (any non-QU forces multicast)")
             {
@@ -404,12 +404,12 @@ SCENARIO("Response delay timer is armed for multicast queries", "[delay]")
 
             THEN("the response timer is armed (response not sent immediately)")
             {
-                REQUIRE(server.timer().has_pending());
+                REQUIRE(server.delay_timer().has_pending());
                 REQUIRE(server.socket().sent_packets().empty());
 
                 AND_WHEN("the timer fires")
                 {
-                    server.timer().fire();
+                    server.delay_timer().fire();
 
                     THEN("the response is sent")
                     {
@@ -420,7 +420,7 @@ SCENARIO("Response delay timer is armed for multicast queries", "[delay]")
 
             THEN("the timer delay is within 20-120ms")
             {
-                auto d = server.timer().last_duration();
+                auto d = server.delay_timer().last_duration();
                 REQUIRE(d >= std::chrono::milliseconds(20));
                 REQUIRE(d <= std::chrono::milliseconds(120));
             }
@@ -449,7 +449,7 @@ SCENARIO("New queries merge into pending response", "[aggregation]")
             server.socket().inject_receive(sender, std::move(srv_query));
 
             // Fire timer once
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("exactly one multicast response is sent containing both PTR and SRV")
             {
@@ -492,7 +492,7 @@ SCENARIO("Subsequent queries do not reset timer", "[aggregation][timer-no-reset]
             server.socket().inject_receive(sender, std::move(q2));
 
             // Fire timer once -- should send exactly one response
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("exactly one multicast response was sent")
             {
@@ -502,7 +502,7 @@ SCENARIO("Subsequent queries do not reset timer", "[aggregation][timer-no-reset]
 
             AND_THEN("no further pending timer exists")
             {
-                REQUIRE_FALSE(server.timer().has_pending());
+                REQUIRE_FALSE(server.delay_timer().has_pending());
             }
         }
     }
@@ -535,7 +535,7 @@ SCENARIO("Unicast queries skip aggregation", "[aggregation][unicast-bypass]")
                 // A subsequent multicast query should arm the timer fresh
                 auto mc_query = build_dns_query("_http._tcp.local.", dns_type::ptr, response_mode::multicast);
                 server.socket().inject_receive(sender, std::move(mc_query));
-                REQUIRE(server.timer().has_pending());
+                REQUIRE(server.delay_timer().has_pending());
             }
         }
     }
@@ -571,7 +571,7 @@ SCENARIO("TC bit on incoming query arms the tc_timer with 400-500ms window",
 
             THEN("the response timer is NOT armed immediately (deferred)")
             {
-                REQUIRE_FALSE(server.timer().has_pending());
+                REQUIRE_FALSE(server.delay_timer().has_pending());
             }
         }
     }
@@ -636,7 +636,7 @@ SCENARIO("service_server matches queries case-insensitively and answers with ori
             });
             endpoint sender{"192.168.1.50", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the server answers (RFC 6762 section 16) with case preserved on the wire")
             {
@@ -665,7 +665,7 @@ SCENARIO("service_server matches queries case-insensitively and answers with ori
             });
             endpoint sender{"192.168.1.51", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the server answers with an SRV record owned by the original-case name")
             {

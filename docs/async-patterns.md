@@ -180,15 +180,18 @@ completes with:
 - `std::errc::operation_canceled` when `srv.stop()` is called before the
   server becomes live.
 
-`mdnspp::async_run(srv, token)` binds the server's *done* event: it starts
-the server and completes with `std::error_code{}` only after `srv.stop()`
-has run the full teardown (goodbye packets included). It also completes with
-`std::error_code{}` when startup fails permanently, because the teardown
-runs and the done event fires on that path as well &mdash; observe the startup
-outcome with `async_start` (or the core `async_start(on_ready, on_done)`
-callback API) when it is needed. The misuse codes
-(`std::errc::invalid_argument`, `std::errc::operation_in_progress`) are
-reported through the token.
+`mdnspp::async_run(srv, token)` starts the server and completes on the
+first of the server's *done* event and a *ready* event whose code implies
+the done event can never fire. It completes with `std::error_code{}` after
+`srv.stop()` has run the full teardown (goodbye packets included) and on an
+unresolvable probe conflict, because the teardown runs and the done event
+fires on that path as well &mdash; observe the startup outcome with
+`async_start` (or the core `async_start(on_ready, on_done)` callback API)
+when it is needed. It completes with `std::errc::invalid_argument` on an
+unencodable name (the ready event delivers the reason ahead of the
+teardown's done event and wins the exactly-once completion) and on the
+misuse paths, where the done event never fires: `std::errc::invalid_argument`
+after `stop()`, `std::errc::operation_in_progress` on a double start.
 
 ```cpp
 #include <mdnspp/asio.h>

@@ -29,10 +29,12 @@ struct start_initiation : peer_initiation<basic_service_server<P>>
     }
 };
 
-/// Shared completion state for async_run: the token may be completed either
-/// by the server's on_done event (the normal path) or by a synchronous
-/// on_ready misuse invocation during initiation, after which on_done never
-/// fires.
+/// Shared completion state for async_run: the token is completed by the
+/// FIRST of the server's on_ready event carrying a code for which on_done
+/// can never fire (the one-shot misuse paths) and the on_done event itself.
+/// The atomic completed flag guarantees exactly-once completion on paths
+/// where both events fire (abort_startup delivers on_ready with a failure
+/// reason and on_done immediately after the teardown).
 template <typename Handler, typename Work>
 struct run_state
 {
@@ -42,9 +44,15 @@ struct run_state
     {
     }
 
+    void complete(std::error_code ec)
+    {
+        if(completed.exchange(true, std::memory_order_acq_rel))
+            return;
+        mdnspp::dispatch_completion(std::move(handler), std::move(work), ec);
+    }
+
     Handler handler;
     Work work;
-    std::atomic<bool> in_initiation{true};
     std::atomic<bool> completed{false};
 };
 
@@ -62,25 +70,25 @@ struct run_initiation : peer_initiation<basic_service_server<P>>
         srv.async_start(
             [state](std::error_code ec)
             {
-                // on_ready is invoked synchronously (still inside the
-                // initiation) only on the server's one-shot misuse paths
-                // (start after stop(): invalid_argument; double start:
-                // operation_in_progress), after which on_done never fires.
-                // All other on_ready outcomes are posted to the executor and
-                // are followed by on_done, so they are ignored here.
-                if(!state->in_initiation.load(std::memory_order_acquire))
-                    return;
-                if(state->completed.exchange(true, std::memory_order_acq_rel))
-                    return;
-                mdnspp::dispatch_completion(std::move(state->handler), std::move(state->work), ec);
+                // Derived from basic_service_server: on the one-shot misuse
+                // paths (double start: operation_in_progress; start after
+                // stop(): invalid_argument) async_start posts on_ready and
+                // returns without storing the handlers, so on_done can never
+                // fire -- the token must complete here. abort_startup also
+                // delivers invalid_argument through on_ready (unencodable
+                // name) but follows it with on_done; the completed flag lets
+                // this on_ready win and drops the subsequent on_done. All
+                // other on_ready outcomes ({}: live, operation_canceled:
+                // stop() before live, mdns_error::probe_conflict) are
+                // followed by on_done, which completes the token.
+                if(ec == std::errc::operation_in_progress
+                   || ec == std::errc::invalid_argument)
+                    state->complete(ec);
             },
             [state](std::error_code ec)
             {
-                if(state->completed.exchange(true, std::memory_order_acq_rel))
-                    return;
-                mdnspp::dispatch_completion(std::move(state->handler), std::move(state->work), ec);
+                state->complete(ec);
             });
-        state->in_initiation.store(false, std::memory_order_release);
     }
 };
 
@@ -116,16 +124,20 @@ auto async_start(basic_service_server<P> &srv, CompletionToken &&token)
 /// Start the service server and complete after full TEARDOWN
 /// (run-until-stopped).
 ///
-/// The completion token binds the server's on_done event. Completion
-/// signature: void(std::error_code). The token completes with
+/// The completion token completes on the first of the server's on_done event
+/// and an on_ready event whose code implies on_done can never fire.
+/// Completion signature: void(std::error_code). The token completes with
 /// - std::error_code{} after srv.stop() has run the full teardown (goodbye
-///   send included) -- also when startup failed permanently
-///   (probe conflict or unencodable name), since the teardown runs and
-///   on_done fires with std::error_code{} on that path as well; observe the
-///   startup outcome with async_start() or the on_ready callback if it is
-///   needed,
-/// - std::errc::invalid_argument when called after stop(),
-/// - std::errc::operation_in_progress when the server was already started.
+///   send included) -- also on an unresolvable probe conflict, since the
+///   teardown runs and on_done fires with std::error_code{} on that path as
+///   well; observe the startup outcome with async_start() or the on_ready
+///   callback if it is needed,
+/// - std::errc::invalid_argument when called after stop() (on_done never
+///   fires on this misuse path) and on an unencodable name (on_ready
+///   delivers the reason before the teardown's on_done and wins the
+///   exactly-once completion),
+/// - std::errc::operation_in_progress when the server was already started
+///   (on_done never fires on this misuse path).
 ///
 /// Honors the completion handler's associated cancellation slot: a requested
 /// cancellation calls srv.stop(), so the token then completes with

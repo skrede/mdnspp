@@ -282,6 +282,67 @@ SCENARIO("async_run after stop() completes deterministically with invalid_argume
     }
 }
 
+SCENARIO("second async_run completes with operation_in_progress while the first keeps running", "[completion_token][callback][service_server][run][misuse]")
+{
+    asio::io_context io;
+    try
+    {
+        mdnspp::service_info info;
+        info.service_name = "TestRunDouble._http._tcp.local.";
+        info.service_type = "_http._tcp.local.";
+        info.hostname = "testrundouble.local.";
+        info.port = 8084;
+        info.address_ipv4 = "192.168.1.14";
+
+        auto server = std::make_shared<mdnspp::basic_service_server<mdnspp::asio_policy>>(
+            io, std::move(info),
+            mdnspp::service_options{
+                .announce_count = 1,
+                .announce_interval = std::chrono::milliseconds(10),
+                .probe_count = 1,
+                .probe_interval = std::chrono::milliseconds(10),
+                .probe_initial_delay_max = std::chrono::milliseconds(0)});
+
+        std::atomic<int> first_count{0};
+        std::error_code first_ec = std::make_error_code(std::errc::io_error); // sentinel
+        mdnspp::async_run(*server, [&first_count, &first_ec](std::error_code ec)
+        {
+            first_ec = ec;
+            first_count.fetch_add(1);
+        });
+
+        std::atomic<int> second_count{0};
+        std::error_code second_ec;
+        mdnspp::async_run(*server, [&second_count, &second_ec](std::error_code ec)
+        {
+            second_ec = ec;
+            second_count.fetch_add(1);
+        });
+
+        std::thread io_thread([&io] { io.run(); });
+
+        // The misuse completion is posted: the second token completes with
+        // operation_in_progress (its on_done never fires) while the first
+        // operation keeps running until stop().
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        REQUIRE(second_count.load() == 1);
+        REQUIRE(second_ec == std::errc::operation_in_progress);
+        REQUIRE(first_count.load() == 0);
+
+        server->stop();
+        io_thread.join();
+        server.reset();
+
+        REQUIRE(first_count.load() == 1);
+        REQUIRE(first_ec == std::error_code{});
+        REQUIRE(second_count.load() == 1);
+    }
+    catch(const std::exception &e)
+    {
+        WARN("Skipping — socket construction failed (no network): " << e.what());
+    }
+}
+
 SCENARIO("async_discover with deferred does not initiate I/O until launched", "[completion_token][deferred][service_discovery]")
 {
     asio::io_context io;

@@ -390,7 +390,7 @@ SCENARIO("Server ignores legacy unicast when respond_to_legacy_unicast=false", "
             THEN("a multicast response timer is armed (normal multicast path)")
             {
                 // With response_delay_min=0, the response timer should fire immediately
-                server.timer().fire();
+                server.delay_timer().fire();
                 endpoint mcast{"224.0.0.251", 5353};
                 bool multicast_sent = false;
                 for(const auto &pkt : server.socket().sent_packets())

@@ -30,7 +30,7 @@ inline mdnspp::service_options make_uniform_opts(uint32_t ttl)
     opts.txt_ttl    = s;
     opts.a_ttl      = s;
     opts.aaaa_ttl   = s;
-    opts.record_ttl = s;
+    opts.fallback_record_ttl = s;
     return opts;
 }
 

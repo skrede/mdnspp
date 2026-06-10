@@ -68,7 +68,7 @@ service_options distinct_ttl_opts()
     opts.txt_ttl    = std::chrono::seconds{300};
     opts.a_ttl      = std::chrono::seconds{400};
     opts.aaaa_ttl   = std::chrono::seconds{500};
-    opts.record_ttl = std::chrono::seconds{600};
+    opts.fallback_record_ttl = std::chrono::seconds{600};
     opts.respond_to_meta_queries = false;
     return opts;
 }

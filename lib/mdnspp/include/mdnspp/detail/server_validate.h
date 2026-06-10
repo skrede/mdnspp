@@ -44,7 +44,7 @@ inline std::error_code validate_server_options(const service_info &info,
        || opts.txt_ttl <= std::chrono::seconds::zero()
        || opts.a_ttl <= std::chrono::seconds::zero()
        || opts.aaaa_ttl <= std::chrono::seconds::zero()
-       || opts.record_ttl <= std::chrono::seconds::zero())
+       || opts.fallback_record_ttl <= std::chrono::seconds::zero())
         return invalid;
 
     if(mdns_opts.record_ttl <= std::chrono::seconds::zero()

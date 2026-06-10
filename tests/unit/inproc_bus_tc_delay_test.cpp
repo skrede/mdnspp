@@ -69,7 +69,7 @@ void inject_ptr_response(inproc_harness &h,
     opts.txt_ttl    = std::chrono::seconds{ttl};
     opts.a_ttl      = std::chrono::seconds{ttl};
     opts.aaaa_ttl   = std::chrono::seconds{ttl};
-    opts.record_ttl = std::chrono::seconds{ttl};
+    opts.fallback_record_ttl = std::chrono::seconds{ttl};
 
     auto pkt = detail::build_dns_response(info, dns_type::ptr, opts);
 

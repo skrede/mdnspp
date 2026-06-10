@@ -440,7 +440,7 @@ private:
                 .txt_ttl                 = opts.service.txt_ttl,
                 .a_ttl                   = opts.service.a_ttl,
                 .aaaa_ttl                = opts.service.aaaa_ttl,
-                .record_ttl              = opts.service.record_ttl,
+                .fallback_record_ttl     = opts.service.fallback_record_ttl,
                 .probe_authority_ttl     = opts.service.probe_authority_ttl,
                 .probe_defer_delay       = opts.service.probe_defer_delay,
             };

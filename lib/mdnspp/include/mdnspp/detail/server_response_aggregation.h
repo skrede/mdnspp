@@ -263,7 +263,7 @@ inline std::vector<std::byte> build_answer_response(const service_info &info,
     // type does not exist; bitmap = the types that DO exist at that name.
     if(hdr.include_nsec)
     {
-        uint32_t nsec_ttl = ttl_for(opts.record_ttl);
+        uint32_t nsec_ttl = ttl_for(opts.fallback_record_ttl);
         auto add_nsec = [&](const std::vector<std::byte> &owner_name, nsec_owner owner)
         {
             std::size_t before = additional.size();
@@ -310,7 +310,7 @@ inline std::chrono::seconds min_planned_ttl(const answer_plan &plan, const servi
     if(plan.a)    min_ttl = (std::min)(min_ttl, opts.a_ttl);
     if(plan.aaaa) min_ttl = (std::min)(min_ttl, opts.aaaa_ttl);
     if(min_ttl == (std::chrono::seconds::max)())
-        min_ttl = opts.record_ttl;
+        min_ttl = opts.fallback_record_ttl;
     return min_ttl;
 }
 

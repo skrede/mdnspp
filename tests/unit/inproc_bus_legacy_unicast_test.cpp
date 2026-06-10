@@ -195,7 +195,7 @@ TEST_CASE("Normal query from port 5353 gets multicast response with full TTLs",
     srv_opts.srv_ttl  = std::chrono::seconds{4500};
     srv_opts.a_ttl    = std::chrono::seconds{4500};
     srv_opts.txt_ttl  = std::chrono::seconds{4500};
-    srv_opts.record_ttl = std::chrono::seconds{4500};
+    srv_opts.fallback_record_ttl = std::chrono::seconds{4500};
     inproc::inproc_socket_options srv_sock;
     srv_sock.multicast_loopback = loopback_mode::disabled;
 

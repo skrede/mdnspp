@@ -134,7 +134,7 @@ struct service_options
     ///
     /// Risk of changing: This is the last-resort TTL; reducing it increases
     /// re-query frequency for these secondary records.
-    std::chrono::seconds record_ttl{4500};
+    std::chrono::seconds fallback_record_ttl{4500};
 
     /// TTL for records placed in the authority section of probe queries
     /// (RFC 6762 §8.2).

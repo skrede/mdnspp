@@ -72,7 +72,7 @@ Five options account for most real-world configuration; everything else in this 
 | [txt_ttl](txt_ttl_in_service_options.md) | TTL for TXT records in outgoing responses |
 | [a_ttl](a_ttl_in_service_options.md) | TTL for A (IPv4 address) records in outgoing responses |
 | [aaaa_ttl](aaaa_ttl_in_service_options.md) | TTL for AAAA (IPv6 address) records in outgoing responses |
-| [record_ttl](record_ttl_in_service_options.md) | Fallback TTL for NSEC and meta-query PTR records |
+| [fallback_record_ttl](fallback_record_ttl_in_service_options.md) | Fallback TTL for NSEC and meta-query PTR records |
 | [probe_authority_ttl](probe_authority_ttl_in_service_options.md) | TTL for records in probe authority sections (tiebreaking) |
 | [probe_defer_delay](probe_defer_delay_in_service_options.md) | Delay before re-probing after losing a simultaneous-probe tiebreak |
 

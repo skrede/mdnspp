@@ -329,7 +329,7 @@ TEST_CASE("build_answer_response", "[server_response_aggregation]")
         opts.txt_ttl    = std::chrono::seconds{1234};
         opts.a_ttl      = std::chrono::seconds{1234};
         opts.aaaa_ttl   = std::chrono::seconds{1234};
-        opts.record_ttl = std::chrono::seconds{1234};
+        opts.fallback_record_ttl = std::chrono::seconds{1234};
 
         answer_plan plan;
         plan.ptr = true;

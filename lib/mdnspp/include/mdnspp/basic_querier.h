@@ -4,21 +4,21 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/query_options.h"
-#include "mdnspp/socket_options.h"
 #include "mdnspp/callback_types.h"
+#include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/basic_mdns_peer_base.h"
 
+#include <chrono>
 #include <memory>
 #include <random>
 #include <string>
 #include <vector>
-#include <chrono>
-#include <cstdint>
 #include <cassert>
+#include <cstdint>
 #include <utility>
 #include <algorithm>
 #include <string_view>
@@ -26,7 +26,7 @@
 
 namespace mdnspp {
 
-template<Policy P>
+template<policy_like P>
 class basic_querier : detail::basic_mdns_peer_base<P>
 {
     using base = detail::basic_mdns_peer_base<P>;
@@ -101,7 +101,7 @@ public:
     const timer_type &delay_timer() const noexcept { return m_delay_timer; }
     timer_type &delay_timer() noexcept { return m_delay_timer; }
 
-    // Plain callback overload -- used by NativePolicy, MockPolicy, and ASIO adapter users.
+    // Plain callback overload -- used by default_policy, mock_policy, and ASIO adapter users.
     // When mode is response_mode::unicast the QU bit (RFC 6762 section 5.4) is set,
     // requesting a direct unicast response from the responder instead of a multicast reply.
     void async_query(std::string_view name, dns_type qtype, completion_handler on_done, response_mode mode = response_mode::multicast)
@@ -260,7 +260,7 @@ private:
 
     void create_recv_loop()
     {
-        this->m_loop = std::make_unique<recv_loop<P>>(
+        this->m_loop = std::make_unique<detail::recv_loop<P>>(
             this->m_socket,
             this->m_timer,
             m_silence_timeout,

@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DNS_FRAME_H
-#define HPP_GUARD_MDNSPP_DNS_FRAME_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_FRAME_H
+#define HPP_GUARD_MDNSPP_DETAIL_DNS_FRAME_H
 
 #include "mdnspp/parse.h"
 #include "mdnspp/records.h"

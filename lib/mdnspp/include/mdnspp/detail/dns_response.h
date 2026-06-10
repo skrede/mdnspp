@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DNS_RESPONSE_H
-#define HPP_GUARD_MDNSPP_DNS_RESPONSE_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_RESPONSE_H
+#define HPP_GUARD_MDNSPP_DETAIL_DNS_RESPONSE_H
 
 #include "mdnspp/service_info.h"
 #include "mdnspp/service_options.h"

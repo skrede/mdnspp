@@ -1,13 +1,13 @@
-#ifndef HPP_GUARD_MDNSPP_ASYNC_DISCOVER_H
-#define HPP_GUARD_MDNSPP_ASYNC_DISCOVER_H
+#ifndef HPP_GUARD_MDNSPP_ASIO_ASYNC_DISCOVER_H
+#define HPP_GUARD_MDNSPP_ASIO_ASYNC_DISCOVER_H
+
+#include "mdnspp/basic_service_discovery.h"
 
 #include "mdnspp/asio/asio_completion.h"
 
-#include <mdnspp/basic_service_discovery.h>
-
 namespace mdnspp {
 
-template <Policy P, asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>CompletionToken>
+template <policy_like P, asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>CompletionToken>
 auto async_discover(basic_service_discovery<P> &sd, std::string_view service_type,
                     CompletionToken &&token, response_mode mode = response_mode::multicast)
 {
@@ -29,7 +29,7 @@ auto async_discover(basic_service_discovery<P> &sd, std::string_view service_typ
         std::string(service_type));
 }
 
-template <Policy P, asio::completion_token_for<void(std::error_code, std::vector<resolved_service>)>CompletionToken>
+template <policy_like P, asio::completion_token_for<void(std::error_code, std::vector<resolved_service>)>CompletionToken>
 auto async_browse(basic_service_discovery<P> &sd, std::string_view service_type,
                   CompletionToken &&token, response_mode mode = response_mode::multicast)
 {

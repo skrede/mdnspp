@@ -22,12 +22,12 @@ static_assert(std::is_class_v<mdnspp::service_server>);
 static_assert(std::is_class_v<mdnspp::service_monitor>);
 static_assert(std::is_class_v<mdnspp::context>);
 
-// Validate that basic_querier<DefaultPolicy> is instantiable (template correctness check).
-static_assert(std::is_class_v<mdnspp::basic_querier<mdnspp::DefaultPolicy>>);
+// Validate that basic_querier<default_policy> is instantiable (template correctness check).
+static_assert(std::is_class_v<mdnspp::basic_querier<mdnspp::default_policy>>);
 
 #ifdef MDNSPP_HAS_ASIO
-// Validate that AsioPolicy-based template instantiation compiles against installed headers.
-static_assert(std::is_class_v<mdnspp::basic_querier<mdnspp::AsioPolicy>>);
+// Validate that asio_policy-based template instantiation compiles against installed headers.
+static_assert(std::is_class_v<mdnspp::basic_querier<mdnspp::asio_policy>>);
 #endif
 
 int main()

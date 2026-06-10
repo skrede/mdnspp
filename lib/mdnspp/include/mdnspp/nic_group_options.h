@@ -28,10 +28,10 @@ struct nic_monitor_options
 struct server_peer_options
 {
     service_info info;
-    service_options opts{};
+    service_options service{};
 };
 
-template <Policy P>
+template <policy_like P>
 struct basic_nic_group_options
 {
     dedup_mode dedup{dedup_mode::merged};
@@ -41,9 +41,13 @@ struct basic_nic_group_options
     nic_monitor_options monitor_opts{};
 };
 
+namespace detail {
+
 /// Primary template — specialised in detail/peer_traits.h for each supported peer type.
 template <template <typename...> class Peer, typename P>
 struct peer_traits;
+
+}
 
 }
 

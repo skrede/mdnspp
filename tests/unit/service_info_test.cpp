@@ -45,10 +45,10 @@ TEST_CASE("service_info struct has all required fields", "[service_info]")
     REQUIRE(*info.txt_records[0].value == "/api");
 }
 
-TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to handler", "[mock_socket][enqueue_with_endpoint]")
+TEST_CASE("mock_socket::enqueue(packet, endpoint) stores sender and delivers to handler", "[mock_socket][enqueue_with_endpoint]")
 {
     mock_executor ex;
-    MockSocket sock{ex};
+    mock_socket sock{ex};
 
     std::vector<std::byte> pkt = {std::byte{0xAB}, std::byte{0xCD}};
     endpoint sender{"192.168.1.5", 5353};
@@ -71,10 +71,10 @@ TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to h
     REQUIRE(received_data[1] == std::byte{0xCD});
 }
 
-TEST_CASE("MockSocket::enqueue(packet) delivers endpoint{}", "[mock_socket][enqueue_default_endpoint]")
+TEST_CASE("mock_socket::enqueue(packet) delivers endpoint{}", "[mock_socket][enqueue_default_endpoint]")
 {
     mock_executor ex;
-    MockSocket sock{ex};
+    mock_socket sock{ex};
 
     std::vector<std::byte> pkt = {std::byte{0x01}};
     sock.enqueue(pkt);

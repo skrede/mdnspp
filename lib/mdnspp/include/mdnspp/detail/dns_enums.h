@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DNS_ENUMS_H
-#define HPP_GUARD_MDNSPP_DNS_ENUMS_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_ENUMS_H
+#define HPP_GUARD_MDNSPP_DETAIL_DNS_ENUMS_H
 
 #include <cstdint>
 #include <string_view>

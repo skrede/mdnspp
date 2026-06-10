@@ -10,7 +10,7 @@
 
 asio::awaitable<void> discover(asio::io_context &io)
 {
-    mdnspp::basic_service_discovery<mdnspp::AsioPolicy> discovery{io};
+    mdnspp::basic_service_discovery<mdnspp::asio_policy> discovery{io};
 
     auto [ec, results] = co_await mdnspp::async_discover(discovery, "_http._tcp.local.", asio::as_tuple(asio::use_awaitable));
 

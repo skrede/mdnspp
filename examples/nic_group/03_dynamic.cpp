@@ -1,4 +1,4 @@
-// Runtime NIC group composition via dynamic_nic_group builder pattern.
+// Runtime NIC group composition via basic_dynamic_nic_group builder pattern.
 // Builder methods (monitor, announce, observe) must be called before start().
 // watch() must be called after start().
 
@@ -11,7 +11,7 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::dynamic_nic_grp grp{ctx};
+    mdnspp::dynamic_nic_group grp{ctx};
 
     std::vector<mdnspp::monitor_options> mon_opts;
     mon_opts.push_back({

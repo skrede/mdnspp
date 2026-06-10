@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_BASIC_MDNS_PEER_BASE_H
-#define HPP_GUARD_MDNSPP_BASIC_MDNS_PEER_BASE_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_BASIC_MDNS_PEER_BASE_H
+#define HPP_GUARD_MDNSPP_DETAIL_BASIC_MDNS_PEER_BASE_H
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
@@ -16,7 +16,7 @@
 
 namespace mdnspp::detail {
 
-template <Policy P>
+template <policy_like P>
 class basic_mdns_peer_base
 {
 public:

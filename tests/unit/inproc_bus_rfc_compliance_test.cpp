@@ -103,7 +103,7 @@ void inject(inproc_harness &h, std::span<const std::byte> data)
     injector.send(mdns_multicast_ep(), data);
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-03: Known-answer suppression end-to-end

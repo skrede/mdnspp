@@ -56,11 +56,11 @@ struct recv_metadata
     uint32_t recv_ifindex{0};
 };
 
-// SocketLike<S>: satisfied by any type that provides the mDNS socket interface.
+// socket_like<S>: satisfied by any type that provides the mDNS socket interface.
 // The receive handler is invoked with the error code first (asio convention);
 // on error the metadata is empty and the data span is empty.
 template <typename S>
-concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
+concept socket_like = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
 {
     { s.async_receive(std::move(handler)) } -> std::same_as<void>;
     { s.send(ep, send_data) } -> std::same_as<void>;
@@ -68,27 +68,27 @@ concept SocketLike = requires(S &s, const endpoint &ep, std::span<const std::byt
     { s.close() } -> std::same_as<void>;
 };
 
-// TimerLike<T>: satisfied by any type that provides the mDNS timer interface.
+// timer_like<T>: satisfied by any type that provides the mDNS timer interface.
 template <typename T>
-concept TimerLike = requires(T &t, std::chrono::milliseconds dur, move_only_function<void(std::error_code)> handler)
+concept timer_like = requires(T &t, std::chrono::milliseconds dur, move_only_function<void(std::error_code)> handler)
 {
     t.expires_after(dur); // no return constraint — asio::steady_timer returns std::size_t
     { t.async_wait(std::move(handler)) } -> std::same_as<void>;
     { t.cancel() } -> std::same_as<void>;
 };
 
-// Policy<P>: the unified policy concept.
-// A Policy bundles an executor type with a socket type and timer type,
+// policy_like<P>: the unified policy concept.
+// A policy bundles an executor type with a socket type and timer type,
 // both constructible from the executor (matching ASIO convention).
 template <typename P>
-concept Policy = requires
+concept policy_like = requires
     {
         typename P::executor_type;
         typename P::socket_type;
         typename P::timer_type;
     }
-    && SocketLike<typename P::socket_type>
-    && TimerLike<typename P::timer_type>
+    && socket_like<typename P::socket_type>
+    && timer_like<typename P::timer_type>
     && std::constructible_from<typename P::socket_type, typename P::executor_type>
     && std::constructible_from<typename P::timer_type, typename P::executor_type>
     && std::constructible_from<typename P::socket_type, typename P::executor_type, std::error_code&>

@@ -4,7 +4,7 @@
 
 #include <iostream>
 
-// Serve an mDNS service using AsioPolicy.
+// Serve an mDNS service using asio_policy.
 // Responds to queries until Ctrl-C.
 
 int main()
@@ -22,7 +22,7 @@ int main()
         .subtypes = {},
     };
 
-    mdnspp::basic_service_server<mdnspp::AsioPolicy> srv{
+    mdnspp::basic_service_server<mdnspp::asio_policy> srv{
         io,
         std::move(info),
         mdnspp::service_options{

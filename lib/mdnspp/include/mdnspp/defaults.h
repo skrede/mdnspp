@@ -1,7 +1,7 @@
 #ifndef HPP_GUARD_MDNSPP_DEFAULTS_H
 #define HPP_GUARD_MDNSPP_DEFAULTS_H
 
-// defaults.h — convenience header for DefaultPolicy users.
+// defaults.h — convenience header for default_policy users.
 //
 // Provides unqualified type aliases so users can write:
 //   mdnspp::observer obs{ctx, cb};          // no angle brackets
@@ -12,18 +12,18 @@
 //
 // ASIO users should instead include the basic_*.h headers directly and
 // instantiate with their own policy, e.g.:
-//   mdnspp::basic_observer<mdnspp::AsioPolicy> obs{io, cb};
+//   mdnspp::basic_observer<mdnspp::asio_policy> obs{io, cb};
 //
-// NOTE: including this header transitively pulls in DefaultPolicy and its
+// NOTE: including this header transitively pulls in default_policy and its
 // dependencies (platform headers, system socket headers). If you are writing
 // a shared TU that must remain free of platform headers (e.g. an ASIO
 // completion token adapter), include basic_*.h directly instead.
 
 #include "mdnspp/basic_querier.h"
 #include "mdnspp/basic_observer.h"
+#include "mdnspp/socket_options.h"
 #include "mdnspp/basic_nic_group.h"
 #include "mdnspp/basic_nic_monitor.h"
-#include "mdnspp/socket_options.h"
 #include "mdnspp/network_interface.h"
 #include "mdnspp/basic_service_server.h"
 #include "mdnspp/basic_service_monitor.h"
@@ -34,37 +34,37 @@
 namespace mdnspp {
 
 /// Convenience alias — mDNS multicast listener with the default platform policy.
-using observer = basic_observer<DefaultPolicy>;
+using observer = basic_observer<default_policy>;
 
 /// Convenience alias — mDNS query client with the default platform policy.
-using querier = basic_querier<DefaultPolicy>;
+using querier = basic_querier<default_policy>;
 
 /// Convenience alias — mDNS service browser/discoverer with the default platform policy.
-using service_discovery = basic_service_discovery<DefaultPolicy>;
+using service_discovery = basic_service_discovery<default_policy>;
 
 /// Convenience alias — mDNS service responder with the default platform policy.
-using service_server = basic_service_server<DefaultPolicy>;
+using service_server = basic_service_server<default_policy>;
 
 /// Convenience alias — continuous mDNS service monitor with the default platform policy.
-using service_monitor = basic_service_monitor<DefaultPolicy>;
+using service_monitor = basic_service_monitor<default_policy>;
 
 /// Convenience alias — NIC change detector with the default platform policy.
-using nic_monitor = basic_nic_monitor<DefaultPolicy>;
+using nic_monitor = basic_nic_monitor<default_policy>;
 
 /// Convenience alias — multi-NIC peer group with the default platform policy.
 ///
 /// Usage: mdnspp::nic_group<basic_service_monitor> grp{ctx.get_executor(), opts, monitors};
 template <template <typename...> class... Peers>
-using nic_group = basic_nic_group<DefaultPolicy, Peers...>;
+using nic_group = basic_nic_group<default_policy, Peers...>;
 
 /// Convenience alias — dynamic (runtime-configured) multi-NIC group with the default platform policy.
-using dynamic_nic_grp = dynamic_nic_group<DefaultPolicy>;
+using dynamic_nic_group = basic_dynamic_nic_group<default_policy>;
 
 /// Convenience alias — NIC group options with the default platform policy.
-using nic_group_options = basic_nic_group_options<DefaultPolicy>;
+using nic_group_options = basic_nic_group_options<default_policy>;
 
 /// Convenience alias — the default event-loop context (run(), stop(), restart()).
-using context = DefaultContext;
+using context = default_context;
 
 }
 

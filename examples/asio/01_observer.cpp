@@ -5,13 +5,13 @@
 #include <variant>
 #include <iostream>
 
-// Observe mDNS multicast traffic using AsioPolicy.
+// Observe mDNS multicast traffic using asio_policy.
 // Prints each record to stdout, runs until io_context work drains.
 
 int main()
 {
     asio::io_context io;
-    mdnspp::basic_observer<mdnspp::AsioPolicy> observer{
+    mdnspp::basic_observer<mdnspp::asio_policy> observer{
         io,
         mdnspp::observer_options{
             .on_record = [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)

@@ -2,7 +2,9 @@
 #define HPP_GUARD_MDNSPP_INPROC_INPROC_POLICY_H
 
 #include "mdnspp/policy.h"
+
 #include "mdnspp/detail/compat.h"
+
 #include "mdnspp/testing/test_clock.h"
 
 #include "mdnspp/inproc/inproc_bus.h"
@@ -31,12 +33,12 @@ struct inproc_policy
 
 namespace mdnspp {
 
-using InProcPolicy = inproc::inproc_policy<std::chrono::steady_clock>;
-using InProcTestPolicy = inproc::inproc_policy<testing::test_clock>;
+using inproc_policy = inproc::inproc_policy<std::chrono::steady_clock>;
+using inproc_test_policy = inproc::inproc_policy<testing::test_clock>;
 
 }
 
-static_assert(mdnspp::Policy<mdnspp::InProcTestPolicy>,
-    "inproc_policy<test_clock> must satisfy Policy — check socket/timer constructors");
+static_assert(mdnspp::policy_like<mdnspp::inproc_test_policy>,
+    "inproc_policy<test_clock> must satisfy policy_like — check socket/timer constructors");
 
 #endif

@@ -7,7 +7,7 @@ SCENARIO("probing sends 3 probe queries to multicast", "[service_server][probing
     GIVEN("a service_server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         WHEN("async_start is called and probing completes")
         {
@@ -50,7 +50,7 @@ SCENARIO("probing uses 250ms intervals", "[service_server][probing][timing]")
     GIVEN("a service_server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         WHEN("async_start is called and probes are sent")
         {
@@ -83,7 +83,7 @@ SCENARIO("server enters live state after probe+announce sequence", "[service_ser
         bool ready_fired = false;
         std::error_code ready_ec;
 
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         WHEN("async_start is called and probe+announce completes")
         {
@@ -110,7 +110,7 @@ SCENARIO("queries dropped during probing", "[service_server][probing][drop]")
         mock_executor ex;
         endpoint sender{"192.168.1.50", 5353};
 
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.socket().enqueue(make_ptr_query("_http._tcp.local."), sender);
 
         WHEN("async_start is called (query is received during probing)")
@@ -140,7 +140,7 @@ SCENARIO("conflict detected from incoming response during probing", "[service_se
         bool ready_fired = false;
         std::error_code ready_ec;
 
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         // Enqueue a conflict response that will be received during probing.
         // The response has QR=1 (flags=0x8400) and contains records matching our service name.
@@ -183,7 +183,7 @@ SCENARIO("conflict callback can rename and retry probing", "[service_server][con
             return true;
         };
 
-        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
 
         // Enqueue conflict response
         server.socket().enqueue(make_conflict_response(make_test_info()));
@@ -228,7 +228,7 @@ SCENARIO("conflict callback returning false stops server", "[service_server][con
             return false;
         };
 
-        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
         server.socket().enqueue(make_conflict_response(make_test_info()));
 
         WHEN("async_start is called and conflict fires")
@@ -258,7 +258,7 @@ SCENARIO("stop during probing fires on_ready with operation_canceled", "[service
         bool done_fired = false;
         std::error_code done_ec;
 
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         WHEN("async_start is called then stop() is called while probing")
         {
@@ -321,7 +321,7 @@ SCENARIO("Probe tiebreaking: loser defers and conflict_type is tiebreak_deferred
 
         service_info info = make_test_info();
         info.priority = 0; // our priority (lower)
-        basic_service_server<MockPolicy> server{ex, info, std::move(opts)};
+        basic_service_server<mock_policy> server{ex, info, std::move(opts)};
 
         WHEN("async_start is called, probe begins, and a winning probe arrives from another host")
         {
@@ -367,7 +367,7 @@ SCENARIO("Probe tiebreaking: winner (ours > theirs) does NOT defer", "[service_s
 
         service_info info = make_test_info();
         info.priority = 255; // our priority (higher -- we win)
-        basic_service_server<MockPolicy> server{ex, info, std::move(opts)};
+        basic_service_server<mock_policy> server{ex, info, std::move(opts)};
 
         WHEN("async_start is called, probe begins, and a losing probe arrives from another host")
         {
@@ -401,7 +401,7 @@ SCENARIO("Our own probe loopback is not treated as a conflict", "[service_server
             return true;
         };
 
-        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
 
         WHEN("async_start is called and probe fires")
         {

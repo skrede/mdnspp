@@ -20,7 +20,7 @@ SCENARIO("service_options with designated initializers", "[service_server][servi
 
         WHEN("server is constructed with designated initializer service_options")
         {
-            basic_service_server<MockPolicy> server{ex, make_test_info(), service_options{
+            basic_service_server<mock_policy> server{ex, make_test_info(), service_options{
                 .on_query = [&](const endpoint &, dns_type, response_mode) { query_called = true; },
                 .announce_count = 5
             }};
@@ -42,7 +42,7 @@ SCENARIO("constructor with socket_options and service_options", "[service_server
 
         WHEN("server is constructed with both option types")
         {
-            basic_service_server<MockPolicy> server{ex, make_test_info(), service_options{.announce_count = 3}, sock_opts};
+            basic_service_server<mock_policy> server{ex, make_test_info(), service_options{.announce_count = 3}, sock_opts};
 
             THEN("the server is constructed successfully")
             {
@@ -57,7 +57,7 @@ SCENARIO("server responds to meta-query with PTR to service type", "[meta-query]
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -103,7 +103,7 @@ SCENARIO("respond_to_meta_queries=false suppresses meta response", "[meta-query]
     GIVEN("a live service server with respond_to_meta_queries=false")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info(),
+        basic_service_server<mock_policy> server{ex, make_test_info(),
             service_options{.respond_to_meta_queries = false}};
         server.async_start();
         advance_to_live(server);
@@ -130,7 +130,7 @@ SCENARIO("server responds to subtype PTR query", "[subtype]")
         mock_executor ex;
         auto info = make_test_info();
         info.subtypes = {"_printer"};
-        basic_service_server<MockPolicy> server{ex, std::move(info)};
+        basic_service_server<mock_policy> server{ex, std::move(info)};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -175,7 +175,7 @@ SCENARIO("announce_subtypes=true includes subtype PTR in announcements", "[subty
         mock_executor ex;
         auto info = make_test_info();
         info.subtypes = {"_printer"};
-        basic_service_server<MockPolicy> server{ex, std::move(info),
+        basic_service_server<mock_policy> server{ex, std::move(info),
             service_options{.announce_subtypes = true}};
         server.async_start();
         advance_to_live(server);
@@ -209,7 +209,7 @@ SCENARIO("on_error callback fires on send failure", "[service_server][on_error]"
     GIVEN("a service_server with on_error callback and send failure injection")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         std::error_code received_ec;
         std::string_view received_context;
@@ -219,7 +219,7 @@ SCENARIO("on_error callback fires on send failure", "[service_server][on_error]"
             received_context = ctx;
         });
 
-        MockSocket::set_fail_on_send(true);
+        mock_socket::set_fail_on_send(true);
 
         WHEN("the server starts and attempts to send a probe")
         {
@@ -235,7 +235,7 @@ SCENARIO("on_error callback fires on send failure", "[service_server][on_error]"
             }
         }
 
-        MockSocket::set_fail_on_send(false);
+        mock_socket::set_fail_on_send(false);
     }
 }
 
@@ -251,7 +251,7 @@ SCENARIO("stop-then-destroy is safe without draining posted work", "[service_ser
             {
                 REQUIRE_NOTHROW([&]()
                 {
-                    basic_service_server<MockPolicy> server{ex, make_test_info()};
+                    basic_service_server<mock_policy> server{ex, make_test_info()};
                     server.async_start();
                     advance_to_live(server);
                     server.stop();
@@ -271,7 +271,7 @@ SCENARIO("Server sends unicast response to legacy unicast query (port != 5353)",
     GIVEN("a live server with default service_options (respond_to_legacy_unicast=true)")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -319,7 +319,7 @@ SCENARIO("Server respects legacy_unicast_ttl cap on legacy unicast responses", "
         mopts.response_delay_min = std::chrono::milliseconds{0};
         mopts.response_delay_max = std::chrono::milliseconds{0};
 
-        basic_service_server<MockPolicy> server{ex, make_test_info(), {}, {}, std::move(mopts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), {}, {}, std::move(mopts)};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -362,7 +362,7 @@ SCENARIO("Server ignores legacy unicast when respond_to_legacy_unicast=false", "
         mopts.response_delay_min = std::chrono::milliseconds{0};
         mopts.response_delay_max = std::chrono::milliseconds{0};
 
-        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts), {}, std::move(mopts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts), {}, std::move(mopts)};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -410,7 +410,7 @@ SCENARIO("Normal mDNS query from port 5353 uses multicast path", "[service_serve
         mopts.response_delay_min = std::chrono::milliseconds{0};
         mopts.response_delay_max = std::chrono::milliseconds{0};
 
-        basic_service_server<MockPolicy> server{ex, make_test_info(), {}, {}, std::move(mopts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), {}, {}, std::move(mopts)};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -452,7 +452,7 @@ SCENARIO("on_tc_continuation callback fires when TC timer expires",
             captured_count = count;
         };
 
-        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
         server.async_start();
         advance_to_live(server);
 
@@ -487,7 +487,7 @@ SCENARIO("TC timer is cancelled on stop()", "[service_server][tc][stop]")
     GIVEN("a live server with a pending TC wait")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
 

@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_TC_ACCUMULATOR_H
-#define HPP_GUARD_MDNSPP_TC_ACCUMULATOR_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_TC_ACCUMULATOR_H
+#define HPP_GUARD_MDNSPP_DETAIL_TC_ACCUMULATOR_H
 
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"

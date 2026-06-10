@@ -22,7 +22,7 @@
 
 namespace mdnspp {
 
-// basic_nic_monitor<P> — Policy-templated NIC change detector.
+// basic_nic_monitor<P> — policy-templated NIC change detector.
 //
 // Detects network interface additions and removals via platform-native APIs
 // where available (Linux: AF_NETLINK, macOS: nw_path_monitor,
@@ -37,9 +37,9 @@ namespace mdnspp {
 //
 // Thread safety:
 //   on_added(), on_removed(), current(), start(), stop() may be called from
-//   any thread. Callbacks are delivered on the Policy executor via P::post().
+//   any thread. Callbacks are delivered on the policy executor via P::post().
 
-template <Policy P>
+template <policy_like P>
 class basic_nic_monitor
 {
 public:

@@ -63,7 +63,7 @@ mdns_options fast_scheduler_opts()
     return opts;
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-01: Probe conflict resolution between two servers

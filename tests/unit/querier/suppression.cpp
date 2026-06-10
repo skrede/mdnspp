@@ -5,7 +5,7 @@ SCENARIO("QM query delays send by 20-120ms", "[querier][delay]")
     GIVEN("a querier instance with no enqueued responses")
     {
         mock_executor ex;
-        basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
 
         WHEN("async_query is called with multicast mode (default)")
         {
@@ -49,7 +49,7 @@ SCENARIO("QU query sends immediately without delay", "[querier][delay]")
     GIVEN("a querier instance with no enqueued responses")
     {
         mock_executor ex;
-        basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
 
         WHEN("async_query is called with unicast mode")
         {
@@ -77,7 +77,7 @@ SCENARIO("duplicate QM question suppresses pending query", "[querier][suppressio
     GIVEN("a querier with a pending QM query")
     {
         mock_executor ex;
-        basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
 
         q.async_query("myhost.local.", dns_type::a,
                       [](std::error_code, std::vector<mdns_record_variant>)
@@ -111,7 +111,7 @@ SCENARIO("QU duplicate does NOT suppress pending QM query", "[querier][suppressi
     GIVEN("a querier with a pending QM query")
     {
         mock_executor ex;
-        basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
 
         q.async_query("myhost.local.", dns_type::a,
                       [](std::error_code, std::vector<mdns_record_variant>)

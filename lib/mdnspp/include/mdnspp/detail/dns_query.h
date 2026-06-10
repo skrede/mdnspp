@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DNS_QUERY_H
-#define HPP_GUARD_MDNSPP_DNS_QUERY_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_QUERY_H
+#define HPP_GUARD_MDNSPP_DETAIL_DNS_QUERY_H
 
 #include "mdnspp/records.h"
 #include "mdnspp/service_info.h"

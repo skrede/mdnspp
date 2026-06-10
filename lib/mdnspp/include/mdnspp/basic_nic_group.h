@@ -31,7 +31,7 @@ namespace mdnspp {
 // of each Peer type when network interfaces are added or removed.
 //
 // Template parameters:
-//   P       — Policy (executor, socket, timer types)
+//   P       — policy_like (executor, socket, timer types)
 //   Peers   — Template templates: basic_service_monitor, basic_service_server,
 //              and/or basic_observer in any combination.
 //
@@ -49,7 +49,7 @@ namespace mdnspp {
 //   start(), stop(), services(), watch(), and unwatch() may be called from
 //   any thread. m_mutex protects m_instances and m_watch_set.
 
-template <Policy P, template <typename...> class... Peers>
+template <policy_like P, template <typename...> class... Peers>
 class basic_nic_group
 {
 public:
@@ -67,7 +67,7 @@ public:
     /// @param peer_opts  Per-peer-type options vectors (one argument per Peer in the pack).
     explicit basic_nic_group(executor_type ex,
                              basic_nic_group_options<P> grp_opts,
-                             std::vector<typename peer_traits<Peers, P>::options_type>... peer_opts)
+                             std::vector<typename detail::peer_traits<Peers, P>::options_type>... peer_opts)
         : m_executor(ex)
         , m_grp_opts(std::move(grp_opts))
         , m_monitor(ex, m_grp_opts.monitor_opts)
@@ -140,7 +140,7 @@ public:
     ///
     /// Only available when basic_service_monitor is in the Peers pack.
     std::vector<resolved_service> services() const
-        requires ((peer_traits<Peers, P>::provides_services || ...))
+        requires ((detail::peer_traits<Peers, P>::provides_services || ...))
     {
         std::lock_guard lock(m_mutex);
         if(m_grp_opts.dedup == dedup_mode::per_interface)
@@ -152,7 +152,7 @@ public:
     ///
     /// Only available when basic_service_monitor is in the Peers pack.
     void watch(std::string_view service_type)
-        requires ((peer_traits<Peers, P>::provides_services || ...))
+        requires ((detail::peer_traits<Peers, P>::provides_services || ...))
     {
         std::lock_guard lock(m_mutex);
         m_watch_set.emplace(service_type);
@@ -166,7 +166,7 @@ public:
     ///
     /// Only available when basic_service_monitor is in the Peers pack.
     void unwatch(std::string_view service_type)
-        requires ((peer_traits<Peers, P>::provides_services || ...))
+        requires ((detail::peer_traits<Peers, P>::provides_services || ...))
     {
         std::lock_guard lock(m_mutex);
         m_watch_set.erase(std::string(service_type));
@@ -309,24 +309,24 @@ private:
             // on_tc_continuation). basic_nic_group does not expose server callbacks from
             // per-NIC instances. Only the non-callable configuration fields are propagated.
             service_options cloned_svc{
-                .announce_count          = opts.opts.announce_count,
-                .announce_interval       = opts.opts.announce_interval,
-                .send_goodbye            = opts.opts.send_goodbye,
-                .suppress_known_answers  = opts.opts.suppress_known_answers,
-                .respond_to_meta_queries = opts.opts.respond_to_meta_queries,
-                .announce_subtypes       = opts.opts.announce_subtypes,
-                .probe_count             = opts.opts.probe_count,
-                .probe_interval          = opts.opts.probe_interval,
-                .probe_initial_delay_max = opts.opts.probe_initial_delay_max,
-                .respond_to_legacy_unicast = opts.opts.respond_to_legacy_unicast,
-                .ptr_ttl                 = opts.opts.ptr_ttl,
-                .srv_ttl                 = opts.opts.srv_ttl,
-                .txt_ttl                 = opts.opts.txt_ttl,
-                .a_ttl                   = opts.opts.a_ttl,
-                .aaaa_ttl                = opts.opts.aaaa_ttl,
-                .record_ttl              = opts.opts.record_ttl,
-                .probe_authority_ttl     = opts.opts.probe_authority_ttl,
-                .probe_defer_delay       = opts.opts.probe_defer_delay,
+                .announce_count          = opts.service.announce_count,
+                .announce_interval       = opts.service.announce_interval,
+                .send_goodbye            = opts.service.send_goodbye,
+                .suppress_known_answers  = opts.service.suppress_known_answers,
+                .respond_to_meta_queries = opts.service.respond_to_meta_queries,
+                .announce_subtypes       = opts.service.announce_subtypes,
+                .probe_count             = opts.service.probe_count,
+                .probe_interval          = opts.service.probe_interval,
+                .probe_initial_delay_max = opts.service.probe_initial_delay_max,
+                .respond_to_legacy_unicast = opts.service.respond_to_legacy_unicast,
+                .ptr_ttl                 = opts.service.ptr_ttl,
+                .srv_ttl                 = opts.service.srv_ttl,
+                .txt_ttl                 = opts.service.txt_ttl,
+                .a_ttl                   = opts.service.a_ttl,
+                .aaaa_ttl                = opts.service.aaaa_ttl,
+                .record_ttl              = opts.service.record_ttl,
+                .probe_authority_ttl     = opts.service.probe_authority_ttl,
+                .probe_defer_delay       = opts.service.probe_defer_delay,
             };
             return std::make_unique<basic_service_server<P>>(
                 m_executor, opts.info, std::move(cloned_svc), sock_opts);
@@ -498,7 +498,7 @@ private:
     basic_nic_monitor<P> m_monitor;
     std::atomic<bool> m_stopped{true};
 
-    std::tuple<std::vector<typename peer_traits<Peers, P>::options_type>...> m_peer_opts;
+    std::tuple<std::vector<typename detail::peer_traits<Peers, P>::options_type>...> m_peer_opts;
 
     // Keyed by interface index. Bundles network_interface identity with per-NIC peer instances.
     std::unordered_map<unsigned int, nic_slot> m_instances;
@@ -560,35 +560,35 @@ struct nic_group_model final : nic_group_concept
     Concrete m_impl;
 };
 
-} // namespace detail
+}
 
 // -------------------------------------------------------------------------
-// dynamic_nic_group<P> — runtime peer composition via builder pattern
+// basic_dynamic_nic_group<P> — runtime peer composition via builder pattern
 // -------------------------------------------------------------------------
 
-// dynamic_nic_group<P> — type-erased wrapper that selects the correct
+// basic_dynamic_nic_group<P> — type-erased wrapper that selects the correct
 // basic_nic_group instantiation at start() time based on which builder
 // methods (monitor/announce/observe) were called.
 //
 // Usage:
-//   dynamic_nic_group<DefaultPolicy> grp{ctx.get_executor()};
+//   basic_dynamic_nic_group<default_policy> grp{ctx.get_executor()};
 //   grp.monitor({monitor_options{...}});
 //   grp.announce({server_peer_options{info, opts}});
 //   grp.start();
 //   grp.watch("_http._tcp.local");
 
-template <Policy P>
-class dynamic_nic_group
+template <policy_like P>
+class basic_dynamic_nic_group
 {
 public:
     using executor_type = typename P::executor_type;
 
-    dynamic_nic_group(const dynamic_nic_group &) = delete;
-    dynamic_nic_group &operator=(const dynamic_nic_group &) = delete;
-    dynamic_nic_group(dynamic_nic_group &&) = delete;
-    dynamic_nic_group &operator=(dynamic_nic_group &&) = delete;
+    basic_dynamic_nic_group(const basic_dynamic_nic_group &) = delete;
+    basic_dynamic_nic_group &operator=(const basic_dynamic_nic_group &) = delete;
+    basic_dynamic_nic_group(basic_dynamic_nic_group &&) = delete;
+    basic_dynamic_nic_group &operator=(basic_dynamic_nic_group &&) = delete;
 
-    explicit dynamic_nic_group(executor_type ex, basic_nic_group_options<P> opts = {})
+    explicit basic_dynamic_nic_group(executor_type ex, basic_nic_group_options<P> opts = {})
         : m_executor(ex)
         , m_grp_opts(std::move(opts))
     {

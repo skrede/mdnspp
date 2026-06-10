@@ -1,4 +1,4 @@
-// Monitor HTTP services across all network interfaces using AsioPolicy nic_group.
+// Monitor HTTP services across all network interfaces using asio_policy nic_group.
 
 #include <mdnspp/asio.h>
 #include <mdnspp/basic_nic_group.h>
@@ -28,9 +28,9 @@ int main()
     opts_vec.push_back(std::move(opts));
 
     asio::io_context io;
-    mdnspp::basic_nic_group<mdnspp::AsioPolicy, mdnspp::basic_service_monitor> grp{
+    mdnspp::basic_nic_group<mdnspp::asio_policy, mdnspp::basic_service_monitor> grp{
         io,
-        mdnspp::basic_nic_group_options<mdnspp::AsioPolicy>{},
+        mdnspp::basic_nic_group_options<mdnspp::asio_policy>{},
         std::move(opts_vec)
     };
 

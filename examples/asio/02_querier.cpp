@@ -6,7 +6,7 @@
 #include <variant>
 #include <iostream>
 
-// Query mDNS for a specific record type using AsioPolicy.
+// Query mDNS for a specific record type using asio_policy.
 // Prints each record to stdout, completes after silence timeout.
 
 int main(int argc, char *argv[])
@@ -21,7 +21,7 @@ int main(int argc, char *argv[])
 
     asio::io_context io;
 
-    mdnspp::basic_querier<mdnspp::AsioPolicy> querier{
+    mdnspp::basic_querier<mdnspp::asio_policy> querier{
         io,
         mdnspp::query_options{
             .on_record = [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)

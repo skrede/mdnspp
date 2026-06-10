@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DNS_WRITE_H
-#define HPP_GUARD_MDNSPP_DNS_WRITE_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_WRITE_H
+#define HPP_GUARD_MDNSPP_DETAIL_DNS_WRITE_H
 
 #include "mdnspp/mdns_error.h"
 #include "mdnspp/service_info.h"

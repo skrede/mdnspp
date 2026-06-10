@@ -9,9 +9,9 @@ SCENARIO("service_discovery non-throwing constructor sets ec on success", "[serv
         mock_executor ex;
         std::error_code ec;
 
-        WHEN("basic_service_discovery<MockPolicy> is constructed with the ec overload")
+        WHEN("basic_service_discovery<mock_policy> is constructed with the ec overload")
         {
-            basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}, {}, {}, ec};
+            basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}, {}, {}, ec};
 
             THEN("ec is clear and the service_discovery is usable")
             {
@@ -28,11 +28,11 @@ SCENARIO("service_discovery is move-constructible before async_discover", "[serv
     GIVEN("a service_discovery constructed but not started")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         WHEN("move-constructed into a new instance")
         {
-            basic_service_discovery<MockPolicy> moved{std::move(sd)};
+            basic_service_discovery<mock_policy> moved{std::move(sd)};
 
             THEN("the moved-to instance is usable")
             {
@@ -48,7 +48,7 @@ SCENARIO("service_discovery stop with both discover and browse loops", "[service
     GIVEN("a service_discovery with browse started and a PTR response queued")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_ptr_response(
             "_http._tcp.local.",
@@ -83,7 +83,7 @@ SCENARIO("stop() during async_browse fires completion with partial aggregated re
     GIVEN("a service_discovery with a PTR-only response and no silence timeout fired")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_ptr_response(
             "_http._tcp.local.",
@@ -121,7 +121,7 @@ SCENARIO("on_record callback fires during async_browse (same as async_discover)"
         mock_executor ex;
         std::vector<mdns_record_variant> captured_records;
 
-        basic_service_discovery<MockPolicy> sd{
+        basic_service_discovery<mock_policy> sd{
             ex,
             query_options{
                 .on_record = [&](const endpoint &, const mdns_record_variant &rec)
@@ -161,9 +161,9 @@ SCENARIO("basic_service_discovery with socket_options", "[service_discovery][soc
         mock_executor ex;
         socket_options opts{.interface_address = "172.16.0.1"};
 
-        WHEN("basic_service_discovery<MockPolicy> is constructed with socket_options")
+        WHEN("basic_service_discovery<mock_policy> is constructed with socket_options")
         {
-            basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}, opts};
+            basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}, opts};
 
             THEN("the socket stores the options")
             {

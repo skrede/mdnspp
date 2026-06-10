@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_SERVER_QUERY_MATCH_H
-#define HPP_GUARD_MDNSPP_SERVER_QUERY_MATCH_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_SERVER_QUERY_MATCH_H
+#define HPP_GUARD_MDNSPP_DETAIL_SERVER_QUERY_MATCH_H
 
 #include "mdnspp/service_info.h"
 #include "mdnspp/service_options.h"

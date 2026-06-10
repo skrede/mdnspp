@@ -45,44 +45,44 @@ struct inproc_harness
         executor.drain();
     }
 
-    // Create a basic_service_server<InProcTestPolicy> with the shared executor.
-    basic_service_server<InProcTestPolicy> make_server(service_info info,
+    // Create a basic_service_server<inproc_test_policy> with the shared executor.
+    basic_service_server<inproc_test_policy> make_server(service_info info,
                                                        service_options opts = {},
                                                        socket_options sock_opts = {},
                                                        mdns_options mdns_opts = {})
     {
-        return basic_service_server<InProcTestPolicy>{
+        return basic_service_server<inproc_test_policy>{
             executor, std::move(info), std::move(opts),
             std::move(sock_opts), std::move(mdns_opts)};
     }
 
-    // Create a basic_service_monitor<InProcTestPolicy, test_clock> with the shared executor.
-    basic_service_monitor<InProcTestPolicy, testing::test_clock>
+    // Create a basic_service_monitor<inproc_test_policy, test_clock> with the shared executor.
+    basic_service_monitor<inproc_test_policy, testing::test_clock>
     make_monitor(monitor_options opts = {},
                  socket_options sock_opts = {},
                  mdns_options mdns_opts = {},
                  cache_options copts = {})
     {
-        return basic_service_monitor<InProcTestPolicy, testing::test_clock>{
+        return basic_service_monitor<inproc_test_policy, testing::test_clock>{
             executor, std::move(opts), std::move(sock_opts),
             std::move(mdns_opts), std::move(copts)};
     }
 
-    // Create a basic_querier<InProcTestPolicy> with the shared executor.
-    basic_querier<InProcTestPolicy> make_querier(query_options opts = {},
+    // Create a basic_querier<inproc_test_policy> with the shared executor.
+    basic_querier<inproc_test_policy> make_querier(query_options opts = {},
                                                  socket_options sock_opts = {},
                                                  mdns_options mdns_opts = {})
     {
-        return basic_querier<InProcTestPolicy>{
+        return basic_querier<inproc_test_policy>{
             executor, std::move(opts), std::move(sock_opts), std::move(mdns_opts)};
     }
 
-    // Create a basic_observer<InProcTestPolicy> with the shared executor.
-    basic_observer<InProcTestPolicy> make_observer(observer_options opts = {},
+    // Create a basic_observer<inproc_test_policy> with the shared executor.
+    basic_observer<inproc_test_policy> make_observer(observer_options opts = {},
                                                    socket_options sock_opts = {},
                                                    mdns_options mdns_opts = {})
     {
-        return basic_observer<InProcTestPolicy>{
+        return basic_observer<inproc_test_policy>{
             executor, std::move(opts), std::move(sock_opts), std::move(mdns_opts)};
     }
 
@@ -99,7 +99,7 @@ struct inproc_harness
     //
     // An optional service_options parameter allows extracting actual timing values
     // when non-default options were used.
-    void advance_to_live(basic_service_server<InProcTestPolicy> &server,
+    void advance_to_live(basic_service_server<inproc_test_policy> &server,
                          service_options opts = {})
     {
         // Advance past the random initial delay [0, probe_initial_delay_max].

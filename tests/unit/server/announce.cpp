@@ -13,7 +13,7 @@ SCENARIO("announcement burst sends announce_count announcements", "[service_serv
         opts.announce_interval = std::chrono::milliseconds(500);
         opts.respond_to_meta_queries = false;
 
-        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
 
         WHEN("probing completes and announcements are sent")
         {
@@ -65,7 +65,7 @@ SCENARIO("update_service_info sends announcement burst", "[service_server][updat
         opts.announce_count = 2;
         opts.respond_to_meta_queries = false;
 
-        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -132,7 +132,7 @@ SCENARIO("Server sends goodbye packet on stop when live", "[goodbye]")
     GIVEN("a server that has been advanced to live state")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
 
@@ -178,7 +178,7 @@ SCENARIO("Server does NOT send goodbye when stopped during probing", "[goodbye][
     GIVEN("a server that has been started but not advanced past probing")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         // Fire only the initial delay timer, still in probing
         server.timer().fire();
@@ -203,7 +203,7 @@ SCENARIO("Server skips goodbye when send_goodbye is false", "[goodbye][opt-out]"
         mock_executor ex;
         service_options opts;
         opts.send_goodbye = false;
-        basic_service_server<MockPolicy> server{ex, make_test_service(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_service(), std::move(opts)};
         server.async_start();
         advance_to_live(server);
 
@@ -225,7 +225,7 @@ SCENARIO("Goodbye sent at most once on double stop", "[goodbye][idempotent]")
     GIVEN("a server that has been advanced to live state")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
 
@@ -250,7 +250,7 @@ SCENARIO("Server sends goodbye when stopped during announcing", "[goodbye][annou
         mock_executor ex;
         service_options opts;
         opts.announce_count = 3; // need 3 announcements
-        basic_service_server<MockPolicy> server{ex, make_test_service(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_service(), std::move(opts)};
         server.async_start();
 
         // Complete probing: 4 timer fires
@@ -279,7 +279,7 @@ SCENARIO("update_service_info posts work to executor", "[service_server][update]
     GIVEN("a live service_server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
 
@@ -323,7 +323,7 @@ SCENARIO("Server invokes on_error with invalid_ipv4_address when address encodin
         service_info info = make_test_info();
         info.address_ipv4 = "999.1.2.3";  // intentionally malformed
 
-        basic_service_server<MockPolicy> server{ex, std::move(info), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, std::move(info), std::move(opts)};
 
         std::vector<std::error_code> error_codes;
         std::vector<std::string> error_msgs;
@@ -358,7 +358,7 @@ SCENARIO("update_service_info sends unsolicited announcement to multicast", "[se
     GIVEN("a live service_server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
 

@@ -1,5 +1,3 @@
-// tests/native_timer_test.cpp
-
 #include "mdnspp/policy.h"
 
 #include "mdnspp/default/default_timer.h"
@@ -11,29 +9,29 @@
 
 using namespace std::chrono_literals;
 
-// static_assert compiled from native_timer.h — verified here as a belt-and-suspenders check.
-static_assert(mdnspp::TimerLike<mdnspp::DefaultTimer>, "DefaultTimer must satisfy TimerLike");
+// static_assert compiled from default_timer.h — verified here as a belt-and-suspenders check.
+static_assert(mdnspp::timer_like<mdnspp::default_timer>, "default_timer must satisfy timer_like");
 
-TEST_CASE("DefaultTimer constructs from DefaultContext reference", "[native_timer]")
+TEST_CASE("default_timer constructs from default_context reference", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
-    mdnspp::DefaultTimer timer{ctx};
+    mdnspp::default_context ctx;
+    mdnspp::default_timer timer{ctx};
     REQUIRE_FALSE(timer.has_pending());
 }
 
-TEST_CASE("DefaultTimer error_code constructor leaves ec unchanged", "[native_timer]")
+TEST_CASE("default_timer error_code constructor leaves ec unchanged", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
+    mdnspp::default_context ctx;
     std::error_code ec{};
-    mdnspp::DefaultTimer timer{ctx, ec};
+    mdnspp::default_timer timer{ctx, ec};
     REQUIRE_FALSE(ec); // timer construction is infallible
     REQUIRE_FALSE(timer.has_pending());
 }
 
-TEST_CASE("DefaultTimer async_wait registers pending handler", "[native_timer]")
+TEST_CASE("default_timer async_wait registers pending handler", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
-    mdnspp::DefaultTimer timer{ctx};
+    mdnspp::default_context ctx;
+    mdnspp::default_timer timer{ctx};
     bool called = false;
     timer.expires_after(1000ms);
     timer.async_wait([&](std::error_code) { called = true; });
@@ -41,10 +39,10 @@ TEST_CASE("DefaultTimer async_wait registers pending handler", "[native_timer]")
     REQUIRE_FALSE(called);
 }
 
-TEST_CASE("DefaultTimer expires_after drops pending handler WITHOUT calling it", "[native_timer]")
+TEST_CASE("default_timer expires_after drops pending handler WITHOUT calling it", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
-    mdnspp::DefaultTimer timer{ctx};
+    mdnspp::default_context ctx;
+    mdnspp::default_timer timer{ctx};
     bool called = false;
 
     timer.expires_after(1000ms);
@@ -57,10 +55,10 @@ TEST_CASE("DefaultTimer expires_after drops pending handler WITHOUT calling it",
     REQUIRE_FALSE(called); // handler was dropped, NOT called
 }
 
-TEST_CASE("DefaultTimer cancel fires handler with operation_canceled", "[native_timer]")
+TEST_CASE("default_timer cancel fires handler with operation_canceled", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
-    mdnspp::DefaultTimer timer{ctx};
+    mdnspp::default_context ctx;
+    mdnspp::default_timer timer{ctx};
     std::error_code received{};
 
     timer.expires_after(1000ms);
@@ -72,19 +70,19 @@ TEST_CASE("DefaultTimer cancel fires handler with operation_canceled", "[native_
     REQUIRE(received == std::make_error_code(std::errc::operation_canceled));
 }
 
-TEST_CASE("DefaultTimer cancel with no pending handler is a no-op", "[native_timer]")
+TEST_CASE("default_timer cancel with no pending handler is a no-op", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
-    mdnspp::DefaultTimer timer{ctx};
+    mdnspp::default_context ctx;
+    mdnspp::default_timer timer{ctx};
     REQUIRE_FALSE(timer.has_pending());
     REQUIRE_NOTHROW(timer.cancel()); // must not crash or throw
     REQUIRE_FALSE(timer.has_pending());
 }
 
-TEST_CASE("DefaultTimer expires_after then async_wait re-arms correctly", "[native_timer]")
+TEST_CASE("default_timer expires_after then async_wait re-arms correctly", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
-    mdnspp::DefaultTimer timer{ctx};
+    mdnspp::default_context ctx;
+    mdnspp::default_timer timer{ctx};
     int call_count = 0;
 
     timer.expires_after(1000ms);
@@ -101,10 +99,10 @@ TEST_CASE("DefaultTimer expires_after then async_wait re-arms correctly", "[nati
     REQUIRE(call_count == 1); // only the second handler was called
 }
 
-TEST_CASE("DefaultTimer fires when deadline has passed", "[native_timer]")
+TEST_CASE("default_timer fires when deadline has passed", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
-    mdnspp::DefaultTimer timer{ctx};
+    mdnspp::default_context ctx;
+    mdnspp::default_timer timer{ctx};
     std::error_code received{std::make_error_code(std::errc::interrupted)};
 
     // Set a deadline in the past.
@@ -118,10 +116,10 @@ TEST_CASE("DefaultTimer fires when deadline has passed", "[native_timer]")
     REQUIRE_FALSE(received); // success error_code is falsy
 }
 
-TEST_CASE("DefaultTimer does not fire before deadline", "[native_timer]")
+TEST_CASE("default_timer does not fire before deadline", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
-    mdnspp::DefaultTimer timer{ctx};
+    mdnspp::default_context ctx;
+    mdnspp::default_timer timer{ctx};
     bool called = false;
 
     timer.expires_after(60000ms); // 60 seconds in the future
@@ -133,10 +131,10 @@ TEST_CASE("DefaultTimer does not fire before deadline", "[native_timer]")
     REQUIRE(timer.has_pending()); // still pending
 }
 
-TEST_CASE("DefaultTimer compute_next_timeout_ms returns -1 with no pending handlers", "[native_timer]")
+TEST_CASE("default_timer compute_next_timeout_ms returns -1 with no pending handlers", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
-    mdnspp::DefaultTimer timer{ctx};
+    mdnspp::default_context ctx;
+    mdnspp::default_timer timer{ctx};
 
     // Timer registered but no handler pending — timeout should be -1 (block indefinitely).
     timer.expires_after(100ms);
@@ -146,10 +144,10 @@ TEST_CASE("DefaultTimer compute_next_timeout_ms returns -1 with no pending handl
     REQUIRE(ctx.compute_next_timeout_ms(now) == -1);
 }
 
-TEST_CASE("DefaultTimer compute_next_timeout_ms clamps expired deadline to 0", "[native_timer]")
+TEST_CASE("default_timer compute_next_timeout_ms clamps expired deadline to 0", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
-    mdnspp::DefaultTimer timer{ctx};
+    mdnspp::default_context ctx;
+    mdnspp::default_timer timer{ctx};
 
     // Set a deadline in the past and arm a handler.
     timer.expires_after(-1ms);
@@ -164,10 +162,10 @@ TEST_CASE("DefaultTimer compute_next_timeout_ms clamps expired deadline to 0", "
     timer.cancel();
 }
 
-TEST_CASE("DefaultTimer fire_if_expired is a no-op when no handler is pending", "[native_timer]")
+TEST_CASE("default_timer fire_if_expired is a no-op when no handler is pending", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
-    mdnspp::DefaultTimer timer{ctx};
+    mdnspp::default_context ctx;
+    mdnspp::default_timer timer{ctx};
 
     // Set an already-expired deadline but do NOT arm a handler.
     timer.expires_after(-1ms);
@@ -178,11 +176,11 @@ TEST_CASE("DefaultTimer fire_if_expired is a no-op when no handler is pending", 
     REQUIRE_FALSE(timer.has_pending());
 }
 
-TEST_CASE("DefaultTimer destructor deregisters from DefaultContext", "[native_timer]")
+TEST_CASE("default_timer destructor deregisters from default_context", "[native_timer]")
 {
-    mdnspp::DefaultContext ctx;
+    mdnspp::default_context ctx;
     {
-        mdnspp::DefaultTimer timer{ctx};
+        mdnspp::default_timer timer{ctx};
         timer.expires_after(1000ms);
         timer.async_wait([](std::error_code)
         {

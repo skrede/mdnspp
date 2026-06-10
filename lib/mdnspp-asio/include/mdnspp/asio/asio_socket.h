@@ -1,11 +1,12 @@
-#ifndef HPP_GUARD_MDNSPP_ASIO_SOCKET_H
-#define HPP_GUARD_MDNSPP_ASIO_SOCKET_H
+#ifndef HPP_GUARD_MDNSPP_ASIO_ASIO_SOCKET_H
+#define HPP_GUARD_MDNSPP_ASIO_ASIO_SOCKET_H
 
-#include <mdnspp/policy.h>
-#include <mdnspp/endpoint.h>
-#include <mdnspp/socket_options.h>
-#include <mdnspp/detail/compat.h>
-#include <mdnspp/detail/validate_multicast.h>
+#include "mdnspp/policy.h"
+#include "mdnspp/endpoint.h"
+#include "mdnspp/socket_options.h"
+
+#include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/validate_multicast.h"
 
 #include <asio.hpp>
 
@@ -21,27 +22,27 @@
 #  endif
 #endif
 
-#include <array>
-#include <optional>
 #include <span>
+#include <array>
 #include <vector>
+#include <optional>
 #include <system_error>
 
 namespace mdnspp {
 
-class AsioSocket
+class asio_socket
 {
 public:
-    explicit AsioSocket(asio::io_context &io)
-        : AsioSocket(io, socket_options{})
+    explicit asio_socket(asio::io_context &io)
+        : asio_socket(io, socket_options{})
     {}
 
-    explicit AsioSocket(asio::io_context &io, std::error_code &ec)
-        : AsioSocket(io, socket_options{}, ec)
+    explicit asio_socket(asio::io_context &io, std::error_code &ec)
+        : asio_socket(io, socket_options{}, ec)
     {}
 
     // Throwing constructor with socket_options.
-    explicit AsioSocket(asio::io_context &io, const socket_options &opts)
+    explicit asio_socket(asio::io_context &io, const socket_options &opts)
         : m_socket(io)
     {
         detail::validate_multicast_address(opts.multicast_group.address);
@@ -98,7 +99,7 @@ public:
     }
 
     // Non-throwing constructor with socket_options.
-    explicit AsioSocket(asio::io_context &io, const socket_options &opts, std::error_code &ec)
+    explicit asio_socket(asio::io_context &io, const socket_options &opts, std::error_code &ec)
         : m_socket(io)
     {
         detail::validate_multicast_address(opts.multicast_group.address, ec);
@@ -456,7 +457,7 @@ public:
 
 private:
     // Apply SO_REUSEPORT in addition to asio's reuse_address (SO_REUSEADDR),
-    // mirroring DefaultSocket which sets both. For co-located same-port
+    // mirroring default_socket which sets both. For co-located same-port
     // multicast sockets (e.g. an announcing server and a browsing monitor in
     // one process, both bound to :5353), SO_REUSEPORT is the portable option
     // for guaranteeing inbound multicast fan-out to every joined socket across
@@ -563,7 +564,7 @@ private:
 
 }
 
-static_assert(mdnspp::SocketLike<mdnspp::AsioSocket>, "AsioSocket must satisfy SocketLike — check async_receive/send/close signatures"
+static_assert(mdnspp::socket_like<mdnspp::asio_socket>, "asio_socket must satisfy socket_like — check async_receive/send/close signatures"
 );
 
 #endif

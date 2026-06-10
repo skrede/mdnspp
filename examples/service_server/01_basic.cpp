@@ -3,7 +3,7 @@
 #include <thread>
 #include <iostream>
 
-// Announce an HTTP service via mDNS using DefaultPolicy.
+// Announce an HTTP service via mDNS using default_policy.
 // Auto-stops after 30 seconds.
 
 int main()

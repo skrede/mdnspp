@@ -9,7 +9,7 @@ SCENARIO("async_browse delivers fully resolved service after PTR+SRV+A response"
     GIVEN("a service_discovery and a full-service response (PTR+SRV+A)")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_full_service_response(
             "MyService._http._tcp.local.",
@@ -69,7 +69,7 @@ SCENARIO("async_browse delivers partial service when only PTR record arrives", "
     GIVEN("a service_discovery and a PTR-only response")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_ptr_response(
             "_http._tcp.local.",
@@ -110,7 +110,7 @@ SCENARIO("async_browse delivers multiple resolved services", "[service_discovery
     GIVEN("a service_discovery and two separate full-service response packets")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_full_service_response(
             "Alpha._http._tcp.local.",
@@ -163,7 +163,7 @@ SCENARIO("async_enumerate_types returns parsed service types", "[service_discove
     GIVEN("a service_discovery and a PTR response for the meta-query")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_ptr_response(
             "_services._dns-sd._udp.local.",
@@ -213,7 +213,7 @@ SCENARIO("async_discover_subtype discovers subtype instances", "[service_discove
     GIVEN("a service_discovery and a PTR response for a subtype query")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_ptr_response(
             "_printer._sub._http._tcp.local.",
@@ -260,7 +260,7 @@ SCENARIO("discover query uses known-answer overload of build_dns_query", "[servi
     GIVEN("a service_discovery instance with no enqueued responses")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         WHEN("async_discover() is called for the first time (m_results empty)")
         {

@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_RECV_LOOP_H
-#define HPP_GUARD_MDNSPP_RECV_LOOP_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_RECV_LOOP_H
+#define HPP_GUARD_MDNSPP_DETAIL_RECV_LOOP_H
 
 #include "mdnspp/policy.h"
 #include "mdnspp/mdns_options.h"
@@ -10,9 +10,9 @@
 #include <chrono>
 #include <cstdint>
 
-namespace mdnspp {
+namespace mdnspp::detail {
 
-template <Policy P>
+template <policy_like P>
 class recv_loop
 {
 public:

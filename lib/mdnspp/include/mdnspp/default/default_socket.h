@@ -1,11 +1,11 @@
-#ifndef HPP_GUARD_MDNSPP_DEFAULT_SOCKET_H
-#define HPP_GUARD_MDNSPP_DEFAULT_SOCKET_H
+#ifndef HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_SOCKET_H
+#define HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_SOCKET_H
 
-// DefaultSocket — raw UDP multicast socket satisfying SocketLike.
+// default_socket — raw UDP multicast socket satisfying socket_like.
 // No ASIO includes. POSIX/Linux primary, Windows via #ifdef guards.
 //
 // Joins the multicast group from socket_options (default 224.0.0.251:5353) on construction.
-// Registers with DefaultContext for poll-based dispatch.
+// Registers with default_context for poll-based dispatch.
 
 #include "mdnspp/policy.h"
 #include "mdnspp/socket_options.h"
@@ -38,48 +38,48 @@
 
 namespace mdnspp {
 
-class DefaultSocket
+class default_socket
 {
 public:
     // Throwing constructor.
-    explicit DefaultSocket(DefaultContext &ctx)
+    explicit default_socket(default_context &ctx)
         : m_ctx{ctx}
     {
         open_and_configure(socket_options{});
     }
 
     // Non-throwing constructor.
-    explicit DefaultSocket(DefaultContext &ctx, std::error_code &ec)
+    explicit default_socket(default_context &ctx, std::error_code &ec)
         : m_ctx{ctx}
     {
         open_and_configure(socket_options{}, ec);
     }
 
     // Throwing constructor with socket_options.
-    explicit DefaultSocket(DefaultContext &ctx, const socket_options &opts)
+    explicit default_socket(default_context &ctx, const socket_options &opts)
         : m_ctx{ctx}
     {
         open_and_configure(opts);
     }
 
     // Non-throwing constructor with socket_options.
-    explicit DefaultSocket(DefaultContext &ctx, const socket_options &opts, std::error_code &ec)
+    explicit default_socket(default_context &ctx, const socket_options &opts, std::error_code &ec)
         : m_ctx{ctx}
     {
         open_and_configure(opts, ec);
     }
 
-    ~DefaultSocket()
+    ~default_socket()
     {
         close();
     }
 
-    DefaultSocket(const DefaultSocket &) = delete;
-    DefaultSocket &operator=(const DefaultSocket &) = delete;
-    DefaultSocket(DefaultSocket &&) = delete;
-    DefaultSocket &operator=(DefaultSocket &&) = delete;
+    default_socket(const default_socket &) = delete;
+    default_socket &operator=(const default_socket &) = delete;
+    default_socket(default_socket &&) = delete;
+    default_socket &operator=(default_socket &&) = delete;
 
-    /// Register this socket and its receive handler with DefaultContext.
+    /// Register this socket and its receive handler with default_context.
     void async_receive(move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
     {
         m_receive_handler = std::move(handler);
@@ -145,7 +145,7 @@ public:
     }
 
 private:
-    DefaultContext &m_ctx;
+    default_context &m_ctx;
     detail::native_socket_t m_fd{detail::invalid_socket};
     move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_receive_handler;
 #ifdef _WIN32
@@ -381,7 +381,7 @@ private:
         std::error_code ec;
         open_and_configure(opts, ec);
         if(ec)
-            throw std::system_error(ec, "DefaultSocket::open_and_configure");
+            throw std::system_error(ec, "default_socket::open_and_configure");
     }
 
     // -------------------------------------------------------------------------
@@ -581,7 +581,7 @@ private:
     }
 };
 
-static_assert(mdnspp::SocketLike<mdnspp::DefaultSocket>, "DefaultSocket must satisfy SocketLike — check async_receive/send/close signatures");
+static_assert(mdnspp::socket_like<mdnspp::default_socket>, "default_socket must satisfy socket_like — check async_receive/send/close signatures");
 
 }
 

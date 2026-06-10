@@ -8,9 +8,11 @@
 
 namespace mdnspp {
 
-template <Policy P> class basic_observer;
-template <Policy P, typename Clock> class basic_service_monitor;
-template <Policy P> class basic_service_server;
+template <policy_like P> class basic_observer;
+template <policy_like P, typename Clock> class basic_service_monitor;
+template <policy_like P> class basic_service_server;
+
+namespace detail {
 
 template <typename P>
 struct peer_traits<basic_service_monitor, P>
@@ -38,6 +40,8 @@ struct peer_traits<basic_observer, P>
     static constexpr bool provides_announce{false};
     static constexpr bool provides_observe{true};
 };
+
+}
 
 }
 

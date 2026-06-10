@@ -26,7 +26,7 @@
 
 namespace mdnspp {
 
-template <Policy P>
+template <policy_like P>
 class basic_service_discovery : detail::basic_mdns_peer_base<P>
 {
     using base = detail::basic_mdns_peer_base<P>;
@@ -105,7 +105,7 @@ public:
     {
     }
 
-    // Plain callback overloads -- used by NativePolicy, MockPolicy, and ASIO adapter users.
+    // Plain callback overloads -- used by default_policy, mock_policy, and ASIO adapter users.
     // When mode is response_mode::unicast the QU bit (RFC 6762 section 5.4) is set,
     // requesting a direct unicast response from the responder instead of a multicast reply.
     void async_discover(std::string_view service_type, completion_handler on_done,
@@ -226,7 +226,7 @@ private:
     // Clears results, strips trailing dot, sends PTR query, creates recv_loop
     // with shared on_packet handler, and starts the loop.
     void do_query(std::string svc_type, response_mode mode,
-                  std::unique_ptr<recv_loop<P>> &target_loop,
+                  std::unique_ptr<detail::recv_loop<P>> &target_loop,
                   move_only_function<void()> on_silence_fn)
     {
         m_results.clear();
@@ -241,7 +241,7 @@ private:
             if(ec && m_on_error) m_on_error(ec, "query send");
         }
 
-        target_loop = std::make_unique<recv_loop<P>>(
+        target_loop = std::make_unique<detail::recv_loop<P>>(
             this->m_socket,
             this->m_timer,
             m_silence_timeout,
@@ -309,7 +309,7 @@ private:
             if(ec && m_on_error) m_on_error(ec, "enumerate send");
         }
 
-        m_enumerate_loop = std::make_unique<recv_loop<P>>(
+        m_enumerate_loop = std::make_unique<detail::recv_loop<P>>(
             this->m_socket,
             this->m_timer,
             m_silence_timeout,
@@ -364,8 +364,8 @@ private:
     completion_handler m_on_completion;
     enumerate_handler m_on_enumerate_completion;
     move_only_function<void(std::error_code, std::vector<resolved_service>)> m_on_browse_completion;
-    std::unique_ptr<recv_loop<P>> m_browse_loop;
-    std::unique_ptr<recv_loop<P>> m_enumerate_loop;
+    std::unique_ptr<detail::recv_loop<P>> m_browse_loop;
+    std::unique_ptr<detail::recv_loop<P>> m_enumerate_loop;
     std::vector<mdns_record_variant> m_results;
     std::vector<resolved_service> m_services;
     std::vector<service_type_info> m_enumerated_types;

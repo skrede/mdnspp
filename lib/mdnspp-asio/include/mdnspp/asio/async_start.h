@@ -1,13 +1,13 @@
-#ifndef HPP_GUARD_MDNSPP_ASYNC_START_H
-#define HPP_GUARD_MDNSPP_ASYNC_START_H
+#ifndef HPP_GUARD_MDNSPP_ASIO_ASYNC_START_H
+#define HPP_GUARD_MDNSPP_ASIO_ASYNC_START_H
+
+#include "mdnspp/basic_service_server.h"
 
 #include "mdnspp/asio/asio_completion.h"
 
-#include <mdnspp/basic_service_server.h>
-
 namespace mdnspp {
 
-template <Policy P, asio::completion_token_for<void(std::error_code)> CompletionToken>
+template <policy_like P, asio::completion_token_for<void(std::error_code)> CompletionToken>
 auto async_start(basic_service_server<P> &srv, CompletionToken &&token)
 {
     return asio::async_initiate<CompletionToken, void(std::error_code)>(

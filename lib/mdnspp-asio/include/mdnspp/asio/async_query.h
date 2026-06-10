@@ -1,13 +1,13 @@
-#ifndef HPP_GUARD_MDNSPP_ASYNC_QUERY_H
-#define HPP_GUARD_MDNSPP_ASYNC_QUERY_H
+#ifndef HPP_GUARD_MDNSPP_ASIO_ASYNC_QUERY_H
+#define HPP_GUARD_MDNSPP_ASIO_ASYNC_QUERY_H
+
+#include "mdnspp/basic_querier.h"
 
 #include "mdnspp/asio/asio_completion.h"
 
-#include <mdnspp/basic_querier.h>
-
 namespace mdnspp {
 
-template <Policy P,
+template <policy_like P,
     asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>
     CompletionToken>
 auto async_query(basic_querier<P> &q, std::string_view name, dns_type qtype,

@@ -162,7 +162,7 @@ SCENARIO("read_dns_name rejects a self-referential pointer", "[dns_wire][read_dn
     GIVEN("a 14-byte buffer where offset 12 contains a pointer back to offset 12 ({0xC0, 0x0C})")
     {
         // Pad the first 12 bytes so the pointer is at offset 12 (target = 12 = self)
-        // This is the canonical Phase 8 success criterion #2 test.
+        // RFC 9267 §2: a pointer must point strictly backward; self-reference must be rejected.
         auto buf = bytes({
             // 12-byte DNS header placeholder
             0x00,

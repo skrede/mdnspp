@@ -21,7 +21,7 @@ namespace mdnspp {
 // basic_observer<P> -- mDNS multicast listener
 //
 // Policy-based class template parameterized on:
-//   P -- Policy: provides executor_type, socket_type, timer_type
+//   P -- policy_like: provides executor_type, socket_type, timer_type
 //
 // Lifecycle:
 //   1. basic_observer(ex, opts, on_record)      -- throwing constructor
@@ -39,7 +39,7 @@ namespace mdnspp {
 // the recv_loop. The recv_loop is cleaned up in ~basic_observer(), which is never
 // called from within the recv_loop callback chain.
 
-template <Policy P>
+template <policy_like P>
 class basic_observer : detail::basic_mdns_peer_base<P>
 {
     using base = detail::basic_mdns_peer_base<P>;
@@ -101,7 +101,7 @@ public:
     {
     }
 
-    // Plain callback overload -- used by NativePolicy, MockPolicy, and ASIO adapter users.
+    // Plain callback overload -- used by default_policy, mock_policy, and ASIO adapter users.
     // async_observe() -- arms the recv_loop and returns immediately.
     // on_done fires with error_code{} when stop() is called (or empty if omitted).
     // Incoming multicast packets are parsed and each record delivered to the callback.
@@ -136,7 +136,7 @@ private:
     // Creates and starts the recv_loop with "infinite" silence timeout.
     void do_observe()
     {
-        this->m_loop = std::make_unique<recv_loop<P>>(
+        this->m_loop = std::make_unique<detail::recv_loop<P>>(
             this->m_socket,
             this->m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())

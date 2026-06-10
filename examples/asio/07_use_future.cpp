@@ -13,7 +13,7 @@
 int main()
 {
     asio::io_context io;
-    mdnspp::basic_querier<mdnspp::AsioPolicy> querier{io};
+    mdnspp::basic_querier<mdnspp::asio_policy> querier{io};
     std::future<std::vector<mdnspp::mdns_record_variant>> fut = mdnspp::async_query(querier, "_http._tcp.local.", mdnspp::dns_type::ptr, asio::use_future);
 
     std::thread worker([&io]

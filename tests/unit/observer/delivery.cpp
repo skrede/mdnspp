@@ -10,7 +10,7 @@ SCENARIO("observer delivers DNS records from a single packet to the callback", "
         std::vector<mdns_record_variant> received_records;
         std::vector<endpoint> received_senders;
 
-        basic_observer<MockPolicy> obs{
+        basic_observer<mock_policy> obs{
             ex,
             observer_options{.on_record = [&](const endpoint &ep, const mdns_record_variant &rec)
             {
@@ -51,7 +51,7 @@ SCENARIO("observer delivers records from multiple packets", "[observer][multiple
 
         std::vector<mdns_record_variant> received_records;
 
-        basic_observer<MockPolicy> obs{
+        basic_observer<mock_policy> obs{
             ex,
             observer_options{.on_record = [&](const endpoint &, const mdns_record_variant &rec)
             {

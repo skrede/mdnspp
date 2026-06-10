@@ -6,7 +6,7 @@ SCENARIO("async_observe fires completion callback on stop", "[observer][async]")
     {
         mock_executor ex;
 
-        basic_observer<MockPolicy> obs{
+        basic_observer<mock_policy> obs{
             ex,
             observer_options{.on_record = [](const endpoint &, const mdns_record_variant &)
             {
@@ -45,7 +45,7 @@ SCENARIO("stop() is idempotent — second call is a no-op", "[observer][stop-ide
     {
         mock_executor ex;
 
-        basic_observer<MockPolicy> obs{
+        basic_observer<mock_policy> obs{
             ex,
             observer_options{.on_record = [](const endpoint &, const mdns_record_variant &)
             {
@@ -72,7 +72,7 @@ SCENARIO("async_observe completion handler fires exactly once on double stop", "
         mock_executor ex;
         int completion_count = 0;
 
-        basic_observer<MockPolicy> obs{
+        basic_observer<mock_policy> obs{
             ex,
             observer_options{.on_record = [](const endpoint &, const mdns_record_variant &)
             {
@@ -101,7 +101,7 @@ SCENARIO("observer can be created, started, and stopped without any packet deliv
         mock_executor ex;
         int callback_count = 0;
 
-        basic_observer<MockPolicy> obs{
+        basic_observer<mock_policy> obs{
             ex,
             observer_options{.on_record = [&](const endpoint &, const mdns_record_variant &) { ++callback_count; }}
         };
@@ -125,10 +125,10 @@ SCENARIO("stop() called from within the record callback does not deadlock", "[ob
     {
         mock_executor ex;
 
-        basic_observer<MockPolicy> *obs_ptr = nullptr;
+        basic_observer<mock_policy> *obs_ptr = nullptr;
         int callback_count = 0;
 
-        basic_observer<MockPolicy> obs{
+        basic_observer<mock_policy> obs{
             ex,
             observer_options{.on_record = [&](const endpoint &, const mdns_record_variant &)
             {
@@ -161,9 +161,9 @@ SCENARIO("observer non-throwing constructor sets ec on success", "[observer][cre
         mock_executor ex;
         std::error_code ec;
 
-        WHEN("basic_observer<MockPolicy> is constructed with the ec overload")
+        WHEN("basic_observer<mock_policy> is constructed with the ec overload")
         {
-            basic_observer<MockPolicy> obs{
+            basic_observer<mock_policy> obs{
                 ex,
                 observer_options{.on_record = [](const endpoint &, const mdns_record_variant &)
                 {
@@ -187,7 +187,7 @@ SCENARIO("observer is move-constructible before async_observe", "[observer][move
     GIVEN("an observer constructed but not started")
     {
         mock_executor ex;
-        basic_observer<MockPolicy> obs{
+        basic_observer<mock_policy> obs{
             ex,
             observer_options{.on_record = [](const endpoint &, const mdns_record_variant &)
             {
@@ -196,7 +196,7 @@ SCENARIO("observer is move-constructible before async_observe", "[observer][move
 
         WHEN("move-constructed into a new observer")
         {
-            basic_observer<MockPolicy> moved{std::move(obs)};
+            basic_observer<mock_policy> moved{std::move(obs)};
 
             THEN("the moved-to observer is usable")
             {
@@ -217,7 +217,7 @@ SCENARIO("observer skips malformed packets without crashing", "[observer][malfor
 
         int callback_count = 0;
 
-        basic_observer<MockPolicy> obs{
+        basic_observer<mock_policy> obs{
             ex,
             observer_options{.on_record = [&](const endpoint &, const mdns_record_variant &) { ++callback_count; }}
         };
@@ -241,9 +241,9 @@ SCENARIO("basic_observer with socket_options", "[observer][socket_options]")
         mock_executor ex;
         socket_options opts{.interface_address = "10.0.0.1", .multicast_ttl = uint8_t{64}};
 
-        WHEN("basic_observer<MockPolicy> is constructed with socket_options")
+        WHEN("basic_observer<mock_policy> is constructed with socket_options")
         {
-            basic_observer<MockPolicy> obs{
+            basic_observer<mock_policy> obs{
                 ex,
                 observer_options{.on_record = [](const endpoint &, const mdns_record_variant &) {}},
                 opts

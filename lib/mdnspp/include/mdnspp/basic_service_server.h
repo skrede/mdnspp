@@ -5,9 +5,9 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/mdns_error.h"
 #include "mdnspp/service_info.h"
-#include "mdnspp/socket_options.h"
 #include "mdnspp/callback_types.h"
 #include "mdnspp/service_options.h"
+#include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
@@ -21,13 +21,13 @@
 #include "mdnspp/detail/duplicate_answer_suppression.h"
 
 #include <span>
-#include <string>
+#include <chrono>
 #include <memory>
 #include <random>
-#include <chrono>
+#include <string>
 #include <vector>
-#include <cstdint>
 #include <cassert>
+#include <cstdint>
 #include <utility>
 #include <algorithm>
 #include <string_view>
@@ -38,7 +38,7 @@ namespace mdnspp {
 // basic_service_server<P> -- mDNS service responder
 //
 // Policy-based class template parameterized on:
-//   P -- Policy: provides executor_type, socket_type, timer_type
+//   P -- policy_like: provides executor_type, socket_type, timer_type
 //
 // Lifecycle:
 //   1. Construct with (ex, info, opts, sock_opts) or non-throwing overload
@@ -49,7 +49,7 @@ namespace mdnspp {
 //      operation_canceled if not yet live, then fires on_done
 //   4. ~basic_service_server() -- calls stop() for RAII safety
 
-template <Policy P>
+template <policy_like P>
 class basic_service_server : detail::basic_mdns_peer_base<P>
 {
     using base = detail::basic_mdns_peer_base<P>;
@@ -252,7 +252,7 @@ private:
 
     void do_start()
     {
-        this->m_loop = std::make_unique<recv_loop<P>>(
+        this->m_loop = std::make_unique<detail::recv_loop<P>>(
             this->m_socket,
             this->m_timer,
             std::chrono::hours(24 * 365), // "infinite" silence timeout (run until stop())

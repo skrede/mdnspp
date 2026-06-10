@@ -5,13 +5,13 @@
 #include <variant>
 #include <iostream>
 
-// Discover mDNS services using AsioPolicy.
+// Discover mDNS services using asio_policy.
 // Prints each record to stdout, completes after silence timeout.
 
 int main()
 {
     asio::io_context io;
-    mdnspp::basic_service_discovery<mdnspp::AsioPolicy> discovery{
+    mdnspp::basic_service_discovery<mdnspp::asio_policy> discovery{
         io,
         mdnspp::query_options{
             .on_record = [](const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)

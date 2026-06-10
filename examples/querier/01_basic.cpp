@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-// Query for mDNS PTR records using DefaultPolicy.
+// Query for mDNS PTR records using default_policy.
 // Self-terminates after 3 seconds of silence.
 
 int main()

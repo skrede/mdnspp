@@ -19,14 +19,14 @@ using mdnspp::inproc::inproc_timer;
 using mdnspp::testing::test_clock;
 using Clock = test_clock;
 
-static_assert(mdnspp::Policy<mdnspp::InProcTestPolicy>,
-    "inproc_policy<test_clock> must satisfy Policy concept");
-static_assert(mdnspp::SocketLike<mdnspp::inproc::inproc_socket<test_clock>>,
-    "inproc_socket<test_clock> must satisfy SocketLike concept");
-static_assert(mdnspp::TimerLike<mdnspp::inproc::inproc_timer<test_clock>>,
-    "inproc_timer<test_clock> must satisfy TimerLike concept");
+static_assert(mdnspp::policy_like<mdnspp::inproc_test_policy>,
+    "inproc_policy<test_clock> must satisfy policy_like concept");
+static_assert(mdnspp::socket_like<mdnspp::inproc::inproc_socket<test_clock>>,
+    "inproc_socket<test_clock> must satisfy socket_like concept");
+static_assert(mdnspp::timer_like<mdnspp::inproc::inproc_timer<test_clock>>,
+    "inproc_timer<test_clock> must satisfy timer_like concept");
 
-TEST_CASE("inproc_policy satisfies Policy concept", "[inproc][conformance]")
+TEST_CASE("inproc_policy satisfies policy_like concept", "[inproc][conformance]")
 {
     test_clock::reset();
     inproc_bus<Clock> bus;
@@ -217,9 +217,9 @@ TEST_CASE("inproc_executor post and drain", "[inproc][executor]")
 
     std::vector<int> order;
 
-    mdnspp::InProcTestPolicy::post(ex, [&] { order.push_back(1); });
-    mdnspp::InProcTestPolicy::post(ex, [&] { order.push_back(2); });
-    mdnspp::InProcTestPolicy::post(ex, [&] { order.push_back(3); });
+    mdnspp::inproc_test_policy::post(ex, [&] { order.push_back(1); });
+    mdnspp::inproc_test_policy::post(ex, [&] { order.push_back(2); });
+    mdnspp::inproc_test_policy::post(ex, [&] { order.push_back(3); });
 
     REQUIRE(order.empty());
 

@@ -3,11 +3,12 @@
 
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+
 #include "mdnspp/detail/compat.h"
 
+#include <vector>
 #include <string_view>
 #include <system_error>
-#include <vector>
 
 namespace mdnspp {
 

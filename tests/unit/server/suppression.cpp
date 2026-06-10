@@ -9,7 +9,7 @@ SCENARIO("NSEC in Additional for unmatched type", "[nsec]")
         mock_executor ex;
         auto info = make_test_service();
         info.address_ipv6 = std::nullopt; // no IPv6
-        basic_service_server<MockPolicy> server{ex, std::move(info)};
+        basic_service_server<mock_policy> server{ex, std::move(info)};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -74,7 +74,7 @@ SCENARIO("No NSEC in announcements", "[nsec][announce]")
     GIVEN("a service server that is advancing through announcing")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
 
@@ -153,7 +153,7 @@ SCENARIO("known-answer suppression skips records with TTL >= 50%", "[known-answe
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -196,7 +196,7 @@ SCENARIO("suppress_known_answers=false sends full response", "[known-answer-supp
     GIVEN("a live service server with suppress_known_answers=false")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info(),
+        basic_service_server<mock_policy> server{ex, make_test_info(),
             service_options{.suppress_known_answers = false}};
         server.async_start();
         advance_to_live(server);
@@ -246,7 +246,7 @@ SCENARIO("Multicast response from another host suppresses our answer during dela
     GIVEN("a live service server with a pending multicast response")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
 

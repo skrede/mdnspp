@@ -42,7 +42,7 @@ namespace mdnspp {
 // basic_service_monitor<P, Clock> -- continuous, TTL-aware mDNS service tracker
 //
 // Policy-based class template parameterized on:
-//   P     -- Policy: provides executor_type, socket_type, timer_type
+//   P     -- policy_like: provides executor_type, socket_type, timer_type
 //   Clock -- Clock type (default: std::chrono::steady_clock). Substitute
 //            mdnspp::testing::test_clock in unit tests for deterministic TTL control.
 //
@@ -58,7 +58,7 @@ namespace mdnspp {
 //   services() may be called from any thread. All mutations are posted to the
 //   executor thread via P::post() using a weak_ptr guard.
 
-template <Policy P, typename Clock = std::chrono::steady_clock>
+template <policy_like P, typename Clock = std::chrono::steady_clock>
 class basic_service_monitor : detail::basic_mdns_peer_base<P>
 {
     using base = detail::basic_mdns_peer_base<P>;
@@ -149,7 +149,7 @@ public:
         constexpr auto infinite = std::chrono::duration_cast<std::chrono::milliseconds>(
             hours{24 * 365});
 
-        this->m_loop = std::make_unique<recv_loop<P>>(
+        this->m_loop = std::make_unique<detail::recv_loop<P>>(
             this->m_socket,
             this->m_timer,
             infinite,

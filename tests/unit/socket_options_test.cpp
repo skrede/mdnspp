@@ -30,7 +30,7 @@ TEST_CASE("loopback_mode enum values", "[socket_options]")
     REQUIRE(loopback_mode::enabled != loopback_mode::disabled);
 }
 
-TEST_CASE("MockSocket stores socket_options", "[socket_options][mock]")
+TEST_CASE("mock_socket stores socket_options", "[socket_options][mock]")
 {
     mock_executor ex;
     socket_options opts{
@@ -39,13 +39,13 @@ TEST_CASE("MockSocket stores socket_options", "[socket_options][mock]")
         .multicast_ttl = uint8_t{255}
     };
 
-    MockSocket mock{ex, opts};
+    mock_socket mock{ex, opts};
     REQUIRE(mock.options().interface_address == "192.168.1.1");
     REQUIRE(mock.options().multicast_loopback == loopback_mode::disabled);
     REQUIRE(mock.options().multicast_ttl == uint8_t{255});
 }
 
-TEST_CASE("MockSocket socket_options with error_code", "[socket_options][mock]")
+TEST_CASE("mock_socket socket_options with error_code", "[socket_options][mock]")
 {
     mock_executor ex;
     socket_options opts{.interface_address = "10.0.0.1"};
@@ -53,18 +53,18 @@ TEST_CASE("MockSocket socket_options with error_code", "[socket_options][mock]")
     SECTION("success path stores options")
     {
         std::error_code ec;
-        MockSocket mock{ex, opts, ec};
+        mock_socket mock{ex, opts, ec};
         REQUIRE_FALSE(ec);
         REQUIRE(mock.options().interface_address == "10.0.0.1");
     }
 
     SECTION("failure path sets error_code")
     {
-        MockSocket::set_fail_on_construct(true);
+        mock_socket::set_fail_on_construct(true);
         std::error_code ec;
-        MockSocket mock{ex, opts, ec};
+        mock_socket mock{ex, opts, ec};
         REQUIRE(ec);
-        MockSocket::set_fail_on_construct(false);
+        mock_socket::set_fail_on_construct(false);
     }
 }
 

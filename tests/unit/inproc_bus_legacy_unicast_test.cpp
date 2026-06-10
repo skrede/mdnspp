@@ -98,7 +98,7 @@ uint32_t max_ttl(const std::vector<mdns_record_variant> &records)
     return m;
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-14: Legacy unicast query from non-5353 port gets unicast response

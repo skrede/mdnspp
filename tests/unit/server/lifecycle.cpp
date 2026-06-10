@@ -8,9 +8,9 @@ SCENARIO("service_server constructs with direct constructor", "[service_server][
     {
         mock_executor ex;
 
-        WHEN("basic_service_server<MockPolicy> is constructed with a test service_info")
+        WHEN("basic_service_server<mock_policy> is constructed with a test service_info")
         {
-            basic_service_server<MockPolicy> server{ex, make_test_info()};
+            basic_service_server<mock_policy> server{ex, make_test_info()};
 
             THEN("the server is constructed successfully (socket is accessible)")
             {
@@ -25,7 +25,7 @@ SCENARIO("async_start and stop lifecycle", "[service_server][lifecycle]")
     GIVEN("a service_server with no enqueued queries")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         WHEN("async_start() is called")
         {
@@ -49,7 +49,7 @@ SCENARIO("async_start fires completion callback on stop", "[service_server][asyn
     GIVEN("a service_server with no enqueued queries")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         WHEN("async_start() is called with on_done completion callback")
         {
@@ -84,7 +84,7 @@ SCENARIO("async_start completion handler fires exactly once on double stop", "[s
         mock_executor ex;
         int completion_count = 0;
 
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start({}, [&](std::error_code) { ++completion_count; });
 
         // Advance to live so stop doesn't fire on_ready
@@ -109,7 +109,7 @@ SCENARIO("stop before timer fires prevents response", "[service_server][stop][ca
     GIVEN("a service_server that has been started")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         WHEN("async_start() is called then stop() is called during probing")
         {
@@ -140,9 +140,9 @@ SCENARIO("service_server non-throwing constructor sets ec on success", "[service
         mock_executor ex;
         std::error_code ec;
 
-        WHEN("basic_service_server<MockPolicy> is constructed with the ec overload")
+        WHEN("basic_service_server<mock_policy> is constructed with the ec overload")
         {
-            basic_service_server<MockPolicy> server{ex, make_test_info(), {}, {}, {}, ec};
+            basic_service_server<mock_policy> server{ex, make_test_info(), {}, {}, {}, ec};
 
             THEN("ec is clear and the server is usable")
             {
@@ -158,11 +158,11 @@ SCENARIO("service_server is move-constructible before async_start", "[service_se
     GIVEN("a service_server constructed but not started")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         WHEN("move-constructed into a new server")
         {
-            basic_service_server<MockPolicy> moved{std::move(server)};
+            basic_service_server<mock_policy> moved{std::move(server)};
 
             THEN("the moved-to server is usable")
             {
@@ -181,7 +181,7 @@ SCENARIO("liveness guard prevents use-after-free on server destruction", "[servi
         WHEN("a server posts update_service_info() then is destroyed before drain")
         {
             {
-                basic_service_server<MockPolicy> server{ex, make_test_info()};
+                basic_service_server<mock_policy> server{ex, make_test_info()};
                 server.async_start();
                 advance_to_live(server);
                 server.update_service_info(make_test_info());
@@ -201,7 +201,7 @@ SCENARIO("stop discards pending posted work", "[service_server][update][stop]")
     GIVEN("a live service_server with posted update_service_info")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
         server.update_service_info(make_test_info());
@@ -227,9 +227,9 @@ SCENARIO("basic_service_server with socket_options", "[service_server][socket_op
         mock_executor ex;
         socket_options opts{.interface_address = "192.168.2.1"};
 
-        WHEN("basic_service_server<MockPolicy> is constructed with socket_options")
+        WHEN("basic_service_server<mock_policy> is constructed with socket_options")
         {
-            basic_service_server<MockPolicy> server{ex, make_test_info(), {}, opts};
+            basic_service_server<mock_policy> server{ex, make_test_info(), {}, opts};
 
             THEN("the socket stores the options")
             {

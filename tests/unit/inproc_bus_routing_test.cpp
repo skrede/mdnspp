@@ -65,7 +65,7 @@ mdns_options fast_scheduler_opts()
     return opts;
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-05: Observer captures all traffic

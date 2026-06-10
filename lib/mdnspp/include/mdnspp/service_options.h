@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_SERVICE_OPTIONS_H
 
 #include "mdnspp/endpoint.h"
+
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_enums.h"
 

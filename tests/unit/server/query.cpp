@@ -69,7 +69,7 @@ SCENARIO("service_server responds to PTR query after probe+announce and timer fi
         mock_executor ex;
         endpoint sender{"192.168.1.50", 5353};
 
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -77,17 +77,17 @@ SCENARIO("service_server responds to PTR query after probe+announce and timer fi
         WHEN("a PTR query is enqueued and the recv loop processes it")
         {
             server.socket().enqueue(make_ptr_query("_http._tcp.local."), sender);
-            // Trigger recv_loop to pick up the enqueued packet (MockSocket delivers immediately
+            // Trigger recv_loop to pick up the enqueued packet (mock_socket delivers immediately
             // on the next async_receive call which happens when we drive the event)
             // The recv_loop already has async_receive armed, so we need to re-trigger it.
-            // Since MockSocket delivers synchronously in async_receive, the recv_loop
+            // Since mock_socket delivers synchronously in async_receive, the recv_loop
             // already consumed any packet in queue during start(). We need to get the loop
             // to call async_receive again. This happens after each packet processed.
-            // Actually the recv_loop arms async_receive which for MockSocket is synchronous:
+            // Actually the recv_loop arms async_receive which for mock_socket is synchronous:
             // it calls the handler immediately if a packet is in queue.
             // But the loop already called async_receive and it was empty, so it returned without
             // calling the handler. We need the loop to try again. Looking at recv_loop:
-            // arm_receive calls async_receive with a handler. MockSocket::async_receive
+            // arm_receive calls async_receive with a handler. mock_socket::async_receive
             // only calls the handler if there's a packet. If no packet, handler is not called
             // and arm_receive returns. The next arm_receive call happens in the handler
             // after processing a packet (re-entrant chaining). So if there's no packet,
@@ -105,10 +105,10 @@ SCENARIO("service_server responds to PTR query when enqueued before start", "[se
         mock_executor ex;
         endpoint sender{"192.168.1.50", 5353};
 
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         // Enqueue query before start -- it will be processed during probing and dropped.
         // Instead, we need to get the server to live state first, then process a query.
-        // But MockSocket async_receive is one-shot: each enqueued packet is consumed on
+        // But mock_socket async_receive is one-shot: each enqueued packet is consumed on
         // the next async_receive call in the recv_loop chain.
         //
         // The recv_loop processes all enqueued packets during start() via the arm_receive
@@ -153,7 +153,7 @@ SCENARIO("response delay timer armed after query receipt in live state", "[servi
     GIVEN("a live service_server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         // We need the query to arrive during live state.
         // Enqueue it before start so it's consumed by recv_loop during probing.
@@ -180,7 +180,7 @@ SCENARIO("service_server ignores non-matching query", "[service_server][query][n
     GIVEN("a live service_server with a non-matching query enqueued before start")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.socket().enqueue(build_dns_query("_wrong._tcp.local.", dns_type::ptr));
 
         WHEN("async_start() is called and probing completes")
@@ -240,10 +240,10 @@ SCENARIO("response sent to multicast by default, unicast when QU bit set", "[ser
             observed_mode = mode;
         };
 
-        // We can't easily inject a query during live state with MockSocket's current
+        // We can't easily inject a query during live state with mock_socket's current
         // one-shot async_receive chain. This is a known limitation. Instead, verify
         // that the server constructor and options compile correctly with on_query.
-        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
 
         THEN("the server compiles and constructs with on_query callback")
         {
@@ -257,7 +257,7 @@ SCENARIO("Multi-question query produces combined response", "[multi-question]")
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -300,7 +300,7 @@ SCENARIO("Unmatched questions are silently skipped", "[multi-question][skip]")
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -346,7 +346,7 @@ SCENARIO("All-QU queries get unicast response, mixed get multicast", "[multi-que
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -391,7 +391,7 @@ SCENARIO("Response delay timer is armed for multicast queries", "[delay]")
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -433,7 +433,7 @@ SCENARIO("New queries merge into pending response", "[aggregation]")
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -477,7 +477,7 @@ SCENARIO("Subsequent queries do not reset timer", "[aggregation][timer-no-reset]
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -513,7 +513,7 @@ SCENARIO("Unicast queries skip aggregation", "[aggregation][unicast-bypass]")
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -547,7 +547,7 @@ SCENARIO("TC bit on incoming query arms the tc_timer with 400-500ms window",
     GIVEN("a live service server with default mdns_options (tc_wait_min=400ms, tc_wait_max=500ms)")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
 
@@ -583,7 +583,7 @@ SCENARIO("Second TC packet from same source accumulates into existing entry",
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
 

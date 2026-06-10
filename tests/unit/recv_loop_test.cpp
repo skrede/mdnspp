@@ -29,13 +29,13 @@ static std::vector<std::byte> make_packet(std::size_t n)
 TEST_CASE("recv_loop delivers injected packets")
 {
     mock_executor ex;
-    MockSocket sock{ex};
-    MockTimer timer{ex};
+    mock_socket sock{ex};
+    mock_timer timer{ex};
     auto pkt = make_packet(8);
     sock.enqueue(pkt);
 
     std::vector<std::vector<std::byte>> received;
-    recv_loop<MockPolicy> loop{
+    detail::recv_loop<mock_policy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -58,11 +58,11 @@ TEST_CASE("recv_loop delivers injected packets")
 TEST_CASE("recv_loop silence callback fires on timer fire")
 {
     mock_executor ex;
-    MockSocket sock{ex};
-    MockTimer timer{ex};
+    mock_socket sock{ex};
+    mock_timer timer{ex};
 
     bool silence_called = false;
-    recv_loop<MockPolicy> loop{
+    detail::recv_loop<mock_policy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -81,10 +81,10 @@ TEST_CASE("recv_loop silence callback fires on timer fire")
 TEST_CASE("recv_loop stop is idempotent")
 {
     mock_executor ex;
-    MockSocket sock{ex};
-    MockTimer timer{ex};
+    mock_socket sock{ex};
+    mock_timer timer{ex};
 
-    recv_loop<MockPolicy> loop{
+    detail::recv_loop<mock_policy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -104,14 +104,14 @@ TEST_CASE("recv_loop stop is idempotent")
 TEST_CASE("recv_loop stop prevents on_packet after stop")
 {
     mock_executor ex;
-    MockSocket sock{ex};
-    MockTimer timer{ex};
+    mock_socket sock{ex};
+    mock_timer timer{ex};
 
     // Enqueue a packet — but stop() before start()
     sock.enqueue(make_packet(4));
 
     int packet_calls = 0;
-    recv_loop<MockPolicy> loop{
+    detail::recv_loop<mock_policy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -134,14 +134,14 @@ TEST_CASE("recv_loop stop prevents on_packet after stop")
 TEST_CASE("recv_loop resets silence timer on each packet")
 {
     mock_executor ex;
-    MockSocket sock{ex};
-    MockTimer timer{ex};
+    mock_socket sock{ex};
+    mock_timer timer{ex};
 
     // Enqueue 2 packets — each delivery should call arm_silence_timer()
     sock.enqueue(make_packet(4));
     sock.enqueue(make_packet(4));
 
-    recv_loop<MockPolicy> loop{
+    detail::recv_loop<mock_policy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -163,13 +163,13 @@ TEST_CASE("recv_loop resets silence timer on each packet")
 TEST_CASE("recv_loop with ttl_unknown_policy::accept passes nullopt TTL packets")
 {
     mock_executor ex;
-    MockSocket sock{ex};
-    MockTimer timer{ex};
+    mock_socket sock{ex};
+    mock_timer timer{ex};
 
     sock.enqueue(make_packet(8), endpoint{}, std::optional<uint8_t>{});
 
     int received = 0;
-    recv_loop<MockPolicy> loop{
+    detail::recv_loop<mock_policy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -191,13 +191,13 @@ TEST_CASE("recv_loop with ttl_unknown_policy::accept passes nullopt TTL packets"
 TEST_CASE("recv_loop with ttl_unknown_policy::reject drops nullopt TTL packets")
 {
     mock_executor ex;
-    MockSocket sock{ex};
-    MockTimer timer{ex};
+    mock_socket sock{ex};
+    mock_timer timer{ex};
 
     sock.enqueue(make_packet(8), endpoint{}, std::optional<uint8_t>{});
 
     int received = 0;
-    recv_loop<MockPolicy> loop{
+    detail::recv_loop<mock_policy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -219,14 +219,14 @@ TEST_CASE("recv_loop with ttl_unknown_policy::reject drops nullopt TTL packets")
 TEST_CASE("recv_loop drops populated TTL below receive_ttl_minimum")
 {
     mock_executor ex;
-    MockSocket sock{ex};
-    MockTimer timer{ex};
+    mock_socket sock{ex};
+    mock_timer timer{ex};
 
     // TTL=10, minimum=255 — should be dropped
     sock.enqueue(make_packet(8), endpoint{}, std::optional<uint8_t>{uint8_t{10}});
 
     int received = 0;
-    recv_loop<MockPolicy> loop{
+    detail::recv_loop<mock_policy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -248,14 +248,14 @@ TEST_CASE("recv_loop drops populated TTL below receive_ttl_minimum")
 TEST_CASE("recv_loop passes populated TTL at or above receive_ttl_minimum")
 {
     mock_executor ex;
-    MockSocket sock{ex};
-    MockTimer timer{ex};
+    mock_socket sock{ex};
+    mock_timer timer{ex};
 
     // TTL=255, minimum=255 — should pass
     sock.enqueue(make_packet(8), endpoint{}, std::optional<uint8_t>{uint8_t{255}});
 
     int received = 0;
-    recv_loop<MockPolicy> loop{
+    detail::recv_loop<mock_policy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -277,12 +277,12 @@ TEST_CASE("recv_loop passes populated TTL at or above receive_ttl_minimum")
 TEST_CASE("recv_loop re-arms the receive after a transient error")
 {
     mock_executor ex;
-    MockSocket sock{ex};
-    MockTimer timer{ex};
+    mock_socket sock{ex};
+    mock_timer timer{ex};
 
     int received = 0;
     std::vector<std::error_code> errors;
-    recv_loop<MockPolicy> loop{
+    detail::recv_loop<mock_policy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,
@@ -312,12 +312,12 @@ TEST_CASE("recv_loop re-arms the receive after a transient error")
 TEST_CASE("recv_loop reports a fatal error and stops re-arming")
 {
     mock_executor ex;
-    MockSocket sock{ex};
-    MockTimer timer{ex};
+    mock_socket sock{ex};
+    mock_timer timer{ex};
 
     int received = 0;
     std::vector<std::error_code> errors;
-    recv_loop<MockPolicy> loop{
+    detail::recv_loop<mock_policy> loop{
         sock,
         timer,
         SILENCE_TIMEOUT,

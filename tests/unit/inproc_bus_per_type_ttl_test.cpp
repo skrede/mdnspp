@@ -73,7 +73,7 @@ service_options distinct_ttl_opts()
     return opts;
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-11a: Per-type TTLs appear in wire responses

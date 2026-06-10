@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-// Discover HTTP services on the local network using DefaultPolicy.
+// Discover HTTP services on the local network using default_policy.
 // Self-terminates after 3 seconds of silence.
 
 int main()

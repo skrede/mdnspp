@@ -38,29 +38,29 @@ struct sent_packet
     std::vector<std::byte> data;
 };
 
-class MockSocket
+class mock_socket
 {
 public:
     // Default constructor — backward compatibility.
-    MockSocket() = default;
+    mock_socket() = default;
 
     // Concept-satisfying constructors — take mock_executor& (no-op).
-    explicit MockSocket(mock_executor &)
+    explicit mock_socket(mock_executor &)
     {
     }
 
-    explicit MockSocket(mock_executor &, std::error_code &ec)
+    explicit mock_socket(mock_executor &, std::error_code &ec)
     {
         if(s_fail_on_construct)
             ec = std::make_error_code(std::errc::address_not_available);
     }
 
-    explicit MockSocket(mock_executor &, const socket_options &opts)
+    explicit mock_socket(mock_executor &, const socket_options &opts)
         : m_opts{opts}
     {
     }
 
-    explicit MockSocket(mock_executor &, const socket_options &opts, std::error_code &ec)
+    explicit mock_socket(mock_executor &, const socket_options &opts, std::error_code &ec)
         : m_opts{opts}
     {
         if(s_fail_on_construct)
@@ -190,18 +190,18 @@ private:
     static inline bool s_fail_on_send{false};
 };
 
-class MockTimer
+class mock_timer
 {
 public:
     // Default constructor — backward compatibility.
-    MockTimer() = default;
+    mock_timer() = default;
 
     // Concept-satisfying constructors — take mock_executor& (no-op).
-    explicit MockTimer(mock_executor &)
+    explicit mock_timer(mock_executor &)
     {
     }
 
-    explicit MockTimer(mock_executor &, std::error_code &)
+    explicit mock_timer(mock_executor &, std::error_code &)
     {
     }
 
@@ -247,11 +247,11 @@ private:
     int m_cancel_count{0};
 };
 
-struct MockPolicy
+struct mock_policy
 {
     using executor_type = mock_executor &;
-    using socket_type = MockSocket;
-    using timer_type = MockTimer;
+    using socket_type = mock_socket;
+    using timer_type = mock_timer;
 
     static void post(executor_type ex, detail::move_only_function<void()> fn)
     {
@@ -261,6 +261,6 @@ struct MockPolicy
 
 }
 
-static_assert(mdnspp::Policy<mdnspp::testing::MockPolicy>, "MockPolicy must satisfy Policy concept");
+static_assert(mdnspp::policy_like<mdnspp::testing::mock_policy>, "mock_policy must satisfy Policy concept");
 
 #endif

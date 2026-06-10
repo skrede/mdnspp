@@ -78,7 +78,7 @@ void inject_ptr_response(inproc_harness &h,
     h.executor.drain();
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-12a: TC continuation delay spaces packets

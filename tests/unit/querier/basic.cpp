@@ -2,13 +2,13 @@
 
 SCENARIO("querier constructs and is usable", "[querier][create]")
 {
-    GIVEN("a querier instance with MockPolicy")
+    GIVEN("a querier instance with mock_policy")
     {
         mock_executor ex;
 
         WHEN("constructed with 500ms silence timeout")
         {
-            basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+            basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
 
             THEN("it is usable (socket is empty, results empty)")
             {
@@ -24,7 +24,7 @@ SCENARIO("async_query returns A record from mock socket", "[querier][query][A]")
     GIVEN("a querier instance and an A response for myhost.local. enqueued")
     {
         mock_executor ex;
-        basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
         q.socket().enqueue(make_a_response("myhost.local.", 192, 168, 1, 1));
 
         WHEN("async_query() is called for myhost.local. with qtype=1 (A)")
@@ -51,7 +51,7 @@ SCENARIO("async_query fires completion callback with results", "[querier][async]
     GIVEN("a querier instance and an A response for myhost.local. enqueued")
     {
         mock_executor ex;
-        basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
         q.socket().enqueue(make_a_response("myhost.local.", 10, 0, 0, 1));
 
         WHEN("async_query() is called with a completion callback and the silence timer fires")
@@ -68,7 +68,7 @@ SCENARIO("async_query fires completion callback with results", "[querier][async]
                               received_results = std::move(results);
                           });
 
-            // MockSocket drains the queue synchronously during async_query(),
+            // mock_socket drains the queue synchronously during async_query(),
             // but the silence timer must be fired manually to trigger the completion callback.
             q.timer().fire();
 
@@ -95,7 +95,7 @@ SCENARIO("async_query sends correct DNS query packet", "[querier][query][packet]
     GIVEN("a querier instance with no enqueued responses")
     {
         mock_executor ex;
-        basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
 
         WHEN("async_query() is called for myhost.local. with qtype=1 (A)")
         {
@@ -152,7 +152,7 @@ SCENARIO("async_query accumulates multiple records from a single frame", "[queri
     GIVEN("a querier instance and a multi-record response enqueued")
     {
         mock_executor ex;
-        basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
         q.socket().enqueue(make_multi_record_response());
 
         WHEN("async_query() is called")
@@ -211,7 +211,7 @@ SCENARIO("async_query skips malformed records and returns valid ones", "[querier
         pkt.push_back(static_cast<std::byte>(0)); // 5th byte
 
         mock_executor ex;
-        basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
         q.socket().enqueue(pkt);
 
         WHEN("async_query() is called")
@@ -239,9 +239,9 @@ SCENARIO("querier non-throwing constructor sets ec on success", "[querier][creat
         mock_executor ex;
         std::error_code ec;
 
-        WHEN("basic_querier<MockPolicy> is constructed with the ec overload")
+        WHEN("basic_querier<mock_policy> is constructed with the ec overload")
         {
-            basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}, {}, {}, ec};
+            basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}, {}, {}, ec};
 
             THEN("ec is clear and the querier is usable")
             {
@@ -258,11 +258,11 @@ SCENARIO("querier is move-constructible before async_query", "[querier][move]")
     GIVEN("a querier constructed but not started")
     {
         mock_executor ex;
-        basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
 
         WHEN("move-constructed into a new querier")
         {
-            basic_querier<MockPolicy> moved{std::move(q)};
+            basic_querier<mock_policy> moved{std::move(q)};
 
             THEN("the moved-to querier is usable")
             {
@@ -278,7 +278,7 @@ SCENARIO("querier stop without starting does not crash", "[querier][stop][no-sta
     GIVEN("a querier constructed but never started")
     {
         mock_executor ex;
-        basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}};
+        basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}};
 
         WHEN("stop() is called")
         {
@@ -297,9 +297,9 @@ SCENARIO("basic_querier with socket_options", "[querier][socket_options]")
         mock_executor ex;
         socket_options opts{.multicast_ttl = uint8_t{100}};
 
-        WHEN("basic_querier<MockPolicy> is constructed with socket_options")
+        WHEN("basic_querier<mock_policy> is constructed with socket_options")
         {
-            basic_querier<MockPolicy> q{ex, query_options{.silence_timeout = 500ms}, opts};
+            basic_querier<mock_policy> q{ex, query_options{.silence_timeout = 500ms}, opts};
 
             THEN("the socket stores the options with ttl = 100")
             {

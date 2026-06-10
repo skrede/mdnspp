@@ -1,4 +1,4 @@
-// Multi-service lifecycle example using InProcPolicy and inproc_bus.
+// Multi-service lifecycle example using inproc_policy and inproc_bus.
 //
 // Demonstrates server, monitor, and querier working together through the
 // in-process bus -- no real network sockets. Useful for understanding
@@ -34,9 +34,9 @@
 
 using namespace std::chrono_literals;
 
-// InProcPolicy uses steady_clock and real time. The executor drives its own
+// inproc_policy uses steady_clock and real time. The executor drives its own
 // event loop via run(), sleeping 1ms between drain iterations.
-using Policy = mdnspp::InProcPolicy;
+using Policy = mdnspp::inproc_policy;
 
 // Alias the concrete types for readability.
 using Bus      = mdnspp::inproc::inproc_bus<>;

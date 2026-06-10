@@ -1,5 +1,5 @@
 // tests/service_server_tsan_test.cpp
-// ThreadSanitizer hard-gate test for service_server<AsioPolicy>.
+// ThreadSanitizer hard-gate test for service_server<asio_policy>.
 
 #include "mdnspp/basic_service_server.h"
 #include "mdnspp/service_info.h"
@@ -24,13 +24,13 @@ static mdnspp::service_info make_test_info()
 
 SCENARIO("service_server stop() from separate thread is data-race-free", "[service_server][tsan][asio]")
 {
-    GIVEN("an asio::io_context and service_server<AsioPolicy>")
+    GIVEN("an asio::io_context and service_server<asio_policy>")
     {
         asio::io_context io;
 
-        // AsioSocket construction joins a multicast group — may fail in sandboxed CI
+        // asio_socket construction joins a multicast group — may fail in sandboxed CI
         // with no network interface. Warn and skip gracefully.
-        std::optional<mdnspp::basic_service_server<mdnspp::AsioPolicy>> server;
+        std::optional<mdnspp::basic_service_server<mdnspp::asio_policy>> server;
 
         try
         {
@@ -68,11 +68,11 @@ SCENARIO("service_server stop() from separate thread is data-race-free", "[servi
 
 SCENARIO("concurrent update_service_info is TSan-clean", "[service_server][tsan][asio][update]")
 {
-    GIVEN("an asio::io_context and service_server<AsioPolicy>")
+    GIVEN("an asio::io_context and service_server<asio_policy>")
     {
         asio::io_context io;
 
-        std::optional<mdnspp::basic_service_server<mdnspp::AsioPolicy>> server;
+        std::optional<mdnspp::basic_service_server<mdnspp::asio_policy>> server;
 
         try
         {
@@ -117,11 +117,11 @@ SCENARIO("concurrent update_service_info is TSan-clean", "[service_server][tsan]
 
 SCENARIO("service_server double stop is safe under concurrency", "[service_server][tsan][asio]")
 {
-    GIVEN("an asio::io_context and a started service_server<AsioPolicy>")
+    GIVEN("an asio::io_context and a started service_server<asio_policy>")
     {
         asio::io_context io;
 
-        std::optional<mdnspp::basic_service_server<mdnspp::AsioPolicy>> server;
+        std::optional<mdnspp::basic_service_server<mdnspp::asio_policy>> server;
 
         try
         {

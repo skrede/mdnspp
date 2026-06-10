@@ -6,18 +6,21 @@
 #include "mdnspp/detail/dns_enums.h"
 
 #include <asio.hpp>
+#include <asio/as_tuple.hpp>
 #include <asio/deferred.hpp>
 #include <asio/detached.hpp>
 #include <asio/use_future.hpp>
-#include <asio/as_tuple.hpp>
+#include <asio/cancel_after.hpp>
 #include <asio/use_awaitable.hpp>
 
 #ifdef ASIO_HAS_CO_AWAIT
 #include <asio/co_spawn.hpp>
+#include <asio/experimental/awaitable_operators.hpp>
 #endif
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
 #include <chrono>
 #include <future>
 #include <memory>
@@ -115,7 +118,7 @@ SCENARIO("async_observe with callback fires when stop() is called", "[completion
     }
 }
 
-SCENARIO("async_start with callback fires when stop() is called", "[completion_token][callback][service_server]")
+SCENARIO("async_start adapter completes with operation_canceled when stop() precedes ready", "[completion_token][callback][service_server]")
 {
     asio::io_context io;
     try
@@ -130,19 +133,148 @@ SCENARIO("async_start with callback fires when stop() is called", "[completion_t
         auto server = std::make_shared<mdnspp::basic_service_server<mdnspp::asio_policy>>(
             io, std::move(info));
 
-        bool handler_fired = false;
-        server->async_start([&handler_fired](std::error_code)
+        std::atomic<bool> handler_fired{false};
+        std::error_code out;
+        mdnspp::async_start(*server, [&handler_fired, &out](std::error_code ec)
         {
-            handler_fired = true;
+            out = ec;
+            handler_fired.store(true);
         });
 
         std::thread io_thread([&io] { io.run(); });
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        server->stop(); // default probe schedule needs ~750 ms -- not yet live
+        io_thread.join();
+        server.reset();
+
+        REQUIRE(handler_fired.load());
+        REQUIRE(out == std::errc::operation_canceled);
+    }
+    catch(const std::exception &e)
+    {
+        WARN("Skipping — socket construction failed (no network): " << e.what());
+    }
+}
+
+SCENARIO("async_start adapter completes at ready without stop()", "[completion_token][use_future][service_server][ready]")
+{
+    asio::io_context io;
+    try
+    {
+        mdnspp::service_info info;
+        info.service_name = "TestReady._http._tcp.local.";
+        info.service_type = "_http._tcp.local.";
+        info.hostname = "testready.local.";
+        info.port = 8081;
+        info.address_ipv4 = "192.168.1.11";
+
+        auto server = std::make_shared<mdnspp::basic_service_server<mdnspp::asio_policy>>(
+            io, std::move(info),
+            mdnspp::service_options{
+                .announce_count = 1,
+                .announce_interval = std::chrono::milliseconds(10),
+                .probe_count = 1,
+                .probe_interval = std::chrono::milliseconds(10),
+                .probe_initial_delay_max = std::chrono::milliseconds(0)});
+
+        auto fut = mdnspp::async_start(*server, asio::use_future);
+
+        std::thread io_thread([&io] { io.run(); });
+
+        // The token binds on_ready: it must complete while the server keeps
+        // running, with no stop() involved.
+        REQUIRE(fut.wait_for(std::chrono::seconds(5)) == std::future_status::ready);
+        REQUIRE_NOTHROW(fut.get());
+
+        server->stop();
+        io_thread.join();
+        server.reset();
+    }
+    catch(const std::exception &e)
+    {
+        WARN("Skipping — socket construction failed (no network): " << e.what());
+    }
+}
+
+SCENARIO("async_run completes only after stop() runs the teardown", "[completion_token][callback][service_server][run]")
+{
+    asio::io_context io;
+    try
+    {
+        mdnspp::service_info info;
+        info.service_name = "TestRun._http._tcp.local.";
+        info.service_type = "_http._tcp.local.";
+        info.hostname = "testrun.local.";
+        info.port = 8082;
+        info.address_ipv4 = "192.168.1.12";
+
+        auto server = std::make_shared<mdnspp::basic_service_server<mdnspp::asio_policy>>(
+            io, std::move(info),
+            mdnspp::service_options{
+                .announce_count = 1,
+                .announce_interval = std::chrono::milliseconds(10),
+                .probe_count = 1,
+                .probe_interval = std::chrono::milliseconds(10),
+                .probe_initial_delay_max = std::chrono::milliseconds(0)});
+
+        std::atomic<bool> handler_fired{false};
+        std::error_code out = std::make_error_code(std::errc::io_error); // sentinel
+        mdnspp::async_run(*server, [&handler_fired, &out](std::error_code ec)
+        {
+            out = ec;
+            handler_fired.store(true);
+        });
+
+        std::thread io_thread([&io] { io.run(); });
+
+        // The server is live well before 300 ms with the fast schedule above,
+        // but on_done is bound: the token must not have completed yet.
+        std::this_thread::sleep_for(std::chrono::milliseconds(300));
+        REQUIRE_FALSE(handler_fired.load());
+
         server->stop();
         io_thread.join();
         server.reset();
 
+        REQUIRE(handler_fired.load());
+        REQUIRE(out == std::error_code{});
+    }
+    catch(const std::exception &e)
+    {
+        WARN("Skipping — socket construction failed (no network): " << e.what());
+    }
+}
+
+SCENARIO("async_run after stop() completes deterministically with invalid_argument", "[completion_token][callback][service_server][run][misuse]")
+{
+    asio::io_context io;
+    try
+    {
+        mdnspp::service_info info;
+        info.service_name = "TestRunMisuse._http._tcp.local.";
+        info.service_type = "_http._tcp.local.";
+        info.hostname = "testrunmisuse.local.";
+        info.port = 8083;
+        info.address_ipv4 = "192.168.1.13";
+
+        auto server = std::make_shared<mdnspp::basic_service_server<mdnspp::asio_policy>>(
+            io, std::move(info));
+
+        server->stop();
+
+        bool handler_fired = false;
+        std::error_code out;
+        mdnspp::async_run(*server, [&handler_fired, &out](std::error_code ec)
+        {
+            out = ec;
+            handler_fired = true;
+        });
+
+        io.run();
+        server.reset();
+
         REQUIRE(handler_fired);
+        REQUIRE(out == std::errc::invalid_argument);
     }
     catch(const std::exception &e)
     {
@@ -232,6 +364,35 @@ SCENARIO("async_observe completion handler dispatched on correct executor -- TSa
     }
 }
 
+SCENARIO("async_observe with cancel_after completes with operation_canceled", "[completion_token][cancellation][cancel_after][observer]")
+{
+    asio::io_context io;
+    try
+    {
+        auto obs = std::make_shared<mdnspp::basic_observer<mdnspp::asio_policy>>(
+            io,
+            mdnspp::observer_options{.on_record = [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
+            {
+            }});
+
+        // cancel_after signals the operation's cancellation slot when the
+        // deadline expires; the adapter translates that into obs->stop(),
+        // which completes the observation with operation_canceled.
+        auto fut = mdnspp::async_observe(
+            *obs, asio::cancel_after(std::chrono::milliseconds(100),
+                                     asio::as_tuple(asio::use_future)));
+
+        io.run(); // returns once the cancelled observation is torn down
+
+        auto [ec] = fut.get();
+        REQUIRE(ec == std::errc::operation_canceled);
+    }
+    catch(const std::exception &e)
+    {
+        WARN("Skipping — socket construction failed (no network): " << e.what());
+    }
+}
+
 #ifdef ASIO_HAS_CO_AWAIT
 
 SCENARIO("async_observe with use_awaitable suspends until stop", "[completion_token][use_awaitable][observer]")
@@ -270,6 +431,43 @@ SCENARIO("async_observe with use_awaitable suspends until stop", "[completion_to
         io.run_for(std::chrono::seconds(5));
         REQUIRE(completed);
         REQUIRE(completion_ec == std::errc::operation_canceled);
+    }
+    catch(const std::exception &e)
+    {
+        WARN("Skipping — socket construction failed (no network): " << e.what());
+    }
+}
+
+SCENARIO("async_observe loses an awaitable || race and is cancelled by the group", "[completion_token][cancellation][use_awaitable][observer]")
+{
+    asio::io_context io;
+    try
+    {
+        auto obs = std::make_shared<mdnspp::basic_observer<mdnspp::asio_policy>>(
+            io,
+            mdnspp::observer_options{.on_record = [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
+            {
+            }});
+
+        // operator|| cancels the loser through its cancellation slot and
+        // waits for it to complete. Without slot support the observe arm
+        // never completes and this co_await suspends forever.
+        bool timer_won = false;
+        asio::co_spawn(
+            io,
+            [obs, &timer_won, &io]() -> asio::awaitable<void>
+            {
+                using namespace asio::experimental::awaitable_operators;
+                asio::steady_timer deadline{io, std::chrono::milliseconds(100)};
+                auto winner = co_await (mdnspp::async_observe(*obs, asio::use_awaitable)
+                                        || deadline.async_wait(asio::use_awaitable));
+                timer_won = winner.index() == 1;
+                io.stop();
+            },
+            asio::detached);
+
+        io.run_for(std::chrono::seconds(5));
+        REQUIRE(timer_won);
     }
     catch(const std::exception &e)
     {

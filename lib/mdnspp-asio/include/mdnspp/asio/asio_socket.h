@@ -33,6 +33,9 @@ namespace mdnspp {
 class asio_socket
 {
 public:
+    /// Executor of the underlying socket (asio convention).
+    using executor_type = asio::ip::udp::socket::executor_type;
+
     explicit asio_socket(asio::io_context &io)
         : asio_socket(io, socket_options{})
     {}
@@ -454,6 +457,17 @@ public:
     }
 
     auto native_handle() { return m_socket.native_handle(); }
+
+    /// Returns the I/O executor the socket was constructed with. Used by the
+    /// async_* adapter initiations so that tokens which construct internal
+    /// state on the operation's executor (e.g. asio::cancel_after's timer)
+    /// resolve to the peer's io_context. The const_cast is required because
+    /// asio::basic_socket::get_executor() is non-const; the call is
+    /// logically const (it only reads the stored executor).
+    executor_type get_executor() const noexcept
+    {
+        return const_cast<asio::ip::udp::socket &>(m_socket).get_executor();
+    }
 
 private:
     // Apply SO_REUSEPORT in addition to asio's reuse_address (SO_REUSEADDR),

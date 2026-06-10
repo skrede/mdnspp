@@ -11,15 +11,19 @@
 
 #include "mdnspp/detail/peer_traits.h"
 
+#include <array>
 #include <mutex>
+#include <tuple>
 #include <atomic>
 #include <memory>
 #include <string>
 #include <vector>
-#include <optional>
+#include <cstdint>
 #include <utility>
+#include <optional>
 #include <string_view>
 #include <type_traits>
+#include <system_error>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -39,6 +43,28 @@ namespace mdnspp {
 //   1. Construct with (ex, grp_opts, peer_opts_vec...) — one options vector per Peer type.
 //   2. start() — registers NIC callbacks, starts the monitor, creates initial instances.
 //   3. stop()  — stops all peer instances, stops the monitor.
+//
+// Callback contract (per-NIC semantics):
+//   Monitor and observer events are surfaced through the group-level callbacks
+//   in basic_nic_group_options (on_found, on_updated, on_lost, on_record,
+//   on_error). Each fires once per interface, with the originating
+//   network_interface as the leading parameter. The group performs no
+//   cross-interface deduplication: a service instance visible on two
+//   interfaces produces two on_found events with distinct interfaces.
+//   services() remains the merged snapshot (see dedup_mode).
+//
+//   Per-NIC monitor_options / observer_options elements carry per-instance
+//   tuning only; the constructor rejects elements whose callback fields are
+//   set (throws std::system_error with std::errc::invalid_argument), because
+//   the group installs its own interface-stamped forwarding callbacks and a
+//   user-supplied callback would be silently displaced otherwise.
+//
+//   server_peer_options callbacks (service.on_conflict, on_query,
+//   on_tc_continuation, on_error) are per-service, not per-NIC: they are
+//   forwarded faithfully to every per-NIC server instance through a shared
+//   callable. They are invoked on the group executor; driving that executor
+//   from multiple threads may invoke the shared callable concurrently from
+//   different per-NIC instances.
 //
 // Conditional API (via requires):
 //   services()  — available when basic_service_monitor is in the Peers pack.
@@ -62,17 +88,23 @@ public:
 
     /// Construct the group.
     ///
+    /// Throws std::system_error (std::errc::invalid_argument) when a
+    /// monitor_options or observer_options element carries callbacks — see the
+    /// callback contract in the class comment.
+    ///
     /// @param ex         Executor for all async operations.
-    /// @param grp_opts   Group-level options (dedup mode, interface filter, socket factory).
+    /// @param grp_opts   Group-level options (dedup mode, interface filter,
+    ///                   socket factory, interface-stamped callbacks).
     /// @param peer_opts  Per-peer-type options vectors (one argument per Peer in the pack).
     explicit basic_nic_group(executor_type ex,
                              basic_nic_group_options<P> grp_opts,
                              std::vector<typename detail::peer_traits<Peers, P>::options_type>... peer_opts)
         : m_executor(ex)
         , m_grp_opts(std::move(grp_opts))
-        , m_monitor(ex, m_grp_opts.monitor_opts)
+        , m_monitor(ex, std::move(m_grp_opts.monitor_opts))
         , m_peer_opts(std::move(peer_opts)...)
     {
+        prepare_peer_options(std::make_index_sequence<sizeof...(Peers)>{});
     }
 
     ~basic_nic_group()
@@ -81,9 +113,12 @@ public:
     }
 
     /// Begin NIC monitoring and create initial per-NIC peer instances.
+    /// Calling start() on a running group is a no-op; start() after stop()
+    /// restarts the group.
     void start()
     {
-        m_stopped.store(false, std::memory_order_release);
+        if(!m_stopped.exchange(false, std::memory_order_acq_rel))
+            return; // already running
 
         auto weak = std::weak_ptr<bool>(m_alive);
 
@@ -201,6 +236,9 @@ private:
         return peer_index_of_impl<PeerTemplate, Peers...>(0);
     }
 
+    template <std::size_t I>
+    using peer_type_at = std::tuple_element_t<I, std::tuple<Peers<P>...>>;
+
     // -------------------------------------------------------------------------
     // Per-instance storage type
     // -------------------------------------------------------------------------
@@ -215,6 +253,62 @@ private:
         network_interface nic;
         instance_tuple instances;
     };
+
+    // Server callbacks are per-service, not per-NIC: every per-NIC server
+    // instance built from the same server_peer_options element forwards to the
+    // same shared callable. One bundle exists per element; the per-NIC
+    // forwarding lambdas hold it by shared_ptr.
+    struct shared_server_callbacks
+    {
+        service_options::conflict_callback on_conflict{};
+        move_only_function<void(const endpoint &, dns_type, response_mode)> on_query{};
+        move_only_function<void(const endpoint &, std::size_t)> on_tc_continuation{};
+        move_only_function<void(std::error_code, std::string_view)> on_error{};
+    };
+
+    // -------------------------------------------------------------------------
+    // Constructor-time option preparation
+    // -------------------------------------------------------------------------
+
+    template <std::size_t... Is>
+    void prepare_peer_options(std::index_sequence<Is...>)
+    {
+        (prepare_peer_options_at<Is>(), ...);
+    }
+
+    // For server peers: move the per-element callbacks out of the stored
+    // options into shared bundles (the stored elements are cloned per NIC, and
+    // move_only_function members cannot be copied). For monitor and observer
+    // peers: reject callback-bearing elements — see the class comment.
+    template <std::size_t I>
+    void prepare_peer_options_at()
+    {
+        auto &vec = std::get<I>(m_peer_opts);
+        if constexpr(std::is_same_v<peer_type_at<I>, basic_service_server<P>>)
+        {
+            auto &shared_vec = m_server_callbacks[I];
+            shared_vec.reserve(vec.size());
+            for(auto &opts : vec)
+            {
+                shared_vec.push_back(std::make_shared<shared_server_callbacks>(shared_server_callbacks{
+                    .on_conflict        = std::move(opts.service.on_conflict),
+                    .on_query           = std::move(opts.service.on_query),
+                    .on_tc_continuation = std::move(opts.service.on_tc_continuation),
+                    .on_error           = std::move(opts.service.on_error),
+                }));
+            }
+        }
+        else
+        {
+            for(const auto &opts : vec)
+            {
+                if(auto ec = detail::validate_nic_group_peer_options(opts))
+                    throw std::system_error(ec,
+                        "basic_nic_group: per-NIC peer options must not carry callbacks; "
+                        "use the interface-stamped callbacks in basic_nic_group_options");
+            }
+        }
+    }
 
     // -------------------------------------------------------------------------
     // NIC event handlers (called under m_mutex)
@@ -244,7 +338,7 @@ private:
 
         auto &slot = m_instances[nic.index];
         slot.nic = nic;
-        create_instances_for_nic(slot.instances, sock_opts, std::make_index_sequence<sizeof...(Peers)>{});
+        create_instances_for_nic(slot.instances, nic, sock_opts, std::make_index_sequence<sizeof...(Peers)>{});
     }
 
     void on_nic_removed(const network_interface &nic)
@@ -263,51 +357,73 @@ private:
 
     template <std::size_t... Is>
     void create_instances_for_nic(instance_tuple &slot,
+                                  const network_interface &nic,
                                   const policy_socket_options_t<P> &sock_opts,
                                   std::index_sequence<Is...>)
     {
-        (create_peer_instances<Is>(slot, sock_opts), ...);
+        (create_peer_instances<Is>(slot, nic, sock_opts), ...);
     }
 
     template <std::size_t I>
-    void create_peer_instances(instance_tuple &slot, const policy_socket_options_t<P> &sock_opts)
+    void create_peer_instances(instance_tuple &slot,
+                               const network_interface &nic,
+                               const policy_socket_options_t<P> &sock_opts)
     {
-        using PeerType = std::tuple_element_t<I, std::tuple<Peers<P>...>>;
-        // Extract the template template parameter at position I.
         auto &peer_opts_vec = std::get<I>(m_peer_opts);
         auto &instances_vec = std::get<I>(slot);
 
-        for(const auto &opts : peer_opts_vec)
+        for(std::size_t element = 0; element < peer_opts_vec.size(); ++element)
         {
-            auto inst = make_peer_instance<PeerType>(opts, sock_opts);
+            auto inst = make_peer_instance<I>(peer_opts_vec[element], element, nic, sock_opts);
             start_peer_instance(*inst);
             instances_vec.push_back(std::move(inst));
         }
     }
 
-    // Factory: construct the right peer type from its options.
+    // Factory: construct the right peer type from its options, wiring the
+    // group-level interface-stamped callbacks (monitor, observer) or the
+    // shared per-service callbacks (server) into the per-NIC instance.
     //
-    // monitor_options and observer_options contain move_only_function members and
-    // are therefore non-copyable. basic_nic_group does not forward per-instance
-    // callbacks to its internal peers -- it manages service collection via
-    // services() / watch() / unwatch(). Only the non-callable fields are
-    // propagated (e.g., monitor_options::mode). server_peer_options has only
-    // copyable fields (service_info, service_options) and is passed as-is.
-    template <typename PeerType, typename Options>
-    std::unique_ptr<PeerType> make_peer_instance(const Options &opts,
-                                                  const policy_socket_options_t<P> &sock_opts)
+    // The forwarding lambdas capture `this` and the interface by value. They
+    // live inside the per-NIC instances, which the group owns and destroys
+    // before its own members, so the captures cannot dangle.
+    template <std::size_t I, typename Options>
+    std::unique_ptr<peer_type_at<I>> make_peer_instance(const Options &opts,
+                                                        std::size_t element,
+                                                        const network_interface &nic,
+                                                        const policy_socket_options_t<P> &sock_opts)
     {
+        using PeerType = peer_type_at<I>;
         if constexpr(std::is_same_v<PeerType, basic_service_monitor<P>>)
         {
             monitor_options cloned{.mode = opts.mode};
+            if(m_grp_opts.on_found)
+                cloned.on_found = [this, nic](const resolved_service &svc)
+                {
+                    m_grp_opts.on_found(nic, svc);
+                };
+            if(m_grp_opts.on_updated)
+                cloned.on_updated = [this, nic](const resolved_service &svc, update_event event, dns_type type)
+                {
+                    m_grp_opts.on_updated(nic, svc, event, type);
+                };
+            if(m_grp_opts.on_lost)
+                cloned.on_lost = [this, nic](const resolved_service &svc, loss_reason reason)
+                {
+                    m_grp_opts.on_lost(nic, svc, reason);
+                };
+            if(m_grp_opts.on_error)
+                cloned.on_error = [this, nic](std::error_code ec, std::string_view context)
+                {
+                    m_grp_opts.on_error(nic, ec, context);
+                };
             return std::make_unique<basic_service_monitor<P>>(
                 m_executor, std::move(cloned), sock_opts, m_grp_opts.mdns_opts);
         }
         else if constexpr(std::is_same_v<PeerType, basic_service_server<P>>)
         {
-            // service_options contains move_only_function members (on_conflict, on_query,
-            // on_tc_continuation). basic_nic_group does not expose server callbacks from
-            // per-NIC instances. Only the non-callable configuration fields are propagated.
+            // Clone the copyable configuration fields; re-bind the callbacks
+            // moved into the shared bundle at construction time.
             service_options cloned_svc{
                 .announce_count          = opts.service.announce_count,
                 .announce_interval       = opts.service.announce_interval,
@@ -328,13 +444,48 @@ private:
                 .probe_authority_ttl     = opts.service.probe_authority_ttl,
                 .probe_defer_delay       = opts.service.probe_defer_delay,
             };
+            const auto &cbs = m_server_callbacks[I][element];
+            if(cbs->on_conflict)
+                cloned_svc.on_conflict = [cbs](std::string_view conflicting_name, uint32_t attempt, conflict_type type)
+                {
+                    return cbs->on_conflict(conflicting_name, attempt, type);
+                };
+            if(cbs->on_query)
+                cloned_svc.on_query = [cbs](const endpoint &sender, dns_type type, response_mode mode)
+                {
+                    cbs->on_query(sender, type, mode);
+                };
+            if(cbs->on_tc_continuation)
+                cloned_svc.on_tc_continuation = [cbs](const endpoint &sender, std::size_t continuation_count)
+                {
+                    cbs->on_tc_continuation(sender, continuation_count);
+                };
+            if(cbs->on_error)
+                cloned_svc.on_error = [cbs](std::error_code ec, std::string_view context)
+                {
+                    cbs->on_error(ec, context);
+                };
+            else if(m_grp_opts.on_error)
+                cloned_svc.on_error = [this, nic](std::error_code ec, std::string_view context)
+                {
+                    m_grp_opts.on_error(nic, ec, context);
+                };
             return std::make_unique<basic_service_server<P>>(
                 m_executor, opts.info, std::move(cloned_svc), sock_opts);
         }
         else if constexpr(std::is_same_v<PeerType, basic_observer<P>>)
         {
-            // observer_options::on_record is move_only_function -- not forwarded to per-NIC instances.
             observer_options cloned{};
+            if(m_grp_opts.on_record)
+                cloned.on_record = [this, nic](const endpoint &sender, const mdns_record_variant &record)
+                {
+                    m_grp_opts.on_record(nic, sender, record);
+                };
+            if(m_grp_opts.on_error)
+                cloned.on_error = [this, nic](std::error_code ec, std::string_view context)
+                {
+                    m_grp_opts.on_error(nic, ec, context);
+                };
             return std::make_unique<basic_observer<P>>(
                 m_executor, std::move(cloned), sock_opts, m_grp_opts.mdns_opts);
         }
@@ -474,23 +625,6 @@ private:
         }
     }
 
-    template <typename Fn>
-    void for_each_monitor_instance_const(Fn &&fn) const
-    {
-        constexpr std::size_t idx = peer_index_of<basic_service_monitor>();
-        if constexpr(idx != std::size_t(-1))
-        {
-            for(const auto &[nic_idx, slot] : m_instances)
-            {
-                for(const auto &inst_ptr : std::get<idx>(slot.instances))
-                {
-                    if(inst_ptr)
-                        fn(*inst_ptr);
-                }
-            }
-        }
-    }
-
     // -------------------------------------------------------------------------
     // Data members
     // -------------------------------------------------------------------------
@@ -503,8 +637,12 @@ private:
 
     std::tuple<std::vector<typename detail::peer_traits<Peers, P>::options_type>...> m_peer_opts;
 
+    // Shared server callback bundles, parallel to the corresponding m_peer_opts
+    // vector; only the array slots whose Peer is basic_service_server are populated.
+    std::array<std::vector<std::shared_ptr<shared_server_callbacks>>, sizeof...(Peers)> m_server_callbacks;
+
     // Keyed by interface index. Bundles network_interface identity with per-NIC peer instances.
-    std::unordered_map<unsigned int, nic_slot> m_instances;
+    std::unordered_map<uint32_t, nic_slot> m_instances;
 
     // Accumulated watch() calls; propagated to new monitor instances on NIC add.
     std::unordered_set<std::string> m_watch_set;
@@ -573,12 +711,22 @@ struct nic_group_model final : nic_group_concept
 // basic_nic_group instantiation at start() time based on which builder
 // methods (monitor/announce/observe) were called.
 //
+// The basic_nic_group callback contract applies unchanged: register the
+// interface-stamped event callbacks in basic_nic_group_options; per-NIC
+// monitor_options / observer_options elements with callbacks set are rejected
+// (std::system_error, std::errc::invalid_argument) by the builder methods.
+// Interfaces appearing at runtime receive instances wired to the same
+// group-level callbacks.
+//
 // Usage:
-//   basic_dynamic_nic_group<default_policy> grp{ctx.get_executor()};
-//   grp.monitor({monitor_options{...}});
-//   grp.announce({server_peer_options{info, opts}});
+//   basic_dynamic_nic_group<default_policy> grp{ctx, basic_nic_group_options<default_policy>{
+//       .on_found = [](const network_interface &nic, const resolved_service &svc) { ... },
+//   }};
+//   std::vector<monitor_options> mon_opts;
+//   mon_opts.push_back(monitor_options{...});
+//   grp.monitor(std::move(mon_opts));
 //   grp.start();
-//   grp.watch("_http._tcp.local");
+//   grp.watch("_http._tcp.local.");
 
 template <policy_like P>
 class basic_dynamic_nic_group
@@ -602,8 +750,17 @@ public:
     // -------------------------------------------------------------------------
 
     /// Add service monitor peer (basic_service_monitor).
+    /// Throws std::system_error (std::errc::invalid_argument) when an element
+    /// carries callbacks — use the group-level callbacks instead.
     void monitor(std::vector<monitor_options> opts)
     {
+        for(const auto &o : opts)
+        {
+            if(auto ec = detail::validate_nic_group_peer_options(o))
+                throw std::system_error(ec,
+                    "basic_dynamic_nic_group::monitor: per-NIC monitor_options must not carry "
+                    "callbacks; use the interface-stamped callbacks in basic_nic_group_options");
+        }
         m_monitor_opts = std::move(opts);
     }
 
@@ -614,8 +771,17 @@ public:
     }
 
     /// Add observer peer (basic_observer).
+    /// Throws std::system_error (std::errc::invalid_argument) when an element
+    /// carries callbacks — use the group-level callbacks instead.
     void observe(std::vector<observer_options> opts)
     {
+        for(const auto &o : opts)
+        {
+            if(auto ec = detail::validate_nic_group_peer_options(o))
+                throw std::system_error(ec,
+                    "basic_dynamic_nic_group::observe: per-NIC observer_options must not carry "
+                    "callbacks; use the interface-stamped callbacks in basic_nic_group_options");
+        }
         m_observer_opts = std::move(opts);
     }
 
@@ -624,8 +790,17 @@ public:
     // -------------------------------------------------------------------------
 
     /// Construct the appropriate basic_nic_group instantiation and start it.
+    /// The first call consumes the builder state; subsequent calls delegate to
+    /// the constructed group, where start() on a running group is a no-op and
+    /// start() after stop() restarts it.
     void start()
     {
+        if(m_impl)
+        {
+            m_impl->start();
+            return;
+        }
+
         const bool has_monitor  = m_monitor_opts.has_value();
         const bool has_server   = m_server_opts.has_value();
         const bool has_observer = m_observer_opts.has_value();

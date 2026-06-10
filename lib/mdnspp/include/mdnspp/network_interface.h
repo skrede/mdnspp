@@ -16,6 +16,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <cstdint>
 #include <cstring>
 #include <algorithm>
 #include <system_error>
@@ -28,7 +29,7 @@ struct network_interface
     std::string name;
     std::string ipv4_address;
     std::string ipv6_address;
-    unsigned int index{0};
+    uint32_t index{0};
     bool is_loopback{false};
     bool is_up{false};
 };
@@ -59,7 +60,7 @@ inline std::vector<network_interface> enumerate_interfaces(std::error_code &ec)
         iface.name = iface_name;
         iface.is_loopback = (ifa->ifa_flags & IFF_LOOPBACK) != 0;
         iface.is_up = (ifa->ifa_flags & IFF_UP) != 0;
-        iface.index = if_nametoindex(ifa->ifa_name);
+        iface.index = static_cast<uint32_t>(if_nametoindex(ifa->ifa_name));
 
         if(ifa->ifa_addr->sa_family == AF_INET)
         {
@@ -103,7 +104,7 @@ inline std::vector<network_interface> enumerate_interfaces(std::error_code &ec)
 
         auto &iface = by_name[iface_name];
         iface.name = iface_name;
-        iface.index = adapter->IfIndex;
+        iface.index = static_cast<uint32_t>(adapter->IfIndex);
         iface.is_up = (adapter->OperStatus == IfOperStatusUp);
         iface.is_loopback = (adapter->IfType == IF_TYPE_SOFTWARE_LOOPBACK);
 

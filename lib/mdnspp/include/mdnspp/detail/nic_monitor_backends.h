@@ -5,10 +5,13 @@
 // out-of-line definitions for basic_nic_monitor<P>::start_native_backend() and
 // stop_native_backend() under platform-specific #ifdef guards.
 //
-// Linux:   AF_NETLINK socket, drained via a fast timer (100 ms).
+// Linux:   AF_NETLINK socket, drained via a 100 ms timer — interface change
+//          detection therefore has a latency floor of 100 ms.
 // macOS:   nw_path_monitor — requires Network.framework (macOS 10.14+).
 // Windows: NotifyIpInterfaceChange — requires iphlpapi.
 // Other:   Stub returning false → polling fallback.
+
+#include "mdnspp/basic_nic_monitor.h"
 
 #ifdef __linux__
 #include <linux/netlink.h>
@@ -31,6 +34,7 @@
 #endif
 
 #include <array>
+#include <cerrno>
 #include <chrono>
 #include <cstddef>
 #include <system_error>
@@ -92,8 +96,20 @@ bool basic_nic_monitor<P>::start_native_backend()
                     {
                         ssize_t n = ::recv(self->m_nl_fd, buf.data(), buf.size(),
                                            MSG_DONTWAIT);
-                        if(n <= 0) break;
-                        changed = true;
+                        if(n > 0)
+                        {
+                            changed = true;
+                            continue;
+                        }
+                        // ENOBUFS: the kernel dropped notifications because the
+                        // socket buffer overflowed — events were lost, so the
+                        // interface list must be resynchronized regardless.
+                        if(n < 0 && errno == ENOBUFS)
+                        {
+                            changed = true;
+                            continue;
+                        }
+                        break;
                     }
 
                     if(changed)

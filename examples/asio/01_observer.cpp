@@ -2,11 +2,14 @@
 #include <mdnspp/records.h>
 #include <mdnspp/basic_observer.h>
 
+#include <chrono>
 #include <variant>
 #include <iostream>
 
 // Observe mDNS multicast traffic using asio_policy.
-// Prints each record to stdout, runs until io_context work drains.
+// Prints each record to stdout. A 30 s timer stops the observation, which
+// completes the token with std::errc::operation_canceled -- the observer's
+// only completion path, since an observation has no natural end.
 
 int main()
 {
@@ -21,10 +24,16 @@ int main()
         }
     };
 
-    observer.async_observe([&io](std::error_code ec)
+    mdnspp::async_observe(observer, [](std::error_code ec)
     {
-        if(ec)
-            io.stop();
+        if(ec == std::errc::operation_canceled)
+            std::cout << "Observation stopped" << std::endl;
+        else if(ec)
+            std::cerr << "observe error: " << ec.message() << std::endl;
     });
+
+    asio::steady_timer stop_timer(io, std::chrono::seconds(30));
+    stop_timer.async_wait([&observer](std::error_code) { observer.stop(); });
+
     io.run();
 }

@@ -7,7 +7,9 @@
 #include <iostream>
 
 // Query mDNS for a specific record type using asio_policy.
-// Prints each record to stdout, completes after silence timeout.
+// Prints each record to stdout. Completes with std::error_code{} at the
+// silence timeout; a stop() before that would complete with
+// std::errc::operation_canceled and the partial results.
 
 int main(int argc, char *argv[])
 {
@@ -33,7 +35,9 @@ int main(int argc, char *argv[])
 
     querier.async_query(name, qtype, [](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)
     {
-        if(ec)
+        if(ec == std::errc::operation_canceled)
+            std::cout << "Query stopped early -- " << results.size() << " partial record(s)" << std::endl;
+        else if(ec)
             std::cerr << "query error: " << ec.message() << std::endl;
         else
             std::cout << "Query complete -- " << results.size() << " record(s)" << std::endl;

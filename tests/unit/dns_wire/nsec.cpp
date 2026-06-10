@@ -127,7 +127,7 @@ SCENARIO("build_probe_query probes all proposed names with the full record set i
                 auto span = std::span<const std::byte>(pkt);
                 auto first = mdnspp::detail::read_dns_name(span, 12);
                 REQUIRE(first.has_value());
-                REQUIRE(*first == "myservice._http._tcp.local.");
+                REQUIRE(*first == "MyService._http._tcp.local.");
 
                 size_t offset = 12;
                 skip_dns_name(span, offset);
@@ -257,7 +257,7 @@ SCENARIO("append_nsec_rr produces a parseable NSEC resource record", "[nsec][bit
         auto info = make_test_service_v46();
         info.address_ipv6 = std::nullopt;
 
-        auto owner_name = encode_dns_name(info.hostname);
+        auto owner_name = encode_dns_name(info.hostname).value();
 
         WHEN("append_nsec_rr is called and wrapped in a DNS response packet")
         {

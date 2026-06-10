@@ -23,8 +23,9 @@ namespace mdnspp::detail {
 //   rtype -- DNS record type
 //   ttl   -- 32-bit TTL in seconds
 //   rdata -- the raw rdata bytes
-// Silently skips the record if the owner name is empty (encoding failure)
-// or if rdata exceeds the uint16_t RDLENGTH limit (65535 bytes).
+// Callers resolve name-encoding failures before this point (encode_dns_name
+// returns expected); the guard below only protects packet structure against
+// an empty owner encoding or rdata exceeding the uint16_t RDLENGTH limit.
 inline void append_dns_rr(std::vector<std::byte> &buf,
                           const std::vector<std::byte> &name,
                           dns_type rtype,

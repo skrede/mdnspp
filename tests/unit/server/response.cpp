@@ -42,7 +42,7 @@ SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response]
                     if(std::holds_alternative<record_ptr>(rv))
                     {
                         const auto &ptr = std::get<record_ptr>(rv);
-                        if(ptr.ptr_name.find("myservice") != dns_name::npos)
+                        if(ptr.ptr_name.find("MyService") != dns_name::npos)
                             found_ptr = true;
                     }
                 }

@@ -119,7 +119,10 @@ public:
     // operation_in_progress / invalid_argument without touching the running query.
     void async_query(std::string_view name, dns_type qtype, completion_handler on_done, response_mode mode = response_mode::multicast)
     {
-        if(auto misuse = check_start_misuse())
+        auto misuse = check_start_misuse();
+        if(!misuse && !dns_name::parse(name).has_value())
+            misuse = make_error_code(mdns_error::invalid_name);
+        if(misuse)
         {
             if(on_done)
                 this->post_guarded([h = std::move(on_done), misuse]() mutable

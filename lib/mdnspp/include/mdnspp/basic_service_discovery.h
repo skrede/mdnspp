@@ -137,7 +137,10 @@ public:
     void async_discover(std::string_view service_type, completion_handler on_done,
                         response_mode mode = response_mode::multicast)
     {
-        if(auto misuse = check_start_misuse())
+        auto misuse = check_start_misuse();
+        if(!misuse && !dns_name::parse(service_type).has_value())
+            misuse = make_error_code(mdns_error::invalid_name);
+        if(misuse)
         {
             if(on_done)
                 this->post_guarded([h = std::move(on_done), misuse]() mutable
@@ -166,7 +169,10 @@ public:
                       browse_handler on_done,
                       response_mode mode = response_mode::multicast)
     {
-        if(auto misuse = check_start_misuse())
+        auto misuse = check_start_misuse();
+        if(!misuse && !dns_name::parse(service_type).has_value())
+            misuse = make_error_code(mdns_error::invalid_name);
+        if(misuse)
         {
             if(on_done)
                 this->post_guarded([h = std::move(on_done), misuse]() mutable

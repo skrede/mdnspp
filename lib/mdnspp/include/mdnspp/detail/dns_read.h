@@ -1,7 +1,9 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_READ_H
 #define HPP_GUARD_MDNSPP_DETAIL_DNS_READ_H
 
+#include "mdnspp/dns_name.h"
 #include "mdnspp/mdns_error.h"
+
 #include "mdnspp/detail/compat.h"
 
 #include <cstddef>
@@ -69,6 +71,12 @@ inline bool skip_dns_name(std::span<const std::byte> buf, size_t &offset)
             return true; // pointer ends name traversal
         }
 
+        // Reserved label tags 01/10 (RFC 1035 §4.1.4): rejected exactly like
+        // read_dns_name (label_len > 63), so skip and read can never disagree
+        // on record boundaries.
+        if((label_len & 0xC0) != 0)
+            return false;
+
         if(label_len == 0)
         {
             // Root label — end of name
@@ -90,11 +98,16 @@ inline bool skip_dns_name(std::span<const std::byte> buf, size_t &offset)
 //     the current offset; self-referential and forward pointers are rejected.
 //   - Maximum 4 pointer hops per name: prevents long chains even in the absence
 //     of cycles (which are impossible by the backward-only invariant).
-//   - Assembled name must not exceed 255 bytes (RFC 1035 §3.1).
-//   - Labels are transcribed as raw bytes (no IDN/punycode — mDNS names are ASCII).
+//   - Wire-encoded name must not exceed 255 bytes (RFC 1035 §3.1), measured
+//     on the unescaped label bytes.
+//   - Label bytes are transcribed with original case preserved (RFC 6762 §16:
+//     comparison, not transmission, is case-insensitive) and RFC 1035 §5.1
+//     escaping applied: '.' and '\' inside a label become "\." and "\\",
+//     non-printable bytes become "\DDD"; bytes >= 0x80 stay verbatim (UTF-8).
 //
-// The result string uses dotted-label FQDN notation with a trailing dot
-// (e.g. "_http._tcp.local."). The root name (\x00) returns an empty string.
+// The result string uses escaped dotted-label FQDN notation with a trailing
+// dot (e.g. "_http._tcp.local."). The root name (\x00) returns an empty
+// string. encode_dns_name parses this form back to identical wire bytes.
 //
 // Returns detail::make_unexpected(mdns_error::parse_error) on any bounds violation,
 // pointer safety violation, or name-length overflow.
@@ -106,7 +119,8 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
 
     int hops = 0;
     constexpr int max_hops = 4;
-    constexpr size_t max_name_len = 255;
+    constexpr size_t max_wire_len = 255;
+    size_t wire_len = 1; // root terminator
 
     while(true)
     {
@@ -138,13 +152,9 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
             continue;
         }
 
-        // Root label — name is complete; append trailing dot for FQDN form
+        // Root label — name is complete (each label already appended its dot)
         if(label_len == 0)
-        {
-            if(!result.empty())
-                result += '.';
             return result;
-        }
 
         // RFC 1035 §2.3.4: labels are 6 bits, max 63 octets
         if(label_len > 63)
@@ -157,63 +167,51 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
         if(label_end > buf.size())
             return detail::make_unexpected(mdns_error::parse_error);
 
-        if(!result.empty())
-            result += '.';
+        // RFC 1035 §3.1: the limit applies to the wire form, not the
+        // (potentially longer) escaped presentation form.
+        wire_len += 1 + static_cast<size_t>(label_len);
+        if(wire_len > max_wire_len)
+            return detail::make_unexpected(mdns_error::parse_error);
 
         for(size_t i = label_start; i < label_end; ++i)
-            result += static_cast<char>(static_cast<uint8_t>(buf[i]));
-
-        // +1 accounts for the trailing dot appended at name completion
-        if(result.size() + 1 > max_name_len)
-            return detail::make_unexpected(mdns_error::parse_error);
+            append_escaped_label_byte(result, static_cast<char>(static_cast<uint8_t>(buf[i])));
+        result += '.';
 
         offset = label_end;
     }
 }
 
-// Converts a DNS name string (e.g. "_http._tcp.local.") to wire label format.
-// Strips trailing dot if present. Each label is prefixed by its length byte.
-// Terminates with \x00 root label.
-inline std::vector<std::byte> encode_dns_name(std::string_view name)
+// Converts a presentation-format DNS name (RFC 1035 §5.1 escaping, e.g.
+// "Dr\. Smith._http._tcp.local.") to wire label format with original byte
+// case preserved. Escapes ("\.", "\\", "\DDD") are parsed; each unescaped
+// label is prefixed by its length byte and the name is terminated by the
+// \x00 root label. "" and "." encode the root name.
+//
+// Returns detail::make_unexpected(mdns_error::invalid_name) on empty labels
+// ("a..b"), malformed escapes, labels over 63 octets or names over 255 wire
+// octets — callers must surface the failure rather than emit a partial name.
+inline detail::expected<std::vector<std::byte>, mdns_error>
+encode_dns_name(std::string_view name)
 {
+    auto labels = parse_presentation_labels(name);
+    if(!labels.has_value())
+        return detail::make_unexpected(labels.error());
+
+    size_t total = 1;
+    for(const auto &label : *labels)
+        total += 1 + label.size();
+
     std::vector<std::byte> result;
-    if(name.empty())
+    result.reserve(total);
+
+    for(const auto &label : *labels)
     {
-        result.push_back(std::byte{0});
-        return result;
-    }
-
-    // Strip trailing dot if present
-    if(name.back() == '.')
-        name.remove_suffix(1);
-
-    constexpr size_t max_label_len = 63;
-    constexpr size_t max_name_len = 255;
-
-    size_t pos = 0;
-    while(pos < name.size())
-    {
-        size_t dot = name.find('.', pos);
-        if(dot == std::string_view::npos)
-            dot = name.size();
-
-        size_t label_len = dot - pos;
-        if(label_len > max_label_len)
-            return {};
-
-        result.push_back(static_cast<std::byte>(static_cast<uint8_t>(label_len)));
-        for(size_t i = pos; i < dot; ++i)
-            result.push_back(static_cast<std::byte>(static_cast<uint8_t>(name[i])));
-
-        pos = dot + 1;
+        result.push_back(static_cast<std::byte>(static_cast<uint8_t>(label.size())));
+        for(char c : label)
+            result.push_back(static_cast<std::byte>(static_cast<uint8_t>(c)));
     }
 
     result.push_back(std::byte{0}); // root label
-
-    // RFC 1035 §3.1: total wire-encoded name must not exceed 255 bytes
-    if(result.size() > max_name_len)
-        return {};
-
     return result;
 }
 

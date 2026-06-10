@@ -50,11 +50,11 @@ inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qt
     packet.push_back(static_cast<std::byte>(0x00));
     packet.push_back(static_cast<std::byte>(0x00));
 
-    // Encoded question name (empty = encoding failure)
+    // Encoded question name (empty packet = encoding failure)
     auto encoded = encode_dns_name(name);
-    if(encoded.empty())
+    if(!encoded.has_value())
         return {};
-    packet.insert(packet.end(), encoded.begin(), encoded.end());
+    packet.insert(packet.end(), encoded->begin(), encoded->end());
 
     // QTYPE (big-endian)
     push_u16_be(packet, detail::to_underlying(qtype));
@@ -83,7 +83,7 @@ inline std::vector<proposed_record> build_proposed_records(const service_info &i
     auto name_service = encode_dns_name(info.service_name);
     auto name_host = encode_dns_name(info.hostname);
 
-    if(name_service.empty() || name_host.empty())
+    if(!name_service.has_value() || !name_host.has_value())
         return {};
 
     std::vector<proposed_record> records;
@@ -94,20 +94,20 @@ inline std::vector<proposed_record> build_proposed_records(const service_info &i
     push_u16_be(rdata_srv, info.priority);
     push_u16_be(rdata_srv, info.weight);
     push_u16_be(rdata_srv, info.port);
-    rdata_srv.insert(rdata_srv.end(), name_host.begin(), name_host.end());
-    records.push_back({name_service, dns_type::srv, std::move(rdata_srv)});
+    rdata_srv.insert(rdata_srv.end(), name_host->begin(), name_host->end());
+    records.push_back({*name_service, dns_type::srv, std::move(rdata_srv)});
 
-    records.push_back({name_service, dns_type::txt, encode_txt_records(info.txt_records)});
+    records.push_back({*name_service, dns_type::txt, encode_txt_records(info.txt_records)});
 
     if(info.address_ipv4.has_value())
     {
         if(auto enc = encode_ipv4(*info.address_ipv4); enc.has_value())
-            records.push_back({name_host, dns_type::a, std::move(*enc)});
+            records.push_back({*name_host, dns_type::a, std::move(*enc)});
     }
     if(info.address_ipv6.has_value())
     {
         if(auto enc = encode_ipv6(*info.address_ipv6); enc.has_value())
-            records.push_back({name_host, dns_type::aaaa, std::move(*enc)});
+            records.push_back({*name_host, dns_type::aaaa, std::move(*enc)});
     }
 
     return records;
@@ -125,7 +125,7 @@ inline std::vector<std::byte> build_probe_query(const service_info &info,
     auto name_service = encode_dns_name(info.service_name);
     auto name_host = encode_dns_name(info.hostname);
 
-    if(name_service.empty() || name_host.empty())
+    if(!name_service.has_value() || !name_host.has_value())
         return {};
 
     auto proposed = build_proposed_records(info);
@@ -133,7 +133,7 @@ inline std::vector<std::byte> build_probe_query(const service_info &info,
         return {};
 
     std::vector<std::byte> packet;
-    packet.reserve(12 + name_service.size() + name_host.size() + 8 + proposed.size() * 32);
+    packet.reserve(12 + name_service->size() + name_host->size() + 8 + proposed.size() * 32);
 
     // DNS header
     push_u16_be(packet, 0x0000); // id = 0
@@ -144,10 +144,10 @@ inline std::vector<std::byte> build_probe_query(const service_info &info,
     push_u16_be(packet, 0x0000); // arcount = 0
 
     // Question section: service_name then hostname, QTYPE=ANY, QCLASS=IN|QU
-    packet.insert(packet.end(), name_service.begin(), name_service.end());
+    packet.insert(packet.end(), name_service->begin(), name_service->end());
     push_u16_be(packet, detail::to_underlying(dns_type::any)); // QTYPE = ANY (0x00FF)
     push_u16_be(packet, uint16_t{0x8001}); // QCLASS = IN | QU bit
-    packet.insert(packet.end(), name_host.begin(), name_host.end());
+    packet.insert(packet.end(), name_host->begin(), name_host->end());
     push_u16_be(packet, detail::to_underlying(dns_type::any));
     push_u16_be(packet, uint16_t{0x8001});
 
@@ -165,43 +165,49 @@ inline void append_known_answer(std::vector<std::byte> &buf, const mdns_record_v
 {
     std::visit([&buf](const auto &r)
     {
+        // Encoding failure omits the record: the packet stays structurally
+        // valid and the caller's ancount reflects appended records only.
+        // Cached records decoded from the wire always re-encode successfully.
         auto name = encode_dns_name(r.name);
+        if(!name.has_value())
+            return;
 
         using T = std::decay_t<decltype(r)>;
 
         if constexpr(std::is_same_v<T, record_ptr>)
         {
             auto rdata = encode_dns_name(r.ptr_name);
-            append_dns_rr(buf, name, dns_type::ptr, r.ttl, rdata);
+            if(rdata.has_value())
+                append_dns_rr(buf, *name, dns_type::ptr, r.ttl, *rdata);
         }
         else if constexpr(std::is_same_v<T, record_srv>)
         {
+            auto target = encode_dns_name(r.srv_name);
+            if(!target.has_value())
+                return;
             std::vector<std::byte> rdata;
             push_u16_be(rdata, r.priority);
             push_u16_be(rdata, r.weight);
             push_u16_be(rdata, r.port);
-            auto target = encode_dns_name(r.srv_name);
-            rdata.insert(rdata.end(), target.begin(), target.end());
-            append_dns_rr(buf, name, dns_type::srv, r.ttl, rdata);
+            rdata.insert(rdata.end(), target->begin(), target->end());
+            append_dns_rr(buf, *name, dns_type::srv, r.ttl, rdata);
         }
         else if constexpr(std::is_same_v<T, record_a>)
         {
-            // Encoding failure silently omits the record; the resulting packet
-            // stays structurally valid and ancount reflects appended records.
             auto enc = encode_ipv4(r.address_string);
             if(enc.has_value())
-                append_dns_rr(buf, name, dns_type::a, r.ttl, *enc);
+                append_dns_rr(buf, *name, dns_type::a, r.ttl, *enc);
         }
         else if constexpr(std::is_same_v<T, record_aaaa>)
         {
             auto enc = encode_ipv6(r.address_string);
             if(enc.has_value())
-                append_dns_rr(buf, name, dns_type::aaaa, r.ttl, *enc);
+                append_dns_rr(buf, *name, dns_type::aaaa, r.ttl, *enc);
         }
         else if constexpr(std::is_same_v<T, record_txt>)
         {
             auto rdata = encode_txt_records(r.entries);
-            append_dns_rr(buf, name, dns_type::txt, r.ttl, rdata);
+            append_dns_rr(buf, *name, dns_type::txt, r.ttl, rdata);
         }
     }, rec);
 }

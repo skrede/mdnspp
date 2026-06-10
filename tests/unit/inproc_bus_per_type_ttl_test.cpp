@@ -106,12 +106,12 @@ TEST_CASE("Per-type TTLs appear in wire responses", "[inproc][ttl]")
             }
             else if constexpr (std::is_same_v<T, record_srv>)
             {
-                if(r.name.find("pertypettl") != dns_name::npos)
+                if(r.name.find("PerTypeTtl") != dns_name::npos)
                     ttl_by_type["srv"] = r.ttl;
             }
             else if constexpr (std::is_same_v<T, record_txt>)
             {
-                if(r.name.find("pertypettl") != dns_name::npos)
+                if(r.name.find("PerTypeTtl") != dns_name::npos)
                     ttl_by_type["txt"] = r.ttl;
             }
             else if constexpr (std::is_same_v<T, record_a>)
@@ -180,7 +180,7 @@ TEST_CASE("Goodbye uses TTL=0 for all record types", "[inproc][ttl]")
             }
             else if constexpr (std::is_same_v<T, record_srv>)
             {
-                if(r.name.find("gbyettl") != dns_name::npos)
+                if(r.name.find("GbyeTtl") != dns_name::npos)
                     goodbye_ttls["srv"] = r.ttl;
             }
             else if constexpr (std::is_same_v<T, record_a>)

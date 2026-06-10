@@ -12,6 +12,7 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <algorithm>
 
 namespace mdnspp::detail {
@@ -37,12 +38,16 @@ inline service_wire_records encode_service_records(const mdnspp::service_info &i
 {
     service_wire_records w;
 
-    w.name_service_type = encode_dns_name(info.service_type);
-    w.name_service_name = encode_dns_name(info.service_name);
-    w.name_hostname = encode_dns_name(info.hostname);
+    auto name_service_type = encode_dns_name(info.service_type);
+    auto name_service_name = encode_dns_name(info.service_name);
+    auto name_hostname = encode_dns_name(info.hostname);
 
-    if(w.name_service_type.empty() || w.name_service_name.empty() || w.name_hostname.empty())
+    if(!name_service_type.has_value() || !name_service_name.has_value() || !name_hostname.has_value())
         return w;
+
+    w.name_service_type = std::move(*name_service_type);
+    w.name_service_name = std::move(*name_service_name);
+    w.name_hostname = std::move(*name_hostname);
 
     // PTR rdata: DNS-encoded service_name
     w.rdata_ptr = w.name_service_name;

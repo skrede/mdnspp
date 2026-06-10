@@ -171,7 +171,7 @@ TEST_CASE("Discovery lifecycle: found and lost", "[inproc][discovery]")
 
     // DNS names are lowercased on the wire — instance_name.str() is lowercase.
     REQUIRE_FALSE(found_services.empty());
-    CHECK(found_services[0].instance_name.str() == "myserver._http._tcp.local.");
+    CHECK(found_services[0].instance_name.str() == "MyServer._http._tcp.local.");
     CHECK(found_services[0].port == 8080);
     CHECK_FALSE(found_services[0].ipv4_addresses.empty());
 

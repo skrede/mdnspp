@@ -1081,9 +1081,10 @@ private:
     /// multi-question message rather than separate packets.
     void send_instance_queries(std::string_view inst_name)
     {
-        auto encoded = detail::encode_dns_name(inst_name);
-        if(encoded.empty())
+        auto encoded_name = detail::encode_dns_name(inst_name);
+        if(!encoded_name.has_value())
             return;
+        const auto &encoded = *encoded_name;
 
         static constexpr std::array<dns_type, 4> qtypes{dns_type::srv, dns_type::txt,
                                                         dns_type::a, dns_type::aaaa};

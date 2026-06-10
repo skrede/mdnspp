@@ -239,7 +239,7 @@ TEST_CASE("extract_authority_records decompresses SRV target names", "[tiebreak]
     push_u16_be(pkt, 0x0001); // nscount
     push_u16_be(pkt, 0x0000); // arcount
 
-    auto qname = encode_dns_name("Shared._http._tcp.local.");
+    auto qname = encode_dns_name("Shared._http._tcp.local.").value();
     pkt.insert(pkt.end(), qname.begin(), qname.end());
     push_u16_be(pkt, to_underlying(mdnspp::dns_type::any));
     push_u16_be(pkt, 0x8001);
@@ -266,7 +266,7 @@ TEST_CASE("extract_authority_records decompresses SRV target names", "[tiebreak]
     push_u16_be(expected, info.priority);
     push_u16_be(expected, info.weight);
     push_u16_be(expected, info.port);
-    auto target = encode_dns_name("Shared._http._tcp.local.");
+    auto target = encode_dns_name("Shared._http._tcp.local.").value();
     expected.insert(expected.end(), target.begin(), target.end());
 
     CHECK(theirs[0].rtype == to_underlying(mdnspp::dns_type::srv));

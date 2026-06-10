@@ -11,6 +11,7 @@
 #include <compare>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <algorithm>
 
 namespace mdnspp::detail {
@@ -139,15 +140,16 @@ inline std::vector<tiebreak_record> extract_authority_records(std::span<const st
             auto target = read_dns_name(data, offset + 6);
             if(!target.has_value()) return {};
             auto encoded = encode_dns_name(*target);
-            if(encoded.empty()) return {};
-            rdata.insert(rdata.end(), encoded.begin(), encoded.end());
+            if(!encoded.has_value()) return {};
+            rdata.insert(rdata.end(), encoded->begin(), encoded->end());
         }
         else if(rtype == to_underlying(dns_type::ptr))
         {
             auto target = read_dns_name(data, offset);
             if(!target.has_value()) return {};
-            rdata = encode_dns_name(*target);
-            if(rdata.empty()) return {};
+            auto encoded = encode_dns_name(*target);
+            if(!encoded.has_value()) return {};
+            rdata = std::move(*encoded);
         }
         else
         {

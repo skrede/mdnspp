@@ -42,7 +42,7 @@ SCENARIO("async_discover returns PTR record from mock socket", "[service_discove
                 REQUIRE(std::holds_alternative<record_ptr>(sd.results()[0]));
 
                 const auto &ptr = std::get<record_ptr>(sd.results()[0]);
-                REQUIRE(ptr.ptr_name.find("myservice") != dns_name::npos);
+                REQUIRE(ptr.ptr_name.find("MyService") != dns_name::npos);
             }
         }
     }
@@ -81,7 +81,7 @@ SCENARIO("async_discover fires completion callback with results", "[service_disc
                 REQUIRE(received_results.size() == 1);
                 REQUIRE(std::holds_alternative<record_ptr>(received_results[0]));
                 const auto &ptr = std::get<record_ptr>(received_results[0]);
-                REQUIRE(ptr.ptr_name.find("myservice") != dns_name::npos);
+                REQUIRE(ptr.ptr_name.find("MyService") != dns_name::npos);
             }
 
             AND_THEN("results() accessor is still populated (completion handler received a copy)")
@@ -245,7 +245,7 @@ SCENARIO("async_discover skips malformed records and returns valid ones", "[serv
                 REQUIRE(sd.results().size() == 1);
                 REQUIRE(std::holds_alternative<record_ptr>(sd.results()[0]));
                 const auto &ptr = std::get<record_ptr>(sd.results()[0]);
-                REQUIRE(ptr.ptr_name.find("good") != dns_name::npos);
+                REQUIRE(ptr.ptr_name.find("Good") != dns_name::npos);
             }
         }
     }

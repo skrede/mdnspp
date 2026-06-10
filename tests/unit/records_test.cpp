@@ -32,7 +32,7 @@ TEST_CASE("record_ptr streams correctly", "[records][operator<<]")
     REQUIRE(contains(s, "192.168.1.10"));
     REQUIRE(contains(s, "PTR"));
     REQUIRE(contains(s, "_http._tcp.local."));
-    REQUIRE(contains(s, "myservice._http._tcp.local."));
+    REQUIRE(contains(s, "MyService._http._tcp.local."));
     REQUIRE(contains(s, "120"));
 }
 

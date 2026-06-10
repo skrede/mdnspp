@@ -5,15 +5,13 @@
 #include "mdnspp/service_info.h"
 #include "mdnspp/service_options.h"
 
-#include "mdnspp/detail/dns_read.h"
-
 #include <chrono>
 #include <system_error>
 
 namespace mdnspp::detail {
 
 // Validates the service_options / mdns_options fields the service server
-// consumes, plus the encodability of the service names. Returns
+// consumes, plus the validity of the service names. Returns
 // std::errc::invalid_argument on the first violated constraint, or a
 // default-constructed error_code when everything is consistent.
 inline std::error_code validate_server_options(const service_info &info,
@@ -22,9 +20,12 @@ inline std::error_code validate_server_options(const service_info &info,
 {
     auto invalid = std::make_error_code(std::errc::invalid_argument);
 
-    if(encode_dns_name(info.service_name).empty()
-       || encode_dns_name(info.service_type).empty()
-       || encode_dns_name(info.hostname).empty())
+    // dns_name normalizes invalid presentation input (bad escapes, empty
+    // labels, oversize labels/names) to the empty name, so emptiness covers
+    // both absent and invalid names. The root name is not a service name.
+    if(info.service_name.empty()
+       || info.service_type.empty()
+       || info.hostname.empty())
         return invalid;
 
     if(opts.probe_count < 1 || opts.announce_count < 1)

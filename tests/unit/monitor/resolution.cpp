@@ -61,7 +61,7 @@ TEST_CASE("unwatch: fires on_lost(unwatched) for each live service", "[monitor][
     ex.drain_posted();
 
     REQUIRE(lost_names.size() == 1);
-    CHECK(lost_names[0] == "myserver._http._tcp.local.");
+    CHECK(lost_names[0] == "MyServer._http._tcp.local.");
     REQUIRE(lost_reasons.size() == 1);
     CHECK(lost_reasons[0] == mdnspp::loss_reason::unwatched);
 }

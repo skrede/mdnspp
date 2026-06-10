@@ -52,7 +52,7 @@ static std::vector<std::byte> srv_rdata(uint16_t priority, uint16_t weight, uint
     push_u16_be(rdata, priority);
     push_u16_be(rdata, weight);
     push_u16_be(rdata, port);
-    auto encoded = encode_dns_name(target);
+    auto encoded = encode_dns_name(target).value();
     rdata.insert(rdata.end(), encoded.begin(), encoded.end());
     return rdata;
 }
@@ -77,7 +77,7 @@ static std::vector<std::byte> build_answer_packet(
     push_u16_be(pkt, 0x0000); // arcount
 
     // A dummy question section (so offset starts after it)
-    auto qname = encode_dns_name("_http._tcp.local.");
+    auto qname = encode_dns_name("_http._tcp.local.").value();
     pkt.insert(pkt.end(), qname.begin(), qname.end());
     push_u16_be(pkt, mdnspp::detail::to_underlying(dns_type::ptr));
     push_u16_be(pkt, 0x0001); // IN class
@@ -87,7 +87,7 @@ static std::vector<std::byte> build_answer_packet(
     // Answer records
     for(const auto &a : answers)
     {
-        auto encoded_name = encode_dns_name(a.name);
+        auto encoded_name = encode_dns_name(a.name).value();
         pkt.insert(pkt.end(), encoded_name.begin(), encoded_name.end());
         push_u16_be(pkt, mdnspp::detail::to_underlying(a.rtype));
         push_u16_be(pkt, 0x0001); // class IN
@@ -119,11 +119,21 @@ TEST_CASE("parse_known_answers", "[server_known_answer]")
     {
         size_t offset;
         auto pkt = build_answer_packet({
-            {"_http._tcp.local.", dns_type::ptr, 4500, encode_dns_name("MyApp._http._tcp.local.")}
+            {"_http._tcp.local.", dns_type::ptr, 4500, encode_dns_name("MyApp._http._tcp.local.").value()}
         }, offset);
         auto mask = parse_known_answers(std::span(pkt), offset, info);
         CHECK(mask.ptr);
         CHECK_FALSE(mask.srv);
+    }
+
+    SECTION("suppresses case-variant answers (RFC 6762 section 16: comparison is case-insensitive)")
+    {
+        size_t offset;
+        auto pkt = build_answer_packet({
+            {"_HTTP._TCP.LOCAL.", dns_type::ptr, 4500, encode_dns_name("MYAPP._HTTP._TCP.LOCAL.").value()}
+        }, offset);
+        auto mask = parse_known_answers(std::span(pkt), offset, info);
+        CHECK(mask.ptr);
     }
 
     SECTION("does NOT suppress a PTR answer naming a DIFFERENT instance")
@@ -134,7 +144,7 @@ TEST_CASE("parse_known_answers", "[server_known_answer]")
         // responder never answers a peer's browse for the shared service type.
         size_t offset;
         auto pkt = build_answer_packet({
-            {"_http._tcp.local.", dns_type::ptr, 4500, encode_dns_name("OtherApp._http._tcp.local.")}
+            {"_http._tcp.local.", dns_type::ptr, 4500, encode_dns_name("OtherApp._http._tcp.local.").value()}
         }, offset);
         auto mask = parse_known_answers(std::span(pkt), offset, info);
         CHECK_FALSE(mask.ptr);
@@ -144,7 +154,7 @@ TEST_CASE("parse_known_answers", "[server_known_answer]")
     {
         size_t offset;
         auto pkt = build_answer_packet({
-            {"_http._tcp.local.", dns_type::ptr, 1000, encode_dns_name("MyApp._http._tcp.local.")}
+            {"_http._tcp.local.", dns_type::ptr, 1000, encode_dns_name("MyApp._http._tcp.local.").value()}
         }, offset);
         auto mask = parse_known_answers(std::span(pkt), offset, info);
         CHECK_FALSE(mask.ptr);
@@ -154,7 +164,7 @@ TEST_CASE("parse_known_answers", "[server_known_answer]")
     {
         size_t offset;
         auto pkt = build_answer_packet({
-            {"_other._tcp.local.", dns_type::ptr, 4500, encode_dns_name("MyApp._http._tcp.local.")}
+            {"_other._tcp.local.", dns_type::ptr, 4500, encode_dns_name("MyApp._http._tcp.local.").value()}
         }, offset);
         auto mask = parse_known_answers(std::span(pkt), offset, info);
         CHECK_FALSE(mask.ptr);
@@ -243,7 +253,7 @@ TEST_CASE("parse_known_answers with custom per-type thresholds", "[server_known_
     {
         size_t offset;
         auto pkt = build_answer_packet({
-            {"_http._tcp.local.", dns_type::ptr, 500, encode_dns_name("MyApp._http._tcp.local.")}
+            {"_http._tcp.local.", dns_type::ptr, 500, encode_dns_name("MyApp._http._tcp.local.").value()}
         }, offset);
         auto mask = parse_known_answers(std::span(pkt), offset, info, ka_thresholds{.ptr = 400});
         CHECK(mask.ptr);
@@ -253,7 +263,7 @@ TEST_CASE("parse_known_answers with custom per-type thresholds", "[server_known_
     {
         size_t offset;
         auto pkt = build_answer_packet({
-            {"_http._tcp.local.", dns_type::ptr, 500, encode_dns_name("MyApp._http._tcp.local.")}
+            {"_http._tcp.local.", dns_type::ptr, 500, encode_dns_name("MyApp._http._tcp.local.").value()}
         }, offset);
         auto mask = parse_known_answers(std::span(pkt), offset, info, ka_thresholds{.ptr = 600});
         CHECK_FALSE(mask.ptr);

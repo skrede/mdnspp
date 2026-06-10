@@ -410,7 +410,10 @@ private:
                     for(auto svc : inst_ptr->services())
                     {
                         svc.source_interface = slot.nic;
-                        auto key = svc.instance_name.str();
+                        // ASCII-folded key: case variants of one instance
+                        // observed on different interfaces merge to one entry
+                        // (RFC 6762 section 16).
+                        auto key = svc.instance_name.comparison_key();
                         by_name[key] = std::move(svc);
                     }
                 }

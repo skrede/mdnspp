@@ -270,7 +270,7 @@ TEST_CASE("build_answer_response", "[server_response_aggregation]")
         CHECK(dns_name{nsec->name} == info.service_name);
 
         // rdata = owner name + window block; bitmap must flag TXT(16), SRV(33), NSEC(47)
-        auto owner = encode_dns_name(info.service_name);
+        auto owner = encode_dns_name(info.service_name).value();
         REQUIRE(nsec->rdata.size() > owner.size() + 2);
         auto window = std::to_integer<uint8_t>(nsec->rdata[owner.size()]);
         auto length = std::to_integer<uint8_t>(nsec->rdata[owner.size() + 1]);
@@ -294,7 +294,7 @@ TEST_CASE("build_answer_response", "[server_response_aggregation]")
         REQUIRE(nsec != nullptr);
         CHECK(dns_name{nsec->name} == info.hostname);
 
-        auto owner = encode_dns_name(info.hostname);
+        auto owner = encode_dns_name(info.hostname).value();
         REQUIRE(nsec->rdata.size() > owner.size() + 2);
         auto length = std::to_integer<uint8_t>(nsec->rdata[owner.size() + 1]);
         REQUIRE(length == 1); // only A(1) exists (no IPv6 configured)
@@ -314,7 +314,7 @@ TEST_CASE("build_answer_response", "[server_response_aggregation]")
         REQUIRE(nsec != nullptr);
         CHECK(dns_name{nsec->name} == info.service_type);
 
-        auto owner = encode_dns_name(info.service_type);
+        auto owner = encode_dns_name(info.service_type).value();
         auto length = std::to_integer<uint8_t>(nsec->rdata[owner.size() + 1]);
         REQUIRE(length == 2);
         const std::byte *bitmap = nsec->rdata.data() + owner.size() + 2;
@@ -348,7 +348,7 @@ TEST_CASE("build_answer_response legacy unicast framing (RFC 6762 section 6.7)",
 
     // Simulated legacy query: one PTR question with a nonzero ID.
     std::vector<std::byte> questions;
-    auto qname = encode_dns_name(info.service_type);
+    auto qname = encode_dns_name(info.service_type).value();
     questions.insert(questions.end(), qname.begin(), qname.end());
     push_u16_be(questions, to_underlying(dns_type::ptr));
     push_u16_be(questions, 0x0001);

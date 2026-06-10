@@ -39,7 +39,7 @@ static service_info make_test_info()
 // Helper: build wire-encoded DNS name bytes
 static std::vector<std::byte> wire_name(std::string_view name)
 {
-    return encode_dns_name(name);
+    return encode_dns_name(name).value();
 }
 
 // Helper: build a minimal DNS query packet with one question
@@ -55,7 +55,7 @@ static std::vector<std::byte> build_query_packet(std::string_view qname, dns_typ
     push_u16_be(pkt, 0x0000); // nscount
     push_u16_be(pkt, 0x0000); // arcount
 
-    auto encoded = encode_dns_name(qname);
+    auto encoded = encode_dns_name(qname).value();
     pkt.insert(pkt.end(), encoded.begin(), encoded.end());
     push_u16_be(pkt, mdnspp::detail::to_underlying(qtype));
     uint16_t qclass = 0x0001; // IN
@@ -81,7 +81,7 @@ static std::vector<std::byte> build_multi_query_packet(
 
     for(auto &[name, qtype] : questions)
     {
-        auto encoded = encode_dns_name(name);
+        auto encoded = encode_dns_name(name).value();
         pkt.insert(pkt.end(), encoded.begin(), encoded.end());
         push_u16_be(pkt, mdnspp::detail::to_underlying(qtype));
         uint16_t qclass = 0x0001;

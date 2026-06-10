@@ -136,13 +136,13 @@ static std::vector<std::byte> make_query_with_known_answer(
     push_u16_be(packet, 0x0000);
 
     // Question section
-    auto encoded_qname = encode_dns_name(qname);
+    auto encoded_qname = encode_dns_name(qname).value();
     packet.insert(packet.end(), encoded_qname.begin(), encoded_qname.end());
     push_u16_be(packet, mdnspp::detail::to_underlying(qtype));
     push_u16_be(packet, 0x0001); // qclass=IN (multicast)
 
     // Answer section
-    auto encoded_answer = encode_dns_name(answer_name);
+    auto encoded_answer = encode_dns_name(answer_name).value();
     append_dns_rr(packet, encoded_answer, answer_rtype, answer_ttl, answer_rdata, false);
 
     return packet;
@@ -161,7 +161,7 @@ SCENARIO("known-answer suppression skips records with TTL >= 50%", "[known-answe
         WHEN("a PTR query with known answer TTL=3000 (>2250) is injected")
         {
             // Build PTR rdata pointing to service_name
-            auto ptr_rdata = encode_dns_name("MyService._http._tcp.local.");
+            auto ptr_rdata = encode_dns_name("MyService._http._tcp.local.").value();
 
             auto query = make_query_with_known_answer(
                 "_http._tcp.local.", dns_type::ptr,
@@ -204,7 +204,7 @@ SCENARIO("suppress_known_answers=false sends full response", "[known-answer-supp
 
         WHEN("a PTR query with known answer TTL=3000 is injected")
         {
-            auto ptr_rdata = encode_dns_name("MyService._http._tcp.local.");
+            auto ptr_rdata = encode_dns_name("MyService._http._tcp.local.").value();
 
             auto query = make_query_with_known_answer(
                 "_http._tcp.local.", dns_type::ptr,
@@ -311,7 +311,7 @@ SCENARIO("known answer with stale rdata does NOT suppress the answer", "[known-a
             push_u16_be(stale_rdata, 0);    // priority
             push_u16_be(stale_rdata, 0);    // weight
             push_u16_be(stale_rdata, 9999); // stale port (ours is 8080)
-            auto target = encode_dns_name("myhost.local.");
+            auto target = encode_dns_name("myhost.local.").value();
             stale_rdata.insert(stale_rdata.end(), target.begin(), target.end());
 
             auto query = make_query_with_known_answer(
@@ -348,7 +348,7 @@ SCENARIO("known answer with stale rdata does NOT suppress the answer", "[known-a
             push_u16_be(matching_rdata, 0);
             push_u16_be(matching_rdata, 0);
             push_u16_be(matching_rdata, 8080);
-            auto target = encode_dns_name("myhost.local.");
+            auto target = encode_dns_name("myhost.local.").value();
             matching_rdata.insert(matching_rdata.end(), target.begin(), target.end());
 
             auto query = make_query_with_known_answer(

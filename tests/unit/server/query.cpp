@@ -26,7 +26,7 @@ static std::vector<std::byte> make_multi_question_query(std::initializer_list<qu
 
     for(const auto &q : questions)
     {
-        auto encoded = encode_dns_name(q.name);
+        auto encoded = encode_dns_name(q.name).value();
         packet.insert(packet.end(), encoded.begin(), encoded.end());
         push_u16_be(packet, mdnspp::detail::to_underlying(q.qtype));
         push_u16_be(packet, q.qu_bit ? uint16_t{0x8001} : uint16_t{0x0001});
@@ -328,7 +328,7 @@ SCENARIO("Unmatched questions are silently skipped", "[multi-question][skip]")
                     if(std::holds_alternative<record_ptr>(rv))
                     {
                         const auto &ptr = std::get<record_ptr>(rv);
-                        if(ptr.ptr_name.find("myservice") != dns_name::npos)
+                        if(ptr.ptr_name.find("MyService") != dns_name::npos)
                             has_our_ptr = true;
                         if(ptr.ptr_name.find("_other") != dns_name::npos)
                             has_other_ptr = true;
@@ -613,6 +613,77 @@ SCENARIO("Second TC packet from same source accumulates into existing entry",
             THEN("tc_timer still has a pending handler after second packet")
             {
                 REQUIRE(server.tc_timer().has_pending());
+            }
+        }
+    }
+}
+
+SCENARIO("service_server matches queries case-insensitively and answers with original case",
+         "[service_server][query][case]")
+{
+    GIVEN("a live service server announced with mixed-case names")
+    {
+        mock_executor ex;
+        basic_service_server<mock_policy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("an all-uppercase PTR query for the service type is injected")
+        {
+            auto query = make_multi_question_query({
+                {"_HTTP._TCP.LOCAL.", dns_type::ptr, false}
+            });
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.timer().fire();
+
+            THEN("the server answers (RFC 6762 section 16) with case preserved on the wire")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                const auto &pkt = server.socket().sent_packets().back();
+                auto records = parse_response(pkt.data);
+
+                bool has_our_ptr = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<record_ptr>(rv))
+                    {
+                        const auto &ptr = std::get<record_ptr>(rv);
+                        if(ptr.ptr_name.str().find("MyService") != std::string::npos)
+                            has_our_ptr = true;
+                    }
+                }
+                REQUIRE(has_our_ptr);
+            }
+        }
+
+        WHEN("a lowercase SRV query for the mixed-case instance name is injected")
+        {
+            auto query = make_multi_question_query({
+                {"myservice._http._tcp.local.", dns_type::srv, false}
+            });
+            endpoint sender{"192.168.1.51", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.timer().fire();
+
+            THEN("the server answers with an SRV record owned by the original-case name")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                const auto &pkt = server.socket().sent_packets().back();
+                auto records = parse_response(pkt.data);
+
+                bool has_srv = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<record_srv>(rv))
+                    {
+                        const auto &srv = std::get<record_srv>(rv);
+                        if(srv.name.str().find("MyService") != std::string::npos)
+                            has_srv = true;
+                    }
+                }
+                REQUIRE(has_srv);
             }
         }
     }

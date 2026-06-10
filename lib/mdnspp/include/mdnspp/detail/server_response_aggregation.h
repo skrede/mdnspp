@@ -337,7 +337,9 @@ inline std::vector<std::byte> build_meta_query_response(const service_info &info
 
     auto owner = encode_dns_name(meta_query_name);
     auto rdata = encode_dns_name(info.service_type);
-    append_dns_rr(packet, owner, dns_type::ptr, ttl, rdata, false);
+    if(!owner.has_value() || !rdata.has_value())
+        return {};
+    append_dns_rr(packet, *owner, dns_type::ptr, ttl, *rdata, false);
 
     return packet;
 }
@@ -357,7 +359,9 @@ inline std::vector<std::byte> build_subtype_response(std::string_view subtype_la
     auto subtype_name = std::string(subtype_label) + "._sub." + info.service_type.str();
     auto owner = encode_dns_name(subtype_name);
     auto rdata = encode_dns_name(info.service_name);
-    append_dns_rr(packet, owner, dns_type::ptr, ttl, rdata, false);
+    if(!owner.has_value() || !rdata.has_value())
+        return {};
+    append_dns_rr(packet, *owner, dns_type::ptr, ttl, *rdata, false);
 
     return packet;
 }

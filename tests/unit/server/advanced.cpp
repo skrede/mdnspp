@@ -155,7 +155,7 @@ SCENARIO("server responds to subtype PTR query", "[subtype]")
                         {
                             const auto &ptr = std::get<record_ptr>(rv);
                             if(ptr.name.find("_printer._sub._http._tcp") != dns_name::npos &&
-                               ptr.ptr_name.find("myservice") != dns_name::npos)
+                               ptr.ptr_name.find("MyService") != dns_name::npos)
                             {
                                 found_subtype_ptr = true;
                             }
@@ -192,7 +192,7 @@ SCENARIO("announce_subtypes=true includes subtype PTR in announcements", "[subty
                     {
                         const auto &ptr = std::get<record_ptr>(rv);
                         if(ptr.name.find("_printer._sub._http._tcp") != dns_name::npos &&
-                           ptr.ptr_name.find("myservice") != dns_name::npos)
+                           ptr.ptr_name.find("MyService") != dns_name::npos)
                         {
                             found_subtype_ptr = true;
                         }

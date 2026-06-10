@@ -144,9 +144,9 @@ SCENARIO("async_browse delivers multiple resolved services", "[service_discovery
 
                 // Find Alpha and Beta (order not guaranteed due to unordered_map)
                 auto alpha_it = std::find_if(received_services.begin(), received_services.end(),
-                                             [](const resolved_service &s) { return s.instance_name.find("alpha") != dns_name::npos; });
+                                             [](const resolved_service &s) { return s.instance_name.find("Alpha") != dns_name::npos; });
                 auto beta_it = std::find_if(received_services.begin(), received_services.end(),
-                                            [](const resolved_service &s) { return s.instance_name.find("beta") != dns_name::npos; });
+                                            [](const resolved_service &s) { return s.instance_name.find("Beta") != dns_name::npos; });
 
                 REQUIRE(alpha_it != received_services.end());
                 REQUIRE(beta_it != received_services.end());
@@ -251,7 +251,7 @@ SCENARIO("async_discover_subtype discovers subtype instances", "[service_discove
                 REQUIRE(received_results.size() == 1);
                 REQUIRE(std::holds_alternative<record_ptr>(received_results[0]));
                 const auto &ptr = std::get<record_ptr>(received_results[0]);
-                REQUIRE(ptr.ptr_name.find("myservice") != dns_name::npos);
+                REQUIRE(ptr.ptr_name.find("MyService") != dns_name::npos);
             }
         }
     }

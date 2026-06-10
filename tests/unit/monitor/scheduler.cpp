@@ -234,7 +234,7 @@ TEST_CASE("scheduler: erase_expired called on every tick (drives loss detection)
     ex.drain_posted();
 
     REQUIRE(lost_names.size() == 1);
-    CHECK(lost_names[0] == "schedexp._http._tcp.local.");
+    CHECK(lost_names[0] == "SchedExp._http._tcp.local.");
 }
 
 TEST_CASE("ttl_refresh: refresh query sent at 80% threshold in ttl_refresh mode",

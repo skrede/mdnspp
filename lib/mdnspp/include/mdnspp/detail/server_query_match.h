@@ -209,7 +209,7 @@ rebuild_question_section(std::span<const std::byte> data)
             break;
 
         auto encoded = encode_dns_name(*decoded);
-        if(encoded.empty())
+        if(!encoded.has_value())
             break;
 
         uint16_t qtype = read_u16_be(data.data() + offset);
@@ -217,7 +217,7 @@ rebuild_question_section(std::span<const std::byte> data)
         uint16_t qclass = static_cast<uint16_t>(read_u16_be(data.data() + offset + 2) & 0x7FFFu);
         offset += 4;
 
-        section.insert(section.end(), encoded.begin(), encoded.end());
+        section.insert(section.end(), encoded->begin(), encoded->end());
         push_u16_be(section, qtype);
         push_u16_be(section, qclass);
         ++rebuilt;

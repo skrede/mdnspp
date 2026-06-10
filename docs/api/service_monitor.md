@@ -40,12 +40,12 @@ using timer_type    = typename P::timer_type;
 ```cpp
 explicit basic_service_monitor(executor_type ex,
                                monitor_options opts = {},
-                               socket_options sock_opts = {},
+                               policy_socket_options_t<P> sock_opts = {},
                                mdns_options mdns_opts = {},
                                cache_options copts = {});
 ```
 
-Constructs the monitor from an executor. The optional [`monitor_options`](monitor_options.md) supplies discovery callbacks and the monitoring mode. The optional `sock_opts` controls network interface selection and multicast group (see [Socket Options](../socket-options.md)). The optional [`mdns_options`](mdns_options.md) controls query backoff timing, TTL refresh thresholds, and TC accumulation windows. The optional `cache_options` controls goodbye grace period and cache expiry callbacks. Throws on socket construction failure.
+Constructs the monitor from an executor. The optional [`monitor_options`](monitor_options.md) supplies discovery callbacks, the error handler, and the monitoring mode. The optional `sock_opts` controls network interface selection and multicast group (see [Socket Options](../socket-options.md)); its type is `policy_socket_options_t<P>` — plain `socket_options` for the default and asio policies. The optional [`mdns_options`](mdns_options.md) controls query backoff timing, TTL refresh thresholds, and TC accumulation windows. The optional [`cache_options`](cache_options.md) controls the goodbye grace period and cache expiry callbacks. Throws `std::system_error` on socket construction failure or invalid options (`std::errc::invalid_argument`).
 
 **Note:** `monitor_options` is move-only. Use `std::move` when passing a named variable.
 
@@ -54,13 +54,15 @@ Constructs the monitor from an executor. The optional [`monitor_options`](monito
 ```cpp
 basic_service_monitor(executor_type ex,
                       monitor_options opts,
-                      socket_options sock_opts,
+                      policy_socket_options_t<P> sock_opts,
                       mdns_options mdns_opts,
                       cache_options copts,
                       std::error_code &ec);
 ```
 
-Same as the throwing constructor, but sets `ec` instead of throwing on failure. All parameters must be provided explicitly (no defaults). Check `ec` before calling `async_start()`.
+Same as the throwing constructor, but sets `ec` instead of throwing on failure (both for socket construction and for invalid options). All parameters must be provided explicitly (no defaults). Check `ec` before calling `async_start()`.
+
+`basic_service_monitor` is non-copyable and non-movable (receive-loop and timer handlers capture `this`).
 
 ## Methods
 
@@ -70,16 +72,14 @@ Same as the throwing constructor, but sets `ec` instead of throwing on failure. 
 void async_start(monitor_completion_handler on_done = {});
 ```
 
-Begins receiving mDNS multicast traffic and, depending on the configured [`monitor_mode`](monitor_options.md#monitor_mode), issues automatic discovery queries for watched service types.
+Begins receiving mDNS multicast traffic and, depending on the configured [`monitor_mode`](monitor_options.md#monitor_mode), issues automatic discovery queries for watched service types. Only records carried in response packets (QR=1) feed the cache; known-answer lists and probe proposals in query packets are ignored.
 
-- The `on_done` handler fires once when `stop()` is called. May be `nullptr`.
-- In `discover` mode: issues per-type PTR queries with exponential backoff per RFC 6762 §5.2, and schedules TTL refresh queries at 80/85/90/95% of each record's wire TTL.
+- The `on_done` handler fires once with `std::error_code{}` when `stop()` is called — stopping is the monitor's natural completion. May be empty.
+- In `discover` mode: issues per-type PTR queries, each watch on its own exponential-backoff schedule per RFC 6762 §5.2 (a fire point for one watch never triggers a premature query for another), and schedules TTL refresh queries at 80/85/90/95% of each record's wire TTL (`mdns_options::ttl_refresh_thresholds`).
 - In `ttl_refresh` mode: refreshes cached records proactively but does not issue discovery queries.
 - In `observe` mode: passively accumulates records from overheard multicast traffic only.
 
-Calling `async_start()` more than once is a logic error.
-
-**Thread-safety:** Must be called on the executor thread or before the executor is running.
+`async_start` is one-shot: a second call completes the supplied handler with `std::errc::operation_in_progress`; a call after `stop()` completes it with `std::errc::invalid_argument`. The running monitor is unaffected.
 
 ### stop
 
@@ -87,7 +87,7 @@ Calling `async_start()` more than once is a logic error.
 void stop();
 ```
 
-Idempotent. Cancels all timers and the receive loop. Fires `on_done` with `std::error_code{}`. The destructor calls `stop()` automatically for RAII safety.
+Idempotent. Cancels all timers and the receive loop. Fires `on_done` with `std::error_code{}`. The destructor calls `stop()` automatically for RAII safety; a handler still pending at destruction is completed with `std::errc::operation_canceled` rather than dropped.
 
 **Thread-safety:** May be called from any thread. Internally posts teardown to the executor thread via a weak-pointer guard.
 
@@ -147,9 +147,13 @@ Sends an immediate PTR query for a service type, bypassing backoff. Available in
 void query_service_instance(std::string_view instance_name);
 ```
 
-Sends immediate SRV and A/AAAA queries for a specific service instance. Useful when an instance is known by name but its address records have not yet been received.
+Sends one immediate multi-question query carrying SRV, TXT, A, and AAAA questions for a specific service instance (RFC 6762 §5 question aggregation — four questions, one packet). Useful when an instance is known by name but its address records have not yet been received. The same four-question packet is used internally for TTL refresh of resolved instances, so TXT records are refreshed alongside SRV and addresses.
 
 **Thread-safety:** May be called from any thread. Posts to the executor thread.
+
+### Error reporting
+
+Fire-and-forget send failures and fatal receive errors are reported through the `monitor_options::on_error` field (`error_handler`, `void(std::error_code, std::string_view)`). The context string identifies the failure site (e.g. `"query send"`, `"receive"`). Without a handler, these errors are silently ignored.
 
 ## Lifecycle
 
@@ -192,7 +196,7 @@ int main()
         .on_found = [](const mdnspp::resolved_service &svc)
         {
             std::cout << "found: " << svc.instance_name.str()
-                      << " at " << svc.hostname.str() << ":" << svc.port << "\n";
+                      << " at " << svc.hostname.str() << ":" << svc.port << std::endl;
         },
         .on_updated = [](const mdnspp::resolved_service &svc,
                          mdnspp::update_event event,
@@ -200,14 +204,14 @@ int main()
         {
             std::cout << "updated: " << svc.instance_name.str()
                       << " event=" << (event == mdnspp::update_event::added ? "added" : "removed")
-                      << " type=" << to_string(type) << "\n";
+                      << " type=" << to_string(type) << std::endl;
         },
         .on_lost = [](const mdnspp::resolved_service &svc, mdnspp::loss_reason reason)
         {
             const char *why = reason == mdnspp::loss_reason::timeout   ? "timeout"
                             : reason == mdnspp::loss_reason::goodbye   ? "goodbye"
                                                                        : "unwatched";
-            std::cout << "lost: " << svc.instance_name.str() << " reason=" << why << "\n";
+            std::cout << "lost: " << svc.instance_name.str() << " reason=" << why << std::endl;
         },
     };
 
@@ -219,7 +223,7 @@ int main()
     {
         if(ec)
         {
-            std::cerr << "monitor error: " << ec.message() << "\n";
+            std::cerr << "monitor error: " << ec.message() << std::endl;
             ctx.stop();
         }
     });

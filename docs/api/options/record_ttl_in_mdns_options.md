@@ -8,11 +8,11 @@
 
 ## What
 
-`record_ttl` sets the Time-to-Live placed in the DNS wire format of all outgoing resource records (RFC 6762 §11.3). Receivers cache these records for their TTL duration. The TTL is also the basis for the `ttl_refresh_thresholds` schedule: refresh queries fire at fractions of this value.
+`record_ttl` sets the Time-to-Live placed in the DNS wire format of all outgoing resource records (RFC 6762 §10). Receivers cache these records for their TTL duration. The TTL is also the basis for the `ttl_refresh_thresholds` schedule: refresh queries fire at fractions of this value.
 
-Per the Doxygen comment in the header, `record_ttl` is applied to all outgoing records unless overridden by a per-type TTL in `service_options` (e.g., `service_options::ptr_ttl`, `srv_ttl`, `txt_ttl`, `a_ttl`, `aaaa_ttl`). When a per-type override is set in `service_options`, that value takes precedence for that record type; `record_ttl` acts as the fallback for types without a specific override.
+`record_ttl` is applied to all outgoing records unless overridden by a per-type TTL in `service_options` (`service_options::ptr_ttl`, `srv_ttl`, `txt_ttl`, `a_ttl`, `aaaa_ttl`). When a per-type override is set in `service_options`, that value takes precedence for that record type; `record_ttl` acts as the fallback for types without a specific override.
 
-The RFC default is 4500 seconds (75 minutes).
+The RFC default is 4500 seconds (75 minutes) for records that do not contain a host name.
 
 ## Why
 

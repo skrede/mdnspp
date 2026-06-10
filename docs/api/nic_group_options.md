@@ -138,7 +138,7 @@ enum class dedup_mode {
 ### interface_filter
 
 ```cpp
-detail::move_only_function<bool(const network_interface &)>
+move_only_function<bool(const network_interface &)>
 ```
 
 A non-copyable callable that takes a `network_interface` and returns `bool`. Returning
@@ -148,7 +148,7 @@ A non-copyable callable that takes a `network_interface` and returns `bool`. Ret
 ### socket_options_factory
 
 ```cpp
-detail::move_only_function<policy_socket_options_t<P>(const network_interface &)>
+move_only_function<policy_socket_options_t<P>(const network_interface &)>
 ```
 
 A non-copyable callable that takes a `network_interface` and returns the policy's socket

@@ -3,11 +3,10 @@
 ## Overview
 
 `query_options` controls the behavior of a querier or service discovery
-instance: an optional per-record callback invoked as records arrive, and a
-silence timeout that determines how long to wait after the last relevant
-packet before completing. Both fields have sensible defaults &mdash; construct
-with `query_options{}` and the silence timeout is 3 seconds with no
-per-record callback.
+instance: an optional per-record callback invoked as records arrive, an
+optional error handler, and a silence timeout that determines how long to
+wait after the last relevant packet before completing. Construct with
+`query_options{}` and the silence timeout is 3 seconds with no callbacks.
 
 **Header:**
 
@@ -27,22 +26,25 @@ namespace mdnspp {
 struct query_options
 {
     using record_callback = mdnspp::record_callback;
+    using error_handler = mdnspp::error_handler;
 
     record_callback on_record{};
+    error_handler on_error{};
     std::chrono::milliseconds silence_timeout{3000};
 };
 
 }
 ```
 
-`record_callback` is defined in `<mdnspp/callback_types.h>` (included transitively).
+`record_callback` and `error_handler` are defined in `<mdnspp/callback_types.h>` (included transitively).
 
 ## Fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `on_record` | `record_callback` | `{}` (none) | Called once per parsed DNS record with the sender endpoint and record variant. |
-| `silence_timeout` | `std::chrono::milliseconds` | `3000` (3 seconds) | How long to wait after the last relevant packet before completing. |
+| `on_error` | `error_handler` | `{}` (none) | Called on fire-and-forget send failures and fatal receive errors with the error code and a context string (e.g. `"query send"`, `"receive"`). |
+| `silence_timeout` | `std::chrono::milliseconds` | `3000` (3 seconds) | How long to wait after the last relevant packet before completing. Must be positive: the peer constructors validate the options and reject a non-positive timeout with `std::errc::invalid_argument`. |
 
 ### on_record
 
@@ -59,8 +61,25 @@ mdnspp::query_options opts{
                     const mdnspp::mdns_record_variant &rec)
     {
         std::visit([&](const auto &r) {
-            std::cout << sender << " -> " << r << "\n";
+            std::cout << sender << " -> " << r << std::endl;
         }, rec);
+    }
+};
+```
+
+### on_error
+
+Called when a fire-and-forget send fails or the receive loop encounters a
+fatal error. The error code describes the failure; the string view names the
+failure site. Without a handler, these errors are silently ignored.
+
+**Default:** None.
+
+```cpp
+mdnspp::query_options opts{
+    .on_error = [](std::error_code ec, std::string_view context)
+    {
+        std::cerr << context << ": " << ec.message() << std::endl;
     }
 };
 ```
@@ -90,7 +109,7 @@ mdnspp::querier q{ctx};
 q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,
     [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
     {
-        std::cout << results.size() << " record(s)\n";
+        std::cout << results.size() << " record(s)" << std::endl;
         ctx.stop();
     });
 
@@ -108,7 +127,7 @@ mdnspp::service_discovery sd{ctx,
                         const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&](const auto &r) {
-                std::cout << sender << " -> " << r << "\n";
+                std::cout << sender << " -> " << r << std::endl;
             }, rec);
         }
     }
@@ -117,7 +136,7 @@ mdnspp::service_discovery sd{ctx,
 sd.async_discover("_http._tcp.local.",
     [&ctx](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)
     {
-        std::cout << "complete -- " << results.size() << " record(s)\n";
+        std::cout << "complete -- " << results.size() << " record(s)" << std::endl;
         ctx.stop();
     });
 

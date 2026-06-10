@@ -6,10 +6,16 @@
 lifecycle: probing for name uniqueness, announcing the service, sending
 goodbye packets on shutdown, suppressing responses when the querier already
 knows the answer, responding to DNS-SD meta-queries, announcing subtypes,
-and handling name conflicts. All fields have sensible defaults -- construct
+and handling name conflicts. All fields have RFC-compliant defaults -- construct
 a server with `service_options{}` and the server probes, announces twice at
 one-second intervals, sends goodbye on stop, suppresses known answers, and
 responds to meta-queries.
+
+Options are validated at server construction: invalid combinations (zero
+`probe_count`, non-positive intervals or TTLs, empty or invalid service
+names) fail with `std::errc::invalid_argument` -- thrown as
+`std::system_error` from the throwing constructor, or reported through the
+`std::error_code` overload.
 
 **Header:**
 
@@ -26,13 +32,13 @@ namespace mdnspp {
 
 struct service_options
 {
-    using conflict_callback = detail::move_only_function<
-        bool(const std::string &conflicting_name, std::string &new_name,
-             unsigned attempt, conflict_type type)>;
+    using conflict_callback = move_only_function<
+        std::optional<std::string>(std::string_view conflicting_name, uint32_t attempt, conflict_type type)>;
 
     conflict_callback on_conflict{};
-    detail::move_only_function<void(const endpoint &sender, dns_type type, response_mode mode)> on_query{};
-    detail::move_only_function<void(const endpoint &sender, std::size_t continuation_count)> on_tc_continuation{};
+    move_only_function<void(const endpoint &sender, dns_type type, response_mode mode)> on_query{};
+    move_only_function<void(const endpoint &sender, std::size_t continuation_count)> on_tc_continuation{};
+    move_only_function<void(std::error_code ec, std::string_view context)> on_error{};
     uint8_t announce_count{2};
     std::chrono::milliseconds announce_interval{1000};
     bool send_goodbye{true};
@@ -44,10 +50,10 @@ struct service_options
     std::chrono::milliseconds probe_initial_delay_max{250};
     bool respond_to_legacy_unicast{true};
     std::chrono::seconds ptr_ttl{4500};
-    std::chrono::seconds srv_ttl{4500};
+    std::chrono::seconds srv_ttl{120};
     std::chrono::seconds txt_ttl{4500};
-    std::chrono::seconds a_ttl{4500};
-    std::chrono::seconds aaaa_ttl{4500};
+    std::chrono::seconds a_ttl{120};
+    std::chrono::seconds aaaa_ttl{120};
     std::chrono::seconds record_ttl{4500};
     std::chrono::seconds probe_authority_ttl{120};
     std::chrono::milliseconds probe_defer_delay{1000};
@@ -63,6 +69,7 @@ struct service_options
 | `on_conflict` | `conflict_callback` | `{}` (none) | RFC 6762 §8.1, §9 | Called when a name conflict is detected during probing. See [conflict_callback](#conflict_callback) for signature and parameters. |
 | `on_query` | `move_only_function<void(const endpoint&, dns_type, response_mode)>` | `{}` (none) | RFC 6762 §5.4 | Called when a matching query is received while live. |
 | `on_tc_continuation` | `move_only_function<void(const endpoint&, std::size_t)>` | `{}` (none) | RFC 6762 §6 | Fired when a TC continuation is processed. Reports the sender endpoint and the number of accumulated continuation packets. |
+| `on_error` | `move_only_function<void(std::error_code, std::string_view)>` | `{}` (none) | -- | Called on fire-and-forget send failures and address encoding errors. Receives the `std::error_code` and a context string identifying the failure site. |
 | `announce_count` | `uint8_t` | `2` | RFC 6762 §8.3 | Number of announcement packets sent after probing completes. Also controls the number of announcements sent by `update_service_info()`. |
 | `announce_interval` | `std::chrono::milliseconds` | `1000ms` | RFC 6762 §8.3 | Interval between consecutive announcement packets. |
 | `send_goodbye` | `bool` | `true` | RFC 6762 §10.1 | Whether to send a goodbye packet (TTL=0) on `stop()`. |
@@ -73,39 +80,44 @@ struct service_options
 | `probe_interval` | `std::chrono::milliseconds` | `250ms` | RFC 6762 §8.1 | Interval between successive probe packets. |
 | `probe_initial_delay_max` | `std::chrono::milliseconds` | `250ms` | RFC 6762 §8.1 | Upper bound on the random initial delay before the first probe is sent. The first probe is delayed by a uniform random value in `[0, probe_initial_delay_max]` to desynchronize simultaneous startups. |
 | `respond_to_legacy_unicast` | `bool` | `true` | RFC 6762 §6.7 | Whether to respond to legacy unicast queries (source port != 5353). When enabled, the responder sends a unicast reply with TTLs capped at `mdns_options::legacy_unicast_ttl`. |
-| `ptr_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §11.3 | TTL for PTR records in outgoing responses. |
-| `srv_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §11.3 | TTL for SRV records in outgoing responses. |
-| `txt_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §11.3 | TTL for TXT records in outgoing responses. |
-| `a_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §11.3 | TTL for A records in outgoing responses. |
-| `aaaa_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §11.3 | TTL for AAAA records in outgoing responses. |
-| `record_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §11.3 | Fallback TTL used for NSEC and meta-query PTR records when no per-record-type TTL is applicable. |
+| `ptr_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §10 | TTL for PTR records in outgoing responses. |
+| `srv_ttl` | `std::chrono::seconds` | `120s` | RFC 6762 §10 | TTL for SRV records in outgoing responses. SRV rdata contains a host name; §10 recommends 120 s for host-name-containing records. |
+| `txt_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §10 | TTL for TXT records in outgoing responses. |
+| `a_ttl` | `std::chrono::seconds` | `120s` | RFC 6762 §10 | TTL for A records in outgoing responses. A records name a host; §10 recommends 120 s. |
+| `aaaa_ttl` | `std::chrono::seconds` | `120s` | RFC 6762 §10 | TTL for AAAA records in outgoing responses. Same rationale as `a_ttl`. |
+| `record_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §10 | Fallback TTL used for NSEC and meta-query PTR records when no per-record-type TTL is applicable. |
 | `probe_authority_ttl` | `std::chrono::seconds` | `120s` | RFC 6762 §8.2 | TTL for SRV records placed in the authority section of probe queries for simultaneous-probe tiebreaking. This value is not cached by recipients; changing it has no interoperability impact. |
 | `probe_defer_delay` | `std::chrono::milliseconds` | `1000ms` | RFC 6762 §8.2 | Delay before re-probing after losing a simultaneous-probe tiebreak. When the tiebreaking comparison indicates the remote probe wins, the local node defers by this duration before restarting its probe sequence. |
 
 ### on_conflict
 
-Called during probing when another responder already owns the service name.
-The callback receives the conflicting name, a mutable reference to a new
-name string, the current attempt number (starting at 0), and a
-`conflict_type` value indicating whether this is a name conflict or a
-tiebreak deferral. Return `true` to retry probing with the new name, or
-`false` to give up (the server fires `on_ready` with
-`mdns_error::probe_conflict`).
+Called when probing detects a name conflict, or when post-probe conflict
+monitoring (RFC 6762 §9) observes another responder asserting different
+rdata for the server's unique names. The callback receives the conflicting
+name, the current attempt number (starting at 0), and a `conflict_type`
+value indicating whether this is a name conflict or a tiebreak deferral.
+Return the replacement service instance name to retry probing with it, or
+`std::nullopt` to give up. Giving up tears the server down: `on_ready`
+fires with `mdns_error::probe_conflict`, the full teardown runs, and
+`on_done` then fires with `std::error_code{}`.
 
 When no callback is set, the server gives up immediately on conflict.
+
+Probing is rate-limited per RFC 6762 §8.1: after fifteen conflicts within
+ten seconds, the server waits five seconds before the next probe attempt.
 
 **RFC reference:** RFC 6762 section 8.1 (probing), section 8.2 (tiebreaking), section 9 (conflict resolution).
 
 ```cpp
 mdnspp::service_options opts;
-opts.on_conflict = [](const std::string &name, std::string &new_name,
-                      unsigned attempt, mdnspp::conflict_type type) -> bool
+opts.on_conflict = [](std::string_view name, uint32_t attempt,
+                      mdnspp::conflict_type type) -> std::optional<std::string>
 {
     if (attempt >= 3)
-        return false; // give up after 3 retries
-    new_name = name.substr(0, name.find('.')) + "-" + std::to_string(attempt + 2)
-             + name.substr(name.find('.'));
-    return true;
+        return std::nullopt; // give up after 3 retries
+    auto dot = name.find('.');
+    return std::string(name.substr(0, dot)) + "-" + std::to_string(attempt + 2)
+         + std::string(name.substr(dot));
 };
 ```
 
@@ -120,7 +132,7 @@ or hostname while the server is in the live state.
 mdnspp::service_options opts;
 opts.on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
 {
-    std::cout << sender << " queried " << to_string(qtype) << "\n";
+    std::cout << sender << " queried " << to_string(qtype) << std::endl;
 };
 ```
 
@@ -136,7 +148,7 @@ diagnosing large known-answer list processing.
 mdnspp::service_options opts;
 opts.on_tc_continuation = [](const mdnspp::endpoint &sender, std::size_t count)
 {
-    std::cout << "TC from " << sender << ": " << count << " continuation packet(s)\n";
+    std::cout << "TC from " << sender << ": " << count << " continuation packet(s)" << std::endl;
 };
 ```
 
@@ -235,29 +247,27 @@ opts.announce_subtypes = true; // announce subtypes during announcement burst
 ## conflict_callback
 
 ```cpp
-using conflict_callback = detail::move_only_function<
-    bool(const std::string &conflicting_name, std::string &new_name,
-         unsigned attempt, conflict_type type)>;
+using conflict_callback = move_only_function<
+    std::optional<std::string>(std::string_view conflicting_name, uint32_t attempt, conflict_type type)>;
 ```
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `conflicting_name` | `const std::string&` | The service name that conflicted. |
-| `new_name` | `std::string&` | Output parameter -- set this to the desired new name. |
-| `attempt` | `unsigned` | Zero-based attempt counter. |
+| `conflicting_name` | `std::string_view` | The service name that conflicted. |
+| `attempt` | `uint32_t` | Zero-based attempt counter. |
 | `type` | `conflict_type` | `conflict_type::name_conflict` for a straightforward name clash; `conflict_type::tiebreak_deferred` when the local probe lost a simultaneous-probe tiebreak (RFC 6762 §8.2). |
-| **Return** | `bool` | `true` to retry probing with `new_name`, `false` to give up. |
+| **Return** | `std::optional<std::string>` | The replacement service instance name to retry probing with, or `std::nullopt` to give up. |
 
-When the callback returns `false` (or no callback is set), the server
-transitions to `stopped` state and fires the `on_ready` handler with
-`mdns_error::probe_conflict`.
+When the callback returns `std::nullopt` (or no callback is set), the
+server tears down: `on_ready` fires with `mdns_error::probe_conflict`,
+then `on_done` fires with `std::error_code{}` after teardown completes.
 
 **conflict_type values:**
 
 | Value | When fired |
 |-------|------------|
 | `conflict_type::name_conflict` | Another host responded during the probe window owning the same name. |
-| `conflict_type::tiebreak_deferred` | Two hosts probed simultaneously; the local SRV rdata lost the §8.2 lexicographic comparison. |
+| `conflict_type::tiebreak_deferred` | Two hosts probed simultaneously; the local record set lost the §8.2.1 lexicographic comparison (class, then type, then uncompressed rdata, over the full proposed record sets). An identical record set is not a conflict. |
 
 ## Usage Examples
 
@@ -293,24 +303,24 @@ mdnspp::service_info info{
 };
 
 mdnspp::service_options opts;
-opts.on_conflict = [](const std::string &name, std::string &new_name,
-                      unsigned attempt, mdnspp::conflict_type type) -> bool
+opts.on_conflict = [](std::string_view name, uint32_t attempt,
+                      mdnspp::conflict_type type) -> std::optional<std::string>
 {
     if (attempt >= 3)
-        return false;
+        return std::nullopt;
     // Append attempt number: "MyApp" -> "MyApp-2", "MyApp-3", ...
     auto dot = name.find('.');
-    new_name = name.substr(0, dot) + "-" + std::to_string(attempt + 2) + name.substr(dot);
-    return true;
+    return std::string(name.substr(0, dot)) + "-" + std::to_string(attempt + 2)
+         + std::string(name.substr(dot));
 };
 
 mdnspp::service_server srv{ctx, std::move(info), std::move(opts)};
 srv.async_start(
     [](std::error_code ec) {
         if (ec == mdnspp::mdns_error::probe_conflict)
-            std::cerr << "all conflict resolution attempts exhausted\n";
+            std::cerr << "all conflict resolution attempts exhausted" << std::endl;
         else
-            std::cout << "server is live\n";
+            std::cout << "server is live" << std::endl;
     });
 ctx.run();
 ```
@@ -319,18 +329,23 @@ ctx.run();
 
 ```cpp
 mdnspp::service_options opts;
-opts.on_conflict = [](const std::string &name, std::string &new_name,
-                      unsigned attempt, mdnspp::conflict_type type) -> bool
+opts.on_conflict = [](std::string_view name, uint32_t attempt,
+                      mdnspp::conflict_type type) -> std::optional<std::string>
 {
-    new_name = name.substr(0, name.find('.')) + "-" + std::to_string(attempt + 2)
-             + name.substr(name.find('.'));
-    return attempt < 5;
+    if (attempt >= 5)
+        return std::nullopt;
+    auto dot = name.find('.');
+    return std::string(name.substr(0, dot)) + "-" + std::to_string(attempt + 2)
+         + std::string(name.substr(dot));
 };
 opts.on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode) {
     log_query(sender, qtype, mode);
 };
 opts.on_tc_continuation = [](const mdnspp::endpoint &sender, std::size_t count) {
     log_tc(sender, count);
+};
+opts.on_error = [](std::error_code ec, std::string_view context) {
+    log_error(ec, context);
 };
 opts.announce_count = 3;
 opts.announce_interval = std::chrono::milliseconds{500};

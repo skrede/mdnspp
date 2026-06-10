@@ -212,7 +212,7 @@ Callbacks are not yet active.
 #### on_added
 
 ```cpp
-void on_added(detail::move_only_function<void(const network_interface &)> cb);
+void on_added(move_only_function<void(const network_interface &)> cb);
 ```
 
 Registers a callback fired on the executor when an interface is added or its state changes
@@ -223,7 +223,7 @@ effect once the executor processes it; it may be called from any thread. Called 
 #### on_removed
 
 ```cpp
-void on_removed(detail::move_only_function<void(const network_interface &)> cb);
+void on_removed(move_only_function<void(const network_interface &)> cb);
 ```
 
 Registers a callback fired on the executor when an interface is removed or its state

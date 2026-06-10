@@ -3,15 +3,15 @@
 | | |
 |---|---|
 | **Type** | `std::chrono::seconds` |
-| **Default** | `4500` (75 minutes) |
-| **RFC** | RFC 6762 §11.3 |
+| **Default** | `120` (2 minutes) |
+| **RFC** | RFC 6762 §10 |
 | **One-liner** | TTL for A (IPv4 address) records in outgoing responses. |
 
 ## What
 
 `a_ttl` sets the TTL on A records sent in responses. A records map a hostname to an IPv4 address (e.g., `myhost.local. A 192.168.1.100`). Queriers cache A records for `a_ttl` seconds.
 
-RFC 6762 §11.3 recommends 4500 seconds for most record types. The default matches the RFC.
+RFC 6762 §10 recommends 120 seconds for records that name a host (SRV, A, AAAA, HINFO), so that stale address data ages out quickly. The default matches the RFC.
 
 ## Why
 

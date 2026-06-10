@@ -1,6 +1,6 @@
 # observer
 
-Listens for mDNS multicast traffic on the local network and delivers each parsed DNS record to a user-provided callback. No queries are sent &mdash; `basic_observer` is a pure listener.
+Listens for mDNS multicast traffic on the local network and delivers each parsed DNS record to a user-provided callback. No queries are sent &mdash; `basic_observer` is a pure listener. Unlike the record-consuming peers (querier, discovery, monitor), the observer performs no QR-flag or section filtering: records carried in query packets (known-answer lists, probe proposals) are delivered too, with the sender endpoint. Malformed packets are silently skipped.
 
 ## Header and Alias
 
@@ -47,23 +47,25 @@ using error_handler      = mdnspp::error_handler;               // void(std::err
 ```cpp
 explicit basic_observer(executor_type ex,
                         observer_options opts = {},
-                        socket_options sock_opts = {},
+                        policy_socket_options_t<P> sock_opts = {},
                         mdns_options mdns_opts = {});
 ```
 
-Constructs the observer from an executor (or context), optional [`observer_options`](observer_options.md) (per-record callback), optional [`socket_options`](../socket-options.md) (network interface, multicast TTL, loopback), and optional [`mdns_options`](mdns_options.md) (protocol timing tunables). Throws on socket construction failure (e.g. bind error).
+Constructs the observer from an executor (or context), optional [`observer_options`](observer_options.md) (per-record callback, error handler), optional socket options (network interface, multicast TTL, loopback; type `policy_socket_options_t<P>` — plain `socket_options` for the default and asio policies, the policy's derived options type otherwise), and optional [`mdns_options`](mdns_options.md) (protocol timing tunables). Throws `std::system_error` on socket construction failure (e.g. bind error) or invalid `mdns_options` (`std::errc::invalid_argument`).
 
 ### Non-throwing
 
 ```cpp
 basic_observer(executor_type ex,
                observer_options opts,
-               socket_options sock_opts,
+               policy_socket_options_t<P> sock_opts,
                mdns_options mdns_opts,
                std::error_code &ec);
 ```
 
 Same as the throwing constructor, but sets `ec` instead of throwing on failure. All parameters must be provided explicitly (no defaults).
+
+`basic_observer` is non-copyable and non-movable (receive-loop handlers capture `this`).
 
 ## Methods
 
@@ -73,9 +75,12 @@ Same as the throwing constructor, but sets `ec` instead of throwing on failure. 
 void async_observe(completion_handler on_done = {});
 ```
 
-Arms the internal receive loop and returns immediately. Incoming multicast packets are parsed and each record delivered to the `record_callback`. The `on_done` handler fires with `std::error_code{}` when `stop()` is called.
+Arms the internal receive loop and returns immediately. Incoming multicast packets are parsed and each record delivered to the `record_callback`.
 
-Must only be called once per lifetime.
+Completion semantics:
+
+- The observation has no natural completion; `on_done` fires only when the observation ends — on `stop()` or destruction — with `std::errc::operation_canceled`.
+- `async_observe` is one-shot: a second call completes the supplied handler with `std::errc::operation_in_progress`; a call after `stop()` completes it with `std::errc::invalid_argument`. The running observation is unaffected.
 
 ### stop
 
@@ -83,15 +88,11 @@ Must only be called once per lifetime.
 void stop();
 ```
 
-Idempotent. Fires the completion handler with a default-constructed `std::error_code`, then sets the internal stop flag. The receive loop remains alive until the destructor runs, ensuring in-progress callbacks complete safely.
+Idempotent and callable from any thread (including from within the `record_callback`). Posts the teardown to the executor; the pending `on_done` fires with `std::errc::operation_canceled`. The destructor calls `stop()` automatically and completes a still-pending handler rather than dropping it.
 
-### on_error
+### Error reporting
 
-```cpp
-void on_error(error_handler handler);
-```
-
-Sets a handler invoked when a fire-and-forget send operation fails. The handler receives the error code and a context string identifying the send site. Without a handler, send errors are silently ignored.
+Fatal receive errors are reported through the `observer_options::on_error` field (`error_handler`, `void(std::error_code, std::string_view)`). The context string identifies the failure site (e.g. `"receive"`). Without a handler, these errors are silently ignored.
 
 ### Accessors
 
@@ -151,7 +152,7 @@ int main()
                              const mdnspp::mdns_record_variant& rec)
             {
                 std::visit([&](const auto& r) {
-                    std::cout << sender << " -> " << r << "\n";
+                    std::cout << sender << " -> " << r << std::endl;
                 }, rec);
 
                 if (++count >= 5)
@@ -161,7 +162,7 @@ int main()
     };
 
     obs.async_observe([&ctx](std::error_code) {
-        ctx.stop();  // ctx.stop() ends ctx.run()
+        ctx.stop();  // fires with operation_canceled when obs.stop() runs
     });
 
     ctx.run();

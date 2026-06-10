@@ -3,22 +3,22 @@
 | | |
 |---|---|
 | **Type** | `std::chrono::seconds` |
-| **Default** | `4500` (75 minutes) |
-| **RFC** | RFC 6762 §11.3 |
+| **Default** | `120` (2 minutes) |
+| **RFC** | RFC 6762 §10 |
 | **One-liner** | TTL for AAAA (IPv6 address) records in outgoing responses. |
 
 ## What
 
 `aaaa_ttl` sets the TTL on AAAA records sent in responses. AAAA records map a hostname to an IPv6 address (e.g., `myhost.local. AAAA fe80::1`). Queriers cache AAAA records for `aaaa_ttl` seconds.
 
-RFC 6762 §11.3 recommends 4500 seconds for most record types. The default matches the RFC.
+RFC 6762 §10 recommends 120 seconds for records that name a host (SRV, A, AAAA, HINFO); same rationale as `a_ttl` but for IPv6 addresses. The default matches the RFC.
 
 ## Why
 
 Reduce `aaaa_ttl` when:
 
 - The host's IPv6 address is ephemeral (SLAAC privacy extensions, temporary addresses) and changes frequently.
-- Operating on networks where IPv6 address lifetimes are shorter than 75 minutes.
+- Operating on networks where IPv6 address lifetimes are shorter than the default 120 seconds.
 
 Increase `aaaa_ttl` when:
 

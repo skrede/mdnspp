@@ -4,7 +4,7 @@
 |---|---|
 | **Type** | `std::chrono::seconds` |
 | **Default** | `4500` (75 minutes) |
-| **RFC** | RFC 6762 §11.3 |
+| **RFC** | RFC 6762 §10 |
 | **One-liner** | Fallback TTL for NSEC and meta-query PTR records when no per-record-type TTL applies. |
 
 ## What
@@ -14,7 +14,7 @@
 - NSEC (Next Secure) records used in negative responses
 - PTR records sent in response to meta-queries (`_services._dns-sd._udp.local.`)
 
-RFC 6762 §11.3 recommends 4500 seconds for most record types. The default matches the RFC.
+RFC 6762 §10 recommends 4500 seconds for records that do not contain a host name. The default matches the RFC.
 
 ## Why
 
@@ -25,7 +25,7 @@ Reduce `record_ttl` when:
 
 Increase `record_ttl` when:
 
-- Stable long-term infrastructure and minimal re-query traffic is prioritised.
+- Stable long-term infrastructure and minimal re-query traffic is prioritized.
 
 ## Danger
 

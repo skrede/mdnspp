@@ -1,12 +1,26 @@
 # Options Deep-Dive Pages
 
-This directory contains one deep-dive page per field across all three options structs:
+This directory contains one deep-dive page per field for the three RFC-tuning options structs:
 
 - [`mdns_options`](../mdns_options.md) — protocol tunables for querying, TTL refresh, and TC accumulation
 - [`service_options`](../service_options.md) — service announcement, probing, and TTL configuration
-- [`cache_options`](../cache_options.md) — cache eviction and goodbye grace behaviour
+- [`cache_options`](../cache_options.md) — cache eviction and goodbye grace behavior
+
+The remaining options structs (`query_options`, `observer_options`, `monitor_options`, `socket_options`, `nic_group_options`) are small enough to be covered on their own API pages.
 
 Each page covers **What** the field controls, **Why** you would change it from the default, and **Danger** (risks and failure modes).
+
+## Start here
+
+Five options account for most real-world configuration; everything else in this directory is RFC tuning that ships with RFC-compliant defaults.
+
+| Option | Where | Why it matters |
+|--------|-------|----------------|
+| [`query_options::silence_timeout`](../query_options.md#silence_timeout) | querier, service_discovery | How long a one-shot operation waits for stragglers before completing (default 3 s). |
+| [`monitor_options::mode`](../monitor_options.md#monitor_mode) | service_monitor | Passive observation vs TTL refresh vs full active discovery. |
+| [`socket_options::interface_address`](../../socket-options.md) | every peer | Which network interface to bind; unset lets the OS routing table choose (frequently wrong on multi-homed/VPN hosts). |
+| [`socket_options::multicast_loopback`](../../socket-options.md) | every peer | Default `enabled`; required for same-host discovery between processes. |
+| [`service_options::on_conflict`](on_conflict_in_service_options.md) | service_server | Without it, any name conflict permanently fails startup. |
 
 ---
 
@@ -31,6 +45,7 @@ Each page covers **What** the field controls, **Why** you would change it from t
 | [max_query_payload](max_query_payload_in_mdns_options.md) | Maximum UDP payload before TC packet splitting |
 | [tc_continuation_delay](tc_continuation_delay_in_mdns_options.md) | Delay between successive TC continuation packets |
 | [receive_ttl_minimum](receive_ttl_minimum_in_mdns_options.md) | Minimum IP TTL for received mDNS packets |
+| [unknown_ttl_policy](unknown_ttl_policy_in_mdns_options.md) | Disposition for received packets whose IP TTL could not be extracted |
 
 ---
 
@@ -38,13 +53,14 @@ Each page covers **What** the field controls, **Why** you would change it from t
 
 | Page | One-liner |
 |------|-----------|
-| [on_conflict](on_conflict_in_service_options.md) | Invoked when a name conflict is detected; returns true to accept the proposed new name |
+| [on_conflict](on_conflict_in_service_options.md) | Invoked when a name conflict is detected; returns the replacement name or `std::nullopt` to give up |
 | [on_query](on_query_in_service_options.md) | Fired each time the service receives an incoming query matching its records |
 | [on_tc_continuation](on_tc_continuation_in_service_options.md) | Fired when a TC continuation batch is processed |
+| [on_error](on_error_in_service_options.md) | Invoked on fire-and-forget send failures and address encoding errors |
 | [announce_count](announce_count_in_service_options.md) | Number of unsolicited announcement packets sent after probing completes |
 | [announce_interval](announce_interval_in_service_options.md) | Delay between successive announcement packets |
 | [send_goodbye](send_goodbye_in_service_options.md) | Whether to send a goodbye packet (TTL=0) on graceful shutdown |
-| [suppress_known_answers](suppress_known_answers_in_service_options.md) | Whether the service honours known-answer suppression |
+| [suppress_known_answers](suppress_known_answers_in_service_options.md) | Whether the service honors known-answer suppression |
 | [respond_to_meta_queries](respond_to_meta_queries_in_service_options.md) | Whether to respond to DNS-SD meta-queries |
 | [announce_subtypes](announce_subtypes_in_service_options.md) | Whether to announce sub-type PTR records alongside the primary PTR |
 | [probe_count](probe_count_in_service_options.md) | Number of probe packets sent before announcing begins |
@@ -57,7 +73,7 @@ Each page covers **What** the field controls, **Why** you would change it from t
 | [a_ttl](a_ttl_in_service_options.md) | TTL for A (IPv4 address) records in outgoing responses |
 | [aaaa_ttl](aaaa_ttl_in_service_options.md) | TTL for AAAA (IPv6 address) records in outgoing responses |
 | [record_ttl](record_ttl_in_service_options.md) | Fallback TTL for NSEC and meta-query PTR records |
-| [probe_authority_ttl](probe_authority_ttl_in_service_options.md) | TTL for SRV records in probe authority sections (tiebreaking) |
+| [probe_authority_ttl](probe_authority_ttl_in_service_options.md) | TTL for records in probe authority sections (tiebreaking) |
 | [probe_defer_delay](probe_defer_delay_in_service_options.md) | Delay before re-probing after losing a simultaneous-probe tiebreak |
 
 ---

@@ -28,7 +28,9 @@ struct recv_metadata {
 | `recv_ifindex` | `uint32_t` | `0` | Interface index on which the packet arrived. Populated from `IP_PKTINFO` (Linux/Windows) or `IP_RECVIF` with `sockaddr_dl` (macOS). `0` when not populated. |
 
 `recv_metadata` is passed by const reference to the `socket_like::async_receive` handler
-and flows through the receive loop. It is not directly accessible from `monitor_options`,
+(signature `void(std::error_code, const recv_metadata &, std::span<std::byte>)`, error
+code first; on error the metadata is empty) and flows through the receive loop. It is
+not directly accessible from `monitor_options`,
 `observer_options`, or other public callback APIs — it is consumed internally to apply
 `receive_ttl_minimum` filtering and to populate `resolved_service::source_interface`.
 

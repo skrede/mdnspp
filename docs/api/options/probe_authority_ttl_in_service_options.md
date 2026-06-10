@@ -5,13 +5,13 @@
 | **Type** | `std::chrono::seconds` |
 | **Default** | `120` |
 | **RFC** | RFC 6762 §8.2 |
-| **One-liner** | TTL for SRV records placed in the authority section of probe queries for simultaneous-probe tiebreaking. |
+| **One-liner** | TTL for the records placed in the authority section of probe queries for simultaneous-probe tiebreaking. |
 
 ## What
 
 During the probe phase, when another host's probe for the same name is detected, RFC 6762 §8.2 specifies a tiebreaking algorithm: each host includes its own records in the authority section of probe queries. The host with the lexicographically greater rdata wins.
 
-`probe_authority_ttl` is the TTL value placed on the SRV record in this authority section. RFC 6762 §8.2 specifies 120 seconds for probe authority records. The authority TTL is not used for caching purposes by recipients — it is only present because a valid DNS resource record requires a non-zero TTL.
+`probe_authority_ttl` is the TTL value placed on the records in this authority section (the full proposed record set: SRV, TXT, A/AAAA). RFC 6762 §8.2 specifies 120 seconds for probe authority records. The authority TTL is not used for caching purposes by recipients — it is only present because a valid DNS resource record requires a non-zero TTL.
 
 ## Why
 

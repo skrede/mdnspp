@@ -3,15 +3,15 @@
 | | |
 |---|---|
 | **Type** | `std::chrono::seconds` |
-| **Default** | `4500` (75 minutes) |
-| **RFC** | RFC 6762 §11.3 |
+| **Default** | `120` (2 minutes) |
+| **RFC** | RFC 6762 §10 |
 | **One-liner** | TTL for SRV records in outgoing responses. |
 
 ## What
 
 `srv_ttl` sets the TTL on SRV (Service) records sent in responses. SRV records carry the hostname and port number for a service instance (e.g., `MyApp._http._tcp.local. SRV 0 0 8080 myhost.local.`). Queriers cache SRV records for `srv_ttl` seconds.
 
-RFC 6762 §11.3 recommends 4500 seconds for most record types. The default matches the RFC.
+RFC 6762 §10 recommends 120 seconds for records whose rdata contains a host name (SRV, A, AAAA, HINFO), so that stale host data ages out quickly. The default matches the RFC.
 
 ## Why
 

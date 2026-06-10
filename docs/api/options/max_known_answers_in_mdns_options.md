@@ -19,7 +19,7 @@ The default of `0` (unlimited) is correct for most deployments and ensures known
 Reasons to set a non-zero cap:
 
 - **Packet budget constraints** — on a link with a tight MTU where TC packet generation must be avoided, capping the known-answer list to a small number (e.g., 10) ensures the query fits in a single packet.
-- **Testing** — setting a cap of `1` or `2` simplifies known-answer content in tests, making it easier to reason about expected responder behaviour.
+- **Testing** — setting a cap of `1` or `2` simplifies known-answer content in tests, making it easier to reason about expected responder behavior.
 - **Performance profiling** — limiting known answers reduces per-query serialization cost in benchmarks that focus on timing the query dispatch path rather than the cache walk.
 
 ## Danger

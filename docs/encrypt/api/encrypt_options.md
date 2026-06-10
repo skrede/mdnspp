@@ -21,6 +21,7 @@ struct encrypt_options
 {
     secure_key          psk;
     uint32_t            sender_id{0};
+    uint32_t            initial_epoch{0};
     bool                accept_cleartext{false};
     bool                auth_only{false};
     uint16_t            replay_window_size{64};
@@ -28,7 +29,7 @@ struct encrypt_options
     cleartext_detection detection{cleartext_detection::magic_byte};
     receive_mode        recv_mode{receive_mode::accept_both};
 
-    void validate() const;
+    [[nodiscard]] std::error_code validate() const noexcept;
 };
 ```
 
@@ -36,11 +37,12 @@ struct encrypt_options
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `psk` | `secure_key` | zero-filled | Pre-shared key (32 bytes). The key is moved into the socket on construction. |
-| `sender_id` | `uint32_t` | `0` | Non-zero identifier embedded in every sent packet. Each participant on the encrypted multicast group must use a distinct non-zero value. `validate()` asserts this field is non-zero. |
-| `accept_cleartext` | `bool` | `false` | When `true`, cleartext (non-encrypted) packets that cannot be decrypted are forwarded to the receive handler instead of being silently dropped. |
+| `psk` | `secure_key` | zero-filled | Pre-shared key (32 bytes). The key is copied into the socket on construction; an all-zero key fails `validate()`. |
+| `sender_id` | `uint32_t` | `0` | Non-zero identifier embedded in every sent packet. Each participant on the encrypted multicast group must use a distinct non-zero value; `0` fails `validate()`. |
+| `initial_epoch` | `uint32_t` | `0` | Epoch the socket starts at. A peer that restarts after the group has rotated keys must be provisioned with the current group key and the matching epoch to rejoin (see [Key Rotation](../key-rotation.md)). |
+| `accept_cleartext` | `bool` | `false` | When `true`, cleartext (non-encrypted) packets that cannot be decrypted are forwarded to the receive handler instead of being silently dropped. Accepted cleartext is entirely unauthenticated -- see the [Threat Model](../threat-model.md). |
 | `auth_only` | `bool` | `false` | When `true`, outgoing packets carry the plaintext payload as additional authenticated data only -- no encryption is applied (the `flag_encrypted` bit is cleared). Integrity is still verified by the AEAD tag. |
-| `replay_window_size` | `uint16_t` | `64` | Number of sequence numbers tracked per sender in the replay protection window. |
+| `replay_window_size` | `uint16_t` | `64` | Number of sequence numbers tracked per sender in the replay protection window. The full `uint16_t` range is supported (the bitmap is sized to the window, 8 bytes per 64 slots per sender); `0` fails `validate()`. |
 | `max_senders` | `uint16_t` | `256` | Maximum number of distinct `sender_id` values tracked in the replay window. Senders beyond this limit are evicted. |
 | `detection` | `cleartext_detection` | `magic_byte` | Strategy used to distinguish encrypted packets from cleartext on receive. See `cleartext_detection`. |
 | `recv_mode` | `receive_mode` | `accept_both` | Filters accepted packets by encryption mode. See `receive_mode`. |
@@ -50,10 +52,10 @@ struct encrypt_options
 #### validate
 
 ```cpp
-void validate() const;
+[[nodiscard]] std::error_code validate() const noexcept;
 ```
 
-Asserts that `sender_id != 0`. Terminate is called (via `assert`) if the field is zero. Called automatically by `encrypted_socket` constructors that accept `encrypt_socket_options`.
+Returns `std::errc::invalid_argument` if `sender_id` is zero, the PSK is all-zero, or `replay_window_size` is zero; a default-constructed (falsy) `std::error_code` otherwise. Enforced in all build configurations by the `encrypted_socket` constructors that accept `encrypt_socket_options`: the throwing constructor throws `std::system_error`, the `std::error_code` constructor sets `ec`; in both cases validation runs before the key is copied.
 
 ---
 
@@ -101,7 +103,7 @@ struct grace_period
 
 Defines the overlap window during key rotation. After `update_key()` is called, the previous key remains accepted for decrypting packets from peers that have not yet switched. The grace period expires when either condition is met.
 
-At least one field must be set when passed to `update_key()`.
+If neither field is set, `update_key()` applies a duration bound of `encrypted_socket::default_grace_duration` (`std::chrono::seconds{30}`) so the previous key cannot remain accepted indefinitely. On expiry the previous key is zeroized.
 
 ### Fields
 

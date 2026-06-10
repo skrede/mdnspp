@@ -98,6 +98,7 @@ int main()
     mdnspp::encrypt::encrypt_socket_options sock_opts;
     sock_opts.encrypt.psk       = mdnspp::encrypt::secure_key{raw_key};
     sock_opts.encrypt.sender_id = 1;
+    mdnspp::encrypt::secure_zero(raw_key.data(), raw_key.size());
 
     mdnspp::context ctx;
 

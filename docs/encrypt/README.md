@@ -46,10 +46,10 @@ unprotected attack scenarios.
 ## Examples
 
 Working code demonstrating PSK lifecycle management is in
-[examples/encrypt/](../examples/encrypt/):
+[examples/encrypt/](../../examples/encrypt/):
 
 | Example | Demonstrates |
 |---|---|
-| [01_basic_observer.cpp](../examples/encrypt/01_basic_observer.cpp) | PSK construction, `encrypted_observer` setup, transparent decryption |
-| [02_key_rotation.cpp](../examples/encrypt/02_key_rotation.cpp) | Key rotation lifecycle: epoch increment, dual-key overlap, grace period |
-| [03_auth_only.cpp](../examples/encrypt/03_auth_only.cpp) | Auth-only mode: integrity without confidentiality, `receive_mode` |
+| [01_basic_observer.cpp](../../examples/encrypt/01_basic_observer.cpp) | PSK construction, `encrypted_observer` setup, transparent decryption |
+| [02_key_rotation.cpp](../../examples/encrypt/02_key_rotation.cpp) | Key rotation lifecycle: epoch increment, dual-key overlap, grace period |
+| [03_auth_only.cpp](../../examples/encrypt/03_auth_only.cpp) | Auth-only mode: integrity without confidentiality, `receive_mode` |

@@ -67,6 +67,17 @@ encrypted mDNS and others have not, setting `accept_cleartext = true` alongside
 `auth_only = true` allows upgraded peers to authenticate each other while still
 receiving cleartext from legacy peers.
 
+**Warning — unauthenticated downgrade path.** `accept_cleartext = true`
+forwards packets classified as cleartext with *no* authentication whatsoever:
+any sender on the LAN bypasses every guarantee of this extension (origin
+authentication, integrity, anti-replay) by sending a packet without the 0x4D43
+magic prefix. During a gradual deployment the effective security level is
+therefore that of plain mDNS, regardless of how many peers already
+authenticate. Treat the combination as a migration tool with a planned end
+date, and set `accept_cleartext = false` (or `cleartext_detection::reject_all`)
+once all peers are upgraded. See the
+[Threat Model](threat-model.md#cleartext-downgrade-via-accept_cleartext--not-protected).
+
 **Monitoring and diagnostics**: a monitoring peer that needs to inspect DNS
 records for debugging can operate in auth-only mode to preserve visibility
 without removing the authentication guarantee.

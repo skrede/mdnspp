@@ -1,6 +1,6 @@
 # secure_key
 
-RAII container for a 32-byte pre-shared key. The destructor zeros key material using a secure memory-zeroing primitive, preventing the key from persisting in freed memory or being observable via compiler-optimized dead store elimination.
+RAII container for a 32-byte pre-shared key. The destructor zeros the container's own key storage using a secure memory-zeroing primitive (`sodium_memzero`), preventing that copy from persisting in freed memory or being elided by dead-store optimization. The caller's source buffer is not covered by this guarantee (see the byte constructor below).
 
 ## Header and Alias
 
@@ -36,7 +36,15 @@ Constructs a zero-initialized key. Not suitable for cryptographic use until assi
 explicit secure_key(std::array<std::byte, key_size> key) noexcept;
 ```
 
-Constructs from a 32-byte array. The array is moved into internal storage. The `noexcept` guarantee applies because no allocation is performed.
+Constructs from a 32-byte array. The array is copied into internal storage (`std::array` is passed by value; there is no transfer that empties the source). The `noexcept` guarantee applies because no allocation is performed.
+
+**The caller's source buffer remains the caller's responsibility.** `secure_key` zeroizes only its own storage; the array the caller constructed from -- and the by-value parameter copy -- are not wiped by this class. Wipe the source with `secure_zero` (declared in `mdnspp/encrypt/aead.h`) immediately after construction:
+
+```cpp
+std::array<std::byte, 32> raw_key = load_key();
+mdnspp::encrypt::secure_key psk{raw_key};
+mdnspp::encrypt::secure_zero(raw_key.data(), raw_key.size());
+```
 
 ## Copy and Move
 

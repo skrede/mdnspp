@@ -397,6 +397,65 @@ SCENARIO("parse::txt handles empty TXT record gracefully", "[parse][txt]")
     }
 }
 
+SCENARIO("parse::txt ignores zero-length TXT strings", "[parse][txt]")
+{
+    GIVEN("the canonical empty TXT record: a single zero-length string (RFC 6763 section 6.1)")
+    {
+        auto buf = bytes({
+            0x04, 'h', 'o', 's', 't', 0x00, // owner "host."
+            0x00                            // zero-length string
+        });
+
+        record_metadata meta;
+        meta.rtype         = dns_type::txt;
+        meta.record_offset = 6;
+        meta.record_length = 1;
+
+        WHEN("parse::txt is called")
+        {
+            auto result = parse::txt(std::span<const std::byte>(buf), meta);
+
+            THEN("no phantom entry is produced (RFC 6763 section 6.4)")
+            {
+                REQUIRE(result.has_value());
+                auto &r = std::get<record_txt>(*result);
+                REQUIRE(r.entries.empty());
+            }
+        }
+    }
+
+    GIVEN("a zero-length string between two valid entries")
+    {
+        auto buf = bytes({
+            0x04, 'h', 'o', 's', 't', 0x00, // owner "host."
+            0x03, 'a', '=', '1',            // "a=1"
+            0x00,                           // zero-length string
+            0x03, 'b', '=', '2'             // "b=2"
+        });
+
+        record_metadata meta;
+        meta.rtype         = dns_type::txt;
+        meta.record_offset = 6;
+        meta.record_length = static_cast<size_t>(buf.size()) - 6;
+
+        WHEN("parse::txt is called")
+        {
+            auto result = parse::txt(std::span<const std::byte>(buf), meta);
+
+            THEN("only the two non-empty entries are collected")
+            {
+                REQUIRE(result.has_value());
+                auto &r = std::get<record_txt>(*result);
+                REQUIRE(r.entries.size() == 2);
+                REQUIRE(r.entries[0].key == "a");
+                REQUIRE(r.entries[0].value == "1");
+                REQUIRE(r.entries[1].key == "b");
+                REQUIRE(r.entries[1].value == "2");
+            }
+        }
+    }
+}
+
 SCENARIO("parse::txt returns error on truncated input", "[parse][txt][malformed]")
 {
     GIVEN("a buffer shorter than record_length")

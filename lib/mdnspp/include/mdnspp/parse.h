@@ -188,8 +188,13 @@ txt(std::span<const std::byte> buffer, const record_metadata &meta)
         if(pos + entry_len > end)
             break; // silently stop — matches mjansson behaviour
 
+        // RFC 6763 §6.4: a zero-length TXT string (including the canonical
+        // empty TXT record, a single 0x00 byte) is ignored entirely.
+        if(entry_len == 0)
+            continue;
+
         // Entry starts with '=' means no key (separator at position 0): skip
-        if(entry_len > 0 && static_cast<char>(static_cast<uint8_t>(buffer[pos])) == '=')
+        if(static_cast<char>(static_cast<uint8_t>(buffer[pos])) == '=')
         {
             pos += entry_len;
             continue;

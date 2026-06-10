@@ -77,15 +77,14 @@ inline bool record_matches_ours(const mdns_record_variant &rec, const service_in
         {
             if(r.name != info.service_name)
                 return false;
-            // An empty TXT record is a single zero-length string on the wire
-            // (RFC 6763 §6.1); the parser surfaces it as one empty entry.
-            // Skip empty entries on both sides so an empty TXT compares equal.
+            // User-supplied empty service_txt entries encode to zero-length wire
+            // strings, which parse::txt ignores (RFC 6763 section 6.4) — skip them
+            // on the info side so an effectively-empty TXT compares equal.
             auto is_empty = [](const service_txt &e) { return e.key.empty() && !e.value.has_value(); };
             std::size_t i = 0;
             std::size_t j = 0;
             while(true)
             {
-                while(i < r.entries.size() && is_empty(r.entries[i])) ++i;
                 while(j < info.txt_records.size() && is_empty(info.txt_records[j])) ++j;
                 if(i == r.entries.size() || j == info.txt_records.size())
                     break;

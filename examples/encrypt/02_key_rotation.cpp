@@ -1,3 +1,4 @@
+#include "mdnspp/encrypt/aead.h"
 #include "mdnspp/encrypt/defaults.h"
 
 #include <array>
@@ -13,40 +14,55 @@
 // dropping packets from peers that have not yet completed the rotation.
 //
 // Epoch semantics:
-//   Each encrypted_socket tracks a 32-bit epoch counter, starting at 0.
-//   update_key() atomically increments the epoch and stores the new key.
-//   Every outgoing packet carries the current epoch in the wire header.
+//   Each encrypted_socket tracks a 32-bit epoch counter, starting at
+//   encrypt_options::initial_epoch (default 0). update_key() increments the
+//   epoch and stores the new key. Every outgoing packet carries the current
+//   epoch in the wire header.
+//
+// Thread safety:
+//   update_key() may be called from any thread, concurrently with the receive
+//   path; the socket's key, epoch, and grace-period state are guarded by an
+//   internal mutex. This example rotates from a separate thread, which is
+//   covered by that contract.
 //
 // Dual-key overlap:
 //   Immediately after update_key(), the socket holds two keys:
 //     - current key (epoch N):   used to encrypt outgoing packets and to
-//       decrypt incoming packets with epoch = N.
+//       decrypt incoming packets with epoch = N or N+1 (the latter covers
+//       peers whose epoch counter runs one ahead with the same key).
 //     - previous key (epoch N-1): used to decrypt incoming packets with
 //       epoch = N-1, until the grace period expires.
-//   Packets with epoch < N-1 are always rejected immediately.
+//   Packets with any other epoch are rejected immediately.
 //
 // Grace period:
-//   grace_period carries the overlap window. At least one of duration or
-//   packet_count must be set. When both are set, the grace period ends when
-//   either condition is first satisfied.
+//   grace_period carries the overlap window. If neither duration nor
+//   packet_count is set, update_key() applies a default duration bound of
+//   30 seconds (encrypted_socket::default_grace_duration). When both are set,
+//   the grace period ends when either condition is first satisfied.
 //     .duration     -- expire after this wall-clock duration
 //     .packet_count -- expire after this many old-epoch packets are received
 //
 // Lazy expiry:
-//   The grace period is checked inline on each received old-epoch packet.
-//   There is no background timer.
+//   The grace period is checked inline on each received packet. There is no
+//   background timer. When the grace period expires, the previous key is
+//   zeroized immediately.
 //
 // Peer coordination:
 //   All peers must call update_key() with the same new key. A practical
 //   strategy: broadcast a rotation signal (e.g., a service TXT attribute),
 //   then all peers load the new key and call update_key() within the grace
 //   window. The grace period must be long enough to ensure that no peer is
-//   still using the old key after it expires on the receiver side.
+//   still using the old key after it expires on the receiver side. Until a
+//   peer rotates it cannot decrypt new-epoch traffic (it does not yet hold
+//   the new key); rotated peers keep accepting its old-epoch traffic for the
+//   duration of their grace window.
 //
 // After grace expires:
 //   Packets from the previous epoch are rejected. Any peer that has not
 //   rotated will be unable to communicate until it also calls update_key()
-//   with the new key.
+//   with the new key. A peer that restarts after the rotation must be
+//   provisioned with the new key and encrypt_options::initial_epoch set to
+//   the group's current epoch.
 
 int main()
 {
@@ -67,6 +83,8 @@ int main()
             .sender_id = 0x00000001,
         },
     };
+    // secure_key copies the key material; wipe the stack source buffer.
+    mdnspp::encrypt::secure_zero(initial_key.data(), initial_key.size());
 
     mdnspp::context ctx;
 
@@ -112,8 +130,10 @@ int main()
 
         // update_key() is called on the encrypted_socket, accessible via socket().
         // socket() returns the encrypted_socket<InnerSocket> for encrypted_policy.
-        // The grace period of 30 seconds allows peers that have not yet rotated to
-        // continue decrypting with the old key during the transition window.
+        // Calling it from this thread while the executor thread decrypts is
+        // permitted: key state is guarded by an internal mutex.
+        // The grace period of 30 seconds keeps accepting old-epoch packets from
+        // peers that have not yet rotated during the transition window.
         obs.socket().update_key(
             mdnspp::encrypt::secure_key{new_raw_key},
             mdnspp::encrypt::grace_period{
@@ -121,8 +141,10 @@ int main()
                 .packet_count = 1000,
             }
         );
+        // secure_key copies the key material; wipe the stack source buffer.
+        mdnspp::encrypt::secure_zero(new_raw_key.data(), new_raw_key.size());
 
-        std::cout << "key rotated -- epoch incremented, grace period: 30 s or 1000 packets\n";
+        std::cout << "key rotated -- epoch incremented, grace period: 30 s or 1000 packets" << std::endl;
 
         // After 35 seconds the grace period has expired on this peer. Any packets
         // still arriving with the old epoch are rejected from this point on.

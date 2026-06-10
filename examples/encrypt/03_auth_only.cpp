@@ -1,3 +1,4 @@
+#include "mdnspp/encrypt/aead.h"
 #include "mdnspp/encrypt/defaults.h"
 
 #include <array>
@@ -58,6 +59,8 @@ int main()
             .recv_mode = mdnspp::encrypt::receive_mode::auth_only,
         },
     };
+    // secure_key copies the key material; wipe the stack source buffer.
+    mdnspp::encrypt::secure_zero(raw_key.data(), raw_key.size());
 
     mdnspp::context ctx;
 

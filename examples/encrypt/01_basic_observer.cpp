@@ -1,3 +1,4 @@
+#include "mdnspp/encrypt/aead.h"
 #include "mdnspp/encrypt/defaults.h"
 
 #include <array>
@@ -72,10 +73,13 @@ static std::array<std::byte, 32> load_psk_from_env()
 int main()
 {
     // Step 1: Load the PSK from an application-managed source.
-    // secure_key accepts a std::array<std::byte, 32> and zeroes its own storage
-    // in the destructor, preventing key material from lingering in memory.
+    // secure_key copies the std::array<std::byte, 32> and zeroes its own copy
+    // in the destructor. The caller's source buffer is the caller's
+    // responsibility: wipe it once the secure_key has been constructed,
+    // otherwise the key material remains on the stack.
     std::array<std::byte, 32> raw_key = load_psk_from_env();
     mdnspp::encrypt::secure_key psk{raw_key};
+    mdnspp::encrypt::secure_zero(raw_key.data(), raw_key.size());
 
     // Step 2: Populate encrypt_socket_options.
     // encrypt_socket_options extends socket_options (interface address, multicast

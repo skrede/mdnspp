@@ -8,11 +8,12 @@ SCENARIO("parse::record dispatches to parse::a for rtype=1", "[parse][dispatch]"
 {
     GIVEN("an A record buffer (rtype=1)")
     {
-        auto buf = bytes({0x7F, 0x00, 0x00, 0x01}); // 127.0.0.1
+        auto buf = bytes({0x04, 'h', 'o', 's', 't', 0x00,
+                          0x7F, 0x00, 0x00, 0x01}); // 127.0.0.1
 
         record_metadata meta;
         meta.rtype         = dns_type::a;
-        meta.record_offset = 0;
+        meta.record_offset = 6;
         meta.record_length = 4;
 
         WHEN("parse::record is called")

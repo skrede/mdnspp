@@ -30,10 +30,13 @@ struct record_metadata
 
 namespace parse {
 
-static std::string extract_owner_name(std::span<const std::byte> buffer, const record_metadata &meta)
+inline expected<std::string, mdns_error>
+extract_owner_name(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     auto name = detail::read_dns_name(buffer, meta.name_offset);
-    return name ? std::move(*name) : std::string{};
+    if(!name)
+        return detail::make_unexpected(mdns_error::parse_error);
+    return std::move(*name);
 }
 
 inline expected<mdns_record_variant, mdns_error>
@@ -50,7 +53,10 @@ a(std::span<const std::byte> buffer, const record_metadata &meta)
     std::memcpy(&addr.sin_addr.s_addr, buffer.data() + meta.record_offset, 4);
 
     record_a r;
-    r.name = extract_owner_name(buffer, meta);
+    auto owner = extract_owner_name(buffer, meta);
+    if(!owner)
+        return detail::make_unexpected(mdns_error::parse_error);
+    r.name = std::move(*owner);
     r.ttl = meta.ttl;
     r.rclass = meta.rclass;
     r.length = static_cast<uint32_t>(meta.record_length);
@@ -75,7 +81,10 @@ aaaa(std::span<const std::byte> buffer, const record_metadata &meta)
     std::memcpy(&addr.sin6_addr, buffer.data() + meta.record_offset, 16);
 
     record_aaaa r;
-    r.name = extract_owner_name(buffer, meta);
+    auto owner = extract_owner_name(buffer, meta);
+    if(!owner)
+        return detail::make_unexpected(mdns_error::parse_error);
+    r.name = std::move(*owner);
     r.ttl = meta.ttl;
     r.rclass = meta.rclass;
     r.length = static_cast<uint32_t>(meta.record_length);
@@ -92,11 +101,18 @@ ptr(std::span<const std::byte> buffer, const record_metadata &meta)
     if(buffer.size() < meta.record_offset + meta.record_length)
         return detail::make_unexpected(mdns_error::parse_error);
 
-    auto ptr_name = detail::read_dns_name(buffer, meta.record_offset);
+    // Bound the rdata name read to the record's extent. Compression pointers
+    // are backward-only (RFC 9267), so a prefix span keeps them resolvable
+    // while preventing the name from spilling into subsequent records.
+    auto ptr_name = detail::read_dns_name(
+        buffer.first(meta.record_offset + meta.record_length), meta.record_offset);
     if(!ptr_name) return detail::make_unexpected(mdns_error::parse_error);
 
     record_ptr r;
-    r.name = extract_owner_name(buffer, meta);
+    auto owner = extract_owner_name(buffer, meta);
+    if(!owner)
+        return detail::make_unexpected(mdns_error::parse_error);
+    r.name = std::move(*owner);
     r.ttl = meta.ttl;
     r.rclass = meta.rclass;
     r.length = static_cast<uint32_t>(meta.record_length);
@@ -121,11 +137,16 @@ srv(std::span<const std::byte> buffer, const record_metadata &meta)
     uint16_t weight = detail::read_u16_be(rdata + 2);
     uint16_t port = detail::read_u16_be(rdata + 4);
 
-    auto srv_name = detail::read_dns_name(buffer, meta.record_offset + 6);
+    // Bounded read -- see parse::ptr for the rationale.
+    auto srv_name = detail::read_dns_name(
+        buffer.first(meta.record_offset + meta.record_length), meta.record_offset + 6);
     if(!srv_name) return detail::make_unexpected(mdns_error::parse_error);
 
     record_srv r;
-    r.name = extract_owner_name(buffer, meta);
+    auto owner = extract_owner_name(buffer, meta);
+    if(!owner)
+        return detail::make_unexpected(mdns_error::parse_error);
+    r.name = std::move(*owner);
     r.ttl = meta.ttl;
     r.rclass = meta.rclass;
     r.length = static_cast<uint32_t>(meta.record_length);
@@ -146,7 +167,10 @@ txt(std::span<const std::byte> buffer, const record_metadata &meta)
         return detail::make_unexpected(mdns_error::parse_error);
 
     record_txt r;
-    r.name = extract_owner_name(buffer, meta);
+    auto owner = extract_owner_name(buffer, meta);
+    if(!owner)
+        return detail::make_unexpected(mdns_error::parse_error);
+    r.name = std::move(*owner);
     r.ttl = meta.ttl;
     r.rclass = meta.rclass;
     r.length = static_cast<uint32_t>(meta.record_length);

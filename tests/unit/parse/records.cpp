@@ -6,9 +6,10 @@
 
 SCENARIO("parse::a parses a valid A record", "[parse][a]")
 {
-    GIVEN("a 4-byte IPv4 address buffer representing 192.168.1.1")
+    GIVEN("an owner name followed by a 4-byte IPv4 address representing 192.168.1.1")
     {
-        auto buf = bytes({0xC0, 0xA8, 0x01, 0x01});
+        auto buf = bytes({0x04, 'h', 'o', 's', 't', 0x00, // owner "host."
+                          0xC0, 0xA8, 0x01, 0x01});
 
         record_metadata meta;
         meta.sender        = {"0.0.0.0", 0};
@@ -16,7 +17,7 @@ SCENARIO("parse::a parses a valid A record", "[parse][a]")
         meta.rclass        = dns_class::in;
         meta.rtype         = dns_type::a; // A
         meta.name_offset   = 0;
-        meta.record_offset = 0;
+        meta.record_offset = 6;
         meta.record_length = 4;
 
         WHEN("parse::a is called")
@@ -27,6 +28,7 @@ SCENARIO("parse::a parses a valid A record", "[parse][a]")
             {
                 REQUIRE(result.has_value());
                 auto &r = std::get<record_a>(*result);
+                REQUIRE(r.name == "host.");
                 REQUIRE(r.address_string == "192.168.1.1");
                 REQUIRE(r.ttl == 120);
                 REQUIRE(r.rclass == dns_class::in);
@@ -38,13 +40,14 @@ SCENARIO("parse::a parses a valid A record", "[parse][a]")
 
 SCENARIO("parse::a parses loopback address 127.0.0.1", "[parse][a]")
 {
-    GIVEN("a 4-byte buffer representing 127.0.0.1")
+    GIVEN("an owner name followed by a 4-byte buffer representing 127.0.0.1")
     {
-        auto buf = bytes({0x7F, 0x00, 0x00, 0x01});
+        auto buf = bytes({0x04, 'h', 'o', 's', 't', 0x00,
+                          0x7F, 0x00, 0x00, 0x01});
 
         record_metadata meta;
         meta.rtype         = dns_type::a;
-        meta.record_offset = 0;
+        meta.record_offset = 6;
         meta.record_length = 4;
 
         WHEN("parse::a is called")
@@ -339,6 +342,7 @@ SCENARIO("parse::txt collects all key-value pairs from TXT wire format", "[parse
         // DNS TXT format: [len][data] repeated; len = length of the string
         // "key=val" = 7 bytes, "flag" = 4 bytes (key-only, no '=')
         auto buf = bytes({
+            0x04, 'h','o','s','t', 0x00,         // owner "host."
             0x07, 'k','e','y','=','v','a','l',   // "key=val" (length=7)
             0x04, 'f','l','a','g'                // "flag" (length=4, key-only)
         });
@@ -346,8 +350,8 @@ SCENARIO("parse::txt collects all key-value pairs from TXT wire format", "[parse
         record_metadata meta;
         meta.rtype         = dns_type::txt; // TXT
         meta.name_offset   = 0;
-        meta.record_offset = 0;
-        meta.record_length = static_cast<size_t>(buf.size());
+        meta.record_offset = 6;
+        meta.record_length = static_cast<size_t>(buf.size()) - 6;
 
         WHEN("parse::txt is called")
         {
@@ -372,11 +376,11 @@ SCENARIO("parse::txt handles empty TXT record gracefully", "[parse][txt]")
 {
     GIVEN("a TXT record with zero length (empty)")
     {
-        auto buf = bytes({});
+        auto buf = bytes({0x04, 'h', 'o', 's', 't', 0x00});
 
         record_metadata meta;
         meta.rtype         = dns_type::txt;
-        meta.record_offset = 0;
+        meta.record_offset = 6;
         meta.record_length = 0;
 
         WHEN("parse::txt is called")
@@ -412,6 +416,61 @@ SCENARIO("parse::txt returns error on truncated input", "[parse][txt][malformed]
             {
                 REQUIRE_FALSE(result.has_value());
                 REQUIRE(result.error() == mdns_error::parse_error);
+            }
+        }
+    }
+}
+
+SCENARIO("parse rejects records with a malformed owner name", "[parse][owner][malformed]")
+{
+    GIVEN("an A record whose owner name has an oversized label")
+    {
+        // Label length 0x7F exceeds the RFC 1035 63-octet limit
+        auto buf = bytes({0x7F, 'x', 0x00,
+                          0xC0, 0xA8, 0x01, 0x01});
+
+        record_metadata meta;
+        meta.rtype         = dns_type::a;
+        meta.name_offset   = 0;
+        meta.record_offset = 3;
+        meta.record_length = 4;
+
+        WHEN("parse::a is called")
+        {
+            auto result = parse::a(std::span<const std::byte>(buf), meta);
+
+            THEN("the record is rejected instead of receiving an empty owner name")
+            {
+                REQUIRE_FALSE(result.has_value());
+                REQUIRE(result.error() == mdns_error::parse_error);
+            }
+        }
+    }
+}
+
+SCENARIO("parse::ptr bounds rdata name reads to the record extent", "[parse][ptr][bounds]")
+{
+    GIVEN("a PTR record whose rdata name runs past record_length into trailing bytes")
+    {
+        // Owner "a." then rdata: label "bc" with NO terminating zero inside the
+        // record -- the terminator lies beyond record_offset + record_length.
+        auto buf = bytes({0x01, 'a', 0x00,    // owner
+                          0x02, 'b', 'c',     // rdata: label, unterminated
+                          0x00});             // terminator OUTSIDE the record
+
+        record_metadata meta;
+        meta.rtype         = dns_type::ptr;
+        meta.name_offset   = 0;
+        meta.record_offset = 3;
+        meta.record_length = 3; // excludes the trailing terminator
+
+        WHEN("parse::ptr is called")
+        {
+            auto result = parse::ptr(std::span<const std::byte>(buf), meta);
+
+            THEN("the read is bounded and the record rejected")
+            {
+                REQUIRE_FALSE(result.has_value());
             }
         }
     }

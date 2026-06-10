@@ -42,14 +42,21 @@ dispatches it:
 - **Unicast:** a packet addressed to a specific endpoint goes to the socket
   whose assigned endpoint matches exactly.
 - **Multicast:** a packet addressed to a multicast group endpoint goes to every
-  socket in the matching multicast group. The sender's own socket is skipped if
-  `loopback_mode::disabled` is set in `socket_options` (the default for mDNS
-  multicast sockets).
+  socket in the matching multicast group, including the sender's own socket —
+  `socket_options::multicast_loopback` defaults to `loopback_mode::enabled`.
+  Set `loopback_mode::disabled` to skip delivery back to the sender.
 
 **Multicast group isolation.** Sockets join a group by setting
 `socket_options::multicast_group`. Only sockets in the same group receive
 multicast packets for that group. Sockets not joined to the group are invisible
 to multicast traffic for it.
+
+**Port override.** The inproc policy declares its own socket options type,
+`mdnspp::inproc::inproc_socket_options` (derived from `socket_options`, used
+automatically by `basic_*` constructors via `policy_socket_options_t<P>`). Its
+`port_override` field (`std::optional<uint16_t>`) replaces the bus-assigned
+port, simulating legacy unicast clients that query from a source port other
+than 5353 (RFC 6762 §6.7).
 
 ## Executor model
 

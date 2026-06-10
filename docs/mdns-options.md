@@ -155,7 +155,7 @@ mdnspp::mdns_options opts{
 | **RFC section** | 6762 §5.2 |
 
 A uniform random offset in `[0, wire_ttl * refresh_jitter_pct]` is added to
-each threshold-derived fire point to desynchronise simultaneous queriers on the
+each threshold-derived fire point to desynchronize simultaneous queriers on the
 same network segment.
 
 Risk of changing: Setting to `0.0` disables jitter entirely, which may cause
@@ -233,13 +233,16 @@ link-local scoping requirement and enabling cross-segment spoofing attacks.
 | **Type** | `ttl_unknown_policy` |
 | **Default** | `ttl_unknown_policy::accept` |
 
-Disposition for packets where the IP TTL could not be extracted (e.g., on
-platforms where TTL extraction is not supported, such as asio_socket).
+Disposition for packets where the IP TTL could not be extracted. Both
+`default_socket` and `asio_socket` extract the TTL natively on Linux, macOS
+(`recvmsg` ancillary data) and Windows (`WSARecvMsg`); extraction is
+unavailable only on transports without an IP layer (e.g. custom policies,
+the inproc bus) or when the platform call fails.
 
 | Value | Behaviour |
 |-------|-----------|
-| `ttl_unknown_policy::accept` | Packets without extractable TTL are accepted. Default for backward compatibility. |
-| `ttl_unknown_policy::reject` | Packets without extractable TTL are discarded. Strict enforcement; not suitable on platforms without TTL extraction support. |
+| `ttl_unknown_policy::accept` | Packets without extractable TTL are accepted. Default. |
+| `ttl_unknown_policy::reject` | Packets without extractable TTL are discarded. Strict enforcement; not suitable on transports without TTL extraction support. |
 
 See [recv_metadata](api/recv_metadata.md) and [Receive-Side TTL](rfc/receive-ttl.md)
 for platform extraction capabilities.
@@ -265,6 +268,6 @@ mdnspp::mdns_options opts{
 ## See Also
 
 - [RFC 6762 section 5.2](rfc/query-backoff.md) &mdash; query backoff specification
-- [RFC 6762 section 10.2](rfc/tc-handling.md) &mdash; TC handling specification
+- [RFC 6762 sections 6 and 7.2](rfc/tc-handling.md) &mdash; TC handling specification
 - [Service Monitor](service-monitor.md) &mdash; uses mdns_options for continuous discovery
 - [Policies](policies.md) &mdash; how mdns_options fits into the constructor signature

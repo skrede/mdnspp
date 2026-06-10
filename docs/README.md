@@ -1,6 +1,6 @@
 # mdnspp Documentation
 
-Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
+Guides and API reference for the mdnspp C++20 mDNS/DNS-SD library.
 
 ## Getting Started
 
@@ -19,6 +19,7 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 - [In-Process Bus](inproc-bus.md) &mdash; inproc_policy and shared bus for in-process mDNS scenarios
 - [Test Landscape](testing.md) -- Unit, integration, fuzz, and compile test categories
 - [NIC Group](nic-group.md) -- Multi-NIC orchestration: basic_nic_group, basic_nic_monitor, basic_dynamic_nic_group
+- [Troubleshooting](troubleshooting.md) -- Firewalls, port 5353 conflicts, VPN/virtual interfaces, IGMP snooping, same-host multi-process
 
 ## Encrypted mDNS
 
@@ -30,6 +31,15 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
   - API Reference: [encrypt_options](encrypt/api/encrypt_options.md) | [encrypted_socket](encrypt/api/encrypted_socket.md) | [encrypted_policy](encrypt/api/encrypted_policy.md) | [secure_key](encrypt/api/secure_key.md) | [encrypt_socket_options](encrypt/api/encrypt_socket_options.md) | [encrypt_error](encrypt/api/encrypt_error.md) | [defaults](encrypt/api/defaults.md)
 
 ## API Reference
+
+### Choosing a Peer Type
+
+| Peer type | Activity | Lifetime | Result form | Use when |
+|-----------|----------|----------|-------------|----------|
+| [observer](api/observer.md) | Passive (no queries sent) | Continuous until `stop()` | Raw records (every parsed record, including query packets) | You want to watch all mDNS traffic on the segment, e.g. for diagnostics or custom caching. |
+| [querier](api/querier.md) | Active (one query, exponential follow-up not included) | One-shot (completes at silence timeout) | Raw records matching the queried name | You need the records for one specific name and type, once. |
+| [service_discovery](api/service_discovery.md) | Active (one PTR/meta query) | One-shot (completes at silence timeout) | Raw records (`async_discover`) or aggregated `resolved_service` values (`async_browse`) | You want a snapshot of the services of a type currently on the network. |
+| [service_monitor](api/service_monitor.md) | Active (RFC 6762 §5.2 continuous querying) or passive (`monitor_mode::observe`) | Continuous until `stop()` | Resolved services with found/updated/lost lifecycle callbacks | You need to track services over time, with TTL refresh and loss detection. |
 
 ### Core Types
 
@@ -70,6 +80,10 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 - [mdns_options](api/mdns_options.md) -- Protocol timing tunables: query backoff, TTL refresh, TC handling
 - [Options Deep-Dive](api/options/README.md) -- Per-field reference for every option in mdns_options, service_options, and cache_options
 
+### Errors
+
+- [Errors](api/errors.md) -- mdns_error enum, std::error_code conventions, where errors surface
+
 ## RFC Compliance
 
 - [RFC Compliance](rfc/README.md) -- RFC 6762/6763 conformance status and feature documentation
@@ -78,7 +92,7 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
   - [Known-Answer Suppression](rfc/known-answer-suppression.md) -- RFC 6762 §7.1 known-answer lists
   - [Duplicate Suppression](rfc/duplicate-suppression.md) -- RFC 6762 §7.4 duplicate answer suppression
   - [Cache Flush](rfc/cache-flush.md) -- RFC 6762 §10.2 cache-flush semantics
-  - [Goodbye](rfc/goodbye.md) -- RFC 6762 §11.3 goodbye packet handling
+  - [Goodbye](rfc/goodbye.md) -- RFC 6762 §10.1 goodbye packet handling
   - [Probing](rfc/probing.md) -- RFC 6762 §8 name uniqueness probing
   - [DNS-SD](rfc/dns-sd.md) -- RFC 6763 DNS-SD service discovery
   - [Traffic Reduction](rfc/traffic-reduction.md) -- RFC 6762 §11 traffic reduction techniques

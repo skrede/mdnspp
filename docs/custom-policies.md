@@ -65,6 +65,15 @@ usage examples and the `post()` threading model.
 #### The policy_like concept
 
 ```cpp
+// policy_like<P>: the unified policy concept.
+// A policy bundles an executor type with a socket type and timer type,
+// both constructible from the executor (matching ASIO convention).
+//
+// Semantic requirements (not expressible in the concept):
+//   - P::post(ex, fn) must be callable from any thread; the peers use it to
+//     marshal stop()/update_* requests onto the executor.
+//   - Work posted via P::post runs on the executor, serialized with socket
+//     receive handlers and timer wait handlers.
 template <typename P>
 concept policy_like = requires
     {
@@ -78,39 +87,50 @@ concept policy_like = requires
     && std::constructible_from<typename P::timer_type, typename P::executor_type>
     && std::constructible_from<typename P::socket_type, typename P::executor_type, std::error_code&>
     && std::constructible_from<typename P::timer_type, typename P::executor_type, std::error_code&>
-    && std::constructible_from<typename P::socket_type, typename P::executor_type, const socket_options&>
-    && std::constructible_from<typename P::socket_type, typename P::executor_type, const socket_options&, std::error_code&>
-    && requires(typename P::executor_type ex, detail::move_only_function<void()> fn)
+    && std::constructible_from<typename P::socket_type, typename P::executor_type, const policy_socket_options_t<P>&>
+    && std::constructible_from<typename P::socket_type, typename P::executor_type, const policy_socket_options_t<P>&, std::error_code&>
+    && requires(typename P::executor_type ex, move_only_function<void()> fn)
     {
         P::post(ex, std::move(fn));
     };
 ```
 
 All four socket constructor forms are required to support both throwing and
-non-throwing construction, with and without explicit `socket_options`.
+non-throwing construction, with and without explicit socket options. The
+socket-options constraints use `policy_socket_options_t<P>`: when the policy
+declares a `socket_options_type` derived from `socket_options`, that type is
+required; otherwise the base `socket_options` is.
 
 #### socket_like concept
 
 ```cpp
+// socket_like<S>: satisfied by any type that provides the mDNS socket interface.
+// The receive handler is invoked with the error code first (asio convention);
+// on error the metadata is empty and the data span is empty.
+//
+// Semantic requirements (not expressible in the concept):
+//   - Receive handlers fire on the policy executor; the library never locks
+//     around handler invocation and relies on executor serialization.
+//   - close() releases the pending receive handler; after close() no handler
+//     may fire.
 template <typename S>
-concept socket_like = requires(
-    S &s,
-    const endpoint &ep,
-    std::span<const std::byte> send_data,
-    std::error_code &ec,
-    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
+concept socket_like = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
 {
     { s.async_receive(std::move(handler)) } -> std::same_as<void>;
-    { s.send(ep, send_data) }               -> std::same_as<void>;
-    { s.send(ep, send_data, ec) }           -> std::same_as<void>;
-    { s.close() }                            -> std::same_as<void>;
+    { s.send(ep, send_data) } -> std::same_as<void>;
+    { s.send(ep, send_data, ec) } -> std::same_as<void>;
+    { s.close() } -> std::same_as<void>;
 };
 ```
 
-`async_receive` delivers packets by calling `handler(metadata, data)` for each
-received datagram, where `metadata` is a `recv_metadata` containing the sender
-endpoint and the IP TTL of the received packet. It is expected to re-arm itself
-internally (i.e., it keeps listening until `close()` is called).
+`async_receive` delivers packets by calling `handler(ec, metadata, data)` for
+each received datagram, error code first. On success `ec` is falsy,
+`metadata` is a `recv_metadata` containing the sender endpoint, the optional
+IP TTL, and the receiving interface index, and `data` spans the payload. On
+error `ec` carries the failure, the metadata is empty, and the data span is
+empty. The socket is expected to re-arm itself internally (i.e., it keeps
+listening until `close()` is called), and after `close()` no handler may
+fire.
 
 `send` has two overloads: one that throws or ignores errors internally, and one
 that reports errors via the `std::error_code&` out-parameter.
@@ -118,21 +138,27 @@ that reports errors via the `std::error_code&` out-parameter.
 #### timer_like concept
 
 ```cpp
+// timer_like<T>: satisfied by any type that provides the mDNS timer interface.
+//
+// Semantic requirements (not expressible in the concept):
+//   - cancel() completes every pending async_wait with an error code equal to
+//     operation_aborted/operation_canceled; every stop() path waits on this.
+//   - expires_after() on a timer with a pending wait also cancels that wait.
+//   - Wait handlers fire on the policy executor.
 template <typename T>
-concept timer_like = requires(
-    T &t,
-    std::chrono::milliseconds dur,
-    detail::move_only_function<void(std::error_code)> handler)
+concept timer_like = requires(T &t, std::chrono::milliseconds dur, move_only_function<void(std::error_code)> handler)
 {
-    t.expires_after(dur);
+    t.expires_after(dur); // no return constraint — asio::steady_timer returns std::size_t
     { t.async_wait(std::move(handler)) } -> std::same_as<void>;
-    { t.cancel() }                        -> std::same_as<void>;
+    { t.cancel() } -> std::same_as<void>;
 };
 ```
 
 `expires_after` sets the timer deadline (no return constraint; ASIO timers
-return `std::size_t`). `async_wait` calls `handler` when the timer fires or is
-cancelled. `cancel` stops a pending wait immediately with an error code.
+return `std::size_t`) and cancels a pending wait. `async_wait` calls
+`handler` when the timer fires or is cancelled. `cancel` completes every
+pending wait with `operation_aborted` / `operation_canceled` — every
+`stop()` path in the library waits on this guarantee.
 
 ---
 
@@ -165,9 +191,9 @@ struct MySocket
     MySocket(MyExecutor ex, const mdnspp::socket_options &opts);
     MySocket(MyExecutor ex, const mdnspp::socket_options &opts, std::error_code &ec);
 
-    // socket_like interface
+    // socket_like interface -- handler is invoked with the error code first
     void async_receive(
-        mdnspp::detail::move_only_function<void(const mdnspp::recv_metadata &, std::span<std::byte>)> handler);
+        mdnspp::move_only_function<void(std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)> handler);
 
     void send(const mdnspp::endpoint &ep, std::span<const std::byte> data);
     void send(const mdnspp::endpoint &ep, std::span<const std::byte> data,
@@ -177,8 +203,11 @@ struct MySocket
 };
 ```
 
-Inside `async_receive`, schedule your custom I/O loop to call `handler` for
-each incoming packet and re-arm automatically.
+Inside `async_receive`, schedule your custom I/O loop to call
+`handler({}, metadata, data)` for each incoming packet and re-arm
+automatically. Fatal receive failures are reported by invoking the handler
+with the error code and empty metadata/data; after `close()` no handler may
+fire.
 
 **Step 3: Implement MyTimer**
 
@@ -189,7 +218,7 @@ struct MyTimer
     MyTimer(MyExecutor ex, std::error_code &ec);
 
     void expires_after(std::chrono::milliseconds duration);
-    void async_wait(mdnspp::detail::move_only_function<void(std::error_code)> handler);
+    void async_wait(mdnspp::move_only_function<void(std::error_code)> handler);
     void cancel();
 };
 ```
@@ -204,7 +233,7 @@ struct MyPolicy
     using timer_type    = MyTimer;
 
     static void post(executor_type ex,
-                     mdnspp::detail::move_only_function<void()> fn)
+                     mdnspp::move_only_function<void()> fn)
     {
         ex.schedule(std::move(fn)); // schedule on your event loop
     }
@@ -292,10 +321,11 @@ component stores the reference and constructs its socket and timer from it.
 The `inproc_bus` is not part of `executor_type` directly — it is reachable via
 `ex.bus()`.
 
-This differs from `default_policy`, where `executor_type` is a value type
-(`context`) that owns its own internal state. `inproc_policy` requires an
-externally constructed `inproc_executor` because the bus must be shared across
-all components and its lifetime must outlast all of them.
+`default_policy` follows the same pattern: its `executor_type` is
+`default_context&`, a reference to an externally owned context.
+`inproc_policy` likewise requires an externally constructed `inproc_executor`
+because the bus must be shared across all components and its lifetime must
+outlast all of them.
 
 **`socket_type = inproc_socket<Clock>`**
 
@@ -342,6 +372,6 @@ for building your own.
 
 ## See Also
 
-- [policies.md](policies.md) &mdash; default_policy, asio_policy, and mock_policy usage
-- [API reference: policy.h](api/observer.md) -- socket_like and timer_like concept definitions
+- [policies.md](policies.md) &mdash; default_policy, asio_policy, and mock_policy usage; the policy_like concept and recv_metadata
+- `lib/mdnspp/include/mdnspp/policy.h` &mdash; authoritative socket_like, timer_like, and policy_like concept definitions
 - [Async Patterns](async-patterns.md) -- ASIO completion token forms (asio_policy)

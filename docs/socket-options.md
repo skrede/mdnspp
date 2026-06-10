@@ -23,7 +23,7 @@ Both headers are included transitively by `#include <mdnspp/defaults.h>`.
 ```cpp
 namespace mdnspp {
 
-enum class loopback_mode { enabled, disabled };
+enum class loopback_mode : uint8_t { enabled, disabled };
 
 struct socket_options
 {
@@ -31,7 +31,6 @@ struct socket_options
     endpoint multicast_group{"224.0.0.251", 5353};
     loopback_mode multicast_loopback{loopback_mode::enabled};
     std::optional<std::uint8_t> multicast_ttl{};
-    std::optional<uint16_t> port_override{};
 };
 
 }
@@ -45,7 +44,13 @@ struct socket_options
 | `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. Change this to isolate mDNS traffic to a custom namespace. |
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets are looped back to the sending host. Enabled by default so that services and clients on the same machine can communicate. |
 | `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | Multicast time-to-live. When `socket_options` is used, defaults to 255 per RFC 6762 Section 11. `std::nullopt` leaves the OS default. |
-| `port_override` | `std::optional<uint16_t>` | `std::nullopt` | Overrides the source port assigned by `inproc_bus`. Used in inproc_policy tests to simulate legacy unicast queries (source port != 5353). Has no effect on real sockets. |
+
+Policies may extend `socket_options`: a policy declaring a
+`socket_options_type` derived from `socket_options` substitutes its own
+struct via `policy_socket_options_t<P>`. The encrypted policy adds key
+material this way (`encrypt_socket_options`), and the inproc policy adds
+`inproc::inproc_socket_options::port_override` for simulating legacy unicast
+clients on the in-process bus (see [In-Process Bus](inproc-bus.md)).
 
 ### loopback_mode enum
 
@@ -66,7 +71,7 @@ struct network_interface
     std::string name;
     std::string ipv4_address;
     std::string ipv6_address;
-    unsigned int index{0};
+    uint32_t index{0};
     bool is_loopback{false};
     bool is_up{false};
 };
@@ -81,7 +86,7 @@ struct network_interface
 | `name` | `std::string` | OS-reported interface name (e.g. `"eth0"`, `"en0"`, `"Ethernet"`). |
 | `ipv4_address` | `std::string` | IPv4 address in dotted-decimal notation. Empty if the interface has no IPv4 address. |
 | `ipv6_address` | `std::string` | IPv6 address in colon-hex notation. Empty if the interface has no IPv6 address. |
-| `index` | `unsigned int` | OS interface index. |
+| `index` | `uint32_t` | OS interface index. |
 | `is_loopback` | `bool` | `true` if this is the loopback interface (`lo`, `lo0`). |
 | `is_up` | `bool` | `true` if the interface is currently up. |
 
@@ -116,7 +121,7 @@ int main()
                   << "  ipv6=" << iface.ipv6_address
                   << "  up=" << iface.is_up
                   << "  loopback=" << iface.is_loopback
-                  << "\n";
+                  << std::endl;
     }
 }
 ```
@@ -146,7 +151,7 @@ int main()
 
     if (it == ifaces.end())
     {
-        std::cerr << "no suitable interface found\n";
+        std::cerr << "no suitable interface found" << std::endl;
         return 1;
     }
 
@@ -283,21 +288,21 @@ extraction is enabled:
 | Linux (IPv4) | `IP_RECVTTL` | Deliver IP TTL as ancillary data in `recvmsg` |
 | Linux (IPv6) | `IPV6_RECVHOPLIMIT` | Deliver IPv6 hop limit as ancillary data |
 | Linux / macOS | `IP_PKTINFO` / `IP_RECVIF` | Deliver receiving interface index as ancillary data |
-| Windows (IPv4) | `IP_RECVTTL` + `WSAIoctl(SIO_RCVALL)` | WSARecvMsg ancillary TTL |
+| Windows (IPv4) | `IP_RECVTTL`, `WSARecvMsg` obtained via `WSAIoctl(SIO_GET_EXTENSION_FUNCTION_POINTER)` | WSARecvMsg ancillary TTL |
 | Windows (IPv6) | `IPV6_RECVHOPLIMIT` | WSARecvMsg ancillary hop limit |
 
 ### Platform matrix
 
 | Platform | default_socket | asio_socket |
 |----------|--------------|------------|
-| Linux | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` &mdash; ASIO does not expose ancillary data from `async_receive_from` |
-| macOS | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` &mdash; same ASIO limitation |
-| Windows | Real TTL via `WSARecvMsg` + `IP_RECVTTL` | `std::nullopt` -- same ASIO limitation |
+| Linux | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | Real TTL via `async_wait` + `recvmsg` on `native_handle()`; same ancillary data path |
+| macOS | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | Real TTL via `async_wait` + `recvmsg` on `native_handle()`; same ancillary data path |
+| Windows | Real TTL via `WSARecvMsg` + `IP_RECVTTL` | Real TTL via `WSARecvMsg` on `native_handle()`; same extension pointer approach |
 
-When TTL extraction fails silently (setsockopt error, platform unsupported),
-the socket opens normally and `recv_metadata::ttl` is left as `std::nullopt`.
-The `mdns_options::unknown_ttl_policy` field controls whether such packets
-are accepted or rejected.
+When TTL extraction fails silently (setsockopt error, extension pointer
+unavailable), the socket opens normally and `recv_metadata::ttl` is left as
+`std::nullopt`. The `mdns_options::unknown_ttl_policy` field controls
+whether such packets are accepted or rejected.
 
 ### Filtering configuration
 

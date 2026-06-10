@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- C++23 compiler: GCC 13+, Clang 18+, MSVC 17+, or Xcode 15.4+
+- C++20 compiler: GCC 13+, Clang 17+, MSVC 19.34+ (Visual Studio 2022), or Xcode 15.4+
 - CMake 3.25+
 
 ## Installation
@@ -57,7 +57,7 @@ int main()
                             const mdnspp::mdns_record_variant &rec)
             {
                 std::visit([&](const auto &r) {
-                    std::cout << sender << " -> " << r << "\n";
+                    std::cout << sender << " -> " << r << std::endl;
                 }, rec);
             }
         }
@@ -67,9 +67,9 @@ int main()
         [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
         {
             if (ec)
-                std::cerr << "discovery error: " << ec.message() << "\n";
+                std::cerr << "discovery error: " << ec.message() << std::endl;
             else
-                std::cout << "discovered " << results.size() << " record(s)\n";
+                std::cout << "discovered " << results.size() << " record(s)" << std::endl;
             ctx.stop(); // ctx.stop() ends ctx.run()
         });
 
@@ -117,12 +117,23 @@ int main()
 
     mdnspp::service_server srv{ctx, std::move(info)};
 
-    std::thread shutdown{[&ctx] {
+    std::thread shutdown{[&srv] {
         std::this_thread::sleep_for(std::chrono::seconds(30));
-        ctx.stop(); // ctx.stop() ends ctx.run()
+        srv.stop(); // safe from any thread; goodbye is sent on the executor
     }};
 
-    srv.async_start();
+    srv.async_start(
+        [](std::error_code ec)
+        {
+            if (ec)
+                std::cerr << "start failed: " << ec.message() << std::endl;
+            else
+                std::cout << "service is live" << std::endl;
+        },
+        [&ctx](std::error_code)
+        {
+            ctx.stop(); // teardown complete (goodbye sent); ends ctx.run()
+        });
     ctx.run();
 
     shutdown.join();
@@ -130,9 +141,13 @@ int main()
 ```
 
 `service_info` uses designated initializers to describe the service. The
-server begins responding to mDNS queries after `async_start()` is called.
-A background thread stops the context after 30 seconds; in a real application,
-you would tie the stop to your own shutdown signal.
+server probes for name uniqueness, announces, and then responds to mDNS
+queries. `async_start` takes two handlers: `on_ready` fires once with the
+startup outcome (`std::error_code{}` when live, `mdns_error::probe_conflict`
+when another responder holds the name and no `on_conflict` rename is
+provided), and `on_done` always fires after teardown completes. A background
+thread stops the server after 30 seconds; in a real application, you would
+tie the stop to your own shutdown signal.
 
 Multiple mdnspp components can share the same context &mdash; for example, two
 `service_server` instances or a `service_server` and an `observer` on one
@@ -153,27 +168,42 @@ removed at runtime:
 
 ```cpp
 #include <mdnspp/defaults.h>
+#include <mdnspp/monitor_options.h>
+
+#include <vector>
+#include <iostream>
 
 mdnspp::context ctx;
 
+// Event callbacks are group-level and fire once per interface, with the
+// originating network_interface passed as the leading parameter.
+mdnspp::nic_group_options grp_opts{
+    .on_found = [](const mdnspp::network_interface &nic,
+                   const mdnspp::resolved_service &svc)
+    {
+        std::cout << svc.instance_name << " on " << nic.name << std::endl;
+    },
+};
+
+// Per-NIC options carry tuning only — monitor_options is move-only, so
+// build the vector with push_back rather than an initializer list.
+std::vector<mdnspp::monitor_options> opts_vec;
+opts_vec.push_back(mdnspp::monitor_options{});
+
 mdnspp::nic_group<mdnspp::basic_service_monitor> grp{
     ctx,
-    mdnspp::nic_group_options{},
-    std::vector<mdnspp::monitor_options>{
-        mdnspp::monitor_options{
-            .on_found = [](const mdnspp::resolved_service &svc)
-            {
-                std::cout << svc.instance_name.str()
-                          << " on " << svc.source_interface.name << "\n";
-            }
-        }
-    }
+    std::move(grp_opts),
+    std::move(opts_vec)
 };
 
 grp.watch("_http._tcp.local.");
 grp.start();
 ctx.run();
 ```
+
+Per-NIC `monitor_options` and `observer_options` elements must not carry
+callbacks — the group rejects them; register event callbacks on
+`nic_group_options` instead.
 
 See the [NIC Group guide](nic-group.md) for monitor-only, announce+monitor,
 dynamic builder, dedup modes, and interface filtering patterns.

@@ -14,11 +14,11 @@
 - **Cross-platform** &mdash; Linux, macOS, and Windows.
 - **Standalone native networking** &mdash; no external dependencies for the default policy.
 - **Network interface selection** &mdash; run mDNS services on any NIC or bind to a specific NIC.
-- **Multi-NIC orchestration** &mdash; `nic_group` and `dynamic_nic_group` manage peer instances across all active interfaces automatically; `nic_monitor` detects interface changes at runtime.
+- **Multi-NIC orchestration** &mdash; `nic_group` and `dynamic_nic_group` manage peer instances across all active interfaces automatically; `nic_monitor` detects interface changes at runtime (the macOS and Windows notification backends use system threads, marshalled onto your executor).
 - **Receive-side TTL verification** &mdash; RFC 6762 §11 enforcement via `recv_metadata::ttl` with platform-native extraction (`IP_RECVTTL`, `IP_PKTINFO`, `WSARecvMsg`).
-- **Thread-safe service updates** &mdash; safely modify the records of running mDNS service server from any thread.
+- **Thread-safe service updates** &mdash; safely modify the records of a running mDNS service server from any thread.
 - **Policy-based architecture** &mdash; swap socket/timer/executor implementations at compile time.
-- **Optional ASIO support** &mdash; networking and completion token support (callbacks, futures, coroutines, and deferred operations).
+- **Optional ASIO support** &mdash; networking and completion token support (callbacks, futures, coroutines, and deferred operations), with per-operation cancellation via cancellation slots (`asio::cancel_after`).
 - **[RFC 6762](https://datatracker.ietf.org/doc/html/rfc6762)/[6763](https://datatracker.ietf.org/doc/html/rfc6763) compliance** &mdash; probing, goodbye packets, known-answer suppression, traffic reduction, and [DNS-SD](docs/rfc/README.md).
 
 ## Quick Start
@@ -42,6 +42,17 @@ The main record types you will encounter:
 
 A typical discovery flow looks like this: query for PTR records of a service type → follow each PTR to its SRV → resolve the SRV hostname via A/AAAA → optionally read TXT metadata.
 
+### Choosing a peer type
+
+mdnspp provides four record-consuming peer types plus the service server. They differ along three axes: whether they send queries, how long they run, and what they deliver.
+
+| Type | Sends queries? | Lifetime | Output | Use when |
+|------|----------------|----------|--------|----------|
+| `observer` | No | Until `stop()` | Every parsed record (raw, unfiltered) | Passive traffic inspection, debugging, feeding a `record_cache` |
+| `querier` | Yes (one query, any record type) | One-shot, ends at silence timeout | Raw records matching the query | A single targeted question (e.g. one PTR or SRV lookup) |
+| `service_discovery` | Yes (PTR / meta-query) | One-shot, ends at silence timeout | Raw records (`async_discover`) or aggregated `resolved_service` values (`async_browse`) | "What is on the network right now?" snapshots, type enumeration |
+| `service_monitor` | Yes (scheduled, with backoff and TTL refresh) | Continuous, until `stop()` | `on_found` / `on_updated` / `on_lost` callbacks plus a `services()` snapshot | Long-running tracking with liveness (goodbye/timeout) detection |
+| `service_server` | No (it answers them) | Continuous, until `stop()` | — (announces and responds) | Publishing a service |
 
 ### Announce a Service
 
@@ -71,9 +82,9 @@ int main()
         [](std::error_code ec)
         {
             if(ec)
-                std::cerr << "Start failed: " << ec.message() << "\n";
+                std::cerr << "Start failed: " << ec.message() << std::endl;
             else
-                std::cout << "Service is live\n";
+                std::cout << "Service is live" << std::endl;
         },
         [&ctx](std::error_code)
         {
@@ -86,7 +97,7 @@ int main()
         srv.stop();
     });
 
-    std::cout << "Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)\n";
+    std::cout << "Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)" << std::endl;
     ctx.run();
 
     shutdown.join();
@@ -121,7 +132,7 @@ int main()
             {
                 std::visit([&](const auto &r)
                 {
-                    std::cout << sender << " -> " << r << "\n";
+                    std::cout << sender << " -> " << r << std::endl;
                 }, rec);
             }
         }
@@ -131,9 +142,9 @@ int main()
     [&ctx](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)
     {
         if(ec)
-            std::cerr << "Discovery error: " << ec.message() << "\n";
+            std::cerr << "Discovery error: " << ec.message() << std::endl;
         else
-            std::cout << "Discovery complete: " << results.size() << " record(s)\n";
+            std::cout << "Discovery complete: " << results.size() << " record(s)" << std::endl;
         ctx.stop();
     });
 
@@ -144,8 +155,8 @@ int main()
 ```console
 [mdnspp@dev ~]$ ./discover
 192.168.1.67:5353 -> 192.168.1.67: PTR _http._tcp.local -> MyApp._http._tcp.local rclass IN ttl 4500 length 24
-192.168.1.67:5353 -> 192.168.1.67: SRV MyApp._http._tcp.local -> myhost.local port 8080 weight 0 priority 0 rclass IN ttl 4500 length 20
-192.168.1.67:5353 -> 192.168.1.67: A myhost.local -> 192.168.1.67 rclass IN ttl 4500 length 4
+192.168.1.67:5353 -> 192.168.1.67: SRV MyApp._http._tcp.local -> myhost.local port 8080 weight 0 priority 0 rclass IN ttl 120 length 20
+192.168.1.67:5353 -> 192.168.1.67: A myhost.local -> 192.168.1.67 rclass IN ttl 120 length 4
 192.168.1.67:5353 -> 192.168.1.67: TXT MyApp._http._tcp.local path=/index.html rclass IN ttl 4500 length 17
 Discovery complete: 4 record(s)
 ```
@@ -172,7 +183,7 @@ int main()
             {
                 std::visit([&](const auto &r)
                 {
-                    std::cout << sender << " -> " << r << "\n";
+                    std::cout << sender << " -> " << r << std::endl;
                 }, rec);
             }
         }
@@ -182,9 +193,9 @@ int main()
     [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
     {
         if(ec)
-            std::cerr << "query error: " << ec.message() << "\n";
+            std::cerr << "query error: " << ec.message() << std::endl;
         else
-            std::cout << "Query complete -- " << results.size() << " record(s)\n";
+            std::cout << "Query complete -- " << results.size() << " record(s)" << std::endl;
         ctx.stop();
     });
 
@@ -195,8 +206,8 @@ int main()
 ```console
 [mdnspp@dev ~]$ ./query
 192.168.1.67:5353 -> 192.168.1.67: PTR _http._tcp.local -> MyApp._http._tcp.local rclass IN ttl 4500 length 24
-192.168.1.67:5353 -> 192.168.1.67: SRV MyApp._http._tcp.local -> myhost.local port 8080 weight 0 priority 0 rclass IN ttl 4500 length 20
-192.168.1.67:5353 -> 192.168.1.67: A myhost.local -> 192.168.1.67 rclass IN ttl 4500 length 4
+192.168.1.67:5353 -> 192.168.1.67: SRV MyApp._http._tcp.local -> myhost.local port 8080 weight 0 priority 0 rclass IN ttl 120 length 20
+192.168.1.67:5353 -> 192.168.1.67: A myhost.local -> 192.168.1.67 rclass IN ttl 120 length 4
 192.168.1.67:5353 -> 192.168.1.67: TXT MyApp._http._tcp.local path=/index.html rclass IN ttl 4500 length 17
 Query complete -- 4 record(s)
 ```
@@ -224,7 +235,7 @@ int main()
             {
                 std::visit([&](const auto &r)
                 {
-                    std::cout << sender << " -> " << r << "\n";
+                    std::cout << sender << " -> " << r << std::endl;
                 }, rec);
 
                 if(++count >= 10)
@@ -241,12 +252,12 @@ int main()
 ```console
 [mdnspp@dev ~]$ ./observe
 192.168.1.67:5353 -> 192.168.1.67: PTR _http._tcp.local -> MyApp._http._tcp.local rclass IN ttl 4500 length 24
-192.168.1.67:5353 -> 192.168.1.67: SRV MyApp._http._tcp.local -> myhost.local port 8080 weight 0 priority 0 rclass IN ttl 4500 length 20
-192.168.1.67:5353 -> 192.168.1.67: A myhost.local -> 192.168.1.67 rclass IN ttl 4500 length 4
+192.168.1.67:5353 -> 192.168.1.67: SRV MyApp._http._tcp.local -> myhost.local port 8080 weight 0 priority 0 rclass IN ttl 120 length 20
+192.168.1.67:5353 -> 192.168.1.67: A myhost.local -> 192.168.1.67 rclass IN ttl 120 length 4
 192.168.1.67:5353 -> 192.168.1.67: TXT MyApp._http._tcp.local path=/index.html rclass IN ttl 4500 length 17
 192.168.1.67:5353 -> 192.168.1.67: PTR _http._tcp.local -> MyApp._http._tcp.local rclass IN ttl 4500 length 24
-192.168.1.67:5353 -> 192.168.1.67: SRV MyApp._http._tcp.local -> myhost.local port 8080 weight 0 priority 0 rclass IN ttl 4500 length 20
-192.168.1.67:5353 -> 192.168.1.67: A myhost.local -> 192.168.1.67 rclass IN ttl 4500 length 4
+192.168.1.67:5353 -> 192.168.1.67: SRV MyApp._http._tcp.local -> myhost.local port 8080 weight 0 priority 0 rclass IN ttl 120 length 20
+192.168.1.67:5353 -> 192.168.1.67: A myhost.local -> 192.168.1.67 rclass IN ttl 120 length 4
 192.168.1.67:5353 -> 192.168.1.67: TXT MyApp._http._tcp.local path=/index.html rclass IN ttl 4500 length 17
 ```
 
@@ -262,7 +273,7 @@ On the client side, pass `response_mode::unicast` to `async_query`, `async_disco
 q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,
     [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
     {
-        std::cout << results.size() << " record(s)\n";
+        std::cout << results.size() << " record(s)" << std::endl;
         ctx.stop();
     },
     mdnspp::response_mode::unicast);
@@ -278,7 +289,7 @@ opts.on_query = [](const mdnspp::endpoint &sender,
                    mdnspp::response_mode mode)
 {
     std::cout << sender << " queried qtype=" << to_string(qtype)
-              << " (" << to_string(mode) << ")\n";
+              << " (" << to_string(mode) << ")" << std::endl;
 };
 
 mdnspp::service_server srv{ctx, std::move(info), std::move(opts)};
@@ -298,13 +309,13 @@ DNS-SD defines a meta-query that discovers all service types advertised on the l
 `async_enumerate_types` sends this query and returns parsed `service_type_info` values:
 
 ```cpp
-mdnspp::service_discovery sd{ctx, std::chrono::seconds(3)};
+mdnspp::service_discovery sd{ctx, mdnspp::query_options{.silence_timeout = std::chrono::seconds(3)}};
 
 sd.async_enumerate_types(
     [&ctx](std::error_code ec, std::vector<mdnspp::service_type_info> types)
     {
         for(const auto &t : types)
-            std::cout << t.type_name << "." << t.protocol << "." << t.domain << "\n";
+            std::cout << t.type_name << "." << t.protocol << "." << t.domain << std::endl;
         ctx.stop();
     });
 
@@ -347,6 +358,7 @@ For `find_package`, building from source, and all available CMake targets, see t
 - [CMake Integration](docs/cmake-integration.md) &mdash; FetchContent, find_package, and building from source
 - [Service Options](docs/api/service_options.md) &mdash; Conflict resolution, goodbye, announcement tuning
 - [RFC Compliance](docs/rfc/README.md) &mdash; RFC 6762/6763 conformance status and feature documentation
+- [Troubleshooting](docs/troubleshooting.md) &mdash; Port 5353 conflicts, firewalls, VPNs, IGMP snooping, same-host setups
 - [API Reference](docs/api/)
 
 ## License

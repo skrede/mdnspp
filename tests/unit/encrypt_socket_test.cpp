@@ -8,12 +8,22 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
-#include <cstddef>
 #include <vector>
+#include <cstddef>
+#include <cstdint>
+#include <type_traits>
+#include <system_error>
 
 // SOCK-01: encrypted_socket<mock_socket> must satisfy socket_like
 static_assert(mdnspp::socket_like<mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket>>,
     "SOCK-01: encrypted_socket<mock_socket> must satisfy socket_like");
+
+// SOCK-11: encrypted_socket is non-movable (key state is mutex-guarded and the
+// receive handler captures `this`)
+static_assert(!std::is_move_constructible_v<mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket>>,
+    "SOCK-11: encrypted_socket must not be move-constructible");
+static_assert(!std::is_move_assignable_v<mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket>>,
+    "SOCK-11: encrypted_socket must not be move-assignable");
 
 namespace {
 
@@ -70,11 +80,106 @@ TEST_CASE("SOCK-02: send increments sequence counter", "[encrypted_socket][seque
 
     REQUIRE(sock.inner().sent_packets().size() == 3);
 
+    // The counter starts at a per-boot randomized base (top 24 bits random,
+    // low 40 bits zero) and increments by one per packet.
+    constexpr uint64_t low40_mask = (uint64_t{1} << 40) - 1;
+    auto hdr0 = mdnspp::encrypt::deserialize_header(sock.inner().sent_packets()[0].data.data());
+    CHECK((hdr0.sequence & low40_mask) == 1);
+
     for (std::size_t i = 0; i < 3; ++i)
     {
         const auto &pkt = sock.inner().sent_packets()[i].data;
         auto hdr = mdnspp::encrypt::deserialize_header(pkt.data());
-        CHECK(hdr.sequence == i + 1);
+        CHECK(hdr.sequence == hdr0.sequence + i);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// SOCK-02: sequence counter start is randomized per socket
+// ---------------------------------------------------------------------------
+
+TEST_CASE("SOCK-02: sequence counter start is randomized per socket", "[encrypted_socket][sequence]")
+{
+    mdnspp::testing::mock_executor ex;
+    auto opts_a = make_test_opts(std::byte{0x42}, 1);
+    auto opts_b = make_test_opts(std::byte{0x42}, 2);
+
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock_a(ex, opts_a);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock_b(ex, opts_b);
+
+    std::vector<std::byte> plaintext{std::byte{0x01}};
+    sock_a.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
+    sock_b.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
+
+    auto hdr_a = mdnspp::encrypt::deserialize_header(sock_a.inner().sent_packets()[0].data.data());
+    auto hdr_b = mdnspp::encrypt::deserialize_header(sock_b.inner().sent_packets()[0].data.data());
+
+    // Independent CSPRNG draws of the top 24 bits collide with probability 2^-24.
+    CHECK(hdr_a.sequence != hdr_b.sequence);
+}
+
+// ---------------------------------------------------------------------------
+// SOCK-12: construction-time validation (release-build enforced)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("SOCK-12: constructor rejects invalid encrypt_options", "[encrypted_socket][validate]")
+{
+    mdnspp::testing::mock_executor ex;
+
+    SECTION("all-zero PSK sets invalid_argument in the error_code constructor")
+    {
+        mdnspp::encrypt::encrypt_socket_options opts;
+        opts.encrypt.sender_id = 1;
+
+        std::error_code ec;
+        mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts, ec);
+        CHECK(ec == std::make_error_code(std::errc::invalid_argument));
+    }
+
+    SECTION("sender_id == 0 sets invalid_argument in the error_code constructor")
+    {
+        auto opts = make_test_opts(std::byte{0x42}, 0);
+
+        std::error_code ec;
+        mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts, ec);
+        CHECK(ec == std::make_error_code(std::errc::invalid_argument));
+    }
+
+    SECTION("replay_window_size == 0 sets invalid_argument in the error_code constructor")
+    {
+        auto opts = make_test_opts();
+        opts.encrypt.replay_window_size = 0;
+
+        std::error_code ec;
+        mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts, ec);
+        CHECK(ec == std::make_error_code(std::errc::invalid_argument));
+    }
+
+    SECTION("throwing constructor throws std::system_error on an all-zero PSK")
+    {
+        mdnspp::encrypt::encrypt_socket_options opts;
+        opts.encrypt.sender_id = 1;
+
+        CHECK_THROWS_AS(
+            (mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket>(ex, opts)),
+            std::system_error);
+    }
+
+    SECTION("throwing constructor throws std::system_error on sender_id == 0")
+    {
+        auto opts = make_test_opts(std::byte{0x42}, 0);
+
+        CHECK_THROWS_AS(
+            (mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket>(ex, opts)),
+            std::system_error);
+    }
+
+    SECTION("valid options pass both constructors")
+    {
+        auto opts = make_test_opts();
+        std::error_code ec;
+        mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts, ec);
+        CHECK_FALSE(ec);
     }
 }
 
@@ -223,6 +328,83 @@ TEST_CASE("SOCK-05: cleartext_detection::reject_all drops all non-encrypted",
 }
 
 // ---------------------------------------------------------------------------
+// SOCK-05: attempt_decrypt delivers small cleartext packets
+// ---------------------------------------------------------------------------
+
+TEST_CASE("SOCK-05: attempt_decrypt delivers cleartext shorter than the encrypted header",
+    "[encrypted_socket][cleartext][attempt_decrypt]")
+{
+    // A legitimate cleartext mDNS query can be ~28 bytes, below
+    // encrypted_header_size (44). It must still be deliverable under
+    // attempt_decrypt with accept_cleartext = true.
+    std::vector<std::byte> small_cleartext(28, std::byte{0x00});
+    small_cleartext[2] = std::byte{0x01};
+
+    SECTION("accept_cleartext=true delivers the packet")
+    {
+        mdnspp::testing::mock_executor ex;
+        auto opts = make_test_opts();
+        opts.encrypt.accept_cleartext = true;
+        opts.encrypt.detection = mdnspp::encrypt::cleartext_detection::attempt_decrypt;
+
+        mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts);
+        sock.inner().enqueue(small_cleartext);
+
+        bool handler_called = false;
+        std::vector<std::byte> received;
+        sock.async_receive(
+            [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
+            {
+                handler_called = true;
+                received.assign(data.begin(), data.end());
+            });
+
+        CHECK(handler_called);
+        CHECK(received == small_cleartext);
+    }
+
+    SECTION("accept_cleartext=false drops the packet")
+    {
+        mdnspp::testing::mock_executor ex;
+        auto opts = make_test_opts();
+        opts.encrypt.accept_cleartext = false;
+        opts.encrypt.detection = mdnspp::encrypt::cleartext_detection::attempt_decrypt;
+
+        mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts);
+        sock.inner().enqueue(small_cleartext);
+
+        bool handler_called = false;
+        sock.async_receive(
+            [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
+            {
+                handler_called = true;
+            });
+
+        CHECK_FALSE(handler_called);
+    }
+
+    SECTION("reject_all drops the packet regardless of accept_cleartext")
+    {
+        mdnspp::testing::mock_executor ex;
+        auto opts = make_test_opts();
+        opts.encrypt.accept_cleartext = true;
+        opts.encrypt.detection = mdnspp::encrypt::cleartext_detection::reject_all;
+
+        mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts);
+        sock.inner().enqueue(small_cleartext);
+
+        bool handler_called = false;
+        sock.async_receive(
+            [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
+            {
+                handler_called = true;
+            });
+
+        CHECK_FALSE(handler_called);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // SOCK-06: corrupted auth tag silently dropped
 // ---------------------------------------------------------------------------
 
@@ -239,7 +421,9 @@ TEST_CASE("SOCK-06: corrupted auth tag silently dropped", "[encrypted_socket][ta
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
 
     auto corrupted = sender.inner().sent_packets()[0].data;
-    corrupted.back() ^= std::byte{0xFF};  // flip a bit in the auth tag
+    REQUIRE_FALSE(corrupted.empty());
+    if (!corrupted.empty())
+        corrupted.back() ^= std::byte{0xFF};  // flip a bit in the auth tag
     receiver.inner().enqueue(corrupted);
 
     bool handler_called = false;

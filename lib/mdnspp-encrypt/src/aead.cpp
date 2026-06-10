@@ -165,6 +165,16 @@ bool init_crypto()
     return result;
 }
 
+// --- random_sequence_start ---
+
+uint64_t random_sequence_start() noexcept
+{
+    init_crypto();
+    uint32_t high = 0;
+    randombytes_buf(&high, 3);
+    return static_cast<uint64_t>(high & 0x00FFFFFFu) << 40;
+}
+
 // --- aead_encrypt ---
 
 std::vector<std::byte> aead_encrypt(

@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <span>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -312,8 +313,38 @@ TEST_CASE("encrypt_options validate succeeds with non-zero sender_id", "[encrypt
     opts.psk       = mdnspp::encrypt::secure_key{raw};
     opts.sender_id = 1;
 
-    // Must not assert/abort
-    REQUIRE_NOTHROW(opts.validate());
+    REQUIRE_FALSE(opts.validate());
+}
+
+TEST_CASE("encrypt_options validate rejects invalid configurations", "[encrypt_options][validate]")
+{
+    const auto invalid = std::make_error_code(std::errc::invalid_argument);
+
+    SECTION("zero sender_id")
+    {
+        auto raw = make_raw_key();
+        mdnspp::encrypt::encrypt_options opts;
+        opts.psk       = mdnspp::encrypt::secure_key{raw};
+        opts.sender_id = 0;
+        REQUIRE(opts.validate() == invalid);
+    }
+
+    SECTION("all-zero PSK")
+    {
+        mdnspp::encrypt::encrypt_options opts;
+        opts.sender_id = 1;
+        REQUIRE(opts.validate() == invalid);
+    }
+
+    SECTION("zero replay_window_size")
+    {
+        auto raw = make_raw_key();
+        mdnspp::encrypt::encrypt_options opts;
+        opts.psk                = mdnspp::encrypt::secure_key{raw};
+        opts.sender_id          = 1;
+        opts.replay_window_size = 0;
+        REQUIRE(opts.validate() == invalid);
+    }
 }
 
 // ---------------------------------------------------------------------------

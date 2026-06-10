@@ -98,6 +98,9 @@ encode_ipv6(const std::string &addr)
 // Encodes a vector of service_txt entries as RFC 6763 TXT rdata.
 // Each entry becomes a length-prefixed string of "key=value" or "key".
 // Entries exceeding 255 bytes are skipped (RFC 6763 §6.1: TXT string max 255).
+// When no encodable entries exist, returns a single zero byte: RFC 6763 §6.1
+// requires an empty TXT record to contain one zero-length string, never
+// RDLENGTH=0.
 inline std::vector<std::byte> encode_txt_records(const std::vector<mdnspp::service_txt> &entries)
 {
     std::vector<std::byte> result;
@@ -116,39 +119,59 @@ inline std::vector<std::byte> encode_txt_records(const std::vector<mdnspp::servi
         for(size_t i = 0; i < len; ++i)
             result.push_back(static_cast<std::byte>(static_cast<uint8_t>(s[i])));
     }
+    if(result.empty())
+        result.push_back(std::byte{0x00});
     return result;
 }
 
+// The name whose nonexistent record types an NSEC record asserts.
+enum class nsec_owner : uint8_t
+{
+    service_type,
+    service_name,
+    hostname,
+};
+
 // Builds an RFC 4034 section 4.1.2 window-block-0 type bitmap for NSEC records.
-// Sets bits for PTR(12), TXT(16), SRV(33), and conditionally A(1) and AAAA(28)
-// based on the service_info address fields. NSEC(47) is NOT set per RFC 6762 section 6.1.
+// RFC 6762 section 6.1: the bitmap lists the types that DO exist at the owner
+// name. service_type owns PTR(12); service_name owns SRV(33), TXT(16) and the
+// NSEC(47) itself; hostname owns A(1)/AAAA(28) as configured in service_info.
 // Returns the complete window block: [window=0x00][bitmap_length][bitmap bytes...].
 // Trailing zero bytes are trimmed per RFC 4034 section 4.1.2.
-inline std::vector<std::byte> build_nsec_bitmap(const mdnspp::service_info &info)
+inline std::vector<std::byte> build_nsec_bitmap(nsec_owner owner, const mdnspp::service_info &info)
 {
-    // Highest type bit we need is SRV=33, which falls in byte index 4 (covers types 32-39).
-    // Allocate 5 bytes (types 0-39).
-    std::vector<uint8_t> bitmap(5, 0);
+    // Highest type bit needed is NSEC=47, which falls in byte index 5 (types 40-47).
+    std::vector<uint8_t> bitmap(6, 0);
 
     auto set_bit = [&](uint16_t type_val)
     {
         bitmap[type_val / 8] |= static_cast<uint8_t>(1u << (7u - (type_val % 8u)));
     };
 
-    // Always set PTR(12), TXT(16), SRV(33)
-    set_bit(detail::to_underlying(dns_type::ptr));  // 12
-    set_bit(detail::to_underlying(dns_type::txt));  // 16
-    set_bit(detail::to_underlying(dns_type::srv));  // 33
-
-    // Conditionally set A(1) and AAAA(28)
-    if(info.address_ipv4.has_value())
-        set_bit(detail::to_underlying(dns_type::a));    // 1
-    if(info.address_ipv6.has_value())
-        set_bit(detail::to_underlying(dns_type::aaaa)); // 28
+    switch(owner)
+    {
+    case nsec_owner::service_type:
+        set_bit(detail::to_underlying(dns_type::ptr));  // 12
+        break;
+    case nsec_owner::service_name:
+        set_bit(detail::to_underlying(dns_type::txt));  // 16
+        set_bit(detail::to_underlying(dns_type::srv));  // 33
+        set_bit(detail::to_underlying(dns_type::nsec)); // 47
+        break;
+    case nsec_owner::hostname:
+        if(info.address_ipv4.has_value())
+            set_bit(detail::to_underlying(dns_type::a));    // 1
+        if(info.address_ipv6.has_value())
+            set_bit(detail::to_underlying(dns_type::aaaa)); // 28
+        break;
+    }
 
     // Trim trailing zero bytes
     while(!bitmap.empty() && bitmap.back() == 0)
         bitmap.pop_back();
+
+    if(bitmap.empty())
+        return {}; // no types exist at this name — no valid NSEC can be built
 
     // Build window block: [window=0x00][length][bitmap bytes...]
     std::vector<std::byte> result;
@@ -163,14 +186,17 @@ inline std::vector<std::byte> build_nsec_bitmap(const mdnspp::service_info &info
 
 // Appends a complete NSEC resource record to buf.
 // NSEC rdata = next domain name (same as owner for mDNS, per RFC 6762 section 6.1)
-//            + type bitmap from build_nsec_bitmap.
-// No cache-flush bit for NSEC records.
+//            + type bitmap from build_nsec_bitmap for the owner.
+// No cache-flush bit for NSEC records. Skipped when no types exist at the owner.
 inline void append_nsec_rr(std::vector<std::byte> &buf,
                            const std::vector<std::byte> &owner_name,
+                           nsec_owner owner,
                            const mdnspp::service_info &info,
                            uint32_t ttl)
 {
-    auto bitmap = build_nsec_bitmap(info);
+    auto bitmap = build_nsec_bitmap(owner, info);
+    if(bitmap.empty())
+        return;
     std::vector<std::byte> rdata;
     rdata.reserve(owner_name.size() + bitmap.size());
     rdata.insert(rdata.end(), owner_name.begin(), owner_name.end());

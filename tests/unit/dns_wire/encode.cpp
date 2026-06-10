@@ -199,9 +199,20 @@ SCENARIO("encode_txt_records handles entry with value, entry without value, and 
         };
 
         auto result = mdnspp::detail::encode_txt_records(entries);
-        THEN("it is skipped")
+        THEN("it is skipped, leaving the RFC 6763 §6.1 single zero byte")
         {
-            REQUIRE(result.empty());
+            REQUIRE(result.size() == 1);
+            REQUIRE(result[0] == std::byte{0x00});
+        }
+    }
+
+    GIVEN("no TXT entries at all")
+    {
+        auto result = mdnspp::detail::encode_txt_records({});
+        THEN("the rdata is a single zero byte (RFC 6763 §6.1)")
+        {
+            REQUIRE(result.size() == 1);
+            REQUIRE(result[0] == std::byte{0x00});
         }
     }
 }

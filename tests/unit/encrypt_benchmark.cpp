@@ -29,19 +29,19 @@ std::vector<std::byte> make_payload(std::size_t size = 200)
 
 TEST_CASE("Encrypt benchmark smoke test", "[encrypt]")
 {
-    REQUIRE(mdnspp::init_crypto());
+    REQUIRE(mdnspp::encrypt::init_crypto());
 
     auto key = make_key();
     auto payload = make_payload(200);
 
-    mdnspp::encrypted_packet_header hdr;
+    mdnspp::encrypt::encrypted_packet_header hdr;
     hdr.sender_id = 1;
     hdr.sequence  = 1;
-    auto encrypted = mdnspp::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload);
+    auto encrypted = mdnspp::encrypt::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload);
 
     REQUIRE(encrypted.size() > payload.size());
 
-    auto decrypted = mdnspp::aead_decrypt(
+    auto decrypted = mdnspp::encrypt::aead_decrypt(
         std::span<const std::byte, 32>(key),
         std::span<const std::byte>(encrypted));
 
@@ -88,35 +88,35 @@ TEST_CASE("Cleartext baseline throughput", "[!benchmark][encrypt]")
 
 TEST_CASE("Encrypt throughput", "[!benchmark][encrypt]")
 {
-    REQUIRE(mdnspp::init_crypto());
+    REQUIRE(mdnspp::encrypt::init_crypto());
 
     auto key     = make_key();
     auto payload = make_payload();
 
     BENCHMARK("encrypt 200-byte payload")
     {
-        mdnspp::encrypted_packet_header hdr;
+        mdnspp::encrypt::encrypted_packet_header hdr;
         hdr.sender_id = 1;
         hdr.sequence  = 1;
-        return mdnspp::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload);
+        return mdnspp::encrypt::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload);
     };
 }
 
 TEST_CASE("Decrypt throughput", "[!benchmark][encrypt]")
 {
-    REQUIRE(mdnspp::init_crypto());
+    REQUIRE(mdnspp::encrypt::init_crypto());
 
     auto key     = make_key();
     auto payload = make_payload();
 
-    mdnspp::encrypted_packet_header hdr;
+    mdnspp::encrypt::encrypted_packet_header hdr;
     hdr.sender_id = 1;
     hdr.sequence  = 1;
-    auto packet = mdnspp::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload);
+    auto packet = mdnspp::encrypt::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload);
 
     BENCHMARK("decrypt 200-byte payload")
     {
-        return mdnspp::aead_decrypt(
+        return mdnspp::encrypt::aead_decrypt(
             std::span<const std::byte, 32>(key),
             std::span<const std::byte>(packet));
     };
@@ -124,7 +124,7 @@ TEST_CASE("Decrypt throughput", "[!benchmark][encrypt]")
 
 TEST_CASE("Encrypt varying payload sizes", "[!benchmark][encrypt]")
 {
-    REQUIRE(mdnspp::init_crypto());
+    REQUIRE(mdnspp::encrypt::init_crypto());
 
     auto key        = make_key();
     auto payload64  = make_payload(64);
@@ -133,39 +133,39 @@ TEST_CASE("Encrypt varying payload sizes", "[!benchmark][encrypt]")
 
     BENCHMARK("encrypt 64-byte payload")
     {
-        mdnspp::encrypted_packet_header hdr;
+        mdnspp::encrypt::encrypted_packet_header hdr;
         hdr.sender_id = 1;
         hdr.sequence  = 1;
-        return mdnspp::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload64);
+        return mdnspp::encrypt::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload64);
     };
 
     BENCHMARK("encrypt 512-byte payload")
     {
-        mdnspp::encrypted_packet_header hdr;
+        mdnspp::encrypt::encrypted_packet_header hdr;
         hdr.sender_id = 1;
         hdr.sequence  = 1;
-        return mdnspp::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload512);
+        return mdnspp::encrypt::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload512);
     };
 
     BENCHMARK("encrypt 1400-byte payload")
     {
-        mdnspp::encrypted_packet_header hdr;
+        mdnspp::encrypt::encrypted_packet_header hdr;
         hdr.sender_id = 1;
         hdr.sequence  = 1;
-        return mdnspp::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload1400);
+        return mdnspp::encrypt::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload1400);
     };
 }
 
 TEST_CASE("Key rotation overhead", "[!benchmark][encrypt]")
 {
-    REQUIRE(mdnspp::init_crypto());
+    REQUIRE(mdnspp::encrypt::init_crypto());
 
     auto key     = make_key();
     auto payload = make_payload();
 
     BENCHMARK("encrypt + rotate key each iteration")
     {
-        mdnspp::encrypted_packet_header hdr;
+        mdnspp::encrypt::encrypted_packet_header hdr;
         hdr.sender_id = 1;
         hdr.sequence  = 1;
         hdr.epoch     = 1;
@@ -173,8 +173,8 @@ TEST_CASE("Key rotation overhead", "[!benchmark][encrypt]")
         std::array<std::byte, 32> rotated_key{};
         rotated_key.fill(std::byte{0x99});
 
-        auto encrypted = mdnspp::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload);
-        auto decrypted = mdnspp::aead_decrypt(
+        auto encrypted = mdnspp::encrypt::aead_encrypt(std::span<const std::byte, 32>(key), hdr, payload);
+        auto decrypted = mdnspp::encrypt::aead_decrypt(
             std::span<const std::byte, 32>(key),
             std::span<const std::byte>(encrypted));
         return decrypted;

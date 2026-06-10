@@ -61,16 +61,16 @@ int main()
         std::byte{0x1D}, std::byte{0x1E}, std::byte{0x1F}, std::byte{0x20},
     };
 
-    mdnspp::encrypt_socket_options sock_opts{
+    mdnspp::encrypt::encrypt_socket_options sock_opts{
         .encrypt = {
-            .psk       = mdnspp::secure_key{initial_key},
+            .psk       = mdnspp::encrypt::secure_key{initial_key},
             .sender_id = 0x00000001,
         },
     };
 
     mdnspp::context ctx;
 
-    mdnspp::encrypted_observer obs{
+    mdnspp::encrypt::encrypted_observer obs{
         ctx,
         mdnspp::observer_options{
             .on_record = [](const mdnspp::endpoint &sender,
@@ -115,8 +115,8 @@ int main()
         // The grace period of 30 seconds allows peers that have not yet rotated to
         // continue decrypting with the old key during the transition window.
         obs.socket().update_key(
-            mdnspp::secure_key{new_raw_key},
-            mdnspp::grace_period{
+            mdnspp::encrypt::secure_key{new_raw_key},
+            mdnspp::encrypt::grace_period{
                 .duration     = std::chrono::seconds{30},
                 .packet_count = 1000,
             }

@@ -8,7 +8,7 @@
 #include <optional>
 #include <unordered_map>
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
 class replay_window
 {

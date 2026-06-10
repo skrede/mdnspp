@@ -11,27 +11,27 @@
 #include <cstddef>
 #include <vector>
 
-// SOCK-01: encrypted_socket<MockSocket> must satisfy SocketLike
-static_assert(mdnspp::SocketLike<mdnspp::encrypted_socket<mdnspp::testing::MockSocket>>,
-    "SOCK-01: encrypted_socket<MockSocket> must satisfy SocketLike");
+// SOCK-01: encrypted_socket<mock_socket> must satisfy socket_like
+static_assert(mdnspp::socket_like<mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket>>,
+    "SOCK-01: encrypted_socket<mock_socket> must satisfy socket_like");
 
 namespace {
 
-mdnspp::encrypt_socket_options make_test_opts(
+mdnspp::encrypt::encrypt_socket_options make_test_opts(
     std::byte fill = std::byte{0x42},
     uint32_t sender_id = 1)
 {
-    mdnspp::encrypt_socket_options opts;
+    mdnspp::encrypt::encrypt_socket_options opts;
     std::array<std::byte, 32> key_bytes;
     key_bytes.fill(fill);
-    opts.encrypt.psk = mdnspp::secure_key(key_bytes);
+    opts.encrypt.psk = mdnspp::encrypt::secure_key(key_bytes);
     opts.encrypt.sender_id = sender_id;
     opts.encrypt.accept_cleartext = false;
-    opts.encrypt.detection = mdnspp::cleartext_detection::magic_byte;
+    opts.encrypt.detection = mdnspp::encrypt::cleartext_detection::magic_byte;
     return opts;
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // SOCK-02: send encrypts plaintext and forwards to inner socket
@@ -41,14 +41,14 @@ TEST_CASE("SOCK-02: send encrypts plaintext and forwards to inner socket", "[enc
 {
     mdnspp::testing::mock_executor ex;
     auto opts = make_test_opts();
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sock(ex, opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts);
 
     std::vector<std::byte> plaintext{std::byte{0xDE}, std::byte{0xAD}};
     sock.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
 
     CHECK(sock.inner().sent_packets().size() == 1);
     const auto &pkt = sock.inner().sent_packets()[0].data;
-    CHECK(pkt.size() == plaintext.size() + mdnspp::encrypted_overhead);
+    CHECK(pkt.size() == plaintext.size() + mdnspp::encrypt::encrypted_overhead);
     CHECK(pkt[0] == std::byte{0x4D});
     CHECK(pkt[1] == std::byte{0x43});
 }
@@ -61,7 +61,7 @@ TEST_CASE("SOCK-02: send increments sequence counter", "[encrypted_socket][seque
 {
     mdnspp::testing::mock_executor ex;
     auto opts = make_test_opts();
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sock(ex, opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts);
 
     std::vector<std::byte> plaintext{std::byte{0xAB}};
     sock.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
@@ -73,7 +73,7 @@ TEST_CASE("SOCK-02: send increments sequence counter", "[encrypted_socket][seque
     for (std::size_t i = 0; i < 3; ++i)
     {
         const auto &pkt = sock.inner().sent_packets()[i].data;
-        auto hdr = mdnspp::deserialize_header(pkt.data());
+        auto hdr = mdnspp::encrypt::deserialize_header(pkt.data());
         CHECK(hdr.sequence == i + 1);
     }
 }
@@ -88,8 +88,8 @@ TEST_CASE("SOCK-03: async_receive decrypts valid packet and calls handler", "[en
     auto send_opts = make_test_opts(std::byte{0x42}, 1);
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
@@ -122,8 +122,8 @@ TEST_CASE("SOCK-04: recv_metadata forwarded unchanged", "[encrypted_socket][meta
     auto send_opts = make_test_opts(std::byte{0x42}, 1);
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0xFF}};
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
@@ -158,9 +158,9 @@ TEST_CASE("SOCK-05: cleartext handling with magic_byte detection", "[encrypted_s
         mdnspp::testing::mock_executor ex;
         auto opts = make_test_opts();
         opts.encrypt.accept_cleartext = true;
-        opts.encrypt.detection = mdnspp::cleartext_detection::magic_byte;
+        opts.encrypt.detection = mdnspp::encrypt::cleartext_detection::magic_byte;
 
-        mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sock(ex, opts);
+        mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts);
         sock.inner().enqueue(cleartext_pkt);
 
         bool handler_called = false;
@@ -178,9 +178,9 @@ TEST_CASE("SOCK-05: cleartext handling with magic_byte detection", "[encrypted_s
         mdnspp::testing::mock_executor ex;
         auto opts = make_test_opts();
         opts.encrypt.accept_cleartext = false;
-        opts.encrypt.detection = mdnspp::cleartext_detection::magic_byte;
+        opts.encrypt.detection = mdnspp::encrypt::cleartext_detection::magic_byte;
 
-        mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sock(ex, opts);
+        mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts);
         sock.inner().enqueue(cleartext_pkt);
 
         bool handler_called = false;
@@ -204,9 +204,9 @@ TEST_CASE("SOCK-05: cleartext_detection::reject_all drops all non-encrypted",
     mdnspp::testing::mock_executor ex;
     auto opts = make_test_opts();
     opts.encrypt.accept_cleartext = true;  // even with accept_cleartext=true, reject_all wins
-    opts.encrypt.detection = mdnspp::cleartext_detection::reject_all;
+    opts.encrypt.detection = mdnspp::encrypt::cleartext_detection::reject_all;
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sock(ex, opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sock(ex, opts);
 
     std::vector<std::byte> cleartext_pkt{
         std::byte{0x00}, std::byte{0x01}, std::byte{0x02}, std::byte{0x03}};
@@ -232,8 +232,8 @@ TEST_CASE("SOCK-06: corrupted auth tag silently dropped", "[encrypted_socket][ta
     auto send_opts = make_test_opts(std::byte{0x42}, 1);
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0x55}, std::byte{0x66}};
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
@@ -265,8 +265,8 @@ TEST_CASE("Auth-only: received payload matches sent plaintext", "[encrypted_sock
 
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0xDE}, std::byte{0xAD}, std::byte{0xBE}, std::byte{0xEF}};
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
@@ -274,7 +274,7 @@ TEST_CASE("Auth-only: received payload matches sent plaintext", "[encrypted_sock
     REQUIRE(sender.inner().sent_packets().size() == 1);
     const auto &sent_data = sender.inner().sent_packets()[0].data;
 
-    auto hdr = mdnspp::deserialize_header(sent_data.data());
+    auto hdr = mdnspp::encrypt::deserialize_header(sent_data.data());
     CHECK(hdr.flags == 0);
 
     receiver.inner().enqueue(sent_data);
@@ -304,15 +304,15 @@ TEST_CASE("Auth-only: tampered payload dropped", "[encrypted_socket][auth_only][
 
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0xCA}, std::byte{0xFE}};
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
 
     REQUIRE(sender.inner().sent_packets().size() == 1);
     auto tampered = sender.inner().sent_packets()[0].data;
-    tampered[mdnspp::encrypted_header_size] ^= std::byte{0xFF};
+    tampered[mdnspp::encrypt::encrypted_header_size] ^= std::byte{0xFF};
 
     receiver.inner().enqueue(tampered);
     bool handler_called = false;
@@ -337,10 +337,10 @@ TEST_CASE("receive_mode::encrypted_only drops auth-only packets", "[encrypted_so
     send_opts.encrypt.auth_only = true;
 
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
-    recv_opts.encrypt.recv_mode = mdnspp::receive_mode::encrypted_only;
+    recv_opts.encrypt.recv_mode = mdnspp::encrypt::receive_mode::encrypted_only;
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0x11}};
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
@@ -369,10 +369,10 @@ TEST_CASE("receive_mode::auth_only drops encrypted packets", "[encrypted_socket]
     auto send_opts = make_test_opts(std::byte{0x42}, 1);
 
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
-    recv_opts.encrypt.recv_mode = mdnspp::receive_mode::auth_only;
+    recv_opts.encrypt.recv_mode = mdnspp::encrypt::receive_mode::auth_only;
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0x22}};
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
@@ -404,11 +404,11 @@ TEST_CASE("receive_mode::accept_both accepts both encrypted and auth-only", "[en
     ao_send_opts.encrypt.auth_only = true;
 
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
-    recv_opts.encrypt.recv_mode = mdnspp::receive_mode::accept_both;
+    recv_opts.encrypt.recv_mode = mdnspp::encrypt::receive_mode::accept_both;
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> enc_sender(ex, enc_send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> ao_sender(ex, ao_send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> enc_sender(ex, enc_send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> ao_sender(ex, ao_send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0x33}};
 
@@ -446,8 +446,8 @@ TEST_CASE("SOCK-06: replayed sequence silently dropped", "[encrypted_socket][rep
     auto send_opts = make_test_opts(std::byte{0x42}, 1);
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0xAA}};
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));

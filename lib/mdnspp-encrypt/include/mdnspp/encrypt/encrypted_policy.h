@@ -7,9 +7,9 @@
 
 #include "mdnspp/detail/compat.h"
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
-template <Policy Inner>
+template <policy_like Inner>
 struct encrypted_policy
 {
     using executor_type       = typename Inner::executor_type;

@@ -64,9 +64,9 @@ uint64_t read_be64(const std::byte *p)
             static_cast<uint64_t>(static_cast<uint8_t>(p[7]));
 }
 
-} // namespace
+}
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
 // --- secure_key implementation ---
 

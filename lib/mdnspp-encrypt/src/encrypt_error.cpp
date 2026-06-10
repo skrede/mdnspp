@@ -1,6 +1,6 @@
 #include "mdnspp/encrypt/encrypt_error.h"
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
 const std::error_category &encrypt_error_category() noexcept
 {

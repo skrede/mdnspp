@@ -8,7 +8,7 @@
 #include <cstdint>
 #include <optional>
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
 enum class cleartext_detection { magic_byte, attempt_decrypt, reject_all };
 

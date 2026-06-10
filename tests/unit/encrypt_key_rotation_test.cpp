@@ -16,28 +16,28 @@
 
 namespace {
 
-mdnspp::secure_key make_key(std::byte fill)
+mdnspp::encrypt::secure_key make_key(std::byte fill)
 {
     std::array<std::byte, 32> k;
     k.fill(fill);
-    return mdnspp::secure_key(k);
+    return mdnspp::encrypt::secure_key(k);
 }
 
-mdnspp::encrypt_socket_options make_test_opts(
+mdnspp::encrypt::encrypt_socket_options make_test_opts(
     std::byte fill = std::byte{0x42},
     uint32_t sender_id = 1)
 {
-    mdnspp::encrypt_socket_options opts;
+    mdnspp::encrypt::encrypt_socket_options opts;
     std::array<std::byte, 32> key_bytes;
     key_bytes.fill(fill);
-    opts.encrypt.psk = mdnspp::secure_key(key_bytes);
+    opts.encrypt.psk = mdnspp::encrypt::secure_key(key_bytes);
     opts.encrypt.sender_id = sender_id;
     opts.encrypt.accept_cleartext = false;
-    opts.encrypt.detection = mdnspp::cleartext_detection::magic_byte;
+    opts.encrypt.detection = mdnspp::encrypt::cleartext_detection::magic_byte;
     return opts;
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // KEYM-01: Epoch field reflects current epoch in sent packets
@@ -49,25 +49,25 @@ TEST_CASE("KEYM-01: epoch field reflects current epoch in sent packets", "[encry
 
     mdnspp::testing::mock_executor ex;
     auto opts = make_test_opts(std::byte{0x42}, 1);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, opts);
 
     std::vector<std::byte> plaintext{std::byte{0x01}};
 
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
     REQUIRE(sender.inner().sent_packets().size() == 1);
-    auto hdr0 = mdnspp::deserialize_header(sender.inner().sent_packets()[0].data.data());
+    auto hdr0 = mdnspp::encrypt::deserialize_header(sender.inner().sent_packets()[0].data.data());
     CHECK(hdr0.epoch == 0);
 
-    sender.update_key(make_key(std::byte{0x43}), mdnspp::grace_period{.duration = 10s});
+    sender.update_key(make_key(std::byte{0x43}), mdnspp::encrypt::grace_period{.duration = 10s});
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
     REQUIRE(sender.inner().sent_packets().size() == 2);
-    auto hdr1 = mdnspp::deserialize_header(sender.inner().sent_packets()[1].data.data());
+    auto hdr1 = mdnspp::encrypt::deserialize_header(sender.inner().sent_packets()[1].data.data());
     CHECK(hdr1.epoch == 1);
 
-    sender.update_key(make_key(std::byte{0x44}), mdnspp::grace_period{.duration = 10s});
+    sender.update_key(make_key(std::byte{0x44}), mdnspp::encrypt::grace_period{.duration = 10s});
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
     REQUIRE(sender.inner().sent_packets().size() == 3);
-    auto hdr2 = mdnspp::deserialize_header(sender.inner().sent_packets()[2].data.data());
+    auto hdr2 = mdnspp::encrypt::deserialize_header(sender.inner().sent_packets()[2].data.data());
     CHECK(hdr2.epoch == 2);
 }
 
@@ -83,8 +83,8 @@ TEST_CASE("KEYM-02: previous epoch packets accepted during grace window", "[encr
     auto send_opts = make_test_opts(std::byte{0x42}, 1);
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0xAB}, std::byte{0xCD}};
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
@@ -92,7 +92,7 @@ TEST_CASE("KEYM-02: previous epoch packets accepted during grace window", "[encr
     REQUIRE(sender.inner().sent_packets().size() == 1);
     auto epoch0_pkt = sender.inner().sent_packets()[0].data;
 
-    receiver.update_key(make_key(std::byte{0x43}), mdnspp::grace_period{.duration = 10s});
+    receiver.update_key(make_key(std::byte{0x43}), mdnspp::encrypt::grace_period{.duration = 10s});
 
     receiver.inner().enqueue(epoch0_pkt);
     bool handler_called = false;
@@ -120,8 +120,8 @@ TEST_CASE("KEYM-02: unknown epoch packets rejected immediately", "[encrypted_soc
     auto send_opts = make_test_opts(std::byte{0x42}, 1);
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0x77}};
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
@@ -129,8 +129,8 @@ TEST_CASE("KEYM-02: unknown epoch packets rejected immediately", "[encrypted_soc
     REQUIRE(sender.inner().sent_packets().size() == 1);
     auto epoch0_pkt = sender.inner().sent_packets()[0].data;
 
-    receiver.update_key(make_key(std::byte{0x43}), mdnspp::grace_period{.duration = 10s});
-    receiver.update_key(make_key(std::byte{0x44}), mdnspp::grace_period{.duration = 10s});
+    receiver.update_key(make_key(std::byte{0x43}), mdnspp::encrypt::grace_period{.duration = 10s});
+    receiver.update_key(make_key(std::byte{0x44}), mdnspp::encrypt::grace_period{.duration = 10s});
 
     receiver.inner().enqueue(epoch0_pkt);
     bool handler_called = false;
@@ -155,8 +155,8 @@ TEST_CASE("KEYM-03: time-based grace expiry drops previous epoch packets", "[enc
     auto send_opts = make_test_opts(std::byte{0x42}, 1);
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> plaintext{std::byte{0x55}};
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
@@ -164,7 +164,7 @@ TEST_CASE("KEYM-03: time-based grace expiry drops previous epoch packets", "[enc
     REQUIRE(sender.inner().sent_packets().size() == 1);
     auto epoch0_pkt = sender.inner().sent_packets()[0].data;
 
-    receiver.update_key(make_key(std::byte{0x43}), mdnspp::grace_period{.duration = 1ms});
+    receiver.update_key(make_key(std::byte{0x43}), mdnspp::encrypt::grace_period{.duration = 1ms});
     std::this_thread::sleep_for(5ms);
 
     receiver.inner().enqueue(epoch0_pkt);
@@ -190,8 +190,8 @@ TEST_CASE("KEYM-03: count-based grace expiry drops previous epoch packets after 
     auto send_opts = make_test_opts(std::byte{0x42}, 1);
     auto recv_opts = make_test_opts(std::byte{0x42}, 2);
 
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, send_opts);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver(ex, recv_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, send_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver(ex, recv_opts);
 
     std::vector<std::byte> p1{std::byte{0x01}};
     std::vector<std::byte> p2{std::byte{0x02}};
@@ -205,7 +205,7 @@ TEST_CASE("KEYM-03: count-based grace expiry drops previous epoch packets after 
     auto pkt2 = sender.inner().sent_packets()[1].data;
     auto pkt3 = sender.inner().sent_packets()[2].data;
 
-    receiver.update_key(make_key(std::byte{0x43}), mdnspp::grace_period{.packet_count = 2});
+    receiver.update_key(make_key(std::byte{0x43}), mdnspp::encrypt::grace_period{.packet_count = 2});
 
     receiver.inner().enqueue(pkt1);
     bool called1 = false;
@@ -246,10 +246,10 @@ TEST_CASE("KEYM-04: update_key bumps epoch and encrypts with new key", "[encrypt
     mdnspp::testing::mock_executor ex;
 
     auto sender_opts = make_test_opts(std::byte{0x42}, 1);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> sender(ex, sender_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> sender(ex, sender_opts);
 
     auto recv1_opts = make_test_opts(std::byte{0x42}, 2);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver1(ex, recv1_opts);
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver1(ex, recv1_opts);
 
     std::vector<std::byte> plaintext{std::byte{0xBE}, std::byte{0xEF}};
 
@@ -257,7 +257,7 @@ TEST_CASE("KEYM-04: update_key bumps epoch and encrypts with new key", "[encrypt
     REQUIRE(sender.inner().sent_packets().size() == 1);
 
     auto pkt_epoch0 = sender.inner().sent_packets()[0].data;
-    auto hdr_epoch0 = mdnspp::deserialize_header(pkt_epoch0.data());
+    auto hdr_epoch0 = mdnspp::encrypt::deserialize_header(pkt_epoch0.data());
     CHECK(hdr_epoch0.epoch == 0);
 
     receiver1.inner().enqueue(pkt_epoch0);
@@ -271,17 +271,17 @@ TEST_CASE("KEYM-04: update_key bumps epoch and encrypts with new key", "[encrypt
 
     // Both sender and receiver2 rotate to the new key at epoch 1.
     // receiver2 starts with same initial key (0x42, epoch 0), then rotates to 0x43.
-    sender.update_key(make_key(std::byte{0x43}), mdnspp::grace_period{.duration = 10s});
+    sender.update_key(make_key(std::byte{0x43}), mdnspp::encrypt::grace_period{.duration = 10s});
 
     auto recv2_opts = make_test_opts(std::byte{0x42}, 3);
-    mdnspp::encrypted_socket<mdnspp::testing::MockSocket> receiver2(ex, recv2_opts);
-    receiver2.update_key(make_key(std::byte{0x43}), mdnspp::grace_period{.duration = 10s});
+    mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket> receiver2(ex, recv2_opts);
+    receiver2.update_key(make_key(std::byte{0x43}), mdnspp::encrypt::grace_period{.duration = 10s});
 
     sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext));
     REQUIRE(sender.inner().sent_packets().size() == 2);
 
     auto pkt_epoch1 = sender.inner().sent_packets()[1].data;
-    auto hdr_epoch1 = mdnspp::deserialize_header(pkt_epoch1.data());
+    auto hdr_epoch1 = mdnspp::encrypt::deserialize_header(pkt_epoch1.data());
     CHECK(hdr_epoch1.epoch == 1);
 
     receiver2.inner().enqueue(pkt_epoch1);

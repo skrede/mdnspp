@@ -1,6 +1,6 @@
 #include "mdnspp/encrypt/replay_window.h"
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
 replay_window::replay_window(uint16_t window_size, uint16_t max_senders)
     : m_window_size(window_size)

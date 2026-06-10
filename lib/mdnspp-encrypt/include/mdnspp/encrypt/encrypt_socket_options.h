@@ -4,7 +4,7 @@
 #include "mdnspp/socket_options.h"
 #include "mdnspp/encrypt/encrypt_options.h"
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
 struct encrypt_socket_options : socket_options
 {

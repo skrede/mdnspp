@@ -19,9 +19,9 @@
 #include <algorithm>
 #include <system_error>
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
-template <SocketLike InnerSocket>
+template <socket_like InnerSocket>
 class encrypted_socket
 {
 public:

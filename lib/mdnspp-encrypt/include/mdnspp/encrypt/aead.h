@@ -10,7 +10,7 @@
 #include <vector>
 #include <cstddef>
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
 // Encrypt plaintext using XChaCha20-Poly1305.
 // Returns: serialized header (44 bytes) + ciphertext + 16-byte auth tag.

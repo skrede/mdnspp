@@ -136,7 +136,7 @@ TEST_CASE("Known-answer suppression", "[inproc][rfc]")
 
     // Disable loopback so the server's own multicast announcements do not feed
     // back into m_dup_suppression and suppress the response to the plain query.
-    socket_options srv_sock;
+    inproc::inproc_socket_options srv_sock;
     srv_sock.multicast_loopback = loopback_mode::disabled;
 
     auto server = h.make_server(

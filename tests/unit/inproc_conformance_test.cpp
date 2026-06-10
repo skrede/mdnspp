@@ -46,7 +46,7 @@ TEST_CASE("inproc_bus multicast delivery", "[inproc][bus]")
     inproc_bus<Clock> bus;
     inproc_executor<Clock> ex{bus};
 
-    mdnspp::socket_options opts{};
+    mdnspp::inproc::inproc_socket_options opts{};
     inproc_socket<Clock> sock_a{ex, opts};
     inproc_socket<Clock> sock_b{ex, opts};
 
@@ -119,12 +119,12 @@ TEST_CASE("inproc_bus loopback disabled", "[inproc][bus]")
     inproc_bus<Clock> bus;
     inproc_executor<Clock> ex{bus};
 
-    mdnspp::socket_options opts_no_loopback{};
+    mdnspp::inproc::inproc_socket_options opts_no_loopback{};
     opts_no_loopback.multicast_loopback = mdnspp::loopback_mode::disabled;
 
     inproc_socket<Clock> sender{ex, opts_no_loopback};
 
-    mdnspp::socket_options opts_loopback{};
+    mdnspp::inproc::inproc_socket_options opts_loopback{};
     inproc_socket<Clock> receiver{ex, opts_loopback};
 
     bool sender_received = false;

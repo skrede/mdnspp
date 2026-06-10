@@ -12,28 +12,31 @@
 #include <cstdint>
 #include <concepts>
 #include <optional>
+#include <type_traits>
 #include <system_error>
 
 namespace mdnspp {
 
 namespace detail {
 
+// Dependent-false for static_assert in uninstantiated template branches.
+// C++20 still requires a dependent expression here (P2593 is C++26).
 template <typename T>
 struct always_false : std::false_type
 {
 };
 
-template <typename P, typename = void>
+// Resolves the socket options type of a policy: P::socket_options_type when P
+// declares one derived from socket_options, plain socket_options otherwise.
+template <typename P>
 struct policy_socket_options
 {
     using type = socket_options;
 };
 
 template <typename P>
-struct policy_socket_options<P,
-    std::void_t<std::enable_if_t<
-        std::derived_from<typename P::socket_options_type, socket_options>,
-        typename P::socket_options_type>>>
+    requires std::derived_from<typename P::socket_options_type, socket_options>
+struct policy_socket_options<P>
 {
     using type = typename P::socket_options_type;
 };
@@ -59,6 +62,12 @@ struct recv_metadata
 // socket_like<S>: satisfied by any type that provides the mDNS socket interface.
 // The receive handler is invoked with the error code first (asio convention);
 // on error the metadata is empty and the data span is empty.
+//
+// Semantic requirements (not expressible in the concept):
+//   - Receive handlers fire on the policy executor; the library never locks
+//     around handler invocation and relies on executor serialization.
+//   - close() releases the pending receive handler; after close() no handler
+//     may fire.
 template <typename S>
 concept socket_like = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
 {
@@ -69,6 +78,12 @@ concept socket_like = requires(S &s, const endpoint &ep, std::span<const std::by
 };
 
 // timer_like<T>: satisfied by any type that provides the mDNS timer interface.
+//
+// Semantic requirements (not expressible in the concept):
+//   - cancel() completes every pending async_wait with an error code equal to
+//     operation_aborted/operation_canceled; every stop() path waits on this.
+//   - expires_after() on a timer with a pending wait also cancels that wait.
+//   - Wait handlers fire on the policy executor.
 template <typename T>
 concept timer_like = requires(T &t, std::chrono::milliseconds dur, move_only_function<void(std::error_code)> handler)
 {
@@ -80,6 +95,12 @@ concept timer_like = requires(T &t, std::chrono::milliseconds dur, move_only_fun
 // policy_like<P>: the unified policy concept.
 // A policy bundles an executor type with a socket type and timer type,
 // both constructible from the executor (matching ASIO convention).
+//
+// Semantic requirements (not expressible in the concept):
+//   - P::post(ex, fn) must be callable from any thread; the peers use it to
+//     marshal stop()/update_* requests onto the executor.
+//   - Work posted via P::post runs on the executor, serialized with socket
+//     receive handlers and timer wait handlers.
 template <typename P>
 concept policy_like = requires
     {

@@ -4,6 +4,8 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
 
+#include "mdnspp/inproc/inproc_socket_options.h"
+
 #include <span>
 #include <deque>
 #include <chrono>
@@ -32,9 +34,9 @@ public:
     inproc_bus(inproc_bus &&) = delete;
     inproc_bus &operator=(inproc_bus &&) = delete;
 
-    endpoint register_socket(inproc_socket<Clock> *sock, const socket_options &opts)
+    endpoint register_socket(inproc_socket<Clock> *sock, const inproc_socket_options &opts)
     {
-        uint16_t port = opts.port_override.has_value() ? *opts.port_override : m_port;
+        uint16_t port = opts.port_override.value_or(m_port);
         endpoint assigned{"127.0.0." + std::to_string(m_next_ip++), port};
         m_sockets.push_back(socket_entry{
             sock,

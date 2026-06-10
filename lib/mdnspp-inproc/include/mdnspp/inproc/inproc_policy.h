@@ -11,6 +11,7 @@
 #include "mdnspp/inproc/inproc_timer.h"
 #include "mdnspp/inproc/inproc_socket.h"
 #include "mdnspp/inproc/inproc_executor.h"
+#include "mdnspp/inproc/inproc_socket_options.h"
 
 #include <chrono>
 
@@ -22,6 +23,7 @@ struct inproc_policy
     using executor_type = inproc_executor<Clock> &;
     using socket_type = inproc_socket<Clock>;
     using timer_type = inproc_timer<Clock>;
+    using socket_options_type = inproc_socket_options;
 
     static void post(executor_type ex, detail::move_only_function<void()> fn)
     {

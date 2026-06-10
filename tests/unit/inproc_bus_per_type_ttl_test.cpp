@@ -83,7 +83,7 @@ TEST_CASE("Per-type TTLs appear in wire responses", "[inproc][ttl]")
 {
     inproc_harness h;
 
-    socket_options srv_sock;
+    inproc::inproc_socket_options srv_sock;
     srv_sock.multicast_loopback = loopback_mode::disabled;
 
     auto server = h.make_server(

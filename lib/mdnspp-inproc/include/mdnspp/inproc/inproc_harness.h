@@ -4,6 +4,7 @@
 #include "mdnspp/inproc/inproc_bus.h"
 #include "mdnspp/inproc/inproc_policy.h"
 #include "mdnspp/inproc/inproc_executor.h"
+#include "mdnspp/inproc/inproc_socket_options.h"
 
 #include "mdnspp/service_info.h"
 #include "mdnspp/cache_options.h"
@@ -11,7 +12,6 @@
 #include "mdnspp/mdns_options.h"
 #include "mdnspp/monitor_options.h"
 #include "mdnspp/service_options.h"
-#include "mdnspp/socket_options.h"
 #include "mdnspp/observer_options.h"
 #include "mdnspp/basic_querier.h"
 #include "mdnspp/basic_observer.h"
@@ -48,7 +48,7 @@ struct inproc_harness
     // Create a basic_service_server<inproc_test_policy> with the shared executor.
     basic_service_server<inproc_test_policy> make_server(service_info info,
                                                        service_options opts = {},
-                                                       socket_options sock_opts = {},
+                                                       inproc_socket_options sock_opts = {},
                                                        mdns_options mdns_opts = {})
     {
         return basic_service_server<inproc_test_policy>{
@@ -59,7 +59,7 @@ struct inproc_harness
     // Create a basic_service_monitor<inproc_test_policy, test_clock> with the shared executor.
     basic_service_monitor<inproc_test_policy, testing::test_clock>
     make_monitor(monitor_options opts = {},
-                 socket_options sock_opts = {},
+                 inproc_socket_options sock_opts = {},
                  mdns_options mdns_opts = {},
                  cache_options copts = {})
     {
@@ -70,7 +70,7 @@ struct inproc_harness
 
     // Create a basic_querier<inproc_test_policy> with the shared executor.
     basic_querier<inproc_test_policy> make_querier(query_options opts = {},
-                                                 socket_options sock_opts = {},
+                                                 inproc_socket_options sock_opts = {},
                                                  mdns_options mdns_opts = {})
     {
         return basic_querier<inproc_test_policy>{
@@ -79,7 +79,7 @@ struct inproc_harness
 
     // Create a basic_observer<inproc_test_policy> with the shared executor.
     basic_observer<inproc_test_policy> make_observer(observer_options opts = {},
-                                                   socket_options sock_opts = {},
+                                                   inproc_socket_options sock_opts = {},
                                                    mdns_options mdns_opts = {})
     {
         return basic_observer<inproc_test_policy>{

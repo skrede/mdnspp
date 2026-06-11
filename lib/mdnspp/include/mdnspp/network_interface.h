@@ -8,9 +8,11 @@
 #include <netinet/in.h>
 #include <sys/socket.h>
 #else
+// ws2tcpip.h must precede iphlpapi.h: netioapi.h declares its user-mode API
+// only when ws2ipdef.h has already been included (#ifdef _WS2IPDEF_).
 #include <winsock2.h>
-#include <iphlpapi.h>
 #include <ws2tcpip.h>
+#include <iphlpapi.h>
 #endif
 
 #include <memory>

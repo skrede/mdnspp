@@ -4,14 +4,14 @@
 |---|---|
 | **Type** | `std::chrono::seconds` |
 | **Default** | `4500` (75 minutes) |
-| **RFC** | RFC 6762 §11.3 |
+| **RFC** | RFC 6762 §10 |
 | **One-liner** | TTL for PTR records in outgoing responses. |
 
 ## What
 
 `ptr_ttl` sets the time-to-live value placed on PTR (Pointer) records when the service responds to DNS-SD queries. PTR records map a service type name (e.g., `_http._tcp.local.`) to a specific service instance name (e.g., `MyApp._http._tcp.local.`). Queriers cache PTR records for `ptr_ttl` seconds.
 
-RFC 6762 §11.3 recommends 4500 seconds (75 minutes) for most record types. The default matches the RFC.
+RFC 6762 §10 recommends 4500 seconds (75 minutes) for records that do not contain a host name. The default matches the RFC.
 
 ## Why
 

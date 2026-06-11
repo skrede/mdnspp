@@ -68,12 +68,12 @@ service_options distinct_ttl_opts()
     opts.txt_ttl    = std::chrono::seconds{300};
     opts.a_ttl      = std::chrono::seconds{400};
     opts.aaaa_ttl   = std::chrono::seconds{500};
-    opts.record_ttl = std::chrono::seconds{600};
+    opts.fallback_record_ttl = std::chrono::seconds{600};
     opts.respond_to_meta_queries = false;
     return opts;
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-11a: Per-type TTLs appear in wire responses
@@ -83,7 +83,7 @@ TEST_CASE("Per-type TTLs appear in wire responses", "[inproc][ttl]")
 {
     inproc_harness h;
 
-    socket_options srv_sock;
+    inproc::inproc_socket_options srv_sock;
     srv_sock.multicast_loopback = loopback_mode::disabled;
 
     auto server = h.make_server(
@@ -106,12 +106,12 @@ TEST_CASE("Per-type TTLs appear in wire responses", "[inproc][ttl]")
             }
             else if constexpr (std::is_same_v<T, record_srv>)
             {
-                if(r.name.find("pertypettl") != dns_name::npos)
+                if(r.name.find("PerTypeTtl") != dns_name::npos)
                     ttl_by_type["srv"] = r.ttl;
             }
             else if constexpr (std::is_same_v<T, record_txt>)
             {
-                if(r.name.find("pertypettl") != dns_name::npos)
+                if(r.name.find("PerTypeTtl") != dns_name::npos)
                     ttl_by_type["txt"] = r.ttl;
             }
             else if constexpr (std::is_same_v<T, record_a>)
@@ -180,7 +180,7 @@ TEST_CASE("Goodbye uses TTL=0 for all record types", "[inproc][ttl]")
             }
             else if constexpr (std::is_same_v<T, record_srv>)
             {
-                if(r.name.find("gbyettl") != dns_name::npos)
+                if(r.name.find("GbyeTtl") != dns_name::npos)
                     goodbye_ttls["srv"] = r.ttl;
             }
             else if constexpr (std::is_same_v<T, record_a>)

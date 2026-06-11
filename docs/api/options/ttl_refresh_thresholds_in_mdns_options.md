@@ -17,7 +17,7 @@ Values must be in the open interval `(0, 1)` and should be strictly increasing. 
 - 4050 s (67.5 min) — 90% elapsed
 - 4275 s (71.25 min) — 95% elapsed
 
-Each fired query is jittered by `refresh_jitter_pct` to desynchronise simultaneous queriers.
+Each fired query is jittered by `refresh_jitter_pct` to desynchronize simultaneous queriers.
 
 ## Why
 

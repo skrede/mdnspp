@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_COMPAT_H
-#define HPP_GUARD_MDNSPP_COMPAT_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_COMPAT_H
+#define HPP_GUARD_MDNSPP_DETAIL_COMPAT_H
 
 #include <functional>
 #include <memory>
@@ -13,6 +13,14 @@
 #endif
 
 namespace mdnspp::detail {
+
+// --- std::to_underlying compat (C++23, P1682) ---
+
+template <typename E>
+constexpr std::underlying_type_t<E> to_underlying(E e) noexcept
+{
+    return static_cast<std::underlying_type_t<E>>(e);
+}
 
 // --- move_only_function compat ---
 
@@ -51,6 +59,7 @@ class move_only_function<R(Args...)>
 
 public:
     move_only_function() = default;
+    ~move_only_function() = default;
 
     move_only_function(std::nullptr_t) noexcept
     {
@@ -87,6 +96,9 @@ public:
 #if defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L
 template <typename T, typename E>
 using expected = std::expected<T, E>;
+
+template <typename E>
+using unexpected = std::unexpected<E>;
 
 template <typename E>
 auto make_unexpected(E e) { return std::unexpected<E>(std::move(e)); }
@@ -127,7 +139,7 @@ public:
     }
 
     constexpr explicit operator bool() const noexcept { return m_storage.index() == 0; }
-    constexpr bool has_value() const noexcept { return m_storage.index() == 0; }
+    [[nodiscard]] constexpr bool has_value() const noexcept { return m_storage.index() == 0; }
 
     constexpr T &operator*() & { return std::get<0>(m_storage); }
     constexpr const T &operator*() const & { return std::get<0>(m_storage); }
@@ -136,16 +148,27 @@ public:
     constexpr T *operator->() { return &std::get<0>(m_storage); }
     constexpr const T *operator->() const { return &std::get<0>(m_storage); }
 
-    constexpr T &value() & { return std::get<0>(m_storage); }
-    constexpr const T &value() const & { return std::get<0>(m_storage); }
+    [[nodiscard]] constexpr T &value() & { return std::get<0>(m_storage); }
+    [[nodiscard]] constexpr const T &value() const & { return std::get<0>(m_storage); }
 
-    constexpr const E &error() const & { return std::get<1>(m_storage).value; }
+    [[nodiscard]] constexpr const E &error() const & { return std::get<1>(m_storage).value; }
 };
 
 template <typename E>
 constexpr auto make_unexpected(E e) { return unexpected<E>(std::move(e)); }
 
 #endif
+
+}
+
+namespace mdnspp {
+
+// Public names for the compat vocabulary types. These resolve to the std::
+// C++23 types when the standard library provides them, so a future migration
+// off the compat layer changes only detail/compat.h.
+using detail::expected;
+using detail::unexpected;
+using detail::move_only_function;
 
 }
 

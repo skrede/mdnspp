@@ -1,14 +1,17 @@
-#ifndef HPP_GUARD_MDNSPP_NIC_MONITOR_BACKENDS_H
-#define HPP_GUARD_MDNSPP_NIC_MONITOR_BACKENDS_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_NIC_MONITOR_BACKENDS_H
+#define HPP_GUARD_MDNSPP_DETAIL_NIC_MONITOR_BACKENDS_H
 
 // This header is included at the bottom of basic_nic_monitor.h and provides
 // out-of-line definitions for basic_nic_monitor<P>::start_native_backend() and
 // stop_native_backend() under platform-specific #ifdef guards.
 //
-// Linux:   AF_NETLINK socket, drained via a fast timer (100 ms).
+// Linux:   AF_NETLINK socket, drained via a 100 ms timer — interface change
+//          detection therefore has a latency floor of 100 ms.
 // macOS:   nw_path_monitor — requires Network.framework (macOS 10.14+).
 // Windows: NotifyIpInterfaceChange — requires iphlpapi.
 // Other:   Stub returning false → polling fallback.
+
+#include "mdnspp/basic_nic_monitor.h"
 
 #ifdef __linux__
 #include <linux/netlink.h>
@@ -25,12 +28,15 @@
 #endif
 
 #ifdef _WIN32
+// ws2tcpip.h must precede iphlpapi.h: netioapi.h declares its user-mode API
+// only when ws2ipdef.h has already been included (#ifdef _WS2IPDEF_).
 #include <winsock2.h>
-#include <iphlpapi.h>
 #include <ws2tcpip.h>
+#include <iphlpapi.h>
 #endif
 
 #include <array>
+#include <cerrno>
 #include <chrono>
 #include <cstddef>
 #include <system_error>
@@ -43,7 +49,7 @@ namespace mdnspp {
 
 #ifdef __linux__
 
-template <Policy P>
+template <policy_like P>
 bool basic_nic_monitor<P>::start_native_backend()
 {
     m_nl_fd = ::socket(AF_NETLINK,
@@ -66,8 +72,8 @@ bool basic_nic_monitor<P>::start_native_backend()
 
     // Poll netlink fd with a short-interval timer.  When data is present the
     // socket is drained and apply_diff(enumerate_interfaces()) is called.
-    // Using a timer (rather than directly registering the fd with the Policy
-    // executor) keeps the implementation portable across all Policy types.
+    // Using a timer (rather than directly registering the fd with the policy
+    // executor) keeps the implementation portable across all policy types.
     auto schedule_nl_poll = [this]() mutable
     {
         struct helper
@@ -92,8 +98,20 @@ bool basic_nic_monitor<P>::start_native_backend()
                     {
                         ssize_t n = ::recv(self->m_nl_fd, buf.data(), buf.size(),
                                            MSG_DONTWAIT);
-                        if(n <= 0) break;
-                        changed = true;
+                        if(n > 0)
+                        {
+                            changed = true;
+                            continue;
+                        }
+                        // ENOBUFS: the kernel dropped notifications because the
+                        // socket buffer overflowed — events were lost, so the
+                        // interface list must be resynchronized regardless.
+                        if(n < 0 && errno == ENOBUFS)
+                        {
+                            changed = true;
+                            continue;
+                        }
+                        break;
                     }
 
                     if(changed)
@@ -115,7 +133,7 @@ bool basic_nic_monitor<P>::start_native_backend()
     return true;
 }
 
-template <Policy P>
+template <policy_like P>
 void basic_nic_monitor<P>::stop_native_backend()
 {
     m_nl_timer.cancel();
@@ -132,7 +150,7 @@ void basic_nic_monitor<P>::stop_native_backend()
 
 #elif defined(__APPLE__) && defined(MDNSPP_HAS_NW_PATH_MONITOR)
 
-template <Policy P>
+template <policy_like P>
 bool basic_nic_monitor<P>::start_native_backend()
 {
     auto *monitor = nw_path_monitor_create();
@@ -163,7 +181,7 @@ bool basic_nic_monitor<P>::start_native_backend()
     return true;
 }
 
-template <Policy P>
+template <policy_like P>
 void basic_nic_monitor<P>::stop_native_backend()
 {
     if(m_path_monitor)
@@ -181,7 +199,7 @@ void basic_nic_monitor<P>::stop_native_backend()
 
 #elif defined(_WIN32)
 
-template <Policy P>
+template <policy_like P>
 bool basic_nic_monitor<P>::start_native_backend()
 {
     m_weak_for_callback = std::weak_ptr<bool>(m_alive);
@@ -219,7 +237,7 @@ bool basic_nic_monitor<P>::start_native_backend()
     return true;
 }
 
-template <Policy P>
+template <policy_like P>
 void basic_nic_monitor<P>::stop_native_backend()
 {
     if(m_change_handle)
@@ -235,13 +253,13 @@ void basic_nic_monitor<P>::stop_native_backend()
 
 #else
 
-template <Policy P>
+template <policy_like P>
 bool basic_nic_monitor<P>::start_native_backend()
 {
     return false; // triggers polling fallback in start()
 }
 
-template <Policy P>
+template <policy_like P>
 void basic_nic_monitor<P>::stop_native_backend()
 {
 }

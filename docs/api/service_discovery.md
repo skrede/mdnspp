@@ -7,22 +7,22 @@ Discovers mDNS services by type on the local network. Offers three levels of abs
 | Form | Header |
 |------|--------|
 | `basic_service_discovery<P>` | `#include <mdnspp/basic_service_discovery.h>` |
-| `mdnspp::service_discovery` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
+| `mdnspp::service_discovery` (default_policy alias) | `#include <mdnspp/defaults.h>` |
 
 ```cpp
 // Template form
-template <Policy P>
+template <policy_like P>
 class basic_service_discovery;
 
-// DefaultPolicy alias (from defaults.h)
-using service_discovery = basic_service_discovery<DefaultPolicy>;
+// default_policy alias (from defaults.h)
+using service_discovery = basic_service_discovery<default_policy>;
 ```
 
 ## Template Parameters
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `P` | satisfies `Policy` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
+| `P` | satisfies `policy_like` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
 
 ## Type Aliases
 
@@ -30,14 +30,15 @@ using service_discovery = basic_service_discovery<DefaultPolicy>;
 using executor_type     = typename P::executor_type;
 using socket_type       = typename P::socket_type;
 using timer_type        = typename P::timer_type;
-using enumerate_handler = detail::move_only_function<void(std::error_code, std::vector<service_type_info>)>;
+using enumerate_handler = move_only_function<void(std::error_code, std::vector<service_type_info>)>;
 ```
 
 Callback types are defined in `<mdnspp/callback_types.h>` (included transitively):
 
 ```cpp
 using record_callback    = mdnspp::record_callback;              // void(const endpoint&, const mdns_record_variant&)
-using completion_handler = mdnspp::discovery_completion_handler; // void(std::error_code, const std::vector<mdns_record_variant>&)
+using completion_handler = mdnspp::discovery_completion_handler; // void(std::error_code, std::vector<mdns_record_variant>)
+using browse_handler     = mdnspp::browse_completion_handler;    // void(std::error_code, std::vector<resolved_service>)
 using error_handler      = mdnspp::error_handler;                // void(std::error_code, std::string_view)
 ```
 
@@ -48,23 +49,25 @@ using error_handler      = mdnspp::error_handler;                // void(std::er
 ```cpp
 explicit basic_service_discovery(executor_type ex,
                                  query_options opts = {},
-                                 socket_options sock_opts = {},
+                                 policy_socket_options_t<P> sock_opts = {},
                                  mdns_options mdns_opts = {});
 ```
 
-Constructs the service discovery from an executor, optional [`query_options`](query_options.md) (per-record callback and silence timeout), optional [`socket_options`](../socket-options.md) (network interface, multicast TTL, loopback), and optional [`mdns_options`](mdns_options.md) (query backoff, TTL refresh tunables). All options default to sensible values -- construct with just an executor for a 3-second silence timeout and no per-record callback. Throws on socket construction failure.
+Constructs the service discovery from an executor, optional [`query_options`](query_options.md) (per-record callback, error handler, and silence timeout), optional socket options (network interface, multicast TTL, loopback; type `policy_socket_options_t<P>` — plain `socket_options` for the default and asio policies), and optional [`mdns_options`](mdns_options.md) (query backoff, TTL refresh tunables). Construct with just an executor for a 3-second silence timeout and no per-record callback. Throws `std::system_error` on socket construction failure or invalid options (`std::errc::invalid_argument`, e.g. non-positive `silence_timeout`).
 
 ### Non-throwing
 
 ```cpp
 basic_service_discovery(executor_type ex,
                         query_options opts,
-                        socket_options sock_opts,
+                        policy_socket_options_t<P> sock_opts,
                         mdns_options mdns_opts,
                         std::error_code &ec);
 ```
 
 Same as the throwing constructor, but sets `ec` instead of throwing on failure. All parameters must be provided explicitly (no defaults).
+
+`basic_service_discovery` is non-copyable and non-movable (receive-loop and timer handlers capture `this`).
 
 ## Methods
 
@@ -75,23 +78,25 @@ void async_discover(std::string_view service_type, completion_handler on_done,
                     response_mode mode = response_mode::multicast);
 ```
 
-Sends a PTR query for `service_type` to the mDNS multicast group and collects **raw DNS records** until the silence timeout expires. The `on_done` handler receives all accumulated records (PTR, SRV, A, AAAA, TXT) as a flat vector. Includes known answers from previous results per RFC 6762 section 7.1. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 section 5.4) is set in the outgoing query.
+Sends a PTR query for `service_type` to the mDNS multicast group and collects **raw DNS records** until the silence timeout expires. The `on_done` handler receives all accumulated records (PTR, SRV, A, AAAA, TXT) as a flat vector. The query carries no known answers: a one-shot discovery starts with an empty result buffer, so its Answer section is always empty. Only records carried in response packets (QR=1) are collected — known-answer lists and probe proposals in query packets are ignored. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 section 5.4) is set in the outgoing query; multicast (QM) queries are delayed by a random 20–120 ms interval per section 5.2.
+
+An invalid `service_type` (failing RFC 1035 §5.1 name validation) is rejected up front: the handler completes with `mdns_error::invalid_name` and no query is sent.
 
 Use this when you need access to individual DNS records. To get fully-resolved services instead, use `async_browse`.
-
-Must only be called once per lifetime. Cannot be combined with `async_browse` on the same instance.
 
 ### async_browse
 
 ```cpp
 void async_browse(std::string_view service_type,
-                  std::move_only_function<void(std::error_code, std::vector<resolved_service>)> on_done,
+                  browse_handler on_done,
                   response_mode mode = response_mode::multicast);
 ```
 
-Higher-level alternative to `async_discover`. Sends the same PTR query, but internally calls [`aggregate()`](resolved_service.md) on the collected records at the silence timeout, delivering fully-resolved [`resolved_service`](resolved_service.md) values with hostname, port, addresses, and TXT entries already correlated. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 section 5.4) is set in the outgoing query.
+Higher-level alternative to `async_discover`. Sends the same PTR query, but internally calls [`aggregate()`](resolved_service.md) on the collected records at the silence timeout, delivering fully-resolved [`resolved_service`](resolved_service.md) values with hostname, port, addresses, and TXT entries already correlated. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 section 5.4) is set in the outgoing query. Invalid service types are rejected up front with `mdns_error::invalid_name`.
 
-Must only be called once per lifetime. Cannot be combined with `async_discover` on the same instance.
+### One operation per instance
+
+The three operations (`async_discover` — including `async_discover_subtype` — `async_browse`, and `async_enumerate_types`) are mutually exclusive: exactly ONE operation per instance lifetime. Starting a second operation (concurrently or after the first) completes the supplied handler with `std::errc::operation_in_progress`; starting after `stop()` completes it with `std::errc::invalid_argument`. The running operation is unaffected, and the buffers behind `results()` and `services()` are never shared between operations. Construct a new instance per operation.
 
 ### async_enumerate_types
 
@@ -102,7 +107,7 @@ void async_enumerate_types(enumerate_handler on_done,
 
 DNS-SD service type enumeration (RFC 6763 section 9). Queries `_services._dns-sd._udp.local.` and collects PTR responses until the silence timeout expires. Each PTR response is parsed into a [`service_type_info`](#service_type_info) value. The `on_done` handler receives the complete list of discovered service types.
 
-Must only be called once per lifetime. Uses a dedicated internal receive loop separate from `async_discover` and `async_browse`.
+Subject to the same one-operation-per-instance rule as `async_discover` and `async_browse`.
 
 ```cpp
 mdnspp::context ctx;
@@ -114,7 +119,7 @@ sd.async_enumerate_types(
         if (!ec)
         {
             for (const auto &t : types)
-                std::cout << t.type_name << "." << t.protocol << " (" << t.domain << ")\n";
+                std::cout << t.type_name << "." << t.protocol << " (" << t.domain << ")" << std::endl;
         }
         ctx.stop();
     });
@@ -141,7 +146,7 @@ sd.async_discover_subtype("_http._tcp.local.", "_printer",
     [&ctx](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)
     {
         if (!ec)
-            std::cout << "Found " << results.size() << " subtype records\n";
+            std::cout << "Found " << results.size() << " subtype records" << std::endl;
         ctx.stop();
     });
 
@@ -154,15 +159,11 @@ ctx.run();
 void stop();
 ```
 
-Stops all active receive loops and fires the corresponding completion handlers with results accumulated so far. If `async_browse` was used, `aggregate()` is called on the raw records before invoking the handler. If `async_enumerate_types` was used, the enumerated types collected so far are delivered.
+Idempotent; posts teardown to the executor. The pending completion handler fires with `std::errc::operation_canceled` and the partial results accumulated so far. If `async_browse` was used, `aggregate()` is called on the raw records before invoking the handler. If `async_enumerate_types` was used, the enumerated types collected so far are delivered. Destruction with a pending operation likewise completes the handler with `operation_canceled` before teardown — pending handlers are never silently dropped.
 
-### on_error
+### Error reporting
 
-```cpp
-void on_error(error_handler handler);
-```
-
-Sets a handler invoked when a fire-and-forget send operation fails. The handler receives the error code and a context string identifying the send site (e.g. `"discover send"`). Without a handler, send errors are silently ignored.
+Fire-and-forget send failures and fatal receive errors are reported through the `query_options::on_error` field (`error_handler`, `void(std::error_code, std::string_view)`). The context string identifies the failure site (e.g. `"query send"`, `"receive"`). Without a handler, these errors are silently ignored.
 
 ### results
 
@@ -228,6 +229,17 @@ auto info = mdnspp::parse_service_type("_http._tcp.local.");
 // info.domain    == "local"
 ```
 
+### parse_service_type_checked
+
+```cpp
+expected<service_type_info, mdns_error> parse_service_type_checked(std::string_view name);
+```
+
+Strict variant of `parse_service_type`. Returns `mdns_error::invalid_name`
+unless the name contains the three labels required by RFC 6763 (type,
+protocol, domain) and all of them are non-empty. (`mdnspp::expected`
+resolves to `std::expected` when the standard library provides it.)
+
 ## Usage Example
 
 ### Using async_browse (recommended)
@@ -251,14 +263,14 @@ int main()
         {
             if (ec)
             {
-                std::cerr << "browse error: " << ec.message() << "\n";
+                std::cerr << "browse error: " << ec.message() << std::endl;
             }
             else
             {
-                std::cout << "Found " << services.size() << " service(s):\n";
+                std::cout << "Found " << services.size() << " service(s):" << std::endl;
                 for (const auto& svc : services)
                     std::cout << "  " << svc.instance_name.str()
-                              << " at " << svc.hostname.str() << ":" << svc.port << "\n";
+                              << " at " << svc.hostname.str() << ":" << svc.port << std::endl;
             }
 
             ctx.stop();
@@ -290,7 +302,7 @@ int main()
                             const mdnspp::mdns_record_variant& rec)
             {
                 std::visit([&](const auto& r) {
-                    std::cout << sender << " -> " << r << "\n";
+                    std::cout << sender << " -> " << r << std::endl;
                 }, rec);
             }
         }
@@ -303,7 +315,7 @@ int main()
             {
                 auto services = mdnspp::aggregate(results);
                 std::cout << "Resolved " << services.size() << " service(s) from "
-                          << results.size() << " raw record(s)\n";
+                          << results.size() << " raw record(s)" << std::endl;
             }
 
             ctx.stop();

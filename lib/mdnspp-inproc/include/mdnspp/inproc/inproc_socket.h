@@ -6,8 +6,10 @@
 #include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
+
 #include "mdnspp/inproc/inproc_bus.h"
 #include "mdnspp/inproc/inproc_executor.h"
+#include "mdnspp/inproc/inproc_socket_options.h"
 
 #include <span>
 #include <queue>
@@ -25,23 +27,23 @@ class inproc_socket
 {
 public:
     explicit inproc_socket(inproc_executor<Clock> &ex)
-        : inproc_socket(ex, socket_options{})
+        : inproc_socket(ex, inproc_socket_options{})
     {
     }
 
     explicit inproc_socket(inproc_executor<Clock> &ex, std::error_code &)
-        : inproc_socket(ex, socket_options{})
+        : inproc_socket(ex, inproc_socket_options{})
     {
     }
 
-    explicit inproc_socket(inproc_executor<Clock> &ex, const socket_options &opts)
+    explicit inproc_socket(inproc_executor<Clock> &ex, const inproc_socket_options &opts)
         : m_bus(&ex.bus())
         , m_opts(opts)
         , m_ep(m_bus->register_socket(this, opts))
     {
     }
 
-    explicit inproc_socket(inproc_executor<Clock> &ex, const socket_options &opts, std::error_code &)
+    explicit inproc_socket(inproc_executor<Clock> &ex, const inproc_socket_options &opts, std::error_code &)
         : inproc_socket(ex, opts)
     {
     }
@@ -56,14 +58,14 @@ public:
     inproc_socket(inproc_socket &&) = delete;
     inproc_socket &operator=(inproc_socket &&) = delete;
 
-    void async_receive(detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
     {
         if(!m_recv_queue.empty())
         {
             auto [data, from, ttl] = std::move(m_recv_queue.front());
             m_recv_queue.pop();
             recv_metadata meta{from, ttl};
-            handler(meta, std::span<std::byte>(data));
+            handler(std::error_code{}, meta, std::span<std::byte>(data));
         }
         else
         {
@@ -109,7 +111,7 @@ public:
             m_recv_buf.assign(data.begin(), data.end());
             recv_metadata meta{from, ttl};
             auto h = std::exchange(m_pending_receive, nullptr);
-            h(meta, std::span<std::byte>(m_recv_buf));
+            h(std::error_code{}, meta, std::span<std::byte>(m_recv_buf));
         }
         else
         {
@@ -118,13 +120,13 @@ public:
     }
 
     [[nodiscard]] const endpoint &assigned_endpoint() const noexcept { return m_ep; }
-    [[nodiscard]] const socket_options &options() const noexcept { return m_opts; }
+    [[nodiscard]] const inproc_socket_options &options() const noexcept { return m_opts; }
 
 private:
     inproc_bus<Clock> *m_bus;
-    socket_options m_opts;
+    inproc_socket_options m_opts;
     endpoint m_ep;
-    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_pending_receive;
+    move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_pending_receive;
     std::vector<std::byte> m_recv_buf;
 
     struct queued_packet

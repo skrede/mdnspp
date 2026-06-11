@@ -6,7 +6,9 @@
 #include "mdnspp/cache_entry.h"
 #include "mdnspp/cache_options.h"
 
+#include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/hash_combine.h"
 
 #include <mutex>
 #include <chrono>
@@ -17,7 +19,9 @@
 #include <optional>
 #include <functional>
 #include <string_view>
+#include <type_traits>
 #include <shared_mutex>
+#include <system_error>
 #include <unordered_map>
 
 namespace mdnspp {
@@ -36,21 +40,15 @@ struct record_name_type_hash
     std::size_t operator()(const record_name_type &k) const noexcept
     {
         auto h1 = std::hash<dns_name>{}(k.name);
-        auto h2 = std::hash<uint16_t>{}(std::to_underlying(k.type));
-        return h1 ^ (h2 << 16);
+        auto h2 = std::hash<uint16_t>{}(detail::to_underlying(k.type));
+        return hash_combine(h1, h2);
     }
 };
 
 inline auto extract_name_type(const mdns_record_variant &rec) -> record_name_type
 {
     return std::visit([](const auto &r) -> record_name_type {
-        return {r.name, []<typename R>(const R &) {
-            if constexpr (std::is_same_v<R, record_a>) return dns_type::a;
-            else if constexpr (std::is_same_v<R, record_aaaa>) return dns_type::aaaa;
-            else if constexpr (std::is_same_v<R, record_ptr>) return dns_type::ptr;
-            else if constexpr (std::is_same_v<R, record_srv>) return dns_type::srv;
-            else if constexpr (std::is_same_v<R, record_txt>) return dns_type::txt;
-        }(r)};
+        return {r.name, std::remove_cvref_t<decltype(r)>::rtype};
     }, rec);
 }
 
@@ -75,36 +73,27 @@ inline bool rdata_equal(const mdns_record_variant &a, const mdns_record_variant 
         return false;
 
     return std::visit([](const auto &lhs, const auto &rhs) -> bool {
-        using L = std::remove_cvref_t<decltype(lhs)>;
-        using R = std::remove_cvref_t<decltype(rhs)>;
+        using lhs_t = std::remove_cvref_t<decltype(lhs)>;
+        using rhs_t = std::remove_cvref_t<decltype(rhs)>;
 
-        if constexpr (!std::is_same_v<L, R>)
-            return false;
-        else if constexpr (std::is_same_v<L, record_a>)
-            return lhs.address_string == rhs.address_string;
-        else if constexpr (std::is_same_v<L, record_aaaa>)
-            return lhs.address_string == rhs.address_string;
-        else if constexpr (std::is_same_v<L, record_ptr>)
-            return lhs.ptr_name == rhs.ptr_name;
-        else if constexpr (std::is_same_v<L, record_srv>)
-            return lhs.port == rhs.port &&
-                   lhs.weight == rhs.weight &&
-                   lhs.priority == rhs.priority &&
-                   lhs.srv_name == rhs.srv_name;
-        else if constexpr (std::is_same_v<L, record_txt>)
+        if constexpr (std::is_same_v<lhs_t, rhs_t>)
         {
-            if (lhs.entries.size() != rhs.entries.size())
-                return false;
-            for (std::size_t i = 0; i < lhs.entries.size(); ++i)
-            {
-                if (lhs.entries[i].key != rhs.entries[i].key ||
-                    lhs.entries[i].value != rhs.entries[i].value)
-                    return false;
-            }
-            return true;
+            if constexpr (std::is_same_v<lhs_t, record_a> || std::is_same_v<lhs_t, record_aaaa>)
+                return lhs.address_string == rhs.address_string;
+            else if constexpr (std::is_same_v<lhs_t, record_ptr>)
+                return lhs.ptr_name == rhs.ptr_name;
+            else if constexpr (std::is_same_v<lhs_t, record_srv>)
+                return lhs.port == rhs.port &&
+                       lhs.weight == rhs.weight &&
+                       lhs.priority == rhs.priority &&
+                       lhs.srv_name == rhs.srv_name;
+            else
+                return lhs.entries == rhs.entries;
         }
         else
+        {
             return false;
+        }
     }, a, b);
 }
 
@@ -138,10 +127,27 @@ class record_cache
     using map_type = std::unordered_multimap<key_type, internal_entry, detail::record_name_type_hash>;
 
 public:
+    /// Throwing constructor. Throws std::system_error(std::errc::invalid_argument)
+    /// when opts.goodbye_grace is not positive.
     explicit record_cache(cache_options opts = {})
         : m_options(std::move(opts))
     {
+        if(auto ec = validate(); ec)
+            throw std::system_error(ec);
     }
+
+    /// Non-throwing constructor -- ec is set to std::errc::invalid_argument on
+    /// invalid options and goodbye_grace is clamped to one second so the cache
+    /// remains safe to use.
+    record_cache(cache_options opts, std::error_code &ec)
+        : m_options(std::move(opts))
+    {
+        ec = validate();
+        if(ec)
+            m_options.goodbye_grace = std::chrono::seconds(1);
+    }
+
+    ~record_cache() = default;
 
     record_cache(const record_cache &) = delete;
     record_cache &operator=(const record_cache &) = delete;
@@ -193,7 +199,7 @@ public:
             apply_cache_flush(key, flush_origin, lock);
     }
 
-    auto find(dns_name name, dns_type type) const -> std::vector<cache_entry>
+    [[nodiscard]] auto find(dns_name name, dns_type type) const -> std::vector<cache_entry>
     {
         std::shared_lock lock(m_mutex);
 
@@ -208,7 +214,7 @@ public:
         return result;
     }
 
-    auto snapshot() const -> std::vector<cache_entry>
+    [[nodiscard]] auto snapshot() const -> std::vector<cache_entry>
     {
         std::shared_lock lock(m_mutex);
 
@@ -254,11 +260,23 @@ public:
     }
 
 private:
+    [[nodiscard]] std::error_code validate() const noexcept
+    {
+        if(m_options.goodbye_grace.count() <= 0)
+            return std::make_error_code(std::errc::invalid_argument);
+        return {};
+    }
+
     void apply_cache_flush(const key_type &key, const endpoint &origin,
                            std::unique_lock<std::shared_mutex> &lock)
     {
         auto now = Clock::now();
         auto deadline = now + m_options.goodbye_grace;
+
+        // RFC 6762 section 10.2: only records received more than one second ago
+        // are marked for deletion -- younger records are exempt so that bursts
+        // from multiple interfaces or co-located responders are not flushed.
+        auto exemption_cutoff = now - std::chrono::seconds(1);
 
         std::vector<cache_entry> affected;
         cache_entry authoritative;
@@ -272,7 +290,7 @@ private:
                 if (entry.cache_flush)
                     authoritative = to_cache_entry(entry, now);
             }
-            else
+            else if (entry.inserted_at <= exemption_cutoff)
             {
                 if (!entry.flush_deadline || *entry.flush_deadline > deadline)
                     entry.flush_deadline = deadline;

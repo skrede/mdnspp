@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_BASIC_MDNS_PEER_BASE_H
-#define HPP_GUARD_MDNSPP_BASIC_MDNS_PEER_BASE_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_BASIC_MDNS_PEER_BASE_H
+#define HPP_GUARD_MDNSPP_DETAIL_BASIC_MDNS_PEER_BASE_H
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
@@ -9,14 +9,54 @@
 #include "mdnspp/detail/recv_loop.h"
 
 #include <atomic>
+#include <chrono>
 #include <memory>
-#include <cassert>
 #include <utility>
 #include <system_error>
 
 namespace mdnspp::detail {
 
-template <Policy P>
+/// Validates the protocol tunables shared by all peers.
+///
+/// Returns std::errc::invalid_argument when a field combination would produce
+/// undefined behaviour (uniform_int_distribution with min > max) or violate
+/// RFC 6762 scheduling invariants (shrinking backoff, thresholds outside (0,1)).
+[[nodiscard]] inline std::error_code validate_mdns_options(const mdns_options &opts) noexcept
+{
+    const auto invalid = std::make_error_code(std::errc::invalid_argument);
+
+    if(opts.response_delay_min.count() < 0 || opts.response_delay_min > opts.response_delay_max)
+        return invalid;
+    if(opts.tc_wait_min.count() < 0 || opts.tc_wait_min > opts.tc_wait_max)
+        return invalid;
+    if(opts.initial_interval.count() <= 0 || opts.max_interval < opts.initial_interval)
+        return invalid;
+    if(opts.backoff_multiplier < 1.0)
+        return invalid;
+    if(opts.refresh_jitter_pct < 0.0)
+        return invalid;
+    if(opts.ka_suppression_fraction <= 0.0 || opts.ka_suppression_fraction >= 1.0)
+        return invalid;
+    if(opts.tc_suppression_fraction <= 0.0 || opts.tc_suppression_fraction >= 1.0)
+        return invalid;
+    for(double threshold : opts.ttl_refresh_thresholds)
+    {
+        if(threshold <= 0.0 || threshold >= 1.0)
+            return invalid;
+    }
+
+    return {};
+}
+
+/// Throws std::system_error(ec) when ec is set -- throwing-constructor companion
+/// to the ec-reporting validation path.
+inline void throw_on_error(std::error_code ec)
+{
+    if(ec)
+        throw std::system_error(ec);
+}
+
+template <policy_like P>
 class basic_mdns_peer_base
 {
 public:
@@ -24,8 +64,11 @@ public:
     using socket_type = typename P::socket_type;
     using timer_type = typename P::timer_type;
 
+    // Non-copyable and non-movable: recv_loop handlers and posted teardown
+    // lambdas capture `this`.
     basic_mdns_peer_base(const basic_mdns_peer_base &) = delete;
     basic_mdns_peer_base &operator=(const basic_mdns_peer_base &) = delete;
+    basic_mdns_peer_base(basic_mdns_peer_base &&) = delete;
     basic_mdns_peer_base &operator=(basic_mdns_peer_base &&) = delete;
 
 protected:
@@ -51,20 +94,6 @@ protected:
     {
     }
 
-    basic_mdns_peer_base(basic_mdns_peer_base &&other) noexcept
-        : m_alive(std::move(other.m_alive))
-        , m_multicast_ep(std::move(other.m_multicast_ep))
-        , m_executor(other.m_executor)
-        , m_socket(std::move(other.m_socket))
-        , m_timer(std::move(other.m_timer))
-        , m_loop(std::move(other.m_loop))
-        , m_stopped(other.m_stopped.load(std::memory_order_acquire))
-        , m_mdns_opts(std::move(other.m_mdns_opts))
-    {
-        assert(other.m_loop == nullptr);
-        other.m_stopped.store(true, std::memory_order_release);
-    }
-
     ~basic_mdns_peer_base()
     {
         m_alive.reset();
@@ -81,6 +110,19 @@ protected:
         {
             if(!guard.lock()) return;
             td();
+        });
+    }
+
+    /// Posts fn to the executor guarded by the alive sentinel -- used to
+    /// complete misuse (double-start) handlers without invoking them inline.
+    template <typename F>
+    void post_guarded(F &&fn)
+    {
+        auto guard = std::weak_ptr<bool>(m_alive);
+        P::post(m_executor, [guard, f = std::forward<F>(fn)]() mutable
+        {
+            if(!guard.lock()) return;
+            f();
         });
     }
 

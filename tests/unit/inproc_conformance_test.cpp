@@ -19,14 +19,14 @@ using mdnspp::inproc::inproc_timer;
 using mdnspp::testing::test_clock;
 using Clock = test_clock;
 
-static_assert(mdnspp::Policy<mdnspp::InProcTestPolicy>,
-    "inproc_policy<test_clock> must satisfy Policy concept");
-static_assert(mdnspp::SocketLike<mdnspp::inproc::inproc_socket<test_clock>>,
-    "inproc_socket<test_clock> must satisfy SocketLike concept");
-static_assert(mdnspp::TimerLike<mdnspp::inproc::inproc_timer<test_clock>>,
-    "inproc_timer<test_clock> must satisfy TimerLike concept");
+static_assert(mdnspp::policy_like<mdnspp::inproc_test_policy>,
+    "inproc_policy<test_clock> must satisfy policy_like concept");
+static_assert(mdnspp::socket_like<mdnspp::inproc::inproc_socket<test_clock>>,
+    "inproc_socket<test_clock> must satisfy socket_like concept");
+static_assert(mdnspp::timer_like<mdnspp::inproc::inproc_timer<test_clock>>,
+    "inproc_timer<test_clock> must satisfy timer_like concept");
 
-TEST_CASE("inproc_policy satisfies Policy concept", "[inproc][conformance]")
+TEST_CASE("inproc_policy satisfies policy_like concept", "[inproc][conformance]")
 {
     test_clock::reset();
     inproc_bus<Clock> bus;
@@ -46,7 +46,7 @@ TEST_CASE("inproc_bus multicast delivery", "[inproc][bus]")
     inproc_bus<Clock> bus;
     inproc_executor<Clock> ex{bus};
 
-    mdnspp::socket_options opts{};
+    mdnspp::inproc::inproc_socket_options opts{};
     inproc_socket<Clock> sock_a{ex, opts};
     inproc_socket<Clock> sock_b{ex, opts};
 
@@ -54,7 +54,7 @@ TEST_CASE("inproc_bus multicast delivery", "[inproc][bus]")
     mdnspp::endpoint sender_b;
     bool b_received = false;
 
-    sock_b.async_receive([&](const mdnspp::recv_metadata &meta, std::span<std::byte> data)
+    sock_b.async_receive([&](std::error_code, const mdnspp::recv_metadata &meta, std::span<std::byte> data)
     {
         sender_b = meta.sender;
         received_by_b.assign(data.begin(), data.end());
@@ -63,7 +63,7 @@ TEST_CASE("inproc_bus multicast delivery", "[inproc][bus]")
 
     std::vector<std::byte> received_by_a;
     bool a_received = false;
-    sock_a.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+    sock_a.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
     {
         received_by_a.assign(data.begin(), data.end());
         a_received = true;
@@ -93,12 +93,12 @@ TEST_CASE("inproc_bus unicast delivery", "[inproc][bus]")
     bool b_received = false;
     bool a_received = false;
 
-    sock_b.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte>)
+    sock_b.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
     {
         b_received = true;
     });
 
-    sock_a.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte>)
+    sock_a.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
     {
         a_received = true;
     });
@@ -119,23 +119,23 @@ TEST_CASE("inproc_bus loopback disabled", "[inproc][bus]")
     inproc_bus<Clock> bus;
     inproc_executor<Clock> ex{bus};
 
-    mdnspp::socket_options opts_no_loopback{};
+    mdnspp::inproc::inproc_socket_options opts_no_loopback{};
     opts_no_loopback.multicast_loopback = mdnspp::loopback_mode::disabled;
 
     inproc_socket<Clock> sender{ex, opts_no_loopback};
 
-    mdnspp::socket_options opts_loopback{};
+    mdnspp::inproc::inproc_socket_options opts_loopback{};
     inproc_socket<Clock> receiver{ex, opts_loopback};
 
     bool sender_received = false;
     bool receiver_received = false;
 
-    sender.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte>)
+    sender.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
     {
         sender_received = true;
     });
 
-    receiver.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte>)
+    receiver.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
     {
         receiver_received = true;
     });
@@ -217,9 +217,9 @@ TEST_CASE("inproc_executor post and drain", "[inproc][executor]")
 
     std::vector<int> order;
 
-    mdnspp::InProcTestPolicy::post(ex, [&] { order.push_back(1); });
-    mdnspp::InProcTestPolicy::post(ex, [&] { order.push_back(2); });
-    mdnspp::InProcTestPolicy::post(ex, [&] { order.push_back(3); });
+    mdnspp::inproc_test_policy::post(ex, [&] { order.push_back(1); });
+    mdnspp::inproc_test_policy::post(ex, [&] { order.push_back(2); });
+    mdnspp::inproc_test_policy::post(ex, [&] { order.push_back(3); });
 
     REQUIRE(order.empty());
 

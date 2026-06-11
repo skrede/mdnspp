@@ -65,7 +65,7 @@ mdns_options fast_scheduler_opts()
     return opts;
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-05: Observer captures all traffic
@@ -375,12 +375,12 @@ TEST_CASE("Multiple services and types routing", "[inproc][routing]")
 
     // Monitor A should have discovered the HTTP server (WebServer) only.
     REQUIRE_FALSE(http_found.empty());
-    CHECK(http_found[0].instance_name.str() == "webserver._http._tcp.local.");
+    CHECK(http_found[0].instance_name.str() == "WebServer._http._tcp.local.");
     CHECK(http_found[0].port == 80);
 
     // Monitor B should have discovered the SSH server (SSHServer) only.
     REQUIRE_FALSE(ssh_found.empty());
-    CHECK(ssh_found[0].instance_name.str() == "sshserver._ssh._tcp.local.");
+    CHECK(ssh_found[0].instance_name.str() == "SSHServer._ssh._tcp.local.");
     CHECK(ssh_found[0].port == 22);
 
     // Cross-contamination checks:

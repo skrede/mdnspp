@@ -2,16 +2,17 @@ name: Fuzz testing
 
 on:
   push:
-    branches: [master,fuzz]
+    branches: [master,develop,hardening,fuzz]
   pull_request:
-    branches: [master,fuzz]
+    branches: [master,develop,hardening,fuzz]
+  workflow_dispatch:
 
 jobs:
   fuzz:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
-      CC: clang
-      CXX: clang++
+      CC: clang-18
+      CXX: clang++-18
 
     steps:
       - uses: actions/checkout@v4
@@ -19,14 +20,31 @@ jobs:
       - name: Install Clang and LLVM
         run: |
           sudo apt-get update
-          sudo apt-get install -y clang llvm
+          sudo apt-get install -y clang-18 llvm-18
+
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ runner.os }}-fuzz-${{ hashFiles('lib/mdnspp-asio/CMakeLists.txt', 'lib/mdnspp-encrypt/CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
+      # Corpora accumulate across runs: each run restores the most recent
+      # cache, adds the inputs libFuzzer discovers, and saves a new entry.
+      - name: Restore accumulated corpus
+        uses: actions/cache@v4
+        with:
+          path: fuzz-corpus-accumulated
+          key: fuzz-corpus-${{ github.run_id }}
+          restore-keys: |
+            fuzz-corpus-
 
       - name: Configure
         run: >
           cmake -B build
-          -DCMAKE_C_COMPILER=clang
-          -DCMAKE_CXX_COMPILER=clang++
+          -DCMAKE_C_COMPILER=clang-18
+          -DCMAKE_CXX_COMPILER=clang++-18
           -DMDNSPP_BUILD_FUZZ_TESTS=ON
+          -DMDNSPP_ENABLE_ENCRYPT=ON
           -DMDNSPP_CMAKE_FETCH_DEPS=ON
 
       - name: Build fuzz targets
@@ -37,8 +55,9 @@ jobs:
 
       - name: Run fuzz harnesses
         run: |
-          CORPUS=build/fuzz_corpus
-          FUZZ_ARGS="-max_total_time=60 -rss_limit_mb=4096 -print_final_stats=1"
+          SEEDS=build/fuzz_corpus
+          ACCUM=fuzz-corpus-accumulated
+          FUZZ_ARGS="-max_total_time=150 -rss_limit_mb=4096 -print_final_stats=1"
 
           declare -A CORPUS_MAP=(
             [fuzz_read_dns_name]=read_dns_name
@@ -54,13 +73,20 @@ jobs:
             [fuzz_walk_dns_frame_smart]=walk_frame
             [fuzz_roundtrip_name]=roundtrip
             [fuzz_roundtrip_dns_name]=roundtrip
+            [fuzz_match_queries]=server_query
+            [fuzz_parse_known_answers]=server_query
+            [fuzz_extract_authority]=server_query
+            [fuzz_tc_accumulate]=walk_frame
+            [fuzz_encrypted_packet]=walk_frame
           )
 
           failed=0
           for target in "${!CORPUS_MAP[@]}"; do
-            corpus_dir="${CORPUS}/${CORPUS_MAP[$target]}"
+            seed_dir="${SEEDS}/${CORPUS_MAP[$target]}"
+            accum_dir="${ACCUM}/${target}"
+            mkdir -p "${accum_dir}"
             echo "::group::${target}"
-            if ./build/tests/fuzz/${target} ${FUZZ_ARGS} "${corpus_dir}"; then
+            if ./build/tests/fuzz/${target} ${FUZZ_ARGS} "${accum_dir}" "${seed_dir}"; then
               echo "::endgroup::"
             else
               echo "::endgroup::"

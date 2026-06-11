@@ -12,47 +12,70 @@ mdnspp::basic_service_discovery<P>
 mdnspp::basic_service_server<P>
 ```
 
-where `P` satisfies the `Policy` concept.
+where `P` satisfies the `policy_like` concept.
 
 This design exists for two reasons:
 
-1. **Testability.** `MockPolicy` replaces real sockets and timers with
+1. **Testability.** `mock_policy` replaces real sockets and timers with
    in-process fakes, so unit tests run without network access.
 2. **Framework independence.** Swapping the policy swaps the entire I/O
-   backend -- native sockets, ASIO, or any custom executor -- without
+   backend &mdash; native sockets, ASIO, or any custom executor &mdash; without
    changing application code.
 
-## The Policy concept
+## The policy_like concept
 
 A policy must provide three associated types: an executor, a socket, and a
 timer. Both socket and timer must be constructible from the executor (matching
-ASIO convention).
+ASIO convention). The socket-options constraints use
+`policy_socket_options_t<P>`, which resolves to `P::socket_options_type` when
+the policy declares one derived from `socket_options` (as the encrypted
+policy does), and to plain `socket_options` otherwise.
 
 ```cpp
+// policy_like<P>: the unified policy concept.
+// A policy bundles an executor type with a socket type and timer type,
+// both constructible from the executor (matching ASIO convention).
+//
+// Semantic requirements (not expressible in the concept):
+//   - P::post(ex, fn) must be callable from any thread; the peers use it to
+//     marshal stop()/update_* requests onto the executor.
+//   - Work posted via P::post runs on the executor, serialized with socket
+//     receive handlers and timer wait handlers.
 template <typename P>
-concept Policy = requires
+concept policy_like = requires
     {
         typename P::executor_type;
         typename P::socket_type;
         typename P::timer_type;
     }
-    && SocketLike<typename P::socket_type>
-    && TimerLike<typename P::timer_type>
+    && socket_like<typename P::socket_type>
+    && timer_like<typename P::timer_type>
     && std::constructible_from<typename P::socket_type, typename P::executor_type>
     && std::constructible_from<typename P::timer_type, typename P::executor_type>
     && std::constructible_from<typename P::socket_type, typename P::executor_type, std::error_code&>
     && std::constructible_from<typename P::timer_type, typename P::executor_type, std::error_code&>
-    && std::constructible_from<typename P::socket_type, typename P::executor_type, const socket_options&>
-    && std::constructible_from<typename P::socket_type, typename P::executor_type, const socket_options&, std::error_code&>
-    && requires(typename P::executor_type ex, detail::move_only_function<void()> fn)
+    && std::constructible_from<typename P::socket_type, typename P::executor_type, const policy_socket_options_t<P>&>
+    && std::constructible_from<typename P::socket_type, typename P::executor_type, const policy_socket_options_t<P>&, std::error_code&>
+    && requires(typename P::executor_type ex, move_only_function<void()> fn)
     {
         P::post(ex, std::move(fn));
     };
 ```
 
-`SocketLike` requires `async_receive`, `send`, and `close`. The `async_receive`
-handler receives a `const recv_metadata &` (see below) and a `std::span<std::byte>`
-payload. `TimerLike` requires `expires_after`, `async_wait`, and `cancel`.
+`socket_like` requires `async_receive`, both `send` overloads (throwing and
+`std::error_code&`), and `close`. The `async_receive` handler is invoked with
+the error code first (asio convention):
+
+```cpp
+move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)>
+```
+
+On error the metadata is empty and the data span is empty. `timer_like`
+requires `expires_after`, `async_wait`, and `cancel`; `cancel()` must
+complete every pending `async_wait` with `operation_aborted` /
+`operation_canceled` — every `stop()` path waits on this. All handlers fire
+on the policy executor; the library never locks around handler invocation
+and relies on executor serialization.
 
 ## recv_metadata
 
@@ -71,7 +94,7 @@ struct recv_metadata
 | Field | Type | Description |
 |-------|------|-------------|
 | `sender` | `endpoint` | Source address and port of the packet sender. |
-| `ttl` | `std::optional<uint8_t>` | IP TTL (IPv4) or hop limit (IPv6) of the received packet. `std::nullopt` when the platform did not supply the value (e.g. AsioSocket, Windows DefaultSocket). |
+| `ttl` | `std::optional<uint8_t>` | IP TTL (IPv4) or hop limit (IPv6) of the received packet. Extracted natively by both `default_socket` and `asio_socket` on Linux, macOS (`recvmsg` ancillary data), and Windows (`WSARecvMsg`). `std::nullopt` only when extraction is unavailable on the transport (e.g. custom policies, the inproc bus). |
 | `recv_ifindex` | `uint32_t` | OS interface index on which the packet arrived (`IP_PKTINFO`). Zero when not available. |
 
 The `ttl` field enables RFC 6762 §11 receive-side enforcement: packets with
@@ -85,7 +108,7 @@ See [recv_metadata API reference](api/recv_metadata.md) and
 
 ## Policy-parameterized types
 
-The following public types are parameterized on a Policy:
+The following public types are parameterized on a policy:
 
 ```cpp
 mdnspp::basic_observer<P>
@@ -98,14 +121,14 @@ mdnspp::basic_nic_group<P, Peers...>
 ```
 
 `basic_nic_monitor<P>` monitors OS-level NIC change events (interface up/down,
-address changes) and invokes callbacks on the Policy executor.
+address changes) and invokes callbacks on the policy executor.
 `basic_nic_group<P, Peers...>` uses an owned `basic_nic_monitor` to
 automatically create and destroy per-NIC instances of each peer type
 (basic_service_monitor, basic_service_server, basic_observer) as interfaces
 appear and disappear. See [NIC Group guide](nic-group.md) and
 [nic_group API reference](api/nic_group.md).
 
-## DefaultPolicy
+## default_policy
 
 **When to use:** standalone applications, no external dependencies, quick
 prototyping.
@@ -119,7 +142,7 @@ prototyping.
 > **Important:** `ctx.run()` blocks until `ctx.stop()` is called. Without a
 > `ctx.stop()` call, your program hangs indefinitely. Every completion
 > callback must call `ctx.stop()` when work is done. This is the single most
-> important thing to know about DefaultPolicy.
+> important thing to know about default_policy.
 
 ```cpp
 #include <mdnspp/defaults.h>
@@ -138,7 +161,7 @@ int main()
                              const mdnspp::mdns_record_variant &rec)
             {
                 std::visit([&](const auto &r) {
-                    std::cout << sender << " -> " << r << "\n";
+                    std::cout << sender << " -> " << r << std::endl;
                 }, rec);
                 obs.stop(); // stop after first record
             }
@@ -169,7 +192,7 @@ obs.async_observe([&ctx](std::error_code) { ctx.stop(); });
 ctx.run(); // drives all three
 ```
 
-## AsioPolicy
+## asio_policy
 
 **When to use:** ASIO-based applications that need completion tokens
 (futures, coroutines, deferred operations).
@@ -178,22 +201,23 @@ ctx.run(); // drives all three
 - CMake target: `mdnspp::asio`
 - Executor: `asio::io_context&`
 
-AsioPolicy types are written with the `basic_*` templates directly:
+asio_policy types are written with the `basic_*` templates directly:
 
 ```cpp
-mdnspp::basic_observer<mdnspp::AsioPolicy>
-mdnspp::basic_querier<mdnspp::AsioPolicy>
+mdnspp::basic_observer<mdnspp::asio_policy>
+mdnspp::basic_querier<mdnspp::asio_policy>
 ```
 
 ASIO free-function adapters accept any standard completion token:
 
-| Adapter | Completion signature |
-|---------|---------------------|
-| `async_observe` | `void(std::error_code)` |
-| `async_query` | `void(std::error_code, std::vector<mdns_record_variant>)` |
-| `async_discover` | `void(std::error_code, std::vector<mdns_record_variant>)` |
-| `async_browse` | `void(std::error_code, std::vector<resolved_service>)` |
-| `async_start` | `void(std::error_code)` |
+| Adapter | Completion signature | Completes |
+|---------|---------------------|-----------|
+| `async_observe` | `void(std::error_code)` | On `stop()` (`operation_canceled`) |
+| `async_query` | `void(std::error_code, std::vector<mdns_record_variant>)` | At the silence timeout |
+| `async_discover` | `void(std::error_code, std::vector<mdns_record_variant>)` | At the silence timeout |
+| `async_browse` | `void(std::error_code, std::vector<resolved_service>)` | At the silence timeout |
+| `async_start` | `void(std::error_code)` | When the server is live (or on probe failure) |
+| `async_run` | `void(std::error_code)` | After full teardown (`stop()` or probe failure) |
 
 ```cpp
 #include <mdnspp/asio.h>
@@ -206,15 +230,15 @@ int main()
 {
     asio::io_context io;
 
-    mdnspp::basic_querier<mdnspp::AsioPolicy> q{io};
+    mdnspp::basic_querier<mdnspp::asio_policy> q{io};
 
     mdnspp::async_query(q, "_http._tcp.local.", mdnspp::dns_type::ptr,
         [](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
         {
             if (ec)
-                std::cerr << "query error: " << ec.message() << "\n";
+                std::cerr << "query error: " << ec.message() << std::endl;
             else
-                std::cout << "query complete -- " << results.size() << " record(s)\n";
+                std::cout << "query complete -- " << results.size() << " record(s)" << std::endl;
         });
 
     io.run();
@@ -223,7 +247,7 @@ int main()
 
 See [Async Patterns](async-patterns.md) for all completion token forms.
 
-## MockPolicy
+## mock_policy
 
 **When to use:** unit testing without network access.
 
@@ -231,18 +255,18 @@ See [Async Patterns](async-patterns.md) for all completion token forms.
 - Namespace: `mdnspp::testing`
 - Executor: `mdnspp::testing::mock_executor`
 
-MockPolicy provides `MockSocket` (with packet enqueue/send inspection) and
-`MockTimer` (with manual fire/cancel control).
+mock_policy provides `mock_socket` (with packet enqueue/send inspection) and
+`mock_timer` (with manual fire/cancel control).
 
 ```cpp
 #include <mdnspp/testing/mock_policy.h>
 #include <mdnspp/basic_observer.h>
 
 mdnspp::testing::mock_executor ex;
-mdnspp::basic_observer<mdnspp::testing::MockPolicy> obs{ex};
+mdnspp::basic_observer<mdnspp::testing::mock_policy> obs{ex};
 ```
 
-## InProcPolicy
+## inproc_policy
 
 **When to use:** in-process multicast simulation, deterministic multi-party
 testing, process-local service registry, CI environments without multicast
@@ -250,11 +274,11 @@ networking.
 
 - Include: `#include <mdnspp/inproc/inproc_policy.h>`
 - CMake target: `mdnspp::inproc`
-- Type aliases: `mdnspp::InProcPolicy` (steady_clock), `mdnspp::InProcTestPolicy`
+- Type aliases: `mdnspp::inproc_policy` (steady_clock), `mdnspp::inproc_test_policy`
   (test_clock — Catch2 tests only)
 - Executor: `mdnspp::inproc::inproc_executor<>`
 
-`InProcPolicy` uses an explicit `inproc_bus` as the shared multicast medium.
+`inproc_policy` uses an explicit `inproc_bus` as the shared multicast medium.
 No real sockets or OS networking is involved. The executor is created from the
 bus and passed to each component.
 
@@ -266,8 +290,8 @@ bus and passed to each component.
 mdnspp::inproc::inproc_bus<>      bus;
 mdnspp::inproc::inproc_executor<> executor{bus};
 
-mdnspp::basic_service_server<mdnspp::InProcPolicy>  srv{executor, info};
-mdnspp::basic_service_monitor<mdnspp::InProcPolicy> mon{executor, opts};
+mdnspp::basic_service_server<mdnspp::inproc_policy>  srv{executor, info};
+mdnspp::basic_service_monitor<mdnspp::inproc_policy> mon{executor, opts};
 
 srv.async_start();
 mon.watch("_http._tcp.local.");
@@ -283,11 +307,11 @@ usage patterns.
 
 ## Thread-safe work scheduling: post()
 
-Every Policy provides a static `post(executor_type, move_only_function<void()>)`
+Every policy provides a static `post(executor_type, move_only_function<void()>)`
 for thread-safe work scheduling. This is how mdnspp dispatches work onto the
 correct event loop from any thread.
 
-### DefaultPolicy
+### default_policy
 
 ```cpp
 static void post(executor_type ex, detail::move_only_function<void()> fn)
@@ -296,10 +320,10 @@ static void post(executor_type ex, detail::move_only_function<void()> fn)
 }
 ```
 
-Queues the function onto the `DefaultContext` poll loop. The work executes on
+Queues the function onto the `default_context` poll loop. The work executes on
 the thread calling `ctx.run()`.
 
-### AsioPolicy
+### asio_policy
 
 ```cpp
 static void post(executor_type ex, detail::move_only_function<void()> fn)
@@ -310,7 +334,7 @@ static void post(executor_type ex, detail::move_only_function<void()> fn)
 
 Uses ASIO's strand-safe posting mechanism.
 
-### MockPolicy
+### mock_policy
 
 ```cpp
 static void post(executor_type ex, detail::move_only_function<void()> fn)
@@ -322,7 +346,7 @@ static void post(executor_type ex, detail::move_only_function<void()> fn)
 Appends to a deque for deterministic testing. Drain posted work with
 `ex.drain_posted()`.
 
-### InProcPolicy
+### inproc_policy
 
 ```cpp
 static void post(executor_type ex, detail::move_only_function<void()> fn)
@@ -346,19 +370,24 @@ directly for custom thread-safe operations on the executor.
 When using `basic_service_server`, the server progresses through a defined
 state machine after `async_start()` is called:
 
-- **idle** -- constructed but not yet started.
-- **probing** -- sends 3 probe queries at 250 ms intervals (with a random
+- **idle** &mdash; constructed but not yet started.
+- **probing** &mdash; sends 3 probe queries at 250 ms intervals (with a random
   0--250 ms initial delay) to verify name uniqueness (RFC 6762 section 8.1).
   Any conflicting response triggers the `service_options::on_conflict`
   callback.
-- **announcing** -- sends a configurable burst of unsolicited announcements
+- **announcing** &mdash; sends a configurable burst of unsolicited announcements
   (`announce_count` packets at `announce_interval` intervals, default 2
   packets at 1 second) per RFC 6762 section 8.3.
-- **live** -- the server responds to matching queries with RFC 6762-delayed
-  responses (20--120 ms random delay for multicast). The `on_ready` handler
-  fires at this point.
-- **stopped** -- `stop()` was called or conflict resolution failed. Goodbye
-  packets are sent if `service_options::send_goodbye` is `true`.
+- **live** -- the server responds to matching queries (shared records take
+  the 20--120 ms random multicast delay; responses consisting solely of
+  probe-verified unique records go immediately) and keeps monitoring for
+  conflicts (RFC 6762 section 9). The `on_ready` handler fires with
+  `std::error_code{}` at this point.
+- **stopped** -- `stop()` was called or conflict resolution failed
+  permanently. A goodbye packet is sent if `service_options::send_goodbye`
+  is `true` and the server was announcing or live. On the conflict dead-end,
+  `on_ready` fires with `mdns_error::probe_conflict`; in every case `on_done`
+  fires with `std::error_code{}` after teardown completes.
 
 See [`service_options`](api/service_options.md) for controlling probing,
 announcing, goodbye, and conflict resolution behavior.
@@ -367,11 +396,11 @@ announcing, goodbye, and conflict resolution behavior.
 
 | Need | Use | CMake target |
 |------|-----|--------------|
-| Standalone, no dependencies | DefaultPolicy | `mdnspp::mdnspp` |
-| ASIO integration | AsioPolicy | `mdnspp::asio` |
-| Unit testing | MockPolicy | `mdnspp::testing` |
-| In-process simulation / testing | InProcPolicy | `mdnspp::inproc` |
-| PSK-encrypted mDNS multicast | `encrypted_policy<Inner>` | `mdnspp::mdnspp_encrypt` |
+| Standalone, no dependencies | default_policy | `mdnspp::mdnspp` |
+| ASIO integration | asio_policy | `mdnspp::asio` |
+| Unit testing | mock_policy | `mdnspp::testing` |
+| In-process simulation / testing | inproc_policy | `mdnspp::inproc` |
+| PSK-encrypted mDNS multicast | `encrypted_policy<Inner>` | `mdnspp::encrypt` |
 
 See [Encrypted mDNS](encrypt/README.md) for setup and the [encrypted_policy API reference](encrypt/api/encrypted_policy.md).
 

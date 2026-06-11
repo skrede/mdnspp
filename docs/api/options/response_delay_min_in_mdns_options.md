@@ -23,4 +23,4 @@ The 20 ms default is the RFC minimum and provides a meaningful spread even on fa
 
 Reducing below 20 ms increases collision probability on busy links. If multiple responders all roll delays below 5 ms, their packets arrive at the querier within the same 802.11 CSMA/CA contention window, resulting in collisions or retransmissions at the MAC layer. The RFC chose 20 ms as the minimum precisely to provide enough spread to avoid this on typical Ethernet and Wi-Fi networks.
 
-The delay is applied to all multicast responses, including proactive announcements and cache-refresh responses — not just query-triggered replies. Removing this floor entirely by setting both bounds to 0 ms synchronises all responses, which can cascade into multicast queue exhaustion on access points with limited multicast buffer space.
+The delay is applied to all multicast responses, including proactive announcements and cache-refresh responses — not just query-triggered replies. Removing this floor entirely by setting both bounds to 0 ms synchronizes all responses, which can cascade into multicast queue exhaustion on access points with limited multicast buffer space.

@@ -2,13 +2,15 @@
 
 When a querier's known-answer list is too large to fit in a single DNS packet,
 it sets the TC (Truncated) bit in the header and sends the overflow records in
-one or more continuation packets. RFC 6762 section 5.4 requires the responder
-to detect the TC bit and wait for all continuation packets before checking
-known-answer suppression and generating a response. Without this wait, the
-responder would respond with records the querier already holds.
+one or more continuation packets. RFC 6762 section 6 requires the responder
+to detect the TC bit and delay its response by 400-500 ms to wait for all
+continuation packets before checking known-answer suppression and generating
+a response. Without this wait, the responder would respond with records the
+querier already holds.
 
-**RFC Reference:** RFC 6762 section 5.4 (TC bit on queries), section 7.2
-(multi-packet known-answer lists)
+**RFC Reference:** RFC 6762 section 6 (responder wait on TC queries),
+section 7.2 (multi-packet known-answer lists), section 18.5 (TC bit
+semantics)
 
 ## Example
 
@@ -62,8 +64,9 @@ See also: [examples/service_server/](../../examples/service_server/)
 |--------|--------|-------|
 | Implemented | TC bit detection on incoming queries | Checked in `service_server` receive path |
 | Implemented | 400–500 ms configurable wait | `tc_wait_min` / `tc_wait_max` in `mdns_options` |
-| Implemented | Known-answer accumulation from same source IP | `tc_accumulator` keyed by source endpoint |
-| Not implemented | Client-side TC bit sending | Querier does not split large known-answer lists across packets (PROTO-04) |
+| Implemented | Known-answer accumulation per source, with per-source deadlines | `tc_accumulator` keyed by source endpoint; one timer armed for the earliest deadline drains all expired sources |
+| Implemented | Final-continuation merge (§7.2) | A compliant querier's final continuation (TC clear, qdcount=0) is merged into the pending TC state before the suppression decision |
+| Implemented | Querier-side TC splitting (§7.2) | Outgoing queries exceeding `max_query_payload` are split: each packet but the last sets TC; continuation packets carry no questions (qdcount=0) |
 
 ## In-Depth
 
@@ -72,37 +75,38 @@ See also: [examples/service_server/](../../examples/service_server/)
 When a query arrives with the TC bit set, the server calls
 `detail::tc_accumulator::accumulate()` with the source endpoint and the
 records from the Answer section of that packet. The accumulator stores the
-records in a `std::unordered_map` keyed by `endpoint` (address + port).
+records in a `std::unordered_map` keyed by `endpoint` (address + port), each
+entry carrying its own drain deadline (`Clock::now()` plus a random duration
+uniformly sampled from `[tc_wait_min, tc_wait_max]`).
 
-The timer is armed once at first-packet arrival (`inserted_at = Clock::now()`).
-Continuation packets from the same source — identified by their lack of a
-Questions section — are appended to the existing record list without resetting
-the timer. This is the "arm-once" invariant: RFC 6762 states the wait begins at
-the first truncated query packet, not at the last continuation.
+The deadline is fixed at first-packet arrival. Continuation packets from the
+same source are appended to the existing record list without resetting the
+deadline. This is the "arm-once" invariant: RFC 6762 states the wait begins
+at the first truncated query packet, not at the last continuation. A
+compliant querier's final continuation packet -- TC bit clear and no
+questions (qdcount=0) -- is also merged into the pending state, so the
+suppression decision sees the complete known-answer set.
 
-### Ready check and timeout
+### Per-source deadlines, single timer
 
-After arming the timer, the server schedules a callback at a random duration
-uniformly sampled from `[tc_wait_min, tc_wait_max]`. When the callback fires,
-it calls `tc_accumulator::take_if_ready()` with `time_point::max()` as the
-`now` argument. Passing `max` guarantees the deadline check passes immediately
-when the timer fires, decoupling the logical accumulation wait from the
-real-time clock in tests.
+Each source endpoint is accumulated independently with its own deadline, but
+the server arms a single timer for the earliest pending deadline
+(`tc_accumulator::next_deadline()`). When the timer fires,
+`tc_accumulator::take_expired(now)` removes and returns the merged record
+sets of all sources whose deadline has passed, and the timer is re-armed for
+the next earliest deadline. A second querier whose TC query arrives while
+another source's window is pending therefore never cancels or extends the
+first source's wait.
 
-`take_if_ready` returns the accumulated record vector and removes the entry. The
-server then proceeds with the complete known-answer set as if the entire list
-had arrived in a single packet.
-
-### Per-source isolation
-
-Each source IP is accumulated independently. A second querier from a different
-IP address that also sends a TC query gets its own accumulation entry and its
-own timer. The two accumulation windows do not interfere.
+The accumulator bounds memory growth from spoofed source endpoints: at most
+`tc_accumulator::max_pending_sources` (64) sources are pending at once; when
+full, the entry with the earliest deadline is dropped to admit the new
+source.
 
 ### Implementation references
 
-- `mdnspp/detail/tc_accumulator.h` — `tc_accumulator<Clock>`, `accumulate`, `take_if_ready`
-- `mdnspp/mdns_options.h` — `tc_wait_min`, `tc_wait_max`
+- `mdnspp/detail/tc_accumulator.h` — `tc_accumulator<Clock>`, `accumulate`, `next_deadline`, `take_expired`
+- `mdnspp/mdns_options.h` — `tc_wait_min`, `tc_wait_max`, `max_query_payload`, `tc_continuation_delay`
 
 ## See Also
 

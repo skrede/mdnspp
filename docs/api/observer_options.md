@@ -3,9 +3,9 @@
 ## Overview
 
 `observer_options` controls the behavior of an observer: an optional
-per-record callback invoked as mDNS records are received. Construct with
-`observer_options{}` for a silent observer, or provide a callback to process
-records as they arrive.
+per-record callback invoked as mDNS records are received, and an optional
+error handler. Construct with `observer_options{}` for a silent observer, or
+provide a callback to process records as they arrive.
 
 **Header:**
 
@@ -25,20 +25,23 @@ namespace mdnspp {
 struct observer_options
 {
     using record_callback = mdnspp::record_callback;
+    using error_handler = mdnspp::error_handler;
 
     record_callback on_record{};
+    error_handler on_error{};
 };
 
 }
 ```
 
-`record_callback` is defined in `<mdnspp/callback_types.h>` (included transitively).
+`record_callback` and `error_handler` are defined in `<mdnspp/callback_types.h>` (included transitively).
 
 ## Fields
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `on_record` | `record_callback` | `{}` (none) | Called once per parsed DNS record with the sender endpoint and record variant. |
+| `on_error` | `error_handler` | `{}` (none) | Called on fatal receive errors with the error code and a context string (e.g. `"receive"`). |
 
 ### on_record
 
@@ -55,8 +58,25 @@ mdnspp::observer_options opts{
                     const mdnspp::mdns_record_variant &rec)
     {
         std::visit([&](const auto &r) {
-            std::cout << sender << " -> " << r << "\n";
+            std::cout << sender << " -> " << r << std::endl;
         }, rec);
+    }
+};
+```
+
+### on_error
+
+Called when the receive loop encounters a fatal error. The error code
+describes the failure; the string view names the failure site. Without a
+handler, these errors are silently ignored.
+
+**Default:** None.
+
+```cpp
+mdnspp::observer_options opts{
+    .on_error = [](std::error_code ec, std::string_view context)
+    {
+        std::cerr << context << ": " << ec.message() << std::endl;
     }
 };
 ```
@@ -85,7 +105,7 @@ mdnspp::observer obs{ctx,
                          const mdnspp::mdns_record_variant &rec)
         {
             std::visit([&](const auto &r) {
-                std::cout << sender << " -> " << r << "\n";
+                std::cout << sender << " -> " << r << std::endl;
             }, rec);
 
             if (++count >= 5)

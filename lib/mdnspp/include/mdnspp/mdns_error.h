@@ -18,7 +18,9 @@ enum class mdns_error : uint32_t
     not_implemented = 7,
     probe_conflict       = 8,
     invalid_ipv4_address = 9,
-    invalid_ipv6_address = 10
+    invalid_ipv6_address = 10,
+    invalid_name         = 11,
+    invalid_argument     = 12
 };
 
 inline const std::error_category &mdns_error_category() noexcept
@@ -41,6 +43,8 @@ inline const std::error_category &mdns_error_category() noexcept
             case mdns_error::probe_conflict: return "name conflict detected during probing";
             case mdns_error::invalid_ipv4_address: return "invalid IPv4 address";
             case mdns_error::invalid_ipv6_address: return "invalid IPv6 address";
+            case mdns_error::invalid_name: return "invalid DNS name";
+            case mdns_error::invalid_argument: return "invalid argument";
             }
             return "unknown mdns error";
         }

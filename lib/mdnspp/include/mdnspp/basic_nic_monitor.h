@@ -22,7 +22,7 @@
 
 namespace mdnspp {
 
-// basic_nic_monitor<P> — Policy-templated NIC change detector.
+// basic_nic_monitor<P> — policy-templated NIC change detector.
 //
 // Detects network interface additions and removals via platform-native APIs
 // where available (Linux: AF_NETLINK, macOS: nw_path_monitor,
@@ -37,9 +37,11 @@ namespace mdnspp {
 //
 // Thread safety:
 //   on_added(), on_removed(), current(), start(), stop() may be called from
-//   any thread. Callbacks are delivered on the Policy executor via P::post().
+//   any thread. Callback registration is marshalled through P::post() and
+//   takes effect once the executor processes it; callbacks are likewise
+//   delivered on the policy executor via P::post().
 
-template <Policy P>
+template <policy_like P>
 class basic_nic_monitor
 {
 public:
@@ -60,7 +62,7 @@ public:
         , m_opts(std::move(opts))
     {
         std::error_code ec;
-        auto initial = enumerate_interfaces(ec);
+        auto initial = enumerate(ec);
         if(!ec)
         {
             std::lock_guard lock(m_snapshot_mutex);
@@ -75,23 +77,36 @@ public:
     }
 
     /// Register a callback fired (on the executor) when a NIC is added or changes.
-    void on_added(detail::move_only_function<void(const network_interface &)> cb)
+    /// Registration is posted to the executor; it takes effect once processed.
+    void on_added(move_only_function<void(const network_interface &)> cb)
     {
-        m_on_added = std::move(cb);
+        auto weak = std::weak_ptr<bool>(m_alive);
+        P::post(m_executor, [this, weak, cb = std::move(cb)]() mutable
+        {
+            if(weak.expired()) return;
+            m_on_added = std::move(cb);
+        });
     }
 
     /// Register a callback fired (on the executor) when a NIC is removed or changes.
-    void on_removed(detail::move_only_function<void(const network_interface &)> cb)
+    /// Registration is posted to the executor; it takes effect once processed.
+    void on_removed(move_only_function<void(const network_interface &)> cb)
     {
-        m_on_removed = std::move(cb);
+        auto weak = std::weak_ptr<bool>(m_alive);
+        P::post(m_executor, [this, weak, cb = std::move(cb)]() mutable
+        {
+            if(weak.expired()) return;
+            m_on_removed = std::move(cb);
+        });
     }
 
     /// Begin monitoring. Tries platform-native backend; falls back to polling.
+    /// A custom nic_monitor_options::enumerator forces the polling path.
     void start()
     {
         m_stopped.store(false, std::memory_order_release);
 
-        if(!start_native_backend())
+        if(m_opts.enumerator || !start_native_backend())
             schedule_poll();
     }
 
@@ -139,14 +154,8 @@ private:
 
         const auto *old_ptr = old_snap ? old_snap.get() : nullptr;
 
-        // Build sorted views by index for O(n log n) diff.
-        auto index_of = [](const network_interface &iface) noexcept
-        {
-            return iface.index;
-        };
-
         auto find_by_index = [](const std::vector<network_interface> &vec,
-                                unsigned int idx) -> const network_interface *
+                                uint32_t idx) -> const network_interface *
         {
             auto it = std::find_if(vec.begin(), vec.end(),
                 [idx](const network_interface &i) { return i.index == idx; });
@@ -220,8 +229,6 @@ private:
             m_snapshot = std::make_shared<const std::vector<network_interface>>(
                 std::move(new_list));
         }
-
-        (void)index_of; // suppress unused-lambda warning
     }
 
     // -------------------------------------------------------------------------
@@ -239,11 +246,20 @@ private:
         {
             if(ec || weak.expired()) return;
             std::error_code enum_ec;
-            auto interfaces = enumerate_interfaces(enum_ec);
+            auto interfaces = enumerate(enum_ec);
             if(!enum_ec)
                 apply_diff(std::move(interfaces));
             schedule_poll();
         });
+    }
+
+    /// Enumerate interfaces through the configured enumerator, falling back to
+    /// the platform enumerate_interfaces().
+    std::vector<network_interface> enumerate(std::error_code &ec)
+    {
+        if(m_opts.enumerator)
+            return m_opts.enumerator(ec);
+        return enumerate_interfaces(ec);
     }
 
     // -------------------------------------------------------------------------
@@ -268,8 +284,8 @@ private:
     std::atomic<bool> m_stopped{true};
     nic_monitor_options m_opts;
 
-    detail::move_only_function<void(const network_interface &)> m_on_added;
-    detail::move_only_function<void(const network_interface &)> m_on_removed;
+    move_only_function<void(const network_interface &)> m_on_added;
+    move_only_function<void(const network_interface &)> m_on_removed;
 
     mutable std::mutex m_snapshot_mutex;
     std::shared_ptr<const std::vector<network_interface>> m_snapshot;

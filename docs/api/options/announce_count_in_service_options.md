@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Type** | `unsigned` |
+| **Type** | `uint8_t` |
 | **Default** | `2` |
 | **One-liner** | Number of unsolicited announcement packets sent after probing completes. |
 

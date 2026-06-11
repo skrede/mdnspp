@@ -55,14 +55,14 @@ Constructs a `std::error_code` from an `encrypt_error` enumerator using `encrypt
 
 ```cpp
 template <>
-struct std::is_error_code_enum<mdnspp::encrypt_error> : std::true_type {};
+struct std::is_error_code_enum<mdnspp::encrypt::encrypt_error> : std::true_type {};
 ```
 
 This specialization (defined in the global namespace as required by the standard) enables implicit conversion of `encrypt_error` to `std::error_code` and comparison with `std::errc` values.
 
 ```cpp
-std::error_code ec = mdnspp::encrypt_error::decrypt_failed; // implicit
-if (ec == mdnspp::encrypt_error::replay_detected) { ... }
+std::error_code ec = mdnspp::encrypt::encrypt_error::decrypt_failed; // implicit
+if (ec == mdnspp::encrypt::encrypt_error::replay_detected) { ... }
 ```
 
 ## Usage Example
@@ -75,7 +75,7 @@ if (ec == mdnspp::encrypt_error::replay_detected) { ... }
 
 void report(std::error_code ec)
 {
-    if (ec.category() == mdnspp::encrypt_error_category())
+    if (ec.category() == mdnspp::encrypt::encrypt_error_category())
     {
         std::cout << "Encrypt error: " << ec.message() << std::endl;
     }
@@ -83,7 +83,7 @@ void report(std::error_code ec)
 
 void example()
 {
-    std::error_code ec = mdnspp::encrypt_error::decrypt_failed;
+    std::error_code ec = mdnspp::encrypt::encrypt_error::decrypt_failed;
     report(ec); // prints: Encrypt error: decrypt failed
 }
 ```

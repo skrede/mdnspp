@@ -1,10 +1,12 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/testing/mock_policy.h"
+#include "mdnspp/default/default_socket.h"
 #include "mdnspp/detail/validate_multicast.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
 #include <system_error>
 
 using namespace mdnspp;
@@ -13,6 +15,12 @@ using namespace mdnspp::testing;
 TEST_CASE("Default socket_options has empty interface_address", "[socket_options]")
 {
     REQUIRE(socket_options{}.interface_address.empty());
+}
+
+TEST_CASE("Default socket_options has unset interface_name and interface_index", "[socket_options]")
+{
+    REQUIRE_FALSE(socket_options{}.interface_name.has_value());
+    REQUIRE_FALSE(socket_options{}.interface_index.has_value());
 }
 
 TEST_CASE("Default socket_options has loopback enabled", "[socket_options]")
@@ -30,7 +38,7 @@ TEST_CASE("loopback_mode enum values", "[socket_options]")
     REQUIRE(loopback_mode::enabled != loopback_mode::disabled);
 }
 
-TEST_CASE("MockSocket stores socket_options", "[socket_options][mock]")
+TEST_CASE("mock_socket stores socket_options", "[socket_options][mock]")
 {
     mock_executor ex;
     socket_options opts{
@@ -39,13 +47,13 @@ TEST_CASE("MockSocket stores socket_options", "[socket_options][mock]")
         .multicast_ttl = uint8_t{255}
     };
 
-    MockSocket mock{ex, opts};
+    mock_socket mock{ex, opts};
     REQUIRE(mock.options().interface_address == "192.168.1.1");
     REQUIRE(mock.options().multicast_loopback == loopback_mode::disabled);
     REQUIRE(mock.options().multicast_ttl == uint8_t{255});
 }
 
-TEST_CASE("MockSocket socket_options with error_code", "[socket_options][mock]")
+TEST_CASE("mock_socket socket_options with error_code", "[socket_options][mock]")
 {
     mock_executor ex;
     socket_options opts{.interface_address = "10.0.0.1"};
@@ -53,18 +61,18 @@ TEST_CASE("MockSocket socket_options with error_code", "[socket_options][mock]")
     SECTION("success path stores options")
     {
         std::error_code ec;
-        MockSocket mock{ex, opts, ec};
+        mock_socket mock{ex, opts, ec};
         REQUIRE_FALSE(ec);
         REQUIRE(mock.options().interface_address == "10.0.0.1");
     }
 
     SECTION("failure path sets error_code")
     {
-        MockSocket::set_fail_on_construct(true);
+        mock_socket::set_fail_on_construct(true);
         std::error_code ec;
-        MockSocket mock{ex, opts, ec};
+        mock_socket mock{ex, opts, ec};
         REQUIRE(ec);
-        MockSocket::set_fail_on_construct(false);
+        mock_socket::set_fail_on_construct(false);
     }
 }
 
@@ -187,4 +195,33 @@ TEST_CASE("validate_multicast_address throwing overload throws on unicast", "[so
 TEST_CASE("validate_multicast_address throwing overload succeeds on multicast", "[socket_options][validation]")
 {
     REQUIRE_NOTHROW(mdnspp::detail::validate_multicast_address("224.0.0.251"));
+}
+
+// --- Interface selection by name/index (resolved at socket open) ---
+
+TEST_CASE("default_socket rejects an unknown interface_name", "[socket_options][interface]")
+{
+    default_context ctx;
+    socket_options opts{.interface_name = "mdnspp-nonexistent0"};
+
+    std::error_code ec;
+    default_socket sock{ctx, opts, ec};
+    REQUIRE(ec == std::errc::invalid_argument);
+}
+
+TEST_CASE("default_socket rejects an unknown interface_index", "[socket_options][interface]")
+{
+    default_context ctx;
+    socket_options opts{.interface_index = uint32_t{0xFFFFFFF0}};
+
+    std::error_code ec;
+    default_socket sock{ctx, opts, ec};
+    REQUIRE(ec == std::errc::invalid_argument);
+}
+
+TEST_CASE("default_socket throwing constructor reports an unknown interface_name", "[socket_options][interface]")
+{
+    default_context ctx;
+    socket_options opts{.interface_name = "mdnspp-nonexistent0"};
+    REQUIRE_THROWS_AS((default_socket{ctx, opts}), std::system_error);
 }

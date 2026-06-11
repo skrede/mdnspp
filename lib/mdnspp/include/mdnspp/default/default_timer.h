@@ -1,10 +1,10 @@
-#ifndef HPP_GUARD_MDNSPP_DEFAULT_TIMER_H
-#define HPP_GUARD_MDNSPP_DEFAULT_TIMER_H
+#ifndef HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_TIMER_H
+#define HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_TIMER_H
 
-// DefaultTimer — deadline-based timer satisfying TimerLike, backed by DefaultContext.
+// default_timer — deadline-based timer satisfying timer_like, backed by default_context.
 // Include this header (not default_context.h directly) to get the full implementation,
-// as it provides the out-of-line definitions of DefaultContext::compute_next_timeout_ms
-// and DefaultContext::fire_expired_timers that dereference DefaultTimer*.
+// as it provides the out-of-line definitions of default_context::compute_next_timeout_ms
+// and default_context::fire_expired_timers that dereference default_timer*.
 
 #include "mdnspp/policy.h"
 
@@ -17,31 +17,31 @@
 
 namespace mdnspp {
 
-class DefaultTimer
+class default_timer
 {
 public:
-    explicit DefaultTimer(DefaultContext &ctx)
+    explicit default_timer(default_context &ctx)
         : m_ctx{ctx}
     {
     }
 
-    explicit DefaultTimer(DefaultContext &ctx, std::error_code &)
+    explicit default_timer(default_context &ctx, std::error_code &)
         : m_ctx{ctx}
     {
     }
 
-    ~DefaultTimer()
+    ~default_timer()
     {
         m_ctx.deregister_timer(this);
     }
 
-    DefaultTimer(const DefaultTimer &) = delete;
-    DefaultTimer &operator=(const DefaultTimer &) = delete;
-    DefaultTimer(DefaultTimer &&) = delete;
-    DefaultTimer &operator=(DefaultTimer &&) = delete;
+    default_timer(const default_timer &) = delete;
+    default_timer &operator=(const default_timer &) = delete;
+    default_timer(default_timer &&) = delete;
+    default_timer &operator=(default_timer &&) = delete;
 
     /// Set (or reset) the deadline. Silently drops any pending handler WITHOUT
-    /// calling it — matching MockTimer semantics required by recv_loop.
+    /// calling it — matching mock_timer semantics required by recv_loop.
     void expires_after(std::chrono::milliseconds dur)
     {
         m_pending_handler = nullptr; // DROP — do not call
@@ -49,7 +49,7 @@ public:
         m_ctx.register_timer(this);
     }
 
-    /// Register the completion handler. Fired by DefaultContext when the deadline passes.
+    /// Register the completion handler. Fired by default_context when the deadline passes.
     void async_wait(detail::move_only_function<void(std::error_code)> handler)
     {
         m_pending_handler = std::move(handler);
@@ -68,7 +68,7 @@ public:
     }
 
     // -----------------------------------------------------------------------
-    // Internal interface — called by DefaultContext
+    // Internal interface — called by default_context
     // -----------------------------------------------------------------------
 
     /// Fire the pending handler with success if the deadline has passed.
@@ -92,18 +92,18 @@ public:
     }
 
 private:
-    DefaultContext &m_ctx;
+    default_context &m_ctx;
     std::chrono::steady_clock::time_point m_deadline{};
     detail::move_only_function<void(std::error_code)> m_pending_handler;
 };
 
-static_assert(TimerLike<DefaultTimer>, "DefaultTimer must satisfy TimerLike — check expires_after/async_wait/cancel");
+static_assert(timer_like<default_timer>, "default_timer must satisfy timer_like — check expires_after/async_wait/cancel");
 
-inline int DefaultContext::compute_next_timeout_ms(std::chrono::steady_clock::time_point now) const
+inline int default_context::compute_next_timeout_ms(std::chrono::steady_clock::time_point now) const
 {
     assert_executor_thread();
     int min_ms = -1; // -1 = no pending timer, poll blocks indefinitely
-    for(const DefaultTimer *t : m_timers)
+    for(const default_timer *t : m_timers)
     {
         if(!t->has_pending())
             continue;
@@ -121,12 +121,12 @@ inline int DefaultContext::compute_next_timeout_ms(std::chrono::steady_clock::ti
     return min_ms;
 }
 
-inline void DefaultContext::fire_expired_timers()
+inline void default_context::fire_expired_timers()
 {
     assert_executor_thread();
     // Snapshot to avoid iterator invalidation if a handler calls register/deregister.
     const auto timers = m_timers;
-    for(DefaultTimer *t : timers)
+    for(default_timer *t : timers)
         t->fire_if_expired();
 }
 

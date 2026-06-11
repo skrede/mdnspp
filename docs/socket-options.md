@@ -5,9 +5,11 @@
 `socket_options` lets you control which network interface mDNS operates on,
 set the multicast TTL, and enable or disable multicast loopback. By default,
 mdnspp binds to all interfaces (`INADDR_ANY`). When you need to isolate mDNS
-traffic to a specific NIC -- for example on a multi-homed server or an
-embedded device with separate management and data networks -- construct your
-mdnspp types with a `socket_options` value.
+traffic to a specific NIC &mdash; for example on a multi-homed server or an
+embedded device with separate management and data networks &mdash; construct your
+mdnspp types with a `socket_options` value. The interface can be selected by
+OS index (`interface_index`), by name (`interface_name`), or by address
+(`interface_address`).
 
 **Headers:**
 
@@ -23,15 +25,16 @@ Both headers are included transitively by `#include <mdnspp/defaults.h>`.
 ```cpp
 namespace mdnspp {
 
-enum class loopback_mode { enabled, disabled };
+enum class loopback_mode : uint8_t { enabled, disabled };
 
 struct socket_options
 {
     std::string interface_address{};
+    std::optional<std::string> interface_name{};
+    std::optional<uint32_t> interface_index{};
     endpoint multicast_group{"224.0.0.251", 5353};
     loopback_mode multicast_loopback{loopback_mode::enabled};
     std::optional<std::uint8_t> multicast_ttl{};
-    std::optional<uint16_t> port_override{};
 };
 
 }
@@ -41,11 +44,39 @@ struct socket_options
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `interface_address` | `std::string` | `""` (empty) | IPv4 address of the NIC to bind. Empty string means `INADDR_ANY` (all interfaces). |
+| `interface_address` | `std::string` | `""` (empty) | Address of the NIC to bind, in the family of `multicast_group.address` (see below). Empty string means `INADDR_ANY` (all interfaces). |
+| `interface_name` | `std::optional<std::string>` | `std::nullopt` | OS interface name of the NIC to bind (e.g. `"eth0"`, `"en0"`). Resolved at socket open via `enumerate_interfaces()`. |
+| `interface_index` | `std::optional<uint32_t>` | `std::nullopt` | OS interface index of the NIC to bind. Resolved at socket open via `enumerate_interfaces()`. |
 | `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. Change this to isolate mDNS traffic to a custom namespace. |
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets are looped back to the sending host. Enabled by default so that services and clients on the same machine can communicate. |
 | `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | Multicast time-to-live. When `socket_options` is used, defaults to 255 per RFC 6762 Section 11. `std::nullopt` leaves the OS default. |
-| `port_override` | `std::optional<uint16_t>` | `std::nullopt` | Overrides the source port assigned by `inproc_bus`. Used in InProcPolicy tests to simulate legacy unicast queries (source port != 5353). Has no effect on real sockets. |
+
+### Interface selection precedence and address family
+
+When more than one of the binding fields is set, the precedence at socket
+open is `interface_index` > `interface_name` > `interface_address`: a set
+`interface_index` is resolved by index only, and an unmatched index fails
+socket construction with `std::errc::invalid_argument` rather than falling
+back to the name or address (the same applies to an unmatched
+`interface_name`). An `interface_index` or `interface_name` is translated to
+the matching interface's address via `enumerate_interfaces()` and then
+follows the same code path as `interface_address`.
+
+The family of `multicast_group.address` selects the socket family, and the
+effective interface address must be of the same family: a dotted-decimal
+IPv4 address for IPv4 sockets (applied through `IP_MULTICAST_IF` /
+`IP_ADD_MEMBERSHIP`), or a colon-hex IPv6 address for IPv6 sockets
+(translated internally to the owning interface's index for
+`IPV6_MULTICAST_IF` / `IPV6_JOIN_GROUP`). A NIC selected by index or name
+that has no address of the socket family fails with
+`std::errc::invalid_argument`.
+
+Policies may extend `socket_options`: a policy declaring a
+`socket_options_type` derived from `socket_options` substitutes its own
+struct via `policy_socket_options_t<P>`. The encrypted policy adds key
+material this way (`encrypt_socket_options`), and the inproc policy adds
+`inproc::inproc_socket_options::port_override` for simulating legacy unicast
+clients on the in-process bus (see [In-Process Bus](inproc-bus.md)).
 
 ### loopback_mode enum
 
@@ -66,7 +97,7 @@ struct network_interface
     std::string name;
     std::string ipv4_address;
     std::string ipv6_address;
-    unsigned int index{0};
+    uint32_t index{0};
     bool is_loopback{false};
     bool is_up{false};
 };
@@ -81,7 +112,7 @@ struct network_interface
 | `name` | `std::string` | OS-reported interface name (e.g. `"eth0"`, `"en0"`, `"Ethernet"`). |
 | `ipv4_address` | `std::string` | IPv4 address in dotted-decimal notation. Empty if the interface has no IPv4 address. |
 | `ipv6_address` | `std::string` | IPv6 address in colon-hex notation. Empty if the interface has no IPv6 address. |
-| `index` | `unsigned int` | OS interface index. |
+| `index` | `uint32_t` | OS interface index. |
 | `is_loopback` | `bool` | `true` if this is the loopback interface (`lo`, `lo0`). |
 | `is_up` | `bool` | `true` if the interface is currently up. |
 
@@ -116,7 +147,7 @@ int main()
                   << "  ipv6=" << iface.ipv6_address
                   << "  up=" << iface.is_up
                   << "  loopback=" << iface.is_loopback
-                  << "\n";
+                  << std::endl;
     }
 }
 ```
@@ -125,46 +156,46 @@ int main()
 
 ### Binding to a specific NIC
 
-Enumerate interfaces, pick the one you want, and pass its address via
-`socket_options`:
+Name the interface directly &mdash; the address of the socket family is resolved
+at socket open:
 
 ```cpp
 #include <mdnspp/defaults.h>
 #include <mdnspp/service_info.h>
 
 #include <iostream>
-#include <ranges>
 
 int main()
 {
-    auto ifaces = mdnspp::enumerate_interfaces();
-
-    // Pick the first non-loopback interface that is up and has an IPv4 address
-    auto it = std::ranges::find_if(ifaces, [](const auto &iface) {
-        return iface.is_up && !iface.is_loopback && !iface.ipv4_address.empty();
-    });
-
-    if (it == ifaces.end())
-    {
-        std::cerr << "no suitable interface found\n";
-        return 1;
-    }
-
-    mdnspp::socket_options opts{.interface_address = it->ipv4_address};
+    mdnspp::socket_options opts{.interface_name = "eth0"};
 
     mdnspp::context ctx;
-    mdnspp::service_info info{
-        .service_name = "MyApp._http._tcp.local.",
-        .service_type = "_http._tcp.local.",
-        .hostname     = "myhost.local.",
-        .port         = 8080,
-        .address_ipv4 = it->ipv4_address,
-    };
+    auto info = mdnspp::service_info::make("MyApp", "_http._tcp", 8080);
+    if (!info.has_value())
+        return 1;
 
-    mdnspp::service_server srv{ctx, std::move(info), {}, opts};
+    // The server announces the A/AAAA addresses of the bound interface
+    // (service_info::make() leaves them unset; see service_info docs).
+    mdnspp::service_server srv{ctx, std::move(*info), {}, opts};
     srv.async_start();
     ctx.run();
 }
+```
+
+Alternatively, enumerate interfaces and pass an address explicitly:
+
+```cpp
+auto ifaces = mdnspp::enumerate_interfaces();
+
+// Pick the first non-loopback interface that is up and has an IPv4 address
+auto it = std::ranges::find_if(ifaces, [](const auto &iface) {
+    return iface.is_up && !iface.is_loopback && !iface.ipv4_address.empty();
+});
+
+if (it == ifaces.end())
+    return 1;
+
+mdnspp::socket_options opts{.interface_address = it->ipv4_address};
 ```
 
 ### Setting TTL for RFC 6762 compliance
@@ -177,9 +208,9 @@ explicitly:
 mdnspp::socket_options opts{.multicast_ttl = 255};
 ```
 
-### Using socket_options with DefaultPolicy convenience aliases
+### Using socket_options with default_policy convenience aliases
 
-All DefaultPolicy convenience aliases (`mdnspp::observer`, `mdnspp::querier`,
+All default_policy convenience aliases (`mdnspp::observer`, `mdnspp::querier`,
 `mdnspp::service_discovery`, `mdnspp::service_server`) accept `socket_options`
 as an optional constructor parameter:
 
@@ -191,7 +222,7 @@ mdnspp::observer obs{ctx, mdnspp::observer_options{.on_record = on_record}, opts
 mdnspp::querier  q{ctx, {}, opts};
 ```
 
-### Using socket_options with AsioPolicy
+### Using socket_options with asio_policy
 
 The `basic_*` templates accept `socket_options` the same way:
 
@@ -199,7 +230,7 @@ The `basic_*` templates accept `socket_options` the same way:
 asio::io_context io;
 mdnspp::socket_options opts{.interface_address = "192.168.1.10"};
 
-mdnspp::basic_observer<mdnspp::AsioPolicy> obs{io, mdnspp::observer_options{.on_record = on_record}, opts};
+mdnspp::basic_observer<mdnspp::asio_policy> obs{io, mdnspp::observer_options{.on_record = on_record}, opts};
 ```
 
 ## Multicast Group and Port
@@ -208,20 +239,20 @@ The `multicast_group` field controls which multicast address and port mdnspp
 joins and transmits on. The default is the IANA-assigned mDNS group
 `224.0.0.251:5353` (IPv4) or `[ff02::fb]:5353` (IPv6, Link-Local).
 
-Changing the group lets you create isolated namespaces -- for example, a test
+Changing the group lets you create isolated namespaces &mdash; for example, a test
 environment that does not interfere with production mDNS traffic on the same
 segment.
 
 ### Recommended address ranges
 
-**IPv4 -- isolated namespaces**
+**IPv4 &mdash; isolated namespaces**
 
 | Range | Scope | Notes |
 |-------|-------|-------|
 | `239.0.0.0/8` | Organization-Local (RFC 2365) | Preferred for private mDNS namespaces; routers do not forward this range by default |
 | `224.0.0.251` | Link-Local (IANA mDNS) | Standard mDNS group; use only for RFC 6762 production traffic |
 
-**IPv6 -- isolated namespaces**
+**IPv6 &mdash; isolated namespaces**
 
 | Range | Scope | Notes |
 |-------|-------|-------|
@@ -283,21 +314,21 @@ extraction is enabled:
 | Linux (IPv4) | `IP_RECVTTL` | Deliver IP TTL as ancillary data in `recvmsg` |
 | Linux (IPv6) | `IPV6_RECVHOPLIMIT` | Deliver IPv6 hop limit as ancillary data |
 | Linux / macOS | `IP_PKTINFO` / `IP_RECVIF` | Deliver receiving interface index as ancillary data |
-| Windows (IPv4) | `IP_RECVTTL` + `WSAIoctl(SIO_RCVALL)` | WSARecvMsg ancillary TTL |
+| Windows (IPv4) | `IP_RECVTTL`, `WSARecvMsg` obtained via `WSAIoctl(SIO_GET_EXTENSION_FUNCTION_POINTER)` | WSARecvMsg ancillary TTL |
 | Windows (IPv6) | `IPV6_RECVHOPLIMIT` | WSARecvMsg ancillary hop limit |
 
 ### Platform matrix
 
-| Platform | DefaultSocket | AsioSocket |
+| Platform | default_socket | asio_socket |
 |----------|--------------|------------|
-| Linux | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` -- ASIO does not expose ancillary data from `async_receive_from` |
-| macOS | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | `std::nullopt` -- same ASIO limitation |
-| Windows | Real TTL via `WSARecvMsg` + `IP_RECVTTL` | `std::nullopt` -- same ASIO limitation |
+| Linux | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | Real TTL via `async_wait` + `recvmsg` on `native_handle()`; same ancillary data path |
+| macOS | Real TTL via `recvmsg` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` | Real TTL via `async_wait` + `recvmsg` on `native_handle()`; same ancillary data path |
+| Windows | Real TTL via `WSARecvMsg` + `IP_RECVTTL` | Real TTL via `WSARecvMsg` on `native_handle()`; same extension pointer approach |
 
-When TTL extraction fails silently (setsockopt error, platform unsupported),
-the socket opens normally and `recv_metadata::ttl` is left as `std::nullopt`.
-The `mdns_options::unknown_ttl_policy` field controls whether such packets
-are accepted or rejected.
+When TTL extraction fails silently (setsockopt error, extension pointer
+unavailable), the socket opens normally and `recv_metadata::ttl` is left as
+`std::nullopt`. The `mdns_options::unknown_ttl_policy` field controls
+whether such packets are accepted or rejected.
 
 ### Filtering configuration
 

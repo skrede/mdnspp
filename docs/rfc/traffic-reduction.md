@@ -27,7 +27,7 @@ int main()
     q.async_query("_http._tcp.local.", mdnspp::dns_type::ptr,
         [&ctx](std::error_code ec, std::vector<mdnspp::mdns_record_variant> results)
         {
-            std::cout << results.size() << " record(s)\n";
+            std::cout << results.size() << " record(s)" << std::endl;
             ctx.stop();
         });
 
@@ -43,10 +43,10 @@ See also: [examples/querier/](../../examples/querier/)
 |--------|--------|-------|
 | Implemented | QM query delay (20–120 ms random) | Applied before sending each multicast query |
 | Implemented | QU queries sent immediately | No delay for unicast-response queries |
-| Implemented | Response delay (20–120 ms random) | Applied before each multicast response |
+| Implemented | Response delay (20–120 ms random) | Applied before multicast responses containing shared records; responses consisting solely of probe-verified unique records are sent immediately (section 6) |
 | Implemented | Query aggregation during response delay | Multiple query types merged into one response |
-| Implemented | Duplicate question suppression (section 7.3) | Cancels pending query when matching QM query seen from another host |
-| Not implemented | Legacy unicast responses (section 6.7) | Source port != 5353 not handled |
+| Implemented | Duplicate question suppression (section 7.3) | Cancels pending query when a matching, known-answer-free QM query is seen from another host |
+| Implemented | Legacy unicast responses (section 6.7) | See [legacy-unicast.md](legacy-unicast.md) |
 
 ## In-Depth
 
@@ -60,28 +60,42 @@ QU (unicast) queries are sent immediately with no delay.
 
 ### Response delay (section 6)
 
-When the server receives a multicast query, it delays its response by a random
-interval between 20 and 120 ms. During the delay window, additional queries
-for different record types are merged into a single aggregated response.
+When the server receives a multicast query whose answer contains shared
+records (PTR), it delays its response by a random interval between 20 and
+120 ms (`mdns_options::response_delay_min` / `response_delay_max`). During
+the delay window, additional queries for different record types are merged
+into a single aggregated response.
 
-Unicast responses are sent immediately without delay.
+Responses consisting solely of unique, probe-verified records (SRV, TXT,
+A/AAAA) are sent immediately, as section 6 permits. Unicast responses are
+also sent immediately without delay.
 
 ### Duplicate question suppression (section 7.3)
 
 During the QM query delay window (before the query is actually sent), the
-querier monitors incoming packets for queries from other hosts. If an incoming
-QM query matches the querier's pending query (same name and type), the querier
-cancels its own query — the other host's query will elicit the same responses.
+querier monitors incoming packets for queries from other hosts. If an
+incoming QM query matches the querier's pending query (same name and type)
+AND carries no known answers (ancount == 0), the querier cancels its own
+query — the other host's query will elicit the same responses.
+
+The empty-known-answer requirement is the section 7.3 rule: suppression is
+permitted only when the observed query's known-answer section contains
+nothing the suppressing host does not also hold. `basic_querier` holds no
+known answers, so only a known-answer-free query may suppress its own.
+Suppressing on a query that carries a full known-answer list would silence
+exactly the responses the local querier still needs.
 
 Duplicate detection only runs during the pre-send delay window. Once the
 query has been sent, incoming queries from other hosts are ignored for
 suppression purposes.
 
-### No user configuration
+### Configuration
 
-These mechanisms are always on per RFC 6762. There are no configuration
-options to disable them. The 20–120 ms delay ranges are hardcoded to the
-RFC-mandated values and are not exposed in `mdns_options`.
+These mechanisms are always on per RFC 6762 and cannot be disabled. The
+delay range is configurable via `mdns_options::response_delay_min` and
+`mdns_options::response_delay_max` (defaults 20 ms and 120 ms, the
+RFC-mandated range); the same range is used for the QM query delay and the
+multicast response delay.
 
 ## See Also
 

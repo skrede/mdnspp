@@ -1,4 +1,5 @@
-#include "mdnspp/encrypt/defaults.h"
+#include <mdnspp/encrypt/aead.h>
+#include <mdnspp/encrypt/defaults.h>
 
 #include <array>
 #include <cstddef>
@@ -50,18 +51,20 @@ int main()
     // recv_mode = auth_only: this socket drops fully encrypted packets;
     // only auth-only packets from peers are passed through to the application.
     // Remove recv_mode (or use accept_both) to also accept encrypted packets.
-    mdnspp::encrypt_socket_options sock_opts{
+    mdnspp::encrypt::encrypt_socket_options sock_opts{
         .encrypt = {
-            .psk       = mdnspp::secure_key{raw_key},
+            .psk       = mdnspp::encrypt::secure_key{raw_key},
             .sender_id = 0x00000002,
             .auth_only = true,
-            .recv_mode = mdnspp::receive_mode::auth_only,
+            .recv_mode = mdnspp::encrypt::receive_mode::auth_only,
         },
     };
+    // secure_key copies the key material; wipe the stack source buffer.
+    mdnspp::encrypt::secure_zero(raw_key.data(), raw_key.size());
 
     mdnspp::context ctx;
 
-    mdnspp::encrypted_observer obs{
+    mdnspp::encrypt::encrypted_observer obs{
         ctx,
         mdnspp::observer_options{
             // Received records are authenticated (Poly1305 verified) but the

@@ -9,7 +9,7 @@ SCENARIO("async_browse delivers fully resolved service after PTR+SRV+A response"
     GIVEN("a service_discovery and a full-service response (PTR+SRV+A)")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_full_service_response(
             "MyService._http._tcp.local.",
@@ -69,7 +69,7 @@ SCENARIO("async_browse delivers partial service when only PTR record arrives", "
     GIVEN("a service_discovery and a PTR-only response")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_ptr_response(
             "_http._tcp.local.",
@@ -110,7 +110,7 @@ SCENARIO("async_browse delivers multiple resolved services", "[service_discovery
     GIVEN("a service_discovery and two separate full-service response packets")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_full_service_response(
             "Alpha._http._tcp.local.",
@@ -144,9 +144,9 @@ SCENARIO("async_browse delivers multiple resolved services", "[service_discovery
 
                 // Find Alpha and Beta (order not guaranteed due to unordered_map)
                 auto alpha_it = std::find_if(received_services.begin(), received_services.end(),
-                                             [](const resolved_service &s) { return s.instance_name.find("alpha") != dns_name::npos; });
+                                             [](const resolved_service &s) { return s.instance_name.find("Alpha") != dns_name::npos; });
                 auto beta_it = std::find_if(received_services.begin(), received_services.end(),
-                                            [](const resolved_service &s) { return s.instance_name.find("beta") != dns_name::npos; });
+                                            [](const resolved_service &s) { return s.instance_name.find("Beta") != dns_name::npos; });
 
                 REQUIRE(alpha_it != received_services.end());
                 REQUIRE(beta_it != received_services.end());
@@ -163,7 +163,7 @@ SCENARIO("async_enumerate_types returns parsed service types", "[service_discove
     GIVEN("a service_discovery and a PTR response for the meta-query")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_ptr_response(
             "_services._dns-sd._udp.local.",
@@ -183,6 +183,7 @@ SCENARIO("async_enumerate_types returns parsed service types", "[service_discove
                     received_types = std::move(types);
                 });
 
+            sd.delay_timer().fire(); // section 5.2 first-query delay
             sd.timer().fire();
 
             THEN("a PTR query for _services._dns-sd._udp.local was sent")
@@ -213,7 +214,7 @@ SCENARIO("async_discover_subtype discovers subtype instances", "[service_discove
     GIVEN("a service_discovery and a PTR response for a subtype query")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         sd.socket().enqueue(make_ptr_response(
             "_printer._sub._http._tcp.local.",
@@ -233,6 +234,7 @@ SCENARIO("async_discover_subtype discovers subtype instances", "[service_discove
                     received_results = results;
                 });
 
+            sd.delay_timer().fire(); // section 5.2 first-query delay
             sd.timer().fire();
 
             THEN("a PTR query for _printer._sub._http._tcp.local was sent")
@@ -249,7 +251,7 @@ SCENARIO("async_discover_subtype discovers subtype instances", "[service_discove
                 REQUIRE(received_results.size() == 1);
                 REQUIRE(std::holds_alternative<record_ptr>(received_results[0]));
                 const auto &ptr = std::get<record_ptr>(received_results[0]);
-                REQUIRE(ptr.ptr_name.find("myservice") != dns_name::npos);
+                REQUIRE(ptr.ptr_name.find("MyService") != dns_name::npos);
             }
         }
     }
@@ -260,7 +262,7 @@ SCENARIO("discover query uses known-answer overload of build_dns_query", "[servi
     GIVEN("a service_discovery instance with no enqueued responses")
     {
         mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
         WHEN("async_discover() is called for the first time (m_results empty)")
         {
@@ -268,6 +270,8 @@ SCENARIO("discover query uses known-answer overload of build_dns_query", "[servi
                               [](std::error_code, const std::vector<mdns_record_variant> &)
                               {
                               });
+
+            sd.delay_timer().fire(); // section 5.2 first-query delay
 
             THEN("a valid DNS query packet was sent with ancount=0 (no known answers on first query)")
             {

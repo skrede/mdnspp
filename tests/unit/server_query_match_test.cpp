@@ -39,7 +39,7 @@ static service_info make_test_info()
 // Helper: build wire-encoded DNS name bytes
 static std::vector<std::byte> wire_name(std::string_view name)
 {
-    return encode_dns_name(name);
+    return encode_dns_name(name).value();
 }
 
 // Helper: build a minimal DNS query packet with one question
@@ -55,9 +55,9 @@ static std::vector<std::byte> build_query_packet(std::string_view qname, dns_typ
     push_u16_be(pkt, 0x0000); // nscount
     push_u16_be(pkt, 0x0000); // arcount
 
-    auto encoded = encode_dns_name(qname);
+    auto encoded = encode_dns_name(qname).value();
     pkt.insert(pkt.end(), encoded.begin(), encoded.end());
-    push_u16_be(pkt, std::to_underlying(qtype));
+    push_u16_be(pkt, mdnspp::detail::to_underlying(qtype));
     uint16_t qclass = 0x0001; // IN
     if(qu_bit)
         qclass |= 0x8000;
@@ -81,9 +81,9 @@ static std::vector<std::byte> build_multi_query_packet(
 
     for(auto &[name, qtype] : questions)
     {
-        auto encoded = encode_dns_name(name);
+        auto encoded = encode_dns_name(name).value();
         pkt.insert(pkt.end(), encoded.begin(), encoded.end());
-        push_u16_be(pkt, std::to_underlying(qtype));
+        push_u16_be(pkt, mdnspp::detail::to_underlying(qtype));
         uint16_t qclass = 0x0001;
         if(qu_bit)
             qclass |= 0x8000;
@@ -170,7 +170,7 @@ TEST_CASE("has_record_type", "[server_query_match]")
     CHECK_FALSE(has_record_type(dns_type::nsec, info)); // unknown type
 }
 
-TEST_CASE("match_queries accumulates multiple questions", "[server_query_match]")
+TEST_CASE("match_queries preserves per-question name<->qtype pairing", "[server_query_match]")
 {
     auto info = make_test_info();
     service_options opts;
@@ -183,8 +183,10 @@ TEST_CASE("match_queries accumulates multiple questions", "[server_query_match]"
         CHECK(result.any_matched);
         CHECK(result.accumulated_qtype == dns_type::ptr);
         CHECK(result.mode == response_mode::multicast);
-        CHECK_FALSE(result.needs_nsec);
         CHECK_FALSE(result.meta_matched);
+        REQUIRE(result.matched.size() == 1);
+        CHECK(result.matched[0].target == owned_name::service_type);
+        CHECK(result.matched[0].qtype == dns_type::ptr);
     }
 
     SECTION("QU bit sets unicast mode")
@@ -211,7 +213,7 @@ TEST_CASE("match_queries accumulates multiple questions", "[server_query_match]"
         CHECK_FALSE(result.any_matched);
     }
 
-    SECTION("mixed questions accumulate types to ANY")
+    SECTION("two questions keep distinct name<->qtype pairs (RFC 6762 section 6)")
     {
         auto pkt = build_multi_query_packet({
             {"_http._tcp.local.", dns_type::ptr},
@@ -220,6 +222,29 @@ TEST_CASE("match_queries accumulates multiple questions", "[server_query_match]"
         auto result = match_queries(std::span(pkt), info, opts);
         CHECK(result.any_matched);
         CHECK(result.accumulated_qtype == dns_type::any);
+        REQUIRE(result.matched.size() == 2);
+        CHECK(result.matched[0].target == owned_name::service_type);
+        CHECK(result.matched[0].qtype == dns_type::ptr);
+        CHECK(result.matched[1].target == owned_name::service_name);
+        CHECK(result.matched[1].qtype == dns_type::srv);
+    }
+
+    SECTION("SRV question at the service type does NOT pair with the instance SRV")
+    {
+        auto pkt = build_query_packet("_http._tcp.local.", dns_type::srv);
+        auto result = match_queries(std::span(pkt), info, opts);
+        REQUIRE(result.matched.size() == 1);
+        CHECK(result.matched[0].target == owned_name::service_type);
+        CHECK(result.matched[0].qtype == dns_type::srv);
+    }
+
+    SECTION("hostname question is paired with the hostname")
+    {
+        auto pkt = build_query_packet("myhost.local.", dns_type::a);
+        auto result = match_queries(std::span(pkt), info, opts);
+        REQUIRE(result.matched.size() == 1);
+        CHECK(result.matched[0].target == owned_name::hostname);
+        CHECK(result.matched[0].qtype == dns_type::a);
     }
 
     SECTION("offset_after_questions points past last question")
@@ -229,12 +254,39 @@ TEST_CASE("match_queries accumulates multiple questions", "[server_query_match]"
         CHECK(result.offset_after_questions == pkt.size());
     }
 
-    SECTION("needs_nsec set for unmatched record type")
+    SECTION("query_id captures the message ID")
     {
-        // Query for AAAA but info has no ipv6
-        auto pkt = build_query_packet("myhost.local.", dns_type::aaaa);
+        auto pkt = build_query_packet("_http._tcp.local.", dns_type::ptr);
+        pkt[0] = std::byte{0xAB};
+        pkt[1] = std::byte{0xCD};
         auto result = match_queries(std::span(pkt), info, opts);
-        CHECK(result.any_matched);
-        CHECK(result.needs_nsec);
+        CHECK(result.query_id == 0xABCD);
     }
+}
+
+TEST_CASE("rebuild_question_section re-encodes questions for legacy unicast", "[server_query_match]")
+{
+    auto pkt = build_multi_query_packet({
+        {"_http._tcp.local.", dns_type::ptr},
+        {"myhost.local.", dns_type::a}
+    });
+
+    auto [section, count] = rebuild_question_section(std::span(pkt));
+    REQUIRE(count == 2);
+
+    // Re-parse the rebuilt section: name, qtype, qclass per question.
+    auto span = std::span<const std::byte>(section);
+    size_t offset = 0;
+
+    auto name1 = read_dns_name(span, offset);
+    REQUIRE(name1.has_value());
+    CHECK(*name1 == "_http._tcp.local.");
+    REQUIRE(skip_dns_name(span, offset));
+    CHECK(read_u16_be(section.data() + offset) == mdnspp::detail::to_underlying(dns_type::ptr));
+    CHECK(read_u16_be(section.data() + offset + 2) == 0x0001);
+    offset += 4;
+
+    auto name2 = read_dns_name(span, offset);
+    REQUIRE(name2.has_value());
+    CHECK(*name2 == "myhost.local.");
 }

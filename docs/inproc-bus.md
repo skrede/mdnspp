@@ -1,11 +1,11 @@
 # In-Process Bus
 
-`InProcPolicy` provides an in-process multicast simulation layer for mdnspp.
+`inproc_policy` provides an in-process multicast simulation layer for mdnspp.
 No real sockets are opened, no network packets leave the process. All delivery
 happens through a shared `inproc_bus` object that mediates between components
 within the same process.
 
-This guide covers production use of `InProcPolicy` (steady_clock, real-time
+This guide covers production use of `inproc_policy` (steady_clock, real-time
 execution with `run()`). For test-clock usage inside Catch2 tests, see
 `inproc_harness` in `lib/mdnspp-inproc/include/mdnspp/inproc/inproc_harness.h`.
 
@@ -20,9 +20,9 @@ Four types form the in-process bus stack:
 | `inproc_timer<Clock>` | Scheduling. Fires based on `Clock::now()` when `try_fire()` is called by the executor. |
 | `inproc_executor<Clock>` | Event loop driver. Runs posted callbacks, fires expired timers, and delivers packets. |
 
-All four are template classes parameterised on a `Clock`. `InProcPolicy` aliases
+All four are template classes parameterised on a `Clock`. `inproc_policy` aliases
 `inproc_policy<std::chrono::steady_clock>`, which wires these together under the
-standard `Policy` concept.
+standard `policy_like` concept.
 
 ## Bus topology
 
@@ -42,14 +42,21 @@ dispatches it:
 - **Unicast:** a packet addressed to a specific endpoint goes to the socket
   whose assigned endpoint matches exactly.
 - **Multicast:** a packet addressed to a multicast group endpoint goes to every
-  socket in the matching multicast group. The sender's own socket is skipped if
-  `loopback_mode::disabled` is set in `socket_options` (the default for mDNS
-  multicast sockets).
+  socket in the matching multicast group, including the sender's own socket —
+  `socket_options::multicast_loopback` defaults to `loopback_mode::enabled`.
+  Set `loopback_mode::disabled` to skip delivery back to the sender.
 
 **Multicast group isolation.** Sockets join a group by setting
 `socket_options::multicast_group`. Only sockets in the same group receive
 multicast packets for that group. Sockets not joined to the group are invisible
 to multicast traffic for it.
+
+**Port override.** The inproc policy declares its own socket options type,
+`mdnspp::inproc::inproc_socket_options` (derived from `socket_options`, used
+automatically by `basic_*` constructors via `policy_socket_options_t<P>`). Its
+`port_override` field (`std::optional<uint16_t>`) replaces the bus-assigned
+port, simulating legacy unicast clients that query from a source port other
+than 5353 (RFC 6762 §6.7).
 
 ## Executor model
 
@@ -64,7 +71,7 @@ the system reaches quiescence (no posted work, no expired timers, no pending
 packets).
 
 `run()` loops `drain()` + `sleep_for(1ms)` until `stop()` is called. This
-models the same blocking-loop pattern as `DefaultContext::run()`.
+models the same blocking-loop pattern as `default_context::run()`.
 
 ## Usage pattern
 
@@ -87,8 +94,8 @@ mdnspp::service_info info{
     .address_ipv4 = "127.0.0.1",
 };
 
-mdnspp::basic_service_server<mdnspp::InProcPolicy>  srv{executor, info};
-mdnspp::basic_service_monitor<mdnspp::InProcPolicy> mon{
+mdnspp::basic_service_server<mdnspp::inproc_policy>  srv{executor, info};
+mdnspp::basic_service_monitor<mdnspp::inproc_policy> mon{
     executor,
     mdnspp::monitor_options{
         .on_found = [](const mdnspp::resolved_service &svc) { /* ... */ },
@@ -119,22 +126,22 @@ target_link_libraries(your_target PRIVATE mdnspp::inproc)
 `mdnspp/inproc/` include directory. You do not need to link `mdnspp::mdnspp`
 separately — `mdnspp::inproc` brings it in as a dependency.
 
-## When to use InProcPolicy
+## When to use inproc_policy
 
 | Use case | Notes |
 |----------|-------|
 | In-process service simulation | Multiple components interacting without real network or OS sockets. |
 | Testing without network | Deterministic, hermetic — no firewall rules, no multicast routing, no port conflicts. |
 | Process-local service registry | Multiple threads or coroutines in one process discovering each other by service type. |
-| CI environments without multicast | DefaultPolicy requires multicast-capable networking. InProcPolicy does not. |
+| CI environments without multicast | default_policy requires multicast-capable networking. inproc_policy does not. |
 
-**What InProcPolicy is not.** It does not replace DefaultPolicy for real network
+**What inproc_policy is not.** It does not replace default_policy for real network
 mDNS. There are no actual UDP sockets, no IP_ADD_MEMBERSHIP calls, and no
-packets leave the process. Use DefaultPolicy or AsioPolicy when you need real
+packets leave the process. Use default_policy or asio_policy when you need real
 multicast on the local network.
 
 ## See also
 
-- [policies.md](policies.md) — overview of all built-in policies and the Policy concept
-- [custom-policies.md](custom-policies.md) — InProcPolicy as a worked example of the Policy concept
-- [testing.md](testing.md) — how InProcPolicy is used in the integration test suite
+- [policies.md](policies.md) — overview of all built-in policies and the policy_like concept
+- [custom-policies.md](custom-policies.md) — inproc_policy as a worked example of the policy_like concept
+- [testing.md](testing.md) — how inproc_policy is used in the integration test suite

@@ -1,7 +1,11 @@
-#ifndef HPP_GUARD_MDNSPP_MDNS_UTIL_H
-#define HPP_GUARD_MDNSPP_MDNS_UTIL_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_MDNS_UTIL_H
+#define HPP_GUARD_MDNSPP_DETAIL_MDNS_UTIL_H
 
 #include "mdnspp/detail/platform.h"
+
+#ifndef _WIN32
+#include <unistd.h>
+#endif
 
 #include <cstdio>
 #include <string>
@@ -31,13 +35,13 @@ inline std::string ip_address_to_string(const sockaddr *addr, size_t addrlen)
 
         // Read 8 groups of 16-bit values (network byte order)
         uint16_t groups[8];
-        for(int i = 0; i < 8; ++i)
+        for(int32_t i = 0; i < 8; ++i)
             groups[i] = static_cast<uint16_t>((b[i * 2] << 8) | b[i * 2 + 1]);
 
         // Find longest run of zero groups for :: compression
-        int best_start = -1, best_len = 0;
-        int cur_start = -1, cur_len = 0;
-        for(int i = 0; i < 8; ++i)
+        int32_t best_start = -1, best_len = 0;
+        int32_t cur_start = -1, cur_len = 0;
+        for(int32_t i = 0; i < 8; ++i)
         {
             if(groups[i] == 0)
             {
@@ -63,7 +67,7 @@ inline std::string ip_address_to_string(const sockaddr *addr, size_t addrlen)
         if(best_len < 2) best_start = -1; // only compress runs of 2+
 
         std::string host;
-        for(int i = 0; i < 8;)
+        for(int32_t i = 0; i < 8;)
         {
             if(i == best_start)
             {
@@ -98,6 +102,28 @@ inline std::string ip_address_to_string(const sockaddr_in6 &addr)
 {
     return ip_address_to_string(
         reinterpret_cast<const sockaddr*>(&addr), sizeof(sockaddr_in6));
+}
+
+// Returns the OS host name (the value reported by ::gethostname), or an empty
+// string on failure. On Windows ::gethostname requires an initialized Winsock;
+// service_info::make() must work without a running peer (peers initialize
+// Winsock through winsock_guard in default_context.h), so initialize it once
+// here, process-wide, mirroring the WSAStartup(2, 2) call in winsock_guard.
+inline std::string os_hostname()
+{
+#ifdef _WIN32
+    static const int wsa_rc = []
+    {
+        WSADATA data{};
+        return ::WSAStartup(MAKEWORD(2, 2), &data);
+    }();
+    if(wsa_rc != 0)
+        return {};
+#endif
+    char buf[256]{};
+    if(::gethostname(buf, sizeof(buf) - 1) != 0)
+        return {};
+    return std::string{buf};
 }
 
 }

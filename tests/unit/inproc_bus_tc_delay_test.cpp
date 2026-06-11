@@ -69,7 +69,7 @@ void inject_ptr_response(inproc_harness &h,
     opts.txt_ttl    = std::chrono::seconds{ttl};
     opts.a_ttl      = std::chrono::seconds{ttl};
     opts.aaaa_ttl   = std::chrono::seconds{ttl};
-    opts.record_ttl = std::chrono::seconds{ttl};
+    opts.fallback_record_ttl = std::chrono::seconds{ttl};
 
     auto pkt = detail::build_dns_response(info, dns_type::ptr, opts);
 
@@ -78,7 +78,7 @@ void inject_ptr_response(inproc_harness &h,
     h.executor.drain();
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-12a: TC continuation delay spaces packets
@@ -108,7 +108,7 @@ TEST_CASE("TC continuation delay spaces packets", "[inproc][tc]")
 
     std::function<void()> arm_sniffer = [&]()
     {
-        sniffer.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+        sniffer.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
         {
             if(data.size() >= 3 &&
                (std::to_integer<uint8_t>(data[2]) & 0x80u) == 0)
@@ -161,7 +161,7 @@ TEST_CASE("TC continuation delay zero sends all packets immediately", "[inproc][
 
     std::function<void()> arm_sniffer = [&]()
     {
-        sniffer.async_receive([&](const mdnspp::recv_metadata &, std::span<std::byte> data)
+        sniffer.async_receive([&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
         {
             if(data.size() >= 3 &&
                (std::to_integer<uint8_t>(data[2]) & 0x80u) == 0)

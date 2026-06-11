@@ -1,16 +1,17 @@
-#ifndef HPP_GUARD_MDNSPP_DEFAULT_SOCKET_H
-#define HPP_GUARD_MDNSPP_DEFAULT_SOCKET_H
+#ifndef HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_SOCKET_H
+#define HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_SOCKET_H
 
-// DefaultSocket — raw UDP multicast socket satisfying SocketLike.
+// default_socket — raw UDP multicast socket satisfying socket_like.
 // No ASIO includes. POSIX/Linux primary, Windows via #ifdef guards.
 //
 // Joins the multicast group from socket_options (default 224.0.0.251:5353) on construction.
-// Registers with DefaultContext for poll-based dispatch.
+// Registers with default_context for poll-based dispatch.
 
 #include "mdnspp/policy.h"
 #include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/validate_multicast.h"
 #include "mdnspp/default/default_context.h"
 
@@ -38,55 +39,55 @@
 
 namespace mdnspp {
 
-class DefaultSocket
+class default_socket
 {
 public:
     // Throwing constructor.
-    explicit DefaultSocket(DefaultContext &ctx)
+    explicit default_socket(default_context &ctx)
         : m_ctx{ctx}
     {
         open_and_configure(socket_options{});
     }
 
     // Non-throwing constructor.
-    explicit DefaultSocket(DefaultContext &ctx, std::error_code &ec)
+    explicit default_socket(default_context &ctx, std::error_code &ec)
         : m_ctx{ctx}
     {
         open_and_configure(socket_options{}, ec);
     }
 
     // Throwing constructor with socket_options.
-    explicit DefaultSocket(DefaultContext &ctx, const socket_options &opts)
+    explicit default_socket(default_context &ctx, const socket_options &opts)
         : m_ctx{ctx}
     {
         open_and_configure(opts);
     }
 
     // Non-throwing constructor with socket_options.
-    explicit DefaultSocket(DefaultContext &ctx, const socket_options &opts, std::error_code &ec)
+    explicit default_socket(default_context &ctx, const socket_options &opts, std::error_code &ec)
         : m_ctx{ctx}
     {
         open_and_configure(opts, ec);
     }
 
-    ~DefaultSocket()
+    ~default_socket()
     {
         close();
     }
 
-    DefaultSocket(const DefaultSocket &) = delete;
-    DefaultSocket &operator=(const DefaultSocket &) = delete;
-    DefaultSocket(DefaultSocket &&) = delete;
-    DefaultSocket &operator=(DefaultSocket &&) = delete;
+    default_socket(const default_socket &) = delete;
+    default_socket &operator=(const default_socket &) = delete;
+    default_socket(default_socket &&) = delete;
+    default_socket &operator=(default_socket &&) = delete;
 
-    /// Register this socket and its receive handler with DefaultContext.
-    void async_receive(detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
+    /// Register this socket and its receive handler with default_context.
+    void async_receive(move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
     {
         m_receive_handler = std::move(handler);
         m_ctx.register_socket(m_fd,
-            [this](const recv_metadata &meta, std::span<std::byte> data)
+            [this](std::error_code ec, const recv_metadata &meta, std::span<std::byte> data)
             {
-                m_receive_handler(meta, data);
+                m_receive_handler(ec, meta, data);
             }
 #ifdef _WIN32
             , m_fn_wsarecvmsg
@@ -145,9 +146,9 @@ public:
     }
 
 private:
-    DefaultContext &m_ctx;
+    default_context &m_ctx;
     detail::native_socket_t m_fd{detail::invalid_socket};
-    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_receive_handler;
+    move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_receive_handler;
 #ifdef _WIN32
     LPFN_WSARECVMSG m_fn_wsarecvmsg{nullptr};
 #endif
@@ -326,6 +327,12 @@ private:
         const bool v6 = is_ipv6(opts.multicast_group.address);
         const int32_t family = v6 ? AF_INET6 : AF_INET;
 
+        // Translate interface_index / interface_name to the interface address
+        // of the socket family; precedence index > name > address. An unknown
+        // index or name fails with std::errc::invalid_argument.
+        const std::string iface_address = detail::resolve_socket_interface_address(opts, v6, ec);
+        if(ec) return;
+
         m_fd = ::socket(family, SOCK_DGRAM, IPPROTO_UDP);
         if(m_fd == detail::invalid_socket)
         {
@@ -352,9 +359,9 @@ private:
         }
 
         if(v6)
-            configure_ipv6(opts, ec);
+            configure_ipv6(opts, iface_address, ec);
         else
-            configure_ipv4(opts, ec);
+            configure_ipv4(opts, iface_address, ec);
 
         if(ec)
             return;
@@ -381,14 +388,15 @@ private:
         std::error_code ec;
         open_and_configure(opts, ec);
         if(ec)
-            throw std::system_error(ec, "DefaultSocket::open_and_configure");
+            throw std::system_error(ec, "default_socket::open_and_configure");
     }
 
     // -------------------------------------------------------------------------
     // IPv4 configuration
     // -------------------------------------------------------------------------
 
-    void configure_ipv4(const socket_options &opts, std::error_code &ec)
+    void configure_ipv4(const socket_options &opts, const std::string &iface_address,
+                        std::error_code &ec)
     {
         // Bind
         {
@@ -404,9 +412,9 @@ private:
 
         // Interface address
         in_addr iface_addr{};
-        if(opts.interface_address.empty())
+        if(iface_address.empty())
             iface_addr.s_addr = htonl(INADDR_ANY);
-        else if(::inet_pton(AF_INET, opts.interface_address.c_str(), &iface_addr) != 1)
+        else if(::inet_pton(AF_INET, iface_address.c_str(), &iface_addr) != 1)
         {
             ec = std::make_error_code(std::errc::invalid_argument);
             cleanup_on_error();
@@ -414,7 +422,7 @@ private:
         }
 
         // IP_MULTICAST_IF
-        if(!opts.interface_address.empty())
+        if(!iface_address.empty())
         {
             if(!set_sock_opt(IPPROTO_IP, IP_MULTICAST_IF, &iface_addr,
                              sizeof(iface_addr), ec))
@@ -481,7 +489,8 @@ private:
     // IPv6 configuration
     // -------------------------------------------------------------------------
 
-    void configure_ipv6(const socket_options &opts, std::error_code &ec)
+    void configure_ipv6(const socket_options &opts, const std::string &iface_address,
+                        std::error_code &ec)
     {
         // Bind
         {
@@ -495,10 +504,10 @@ private:
                 return;
         }
 
-        unsigned int iface_idx = resolve_ipv6_interface_index(opts.interface_address);
+        unsigned int iface_idx = resolve_ipv6_interface_index(iface_address);
 
         // IPV6_MULTICAST_IF
-        if(!opts.interface_address.empty())
+        if(!iface_address.empty())
         {
             if(!set_sock_opt(IPPROTO_IPV6, IPV6_MULTICAST_IF, &iface_idx,
                              sizeof(iface_idx), ec))
@@ -581,7 +590,7 @@ private:
     }
 };
 
-static_assert(mdnspp::SocketLike<mdnspp::DefaultSocket>, "DefaultSocket must satisfy SocketLike — check async_receive/send/close signatures");
+static_assert(mdnspp::socket_like<mdnspp::default_socket>, "default_socket must satisfy socket_like — check async_receive/send/close signatures");
 
 }
 

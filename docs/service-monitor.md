@@ -45,7 +45,7 @@ int main()
 ```
 
 `monitor_options` callbacks are move-only (`std::move_only_function` internally),
-so use `std::move(opts)` when passing to the constructor -- do not copy.
+so use `std::move(opts)` when passing to the constructor &mdash; do not copy.
 
 ### Lifecycle callbacks
 
@@ -118,7 +118,7 @@ Re-watching a previously unwatched type starts fresh: the backoff resets and
 `on_found` fires again on rediscovery.
 
 Both `watch()` and `unwatch()` are thread-safe. They post their work to the
-executor thread via `P::post()` with a weak-ptr guard -- safe to call from any
+executor thread via `P::post()` with a weak-ptr guard &mdash; safe to call from any
 thread, including before `async_start()`.
 
 ### services() snapshot
@@ -139,7 +139,7 @@ for (const auto &svc : live)
 Each `resolved_service` in the snapshot has `wire_ttl` (the original TTL from
 the wire) and `ttl_remaining` (time until the SRV record expires) populated.
 
-The snapshot is safe to read from any thread without holding any lock -- it
+The snapshot is safe to read from any thread without holding any lock &mdash; it
 uses a mutex-guarded `shared_ptr` swap internally.
 
 ### Query scheduling
@@ -210,7 +210,7 @@ Traffic for unrelated service types and unknown hosts is silently discarded.
 
 ## See Also
 
-- [examples/service_monitor/](../examples/service_monitor/) -- runnable examples
-- [API reference: service_monitor](api/service_monitor.md) -- full type documentation
-- [mDNS Options](mdns-options.md) -- tuning query backoff and TTL refresh
-- [Custom Policies](custom-policies.md) -- swap the executor or I/O backend
+- [examples/service_monitor/](../examples/service_monitor/) &mdash; runnable examples
+- [API reference: service_monitor](api/service_monitor.md) &mdash; full type documentation
+- [mDNS Options](mdns-options.md) &mdash; tuning query backoff and TTL refresh
+- [Custom Policies](custom-policies.md) &mdash; swap the executor or I/O backend

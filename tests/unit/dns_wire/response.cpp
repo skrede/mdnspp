@@ -179,7 +179,7 @@ SCENARIO("build_dns_response ANY produces all records as answers (no additional)
     }
 }
 
-SCENARIO("build_dns_response TXT with empty txt_records produces valid zero-length TXT", "[build_dns_response][TXT][empty]")
+SCENARIO("build_dns_response TXT with empty txt_records encodes a single zero byte", "[build_dns_response][TXT][empty]")
 {
     GIVEN("a service_info with empty txt_records")
     {
@@ -190,9 +190,45 @@ SCENARIO("build_dns_response TXT with empty txt_records produces valid zero-leng
         {
             auto pkt = build_dns_response(info, mdnspp::dns_type::txt, mdnspp::service_options{});
 
-            THEN("the packet is non-empty (valid TXT with empty rdata)")
+            THEN("the packet is non-empty")
             {
                 REQUIRE_FALSE(pkt.empty());
+            }
+
+            THEN("the TXT rdata is one zero byte, not RDLENGTH=0 (RFC 6763 §6.1)")
+            {
+                // Walk to the single answer record: header(12) + owner + 10 fixed
+                auto span = std::span<const std::byte>(pkt);
+                size_t offset = 12;
+                REQUIRE(mdnspp::detail::skip_dns_name(span, offset));
+                uint16_t rtype = read_u16_be(pkt, offset);
+                REQUIRE(rtype == mdnspp::detail::to_underlying(mdnspp::dns_type::txt));
+                uint16_t rdlength = read_u16_be(pkt, offset + 8);
+                REQUIRE(rdlength == 1);
+                REQUIRE(pkt[offset + 10] == std::byte{0x00});
+            }
+        }
+    }
+
+    GIVEN("a service_info with empty txt_records queried as PTR")
+    {
+        auto info = make_test_service_v46();
+        info.txt_records.clear();
+
+        WHEN("build_dns_response is called with qtype=12 (PTR)")
+        {
+            auto pkt = build_dns_response(info, mdnspp::dns_type::ptr, mdnspp::service_options{});
+
+            THEN("the TXT record is still included (mandatory for DNS-SD instances)")
+            {
+                auto records = parse_wire(pkt);
+                bool has_txt = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<mdnspp::record_txt>(rv))
+                        has_txt = true;
+                }
+                REQUIRE(has_txt);
             }
         }
     }
@@ -323,7 +359,7 @@ SCENARIO("build_dns_response ANY sets cache-flush on unique records only", "[bui
 
                 for(auto [rtype, rclass] : rrs)
                 {
-                    if(rtype == std::to_underlying(mdnspp::dns_type::ptr))
+                    if(rtype == mdnspp::detail::to_underlying(mdnspp::dns_type::ptr))
                         REQUIRE(rclass == 0x0001);
                     else
                         REQUIRE(rclass == 0x8001);

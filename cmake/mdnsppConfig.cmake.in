@@ -1,5 +1,58 @@
 @PACKAGE_INIT@
 
+include(CMakeFindDependencyMacro)
+
+find_dependency(Threads)
+
+set(_mdnspp_encrypt_exported "@MDNSPP_ENCRYPT_EXPORTED@")
+set(_mdnspp_sodium_provider "@MDNSPP_ENCRYPT_SODIUM_PROVIDER@")
+set(_mdnspp_asio_headers_installed "@MDNSPP_ASIO_HEADERS_INSTALLED@")
+
+if(_mdnspp_encrypt_exported)
+    if(_mdnspp_sodium_provider STREQUAL "config")
+        find_dependency(sodium)
+    elseif(_mdnspp_sodium_provider STREQUAL "pkgconfig")
+        if(NOT TARGET PkgConfig::sodium)
+            find_dependency(PkgConfig)
+            pkg_check_modules(sodium REQUIRED IMPORTED_TARGET GLOBAL libsodium)
+        endif()
+    endif()
+endif()
+
 include("${CMAKE_CURRENT_LIST_DIR}/mdnsppTargets.cmake")
+
+# mdnspp::asio is header-only and does not bundle asio unless the package was
+# installed with MDNSPP_INSTALL_VENDORED_ASIO=ON (the headers then live in the
+# same include root). Otherwise resolve a system asio on a best-effort basis;
+# consumers may also provide asio through their own include paths.
+if(TARGET mdnspp::asio AND NOT _mdnspp_asio_headers_installed)
+    find_package(asio CONFIG QUIET)
+    if(TARGET asio::asio)
+        set_property(TARGET mdnspp::asio APPEND PROPERTY
+            INTERFACE_LINK_LIBRARIES asio::asio
+        )
+    else()
+        find_path(MDNSPP_ASIO_INCLUDE_DIR NAMES asio.hpp)
+        if(MDNSPP_ASIO_INCLUDE_DIR)
+            set_property(TARGET mdnspp::asio APPEND PROPERTY
+                INTERFACE_INCLUDE_DIRECTORIES "${MDNSPP_ASIO_INCLUDE_DIR}"
+            )
+        endif()
+    endif()
+endif()
+
+set(mdnspp_mdnspp_FOUND TRUE)
+foreach(_mdnspp_component asio inproc testing encrypt)
+    if(TARGET mdnspp::${_mdnspp_component})
+        set(mdnspp_${_mdnspp_component}_FOUND TRUE)
+    else()
+        set(mdnspp_${_mdnspp_component}_FOUND FALSE)
+    endif()
+endforeach()
+unset(_mdnspp_component)
+
+unset(_mdnspp_encrypt_exported)
+unset(_mdnspp_sodium_provider)
+unset(_mdnspp_asio_headers_installed)
 
 check_required_components(mdnspp)

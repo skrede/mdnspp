@@ -15,11 +15,11 @@
 #include <cstddef>
 #include <cstdint>
 
-using mdnspp::testing::MockPolicy;
+using mdnspp::testing::mock_policy;
 using mdnspp::testing::test_clock;
 using mdnspp::testing::mock_executor;
 
-using test_monitor = mdnspp::basic_service_monitor<MockPolicy, test_clock>;
+using test_monitor = mdnspp::basic_service_monitor<mock_policy, test_clock>;
 
 inline mdnspp::service_options make_uniform_opts(uint32_t ttl)
 {
@@ -30,7 +30,7 @@ inline mdnspp::service_options make_uniform_opts(uint32_t ttl)
     opts.txt_ttl    = s;
     opts.a_ttl      = s;
     opts.aaaa_ttl   = s;
-    opts.record_ttl = s;
+    opts.fallback_record_ttl = s;
     return opts;
 }
 

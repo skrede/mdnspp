@@ -43,7 +43,7 @@ struct mdns_options {
 | `tc_wait_min` | `std::chrono::milliseconds` | `400ms` | RFC 6762 §6 | Minimum wait duration for accumulating truncated-response continuation packets. When a query arrives with the TC bit set, the responder waits a random duration in `[tc_wait_min, tc_wait_max]` before processing the aggregated known-answer set. |
 | `tc_wait_max` | `std::chrono::milliseconds` | `500ms` | RFC 6762 §6 | Maximum wait duration for accumulating TC continuation packets. See `tc_wait_min`. |
 | `max_known_answers` | `std::size_t` | `0` (unlimited) | RFC 6762 §7.1 | Maximum number of known-answer records included in outgoing queries. Zero means unlimited. When non-zero, limits the known-answer list to this many records (highest remaining TTL selected first). |
-| `record_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §11.3 | Default TTL for outgoing DNS resource records. Applied to all outgoing records unless overridden by a per-type TTL in `service_options`. Typically 75 minutes for most record types. |
+| `record_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §10 | Default TTL for outgoing DNS resource records. Applied to all outgoing records unless overridden by a per-type TTL in `service_options`. Typically 75 minutes for records that do not contain host names. |
 | `response_delay_min` | `std::chrono::milliseconds` | `20ms` | RFC 6762 §6 | Minimum random delay before sending a multicast response. A random delay uniformly drawn from `[response_delay_min, response_delay_max]` is applied to avoid simultaneous replies from multiple responders. |
 | `response_delay_max` | `std::chrono::milliseconds` | `120ms` | RFC 6762 §6 | Maximum random delay before sending a multicast response. See `response_delay_min`. |
 | `legacy_unicast_ttl` | `std::chrono::seconds` | `10s` | RFC 6762 §6.7 | TTL cap applied to all records sent in legacy unicast responses. When a query arrives via unicast from a port other than 5353, all answer record TTLs are capped at this value to prevent aggressive caching by non-mDNS resolvers. |
@@ -52,7 +52,7 @@ struct mdns_options {
 | `max_query_payload` | `std::size_t` | `1472` bytes | — | Maximum UDP payload size for an outgoing query packet before it must be split into TC continuation packets. Matches Ethernet MTU minus IPv4 and UDP headers. Reduce for lower-MTU links. |
 | `tc_continuation_delay` | `std::chrono::microseconds` | `0` | RFC 6762 §6 | Delay inserted between successive TC continuation packets. Zero means packets are sent back-to-back. A non-zero value rate-limits TC continuation bursts on congested links. |
 | `receive_ttl_minimum` | `uint32_t` | `255` | RFC 6762 §11 | Minimum IP TTL (hop limit) for received mDNS packets. Packets arriving with an IP TTL below this value are silently discarded. The value 255 enforces link-local-only reception: any forwarded packet has its IP TTL decremented below 255. |
-| `unknown_ttl_policy` | `ttl_unknown_policy` | `ttl_unknown_policy::accept` | RFC 6762 §11 | Disposition for packets where the IP TTL could not be extracted. `accept` passes such packets through (default, for backward compatibility on platforms without TTL extraction support). `reject` discards them. |
+| `unknown_ttl_policy` | `ttl_unknown_policy` | `ttl_unknown_policy::accept` | RFC 6762 §11 | Disposition for packets where the IP TTL could not be extracted. `accept` passes such packets through (default, for transports without TTL extraction support, e.g. custom policies and the inproc bus). `reject` discards them. |
 
 **Note:** All defaults are RFC-compliant. Changing them is an advanced operation: incorrect settings may violate interoperability guarantees or cause excessive network traffic.
 
@@ -125,7 +125,7 @@ mdnspp::mdns_options opts{.record_ttl = std::chrono::seconds{120}};
 
 ## See Also
 
-- [mdns-options](../mdns-options.md) -- conceptual guide: how backoff, TTL refresh, and TC handling interact
-- [query-backoff](../rfc/query-backoff.md) -- RFC 6762 §5.2 continuous querying implementation details
-- [tc-handling](../rfc/tc-handling.md) -- RFC 6762 §6 truncated-response accumulation
-- [service_monitor](service_monitor.md) -- primary consumer of `mdns_options` tunables
+- [mdns-options](../mdns-options.md) &mdash; conceptual guide: how backoff, TTL refresh, and TC handling interact
+- [query-backoff](../rfc/query-backoff.md) &mdash; RFC 6762 §5.2 continuous querying implementation details
+- [tc-handling](../rfc/tc-handling.md) &mdash; RFC 6762 §6 truncated-response accumulation
+- [service_monitor](service_monitor.md) &mdash; primary consumer of `mdns_options` tunables

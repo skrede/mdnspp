@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
 inline constexpr uint16_t encrypted_magic = 0x4D43;  // 'MC' big-endian
 inline constexpr uint8_t encrypted_version = 0x01;

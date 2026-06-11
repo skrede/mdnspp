@@ -1,12 +1,12 @@
-#ifndef HPP_GUARD_MDNSPP_DEFAULT_CONTEXT_H
-#define HPP_GUARD_MDNSPP_DEFAULT_CONTEXT_H
+#ifndef HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_CONTEXT_H
+#define HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_CONTEXT_H
 
-// DefaultContext — standalone poll-based event loop for NativePolicy.
+// default_context — standalone poll-based event loop for default_policy.
 // No ASIO includes. POSIX/Linux primary, Windows via #ifdef guards.
 //
 // NOTE: compute_next_timeout_ms() and fire_expired_timers() are declared here
-// but defined in native_timer.h (after DefaultTimer is fully defined), because
-// they dereference DefaultTimer*. Include native_timer.h to get the full
+// but defined in default_timer.h (after default_timer is fully defined), because
+// they dereference default_timer*. Include default_timer.h to get the full
 // implementation — that header includes this one first.
 
 #include "mdnspp/policy.h"
@@ -82,7 +82,7 @@ inline int poll_sockets(pollfd *fds, nfds_t nfds, int timeout_ms)
 
 }
 
-class DefaultTimer;
+class default_timer;
 
 // ---------------------------------------------------------------------------
 // winsock_guard — RAII Winsock initializer. No-op on POSIX.
@@ -113,27 +113,27 @@ public:
 };
 
 // ---------------------------------------------------------------------------
-// DefaultContext — the event loop executor
+// default_context — the event loop executor
 // ---------------------------------------------------------------------------
-class DefaultContext
+class default_context
 {
 public:
     /// Constructor — creates the stop-wakeup fd.
     /// Throws std::system_error on platform failure.
-    DefaultContext()
+    default_context()
     {
         create_wakeup_fd();
     }
 
-    ~DefaultContext()
+    ~default_context()
     {
         close_wakeup_fd();
     }
 
-    DefaultContext(const DefaultContext &) = delete;
-    DefaultContext &operator=(const DefaultContext &) = delete;
-    DefaultContext(DefaultContext &&) = delete;
-    DefaultContext &operator=(DefaultContext &&) = delete;
+    default_context(const default_context &) = delete;
+    default_context &operator=(const default_context &) = delete;
+    default_context(default_context &&) = delete;
+    default_context &operator=(default_context &&) = delete;
 
     /// Block until stop() is called, processing I/O and expired timers.
     /// Call restart() before re-entering run() after a stop().
@@ -235,11 +235,11 @@ public:
     }
 
     // -----------------------------------------------------------------------
-    // Internal interface — called by NativeSocket / DefaultTimer
+    // Internal interface — called by default_socket / default_timer
     // -----------------------------------------------------------------------
 
     void register_socket(detail::native_socket_t fd,
-                          detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler
+                          move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler
 #ifdef _WIN32
                           , LPFN_WSARECVMSG fn_wsarecvmsg = nullptr
 #endif
@@ -269,14 +269,14 @@ public:
         std::erase_if(m_sockets, [fd](const auto &e) { return e.fd == fd; });
     }
 
-    void register_timer(DefaultTimer *t)
+    void register_timer(default_timer *t)
     {
         assert_executor_thread();
         if(std::find(m_timers.begin(), m_timers.end(), t) == m_timers.end())
             m_timers.push_back(t);
     }
 
-    void deregister_timer(DefaultTimer *t)
+    void deregister_timer(default_timer *t)
     {
         assert_executor_thread();
         std::erase(m_timers, t);
@@ -284,7 +284,7 @@ public:
 
     // -----------------------------------------------------------------------
     // Private helpers (declared here; timer-dependent ones defined in
-    // native_timer.h after DefaultTimer is fully defined)
+    // default_timer.h after default_timer is fully defined)
     // -----------------------------------------------------------------------
     int compute_next_timeout_ms(std::chrono::steady_clock::time_point now) const;
     void fire_expired_timers();
@@ -293,7 +293,7 @@ private:
     struct socket_entry
     {
         detail::native_socket_t fd{detail::invalid_socket};
-        detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler;
+        move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler;
 #ifdef _WIN32
         LPFN_WSARECVMSG fn_wsarecvmsg{nullptr};
 #endif
@@ -305,7 +305,7 @@ private:
         // Only enforce once an executor thread has been established (first run()/poll_one()).
         if(m_owner_set.load(std::memory_order_acquire))
             assert(std::this_thread::get_id() == m_owner_thread &&
-                   "DefaultContext: m_timers accessed from wrong thread");
+                   "default_context: m_timers accessed from wrong thread");
 #endif
     }
 
@@ -316,8 +316,8 @@ private:
     std::deque<detail::move_only_function<void()>> m_work_queue;
     std::atomic<bool> m_post_pending{false};
     std::vector<socket_entry> m_sockets;
-    std::vector<DefaultTimer*> m_timers;
-    std::array<std::byte, 4096> m_recv_buf{};
+    std::vector<default_timer*> m_timers;
+    std::array<std::byte, detail::max_udp_payload> m_recv_buf{};
     sockaddr_storage m_sender_addr{};
 
     // Stop-wakeup mechanism — platform-specific members.
@@ -559,6 +559,16 @@ private:
                 DWORD received = 0;
                 if(m_sockets[sock_idx].fn_wsarecvmsg(
                        m_sockets[sock_idx].fd, &wmsg, &received, nullptr, nullptr) == SOCKET_ERROR)
+                {
+                    const int err = ::WSAGetLastError();
+                    if(err == WSAEWOULDBLOCK || err == WSAEMSGSIZE) // no data / truncated datagram — drop
+                        continue;
+                    m_sockets[sock_idx].handler(
+                        std::error_code(err, std::system_category()),
+                        recv_metadata{}, std::span<std::byte>{});
+                    continue;
+                }
+                if(wmsg.dwFlags & MSG_PARTIAL) // truncated datagram — drop
                     continue;
 
                 bytes = static_cast<std::ptrdiff_t>(received);
@@ -610,7 +620,15 @@ private:
                     reinterpret_cast<sockaddr*>(&m_sender_addr),
                     &sender_len);
                 if(recv_bytes == SOCKET_ERROR)
+                {
+                    const int err = ::WSAGetLastError();
+                    if(err == WSAEWOULDBLOCK || err == WSAEMSGSIZE) // no data / truncated datagram — drop
+                        continue;
+                    m_sockets[sock_idx].handler(
+                        std::error_code(err, std::system_category()),
+                        recv_metadata{}, std::span<std::byte>{});
                     continue;
+                }
                 bytes = static_cast<std::ptrdiff_t>(recv_bytes);
             }
 #else
@@ -631,7 +649,18 @@ private:
             bytes = ::recvmsg(m_sockets[sock_idx].fd, &msg, 0);
 
             if(bytes < 0)
+            {
+                if(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+                    continue;
+                m_sockets[sock_idx].handler(
+                    std::error_code(errno, std::generic_category()),
+                    recv_metadata{}, std::span<std::byte>{});
                 continue;
+            }
+#ifdef MSG_TRUNC
+            if(msg.msg_flags & MSG_TRUNC) // truncated datagram — drop
+                continue;
+#endif
 
             for(cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg))
             {
@@ -701,6 +730,7 @@ private:
             };
 
             m_sockets[sock_idx].handler(
+                std::error_code{},
                 meta,
                 std::span<std::byte>{m_recv_buf.data(), static_cast<std::size_t>(bytes)});
         }

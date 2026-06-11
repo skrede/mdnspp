@@ -1,11 +1,13 @@
-#ifndef HPP_GUARD_MDNSPP_ASIO_SOCKET_H
-#define HPP_GUARD_MDNSPP_ASIO_SOCKET_H
+#ifndef HPP_GUARD_MDNSPP_ASIO_ASIO_SOCKET_H
+#define HPP_GUARD_MDNSPP_ASIO_ASIO_SOCKET_H
 
-#include <mdnspp/policy.h>
-#include <mdnspp/endpoint.h>
-#include <mdnspp/socket_options.h>
-#include <mdnspp/detail/compat.h>
-#include <mdnspp/detail/validate_multicast.h>
+#include "mdnspp/policy.h"
+#include "mdnspp/endpoint.h"
+#include "mdnspp/socket_options.h"
+
+#include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/interface_resolve.h"
+#include "mdnspp/detail/validate_multicast.h"
 
 #include <asio.hpp>
 
@@ -21,43 +23,60 @@
 #  endif
 #endif
 
-#include <array>
-#include <optional>
 #include <span>
+#include <array>
+#include <string>
 #include <vector>
+#include <optional>
 #include <system_error>
 
 namespace mdnspp {
 
-class AsioSocket
+class asio_socket
 {
 public:
-    explicit AsioSocket(asio::io_context &io)
-        : AsioSocket(io, socket_options{})
+    /// Executor of the underlying socket (asio convention).
+    using executor_type = asio::ip::udp::socket::executor_type;
+
+    explicit asio_socket(asio::io_context &io)
+        : asio_socket(io, socket_options{})
     {}
 
-    explicit AsioSocket(asio::io_context &io, std::error_code &ec)
-        : AsioSocket(io, socket_options{}, ec)
+    explicit asio_socket(asio::io_context &io, std::error_code &ec)
+        : asio_socket(io, socket_options{}, ec)
     {}
 
     // Throwing constructor with socket_options.
-    explicit AsioSocket(asio::io_context &io, const socket_options &opts)
+    explicit asio_socket(asio::io_context &io, const socket_options &opts)
         : m_socket(io)
     {
         detail::validate_multicast_address(opts.multicast_group.address);
         const auto multicast_addr = asio::ip::make_address(opts.multicast_group.address);
 
+        // Translate interface_index / interface_name to the interface address
+        // of the socket family; precedence index > name > address. An unknown
+        // index or name fails with std::errc::invalid_argument.
+        std::string iface_address;
+        {
+            std::error_code resolve_ec;
+            iface_address = detail::resolve_socket_interface_address(
+                opts, multicast_addr.is_v6(), resolve_ec);
+            if(resolve_ec)
+                throw std::system_error(resolve_ec, "asio_socket interface resolution");
+        }
+
         if(multicast_addr.is_v6())
         {
             m_socket.open(asio::ip::udp::v6());
+            m_socket.non_blocking(true);
             configure_ttl_extraction(true);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true));
             apply_reuse_port();
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v6::any(), opts.multicast_group.port));
 
-            if(!opts.interface_address.empty())
+            if(!iface_address.empty())
             {
-                auto iface_v6 = asio::ip::make_address_v6(opts.interface_address);
+                auto iface_v6 = asio::ip::make_address_v6(iface_address);
                 m_socket.set_option(asio::ip::multicast::outbound_interface(
                     static_cast<unsigned int>(iface_v6.scope_id())));
                 m_socket.set_option(asio::ip::multicast::join_group(multicast_addr));
@@ -70,14 +89,15 @@ public:
         else
         {
             m_socket.open(asio::ip::udp::v4());
+            m_socket.non_blocking(true);
             configure_ttl_extraction(false);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true));
             apply_reuse_port();
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), opts.multicast_group.port));
 
-            if(!opts.interface_address.empty())
+            if(!iface_address.empty())
             {
-                auto iface_addr = asio::ip::make_address_v4(opts.interface_address);
+                auto iface_addr = asio::ip::make_address_v4(iface_address);
                 m_socket.set_option(asio::ip::multicast::outbound_interface(iface_addr));
                 m_socket.set_option(asio::ip::multicast::join_group(multicast_addr.to_v4(), iface_addr));
             }
@@ -92,11 +112,11 @@ public:
         m_socket.set_option(asio::ip::multicast::enable_loopback(
             opts.multicast_loopback == loopback_mode::enabled));
 
-        m_buffer.resize(4096);
+        m_buffer.resize(detail::max_udp_payload);
     }
 
     // Non-throwing constructor with socket_options.
-    explicit AsioSocket(asio::io_context &io, const socket_options &opts, std::error_code &ec)
+    explicit asio_socket(asio::io_context &io, const socket_options &opts, std::error_code &ec)
         : m_socket(io)
     {
         detail::validate_multicast_address(opts.multicast_group.address, ec);
@@ -104,9 +124,15 @@ public:
         const auto multicast_addr = asio::ip::make_address(opts.multicast_group.address, ec);
         if(ec) return;
 
+        const std::string iface_address = detail::resolve_socket_interface_address(
+            opts, multicast_addr.is_v6(), ec);
+        if(ec) return;
+
         if(multicast_addr.is_v6())
         {
             m_socket.open(asio::ip::udp::v6(), ec);
+            if(ec) return;
+            m_socket.non_blocking(true, ec);
             if(ec) return;
             configure_ttl_extraction(true);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
@@ -115,9 +141,9 @@ public:
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v6::any(), opts.multicast_group.port), ec);
             if(ec) return;
 
-            if(!opts.interface_address.empty())
+            if(!iface_address.empty())
             {
-                auto iface_v6 = asio::ip::make_address_v6(opts.interface_address, ec);
+                auto iface_v6 = asio::ip::make_address_v6(iface_address, ec);
                 if(ec) return;
                 m_socket.set_option(asio::ip::multicast::outbound_interface(
                     static_cast<unsigned int>(iface_v6.scope_id())), ec);
@@ -135,6 +161,8 @@ public:
         {
             m_socket.open(asio::ip::udp::v4(), ec);
             if(ec) return;
+            m_socket.non_blocking(true, ec);
+            if(ec) return;
             configure_ttl_extraction(false);
             m_socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
             if(ec) return;
@@ -142,9 +170,9 @@ public:
             m_socket.bind(asio::ip::udp::endpoint(asio::ip::address_v4::any(), opts.multicast_group.port), ec);
             if(ec) return;
 
-            if(!opts.interface_address.empty())
+            if(!iface_address.empty())
             {
-                auto iface_addr = asio::ip::make_address_v4(opts.interface_address, ec);
+                auto iface_addr = asio::ip::make_address_v4(iface_address, ec);
                 if(ec) return;
                 m_socket.set_option(asio::ip::multicast::outbound_interface(iface_addr), ec);
                 if(ec) return;
@@ -165,17 +193,20 @@ public:
             opts.multicast_loopback == loopback_mode::enabled), ec);
         if(ec) return;
 
-        m_buffer.resize(4096);
+        m_buffer.resize(detail::max_udp_payload);
     }
 
-    void async_receive(detail::move_only_function<void(const mdnspp::recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(move_only_function<void(std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)> handler)
     {
         m_socket.async_wait(
             asio::ip::udp::socket::wait_read,
             [this, handler = std::move(handler)](std::error_code ec) mutable
             {
                 if(ec)
+                {
+                    handler(ec, mdnspp::recv_metadata{}, std::span<std::byte>{});
                     return;
+                }
 
 #ifndef _WIN32
                 sockaddr_storage sender_addr{};
@@ -195,7 +226,23 @@ public:
 
                 const ssize_t n = ::recvmsg(m_socket.native_handle(), &msg, 0);
                 if(n < 0)
+                {
+                    if(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
+                    {
+                        async_receive(std::move(handler)); // spurious readiness — re-arm
+                        return;
+                    }
+                    handler(std::error_code(errno, std::generic_category()),
+                            mdnspp::recv_metadata{}, std::span<std::byte>{});
                     return;
+                }
+#ifdef MSG_TRUNC
+                if(msg.msg_flags & MSG_TRUNC) // truncated datagram — drop and re-arm
+                {
+                    async_receive(std::move(handler));
+                    return;
+                }
+#endif
 
                 std::optional<uint8_t> ttl;
                 uint32_t recv_ifindex = 0;
@@ -260,7 +307,7 @@ public:
 
                 mdnspp::endpoint ep{addr_str, port};
                 mdnspp::recv_metadata meta{ep, ttl, recv_ifindex};
-                handler(meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(n)));
+                handler(std::error_code{}, meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(n)));
 
 #else // _WIN32
                 if(m_fn_wsarecvmsg)
@@ -283,7 +330,22 @@ public:
 
                     DWORD received = 0;
                     if(m_fn_wsarecvmsg(m_socket.native_handle(), &wmsg, &received, nullptr, nullptr) == SOCKET_ERROR)
+                    {
+                        const int err = ::WSAGetLastError();
+                        if(err == WSAEWOULDBLOCK || err == WSAEMSGSIZE) // spurious readiness / truncated datagram
+                        {
+                            async_receive(std::move(handler));
+                            return;
+                        }
+                        handler(std::error_code(err, std::system_category()),
+                                mdnspp::recv_metadata{}, std::span<std::byte>{});
                         return;
+                    }
+                    if(wmsg.dwFlags & MSG_PARTIAL) // truncated datagram — drop and re-arm
+                    {
+                        async_receive(std::move(handler));
+                        return;
+                    }
 
                     std::optional<uint8_t> ttl;
                     uint32_t recv_ifindex = 0;
@@ -338,7 +400,7 @@ public:
 
                     mdnspp::endpoint ep{addr_str, port};
                     mdnspp::recv_metadata meta{ep, ttl, recv_ifindex};
-                    handler(meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(received)));
+                    handler(std::error_code{}, meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(received)));
                 }
                 else
                 {
@@ -352,7 +414,17 @@ public:
                                              reinterpret_cast<sockaddr *>(&sender_addr),
                                              &namelen);
                     if(n == SOCKET_ERROR)
+                    {
+                        const int err = ::WSAGetLastError();
+                        if(err == WSAEWOULDBLOCK || err == WSAEMSGSIZE) // spurious readiness / truncated datagram
+                        {
+                            async_receive(std::move(handler));
+                            return;
+                        }
+                        handler(std::error_code(err, std::system_category()),
+                                mdnspp::recv_metadata{}, std::span<std::byte>{});
                         return;
+                    }
 
                     char addr_str[INET6_ADDRSTRLEN]{};
                     uint16_t port{};
@@ -371,7 +443,7 @@ public:
 
                     mdnspp::endpoint ep{addr_str, port};
                     mdnspp::recv_metadata meta{ep, std::nullopt};
-                    handler(meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(n)));
+                    handler(std::error_code{}, meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(n)));
                 }
 #endif
             });
@@ -404,9 +476,20 @@ public:
 
     auto native_handle() { return m_socket.native_handle(); }
 
+    /// Returns the I/O executor the socket was constructed with. Used by the
+    /// async_* adapter initiations so that tokens which construct internal
+    /// state on the operation's executor (e.g. asio::cancel_after's timer)
+    /// resolve to the peer's io_context. The const_cast is required because
+    /// asio::basic_socket::get_executor() is non-const; the call is
+    /// logically const (it only reads the stored executor).
+    executor_type get_executor() const noexcept
+    {
+        return const_cast<asio::ip::udp::socket &>(m_socket).get_executor();
+    }
+
 private:
     // Apply SO_REUSEPORT in addition to asio's reuse_address (SO_REUSEADDR),
-    // mirroring DefaultSocket which sets both. For co-located same-port
+    // mirroring default_socket which sets both. For co-located same-port
     // multicast sockets (e.g. an announcing server and a browsing monitor in
     // one process, both bound to :5353), SO_REUSEPORT is the portable option
     // for guaranteeing inbound multicast fan-out to every joined socket across
@@ -513,7 +596,7 @@ private:
 
 }
 
-static_assert(mdnspp::SocketLike<mdnspp::AsioSocket>, "AsioSocket must satisfy SocketLike — check async_receive/send/close signatures"
+static_assert(mdnspp::socket_like<mdnspp::asio_socket>, "asio_socket must satisfy socket_like — check async_receive/send/close signatures"
 );
 
 #endif

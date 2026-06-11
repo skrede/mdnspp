@@ -26,9 +26,9 @@ static std::vector<std::byte> make_multi_question_query(std::initializer_list<qu
 
     for(const auto &q : questions)
     {
-        auto encoded = encode_dns_name(q.name);
+        auto encoded = encode_dns_name(q.name).value();
         packet.insert(packet.end(), encoded.begin(), encoded.end());
-        push_u16_be(packet, std::to_underlying(q.qtype));
+        push_u16_be(packet, mdnspp::detail::to_underlying(q.qtype));
         push_u16_be(packet, q.qu_bit ? uint16_t{0x8001} : uint16_t{0x0001});
     }
 
@@ -69,7 +69,7 @@ SCENARIO("service_server responds to PTR query after probe+announce and timer fi
         mock_executor ex;
         endpoint sender{"192.168.1.50", 5353};
 
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -77,17 +77,17 @@ SCENARIO("service_server responds to PTR query after probe+announce and timer fi
         WHEN("a PTR query is enqueued and the recv loop processes it")
         {
             server.socket().enqueue(make_ptr_query("_http._tcp.local."), sender);
-            // Trigger recv_loop to pick up the enqueued packet (MockSocket delivers immediately
+            // Trigger recv_loop to pick up the enqueued packet (mock_socket delivers immediately
             // on the next async_receive call which happens when we drive the event)
             // The recv_loop already has async_receive armed, so we need to re-trigger it.
-            // Since MockSocket delivers synchronously in async_receive, the recv_loop
+            // Since mock_socket delivers synchronously in async_receive, the recv_loop
             // already consumed any packet in queue during start(). We need to get the loop
             // to call async_receive again. This happens after each packet processed.
-            // Actually the recv_loop arms async_receive which for MockSocket is synchronous:
+            // Actually the recv_loop arms async_receive which for mock_socket is synchronous:
             // it calls the handler immediately if a packet is in queue.
             // But the loop already called async_receive and it was empty, so it returned without
             // calling the handler. We need the loop to try again. Looking at recv_loop:
-            // arm_receive calls async_receive with a handler. MockSocket::async_receive
+            // arm_receive calls async_receive with a handler. mock_socket::async_receive
             // only calls the handler if there's a packet. If no packet, handler is not called
             // and arm_receive returns. The next arm_receive call happens in the handler
             // after processing a packet (re-entrant chaining). So if there's no packet,
@@ -105,10 +105,10 @@ SCENARIO("service_server responds to PTR query when enqueued before start", "[se
         mock_executor ex;
         endpoint sender{"192.168.1.50", 5353};
 
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         // Enqueue query before start -- it will be processed during probing and dropped.
         // Instead, we need to get the server to live state first, then process a query.
-        // But MockSocket async_receive is one-shot: each enqueued packet is consumed on
+        // But mock_socket async_receive is one-shot: each enqueued packet is consumed on
         // the next async_receive call in the recv_loop chain.
         //
         // The recv_loop processes all enqueued packets during start() via the arm_receive
@@ -153,7 +153,7 @@ SCENARIO("response delay timer armed after query receipt in live state", "[servi
     GIVEN("a live service_server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
 
         // We need the query to arrive during live state.
         // Enqueue it before start so it's consumed by recv_loop during probing.
@@ -169,7 +169,7 @@ SCENARIO("response delay timer armed after query receipt in live state", "[servi
             {
                 // Timer's last usage was during the announce phase
                 // No queries were received in live state yet
-                REQUIRE_FALSE(server.timer().has_pending());
+                REQUIRE_FALSE(server.delay_timer().has_pending());
             }
         }
     }
@@ -180,7 +180,7 @@ SCENARIO("service_server ignores non-matching query", "[service_server][query][n
     GIVEN("a live service_server with a non-matching query enqueued before start")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.socket().enqueue(build_dns_query("_wrong._tcp.local.", dns_type::ptr));
 
         WHEN("async_start() is called and probing completes")
@@ -192,7 +192,7 @@ SCENARIO("service_server ignores non-matching query", "[service_server][query][n
             {
                 // Only probes and announcements in sent packets
                 // No response to the wrong query
-                server.timer().fire(); // in case timer was armed
+                server.delay_timer().fire(); // in case timer was armed
                 bool found_response_with_wrong_type = false;
                 for(const auto &pkt : server.socket().sent_packets())
                 {
@@ -240,10 +240,10 @@ SCENARIO("response sent to multicast by default, unicast when QU bit set", "[ser
             observed_mode = mode;
         };
 
-        // We can't easily inject a query during live state with MockSocket's current
+        // We can't easily inject a query during live state with mock_socket's current
         // one-shot async_receive chain. This is a known limitation. Instead, verify
         // that the server constructor and options compile correctly with on_query.
-        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
 
         THEN("the server compiles and constructs with on_query callback")
         {
@@ -257,7 +257,7 @@ SCENARIO("Multi-question query produces combined response", "[multi-question]")
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -273,7 +273,7 @@ SCENARIO("Multi-question query produces combined response", "[multi-question]")
 
             AND_WHEN("the response timer fires")
             {
-                server.timer().fire();
+                server.delay_timer().fire();
 
                 THEN("a combined response is sent with both PTR and SRV records")
                 {
@@ -300,7 +300,7 @@ SCENARIO("Unmatched questions are silently skipped", "[multi-question][skip]")
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -313,7 +313,7 @@ SCENARIO("Unmatched questions are silently skipped", "[multi-question][skip]")
             });
             endpoint sender{"192.168.1.50", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the response contains only our PTR record, no crash")
             {
@@ -328,7 +328,7 @@ SCENARIO("Unmatched questions are silently skipped", "[multi-question][skip]")
                     if(std::holds_alternative<record_ptr>(rv))
                     {
                         const auto &ptr = std::get<record_ptr>(rv);
-                        if(ptr.ptr_name.find("myservice") != dns_name::npos)
+                        if(ptr.ptr_name.find("MyService") != dns_name::npos)
                             has_our_ptr = true;
                         if(ptr.ptr_name.find("_other") != dns_name::npos)
                             has_other_ptr = true;
@@ -346,7 +346,7 @@ SCENARIO("All-QU queries get unicast response, mixed get multicast", "[multi-que
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -375,7 +375,7 @@ SCENARIO("All-QU queries get unicast response, mixed get multicast", "[multi-que
             });
             endpoint sender{"10.0.0.1", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the response is sent to multicast (any non-QU forces multicast)")
             {
@@ -391,7 +391,7 @@ SCENARIO("Response delay timer is armed for multicast queries", "[delay]")
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -404,12 +404,12 @@ SCENARIO("Response delay timer is armed for multicast queries", "[delay]")
 
             THEN("the response timer is armed (response not sent immediately)")
             {
-                REQUIRE(server.timer().has_pending());
+                REQUIRE(server.delay_timer().has_pending());
                 REQUIRE(server.socket().sent_packets().empty());
 
                 AND_WHEN("the timer fires")
                 {
-                    server.timer().fire();
+                    server.delay_timer().fire();
 
                     THEN("the response is sent")
                     {
@@ -420,7 +420,7 @@ SCENARIO("Response delay timer is armed for multicast queries", "[delay]")
 
             THEN("the timer delay is within 20-120ms")
             {
-                auto d = server.timer().last_duration();
+                auto d = server.delay_timer().last_duration();
                 REQUIRE(d >= std::chrono::milliseconds(20));
                 REQUIRE(d <= std::chrono::milliseconds(120));
             }
@@ -433,7 +433,7 @@ SCENARIO("New queries merge into pending response", "[aggregation]")
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -449,7 +449,7 @@ SCENARIO("New queries merge into pending response", "[aggregation]")
             server.socket().inject_receive(sender, std::move(srv_query));
 
             // Fire timer once
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("exactly one multicast response is sent containing both PTR and SRV")
             {
@@ -477,7 +477,7 @@ SCENARIO("Subsequent queries do not reset timer", "[aggregation][timer-no-reset]
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -492,7 +492,7 @@ SCENARIO("Subsequent queries do not reset timer", "[aggregation][timer-no-reset]
             server.socket().inject_receive(sender, std::move(q2));
 
             // Fire timer once -- should send exactly one response
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("exactly one multicast response was sent")
             {
@@ -502,7 +502,7 @@ SCENARIO("Subsequent queries do not reset timer", "[aggregation][timer-no-reset]
 
             AND_THEN("no further pending timer exists")
             {
-                REQUIRE_FALSE(server.timer().has_pending());
+                REQUIRE_FALSE(server.delay_timer().has_pending());
             }
         }
     }
@@ -513,7 +513,7 @@ SCENARIO("Unicast queries skip aggregation", "[aggregation][unicast-bypass]")
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -535,7 +535,7 @@ SCENARIO("Unicast queries skip aggregation", "[aggregation][unicast-bypass]")
                 // A subsequent multicast query should arm the timer fresh
                 auto mc_query = build_dns_query("_http._tcp.local.", dns_type::ptr, response_mode::multicast);
                 server.socket().inject_receive(sender, std::move(mc_query));
-                REQUIRE(server.timer().has_pending());
+                REQUIRE(server.delay_timer().has_pending());
             }
         }
     }
@@ -547,7 +547,7 @@ SCENARIO("TC bit on incoming query arms the tc_timer with 400-500ms window",
     GIVEN("a live service server with default mdns_options (tc_wait_min=400ms, tc_wait_max=500ms)")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
 
@@ -571,7 +571,7 @@ SCENARIO("TC bit on incoming query arms the tc_timer with 400-500ms window",
 
             THEN("the response timer is NOT armed immediately (deferred)")
             {
-                REQUIRE_FALSE(server.timer().has_pending());
+                REQUIRE_FALSE(server.delay_timer().has_pending());
             }
         }
     }
@@ -583,7 +583,7 @@ SCENARIO("Second TC packet from same source accumulates into existing entry",
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
 
@@ -613,6 +613,77 @@ SCENARIO("Second TC packet from same source accumulates into existing entry",
             THEN("tc_timer still has a pending handler after second packet")
             {
                 REQUIRE(server.tc_timer().has_pending());
+            }
+        }
+    }
+}
+
+SCENARIO("service_server matches queries case-insensitively and answers with original case",
+         "[service_server][query][case]")
+{
+    GIVEN("a live service server announced with mixed-case names")
+    {
+        mock_executor ex;
+        basic_service_server<mock_policy> server{ex, make_test_service()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("an all-uppercase PTR query for the service type is injected")
+        {
+            auto query = make_multi_question_query({
+                {"_HTTP._TCP.LOCAL.", dns_type::ptr, false}
+            });
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.delay_timer().fire();
+
+            THEN("the server answers (RFC 6762 section 16) with case preserved on the wire")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                const auto &pkt = server.socket().sent_packets().back();
+                auto records = parse_response(pkt.data);
+
+                bool has_our_ptr = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<record_ptr>(rv))
+                    {
+                        const auto &ptr = std::get<record_ptr>(rv);
+                        if(ptr.ptr_name.str().find("MyService") != std::string::npos)
+                            has_our_ptr = true;
+                    }
+                }
+                REQUIRE(has_our_ptr);
+            }
+        }
+
+        WHEN("a lowercase SRV query for the mixed-case instance name is injected")
+        {
+            auto query = make_multi_question_query({
+                {"myservice._http._tcp.local.", dns_type::srv, false}
+            });
+            endpoint sender{"192.168.1.51", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.delay_timer().fire();
+
+            THEN("the server answers with an SRV record owned by the original-case name")
+            {
+                REQUIRE_FALSE(server.socket().sent_packets().empty());
+                const auto &pkt = server.socket().sent_packets().back();
+                auto records = parse_response(pkt.data);
+
+                bool has_srv = false;
+                for(const auto &rv : records)
+                {
+                    if(std::holds_alternative<record_srv>(rv))
+                    {
+                        const auto &srv = std::get<record_srv>(rv);
+                        if(srv.name.str().find("MyService") != std::string::npos)
+                            has_srv = true;
+                    }
+                }
+                REQUIRE(has_srv);
             }
         }
     }

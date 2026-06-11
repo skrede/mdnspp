@@ -162,7 +162,7 @@ SCENARIO("read_dns_name rejects a self-referential pointer", "[dns_wire][read_dn
     GIVEN("a 14-byte buffer where offset 12 contains a pointer back to offset 12 ({0xC0, 0x0C})")
     {
         // Pad the first 12 bytes so the pointer is at offset 12 (target = 12 = self)
-        // This is the canonical Phase 8 success criterion #2 test.
+        // RFC 9267 §2: a pointer must point strictly backward; self-reference must be rejected.
         auto buf = bytes({
             // 12-byte DNS header placeholder
             0x00,
@@ -415,6 +415,53 @@ SCENARIO("read_dns_name rejects an offset beyond the buffer size", "[dns_wire][r
             {
                 REQUIRE_FALSE(result.has_value());
                 REQUIRE(result.error() == mdns_error::parse_error);
+            }
+        }
+    }
+}
+
+SCENARIO("read_dns_name escapes special bytes in the presentation form", "[dns_wire][read_dns_name][escaping]")
+{
+    GIVEN("a wire label containing a dot and a backslash")
+    {
+        // \x04 a.b\ \x05 local \x00 — label bytes: 'a' '.' 'b' '\'
+        auto buf = bytes({0x04, 'a', '.', 'b', '\\', 0x05, 'l', 'o', 'c', 'a', 'l', 0x00});
+        WHEN("read_dns_name decodes it")
+        {
+            auto result = read_dns_name(std::span<const std::byte>(buf), 0);
+            THEN("the dot and backslash are escaped per RFC 1035 section 5.1")
+            {
+                REQUIRE(result.has_value());
+                REQUIRE(*result == "a\\.b\\\\.local.");
+            }
+        }
+    }
+
+    GIVEN("a wire label containing a non-printable byte")
+    {
+        auto buf = bytes({0x02, 'a', 0x09, 0x00});
+        WHEN("read_dns_name decodes it")
+        {
+            auto result = read_dns_name(std::span<const std::byte>(buf), 0);
+            THEN("the byte is rendered as a three-digit decimal escape")
+            {
+                REQUIRE(result.has_value());
+                REQUIRE(*result == "a\\009.");
+            }
+        }
+    }
+
+    GIVEN("a wire label containing UTF-8 bytes above 0x7F")
+    {
+        // "é" = 0xC3 0xA9
+        auto buf = bytes({0x03, 'C', 0xC3, 0xA9, 0x00});
+        WHEN("read_dns_name decodes it")
+        {
+            auto result = read_dns_name(std::span<const std::byte>(buf), 0);
+            THEN("the UTF-8 bytes pass through verbatim")
+            {
+                REQUIRE(result.has_value());
+                REQUIRE(*result == "C\xc3\xa9.");
             }
         }
     }

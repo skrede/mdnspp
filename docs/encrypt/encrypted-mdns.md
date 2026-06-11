@@ -23,9 +23,11 @@ tag.
 
 ## PSK Setup
 
-A PSK is a 32-byte symmetric key represented by `mdnspp::secure_key`. The
-`secure_key` constructor takes a `std::array<std::byte, 32>` and zeroes the
-array in its destructor, preventing key material from lingering in memory.
+A PSK is a 32-byte symmetric key represented by `mdnspp::encrypt::secure_key`. The
+`secure_key` constructor copies a `std::array<std::byte, 32>` and zeroes its
+own copy in the destructor. The caller's source array is the caller's
+responsibility: wipe it with `secure_zero` once the `secure_key` has been
+constructed.
 
 ```cpp
 #include <array>
@@ -35,7 +37,8 @@ array in its destructor, preventing key material from lingering in memory.
 std::array<std::byte, 32> raw_key{};
 // ... populate raw_key ...
 
-mdnspp::secure_key psk{raw_key};
+mdnspp::encrypt::secure_key psk{raw_key};
+mdnspp::encrypt::secure_zero(raw_key.data(), raw_key.size());
 ```
 
 `secure_key` is move-only (copy-constructor and copy-assignment are deleted).
@@ -45,7 +48,7 @@ The `sender_id` identifies this peer in the wire header; it must be unique
 across all senders on the multicast group and must not be zero:
 
 ```cpp
-mdnspp::encrypt_options enc_opts{
+mdnspp::encrypt::encrypt_options enc_opts{
     .psk       = std::move(psk),
     .sender_id = 0x00000001,    // must be non-zero; unique per sender
 };
@@ -55,11 +58,12 @@ mdnspp::encrypt_options enc_opts{
 
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `psk` | `secure_key` | (empty) | Pre-shared symmetric key |
-| `sender_id` | `uint32_t` | `0` | Non-zero sender identifier; validated on construction |
-| `accept_cleartext` | `bool` | `false` | Forward unencrypted packets to the application |
+| `psk` | `secure_key` | (empty) | Pre-shared symmetric key; an all-zero key is rejected at socket construction |
+| `sender_id` | `uint32_t` | `0` | Non-zero sender identifier; validated at socket construction |
+| `initial_epoch` | `uint32_t` | `0` | Epoch the socket starts at; provision after restarts so a peer rejoins a group that has rotated keys (see [Key Rotation](key-rotation.md)) |
+| `accept_cleartext` | `bool` | `false` | Forward unencrypted packets to the application (unauthenticated downgrade path; see [Threat Model](threat-model.md)) |
 | `auth_only` | `bool` | `false` | Send auth-only (plaintext + tag) packets instead of encrypted |
-| `replay_window_size` | `uint16_t` | `64` | Anti-replay window width in sequence-number slots |
+| `replay_window_size` | `uint16_t` | `64` | Anti-replay window width in sequence-number slots; 0 is rejected at socket construction |
 | `max_senders` | `uint16_t` | `256` | Maximum tracked senders (LRU eviction when exceeded) |
 | `detection` | `cleartext_detection` | `magic_byte` | Strategy for identifying non-encrypted incoming packets |
 | `recv_mode` | `receive_mode` | `accept_both` | Which packet types the receiver accepts |
@@ -69,7 +73,7 @@ address, multicast TTL, and other socket parameters) with a nested
 `encrypt_options encrypt` field:
 
 ```cpp
-mdnspp::encrypt_socket_options sock_opts{
+mdnspp::encrypt::encrypt_socket_options sock_opts{
     .encrypt = {
         .psk       = std::move(psk),
         .sender_id = 0x00000001,
@@ -79,11 +83,11 @@ mdnspp::encrypt_socket_options sock_opts{
 
 ## Basic Usage
 
-The convenience alias `mdnspp::encrypted_observer` is defined in
+The convenience alias `mdnspp::encrypt::encrypted_observer` is defined in
 `mdnspp/encrypt/defaults.h`:
 
 ```cpp
-using encrypted_observer = basic_observer<encrypted_policy<DefaultPolicy>>;
+using encrypted_observer = basic_observer<encrypted_policy<default_policy>>;
 ```
 
 It is constructed identically to `mdnspp::observer`, except it takes an
@@ -98,14 +102,14 @@ int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::encrypt_socket_options opts{
+    mdnspp::encrypt::encrypt_socket_options opts{
         .encrypt = {
-            .psk       = mdnspp::secure_key{raw_key},
+            .psk       = mdnspp::encrypt::secure_key{raw_key},
             .sender_id = 0x00000001,
         },
     };
 
-    mdnspp::encrypted_observer obs{
+    mdnspp::encrypt::encrypted_observer obs{
         ctx,
         mdnspp::observer_options{
             .on_record = [](const mdnspp::endpoint &sender,
@@ -133,14 +137,21 @@ from peers that have not yet rotated. Rotation is performed by calling
 `update_key()` on the underlying `encrypted_socket`:
 
 ```cpp
-socket.update_key(new_psk, mdnspp::grace_period{
+socket.update_key(new_psk, mdnspp::encrypt::grace_period{
     .duration     = std::chrono::seconds{30},
     .packet_count = 1000,
 });
 ```
 
+`update_key()` is thread-safe and may be called from any thread. During the
+grace period the receiver accepts packets stamped with the previous epoch
+(decrypted with the previous key) and additionally tries the current key for
+packets stamped one epoch ahead, so rotation does not require all peers to act
+simultaneously. A peer that restarts after a rotation rejoins by setting
+`encrypt_options::initial_epoch` to the group's current epoch.
+
 See [Key Rotation](key-rotation.md) for epoch semantics, dual-key overlap,
-and peer coordination.
+the grace-period default bound, and peer coordination.
 
 ## Auth-Only Mode
 
@@ -154,19 +165,19 @@ See [Auth-Only Mode](auth-only-mode.md) for the wire format difference and
 
 ## Convenience Aliases
 
-`mdnspp/encrypt/defaults.h` provides aliases for all seven mdnspp peer types
-parameterized on `encrypted_policy<DefaultPolicy>`:
+`mdnspp/encrypt/defaults.h` provides aliases for all eight mdnspp peer and
+nic-group types parameterized on `encrypted_policy<default_policy>`:
 
 | Alias | Underlying type |
 |---|---|
-| `encrypted_observer` | `basic_observer<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_querier` | `basic_querier<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_service_discovery` | `basic_service_discovery<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_service_server` | `basic_service_server<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_service_monitor` | `basic_service_monitor<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_nic_monitor` | `basic_nic_monitor<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_nic_group_options` | `basic_nic_group_options<encrypted_policy<DefaultPolicy>>` |
-| `encrypted_dynamic_nic_group` | `dynamic_nic_group<encrypted_policy<DefaultPolicy>>` |
+| `encrypted_observer` | `basic_observer<encrypted_policy<default_policy>>` |
+| `encrypted_querier` | `basic_querier<encrypted_policy<default_policy>>` |
+| `encrypted_service_discovery` | `basic_service_discovery<encrypted_policy<default_policy>>` |
+| `encrypted_service_server` | `basic_service_server<encrypted_policy<default_policy>>` |
+| `encrypted_service_monitor` | `basic_service_monitor<encrypted_policy<default_policy>>` |
+| `encrypted_nic_monitor` | `basic_nic_monitor<encrypted_policy<default_policy>>` |
+| `encrypted_nic_group_options` | `basic_nic_group_options<encrypted_policy<default_policy>>` |
+| `encrypted_dynamic_nic_group` | `basic_dynamic_nic_group<encrypted_policy<default_policy>>` |
 
 The template alias `encrypted_nic_group<Peers...>` is also provided for
 variadic multi-NIC group scenarios.
@@ -197,9 +208,11 @@ Offset  Size  Field
 Total header size: 44 bytes (`encrypted_header_size`).
 Total overhead: 60 bytes (`encrypted_overhead` = header + tag).
 
-The header plus ciphertext (excluding the tag) are used as AAD
-(Additional Authenticated Data) in the AEAD operation, so the full header
-is authenticated even though it is not encrypted.
+The 44-byte header is the AAD (Additional Authenticated Data) of the AEAD
+operation; the AEAD authenticates the header and the ciphertext together under
+the single Poly1305 tag. The header is therefore authenticated even though it
+is transmitted unencrypted. (In auth-only mode the plaintext payload is also
+covered as AAD; see [Auth-Only Mode](auth-only-mode.md).)
 
 ## Cleartext Handling
 
@@ -217,3 +230,13 @@ Setting `encrypt_options::accept_cleartext = true` passes cleartext packets
 through to the application after the detection step. With `accept_cleartext =
 false` (the default), cleartext packets are dropped regardless of
 `cleartext_detection`.
+
+Accepted cleartext is entirely unauthenticated: any sender on the LAN can
+deliver packets to the application by omitting the magic prefix. See the
+[Threat Model](threat-model.md) before enabling `accept_cleartext`.
+
+In-band detection has an unavoidable collision: a cleartext DNS packet whose
+16-bit transaction ID equals 0x4D43 is misclassified as encrypted in
+`magic_byte` mode and dropped after failing AEAD verification. Multicast mDNS
+messages use transaction ID 0 and are unaffected; legacy-unicast queries carry
+arbitrary IDs, so roughly one in 65536 such exchanges is lost.

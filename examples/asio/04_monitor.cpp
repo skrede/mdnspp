@@ -1,4 +1,4 @@
-// Service monitoring with AsioPolicy event loop.
+// Service monitoring with asio_policy event loop.
 
 #include <mdnspp/asio.h>
 #include <mdnspp/monitor_options.h>
@@ -21,7 +21,7 @@ int main()
     };
 
     asio::io_context io;
-    mdnspp::basic_service_monitor<mdnspp::AsioPolicy> monitor{io, std::move(opts), mdnspp::socket_options{}};
+    mdnspp::basic_service_monitor<mdnspp::asio_policy> monitor{io, std::move(opts), mdnspp::socket_options{}};
     monitor.watch("_http._tcp.local.");
     monitor.async_start([](std::error_code ec)
     {

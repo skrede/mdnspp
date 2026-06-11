@@ -98,6 +98,6 @@ clears the seen-answer list. The next query triggers a fresh observation window.
 
 ## See Also
 
-- [Traffic Reduction](traffic-reduction.md) — response delay during which suppression runs
+- [Traffic Reduction](traffic-reduction.md) — response delay during which suppression runs; also covers duplicate *question* suppression (section 7.3, querier side, with the empty-known-answer rule)
 - [Known-Answer Suppression](known-answer-suppression.md) — complementary mechanism (section 7.1)
 - [service_server API](../api/service_server.md)

@@ -10,7 +10,7 @@
 // to the sender with all TTLs capped at legacy_unicast_ttl (default 10s).
 //
 // Verification approach:
-//   - Use socket_options::port_override to assign a non-5353 source port to
+//   - Use inproc::inproc_socket_options::port_override to assign a non-5353 source port to
 //     an inproc_socket, simulating a legacy DNS-SD client.
 //   - Server receives the query, detects source_port != 5353, and sends
 //     the response unicast to the legacy socket's endpoint.
@@ -25,6 +25,7 @@
 
 #include "mdnspp/inproc/inproc_harness.h"
 #include "mdnspp/inproc/inproc_socket.h"
+#include "mdnspp/inproc/inproc_socket_options.h"
 
 #include "mdnspp/records.h"
 #include "mdnspp/service_info.h"
@@ -98,7 +99,7 @@ uint32_t max_ttl(const std::vector<mdns_record_variant> &records)
     return m;
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-14: Legacy unicast query from non-5353 port gets unicast response
@@ -113,7 +114,7 @@ TEST_CASE("Legacy unicast query from non-5353 port gets unicast response with ca
     service_options srv_opts;
     srv_opts.respond_to_legacy_unicast = true;
     srv_opts.respond_to_meta_queries   = false;
-    socket_options srv_sock;
+    inproc::inproc_socket_options srv_sock;
     srv_sock.multicast_loopback = loopback_mode::disabled;
 
     mdns_options srv_mdns;
@@ -144,7 +145,7 @@ TEST_CASE("Legacy unicast query from non-5353 port gets unicast response with ca
     observer.async_observe();
     h.executor.drain();
 
-    socket_options legacy_opts;
+    inproc::inproc_socket_options legacy_opts;
     legacy_opts.port_override         = uint16_t{12345};
     legacy_opts.multicast_loopback    = loopback_mode::disabled;
 
@@ -156,7 +157,7 @@ TEST_CASE("Legacy unicast query from non-5353 port gets unicast response with ca
     endpoint received_from{};
 
     legacy_client.async_receive(
-        [&](const recv_metadata &meta, std::span<std::byte> data)
+        [&](std::error_code, const recv_metadata &meta, std::span<std::byte> data)
         {
             received_from = meta.sender;
             received_data.assign(data.begin(), data.end());
@@ -194,8 +195,8 @@ TEST_CASE("Normal query from port 5353 gets multicast response with full TTLs",
     srv_opts.srv_ttl  = std::chrono::seconds{4500};
     srv_opts.a_ttl    = std::chrono::seconds{4500};
     srv_opts.txt_ttl  = std::chrono::seconds{4500};
-    srv_opts.record_ttl = std::chrono::seconds{4500};
-    socket_options srv_sock;
+    srv_opts.fallback_record_ttl = std::chrono::seconds{4500};
+    inproc::inproc_socket_options srv_sock;
     srv_sock.multicast_loopback = loopback_mode::disabled;
 
     mdns_options srv_mdns;

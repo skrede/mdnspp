@@ -1,31 +1,37 @@
-// Runtime NIC group composition via dynamic_nic_group builder pattern.
+// Runtime NIC group composition via basic_dynamic_nic_group builder pattern.
 // Builder methods (monitor, announce, observe) must be called before start().
-// watch() must be called after start().
+// watch() must be called after start(). Discovery callbacks are group-level
+// and interface-stamped; interfaces appearing at runtime are wired to the
+// same callbacks automatically.
 
 #include <mdnspp/defaults.h>
 #include <mdnspp/monitor_options.h>
 
+#include <vector>
 #include <iostream>
 
 int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::dynamic_nic_grp grp{ctx};
-
-    std::vector<mdnspp::monitor_options> mon_opts;
-    mon_opts.push_back({
-        .on_found = [](const mdnspp::resolved_service &svc)
+    mdnspp::nic_group_options grp_opts{
+        .on_found = [](const mdnspp::network_interface &nic, const mdnspp::resolved_service &svc)
         {
             std::cout << "found: " << svc.instance_name
-                << " on " << svc.source_interface.name
+                << " on " << nic.name
                 << " at " << svc.hostname << ":" << svc.port << std::endl;
         },
-        .on_lost = [](const mdnspp::resolved_service &svc, mdnspp::loss_reason)
+        .on_lost = [](const mdnspp::network_interface &nic, const mdnspp::resolved_service &svc, mdnspp::loss_reason)
         {
-            std::cout << "lost: " << svc.instance_name << std::endl;
+            std::cout << "lost: " << svc.instance_name
+                << " on " << nic.name << std::endl;
         },
-    });
+    };
+
+    mdnspp::dynamic_nic_group grp{ctx, std::move(grp_opts)};
+
+    std::vector<mdnspp::monitor_options> mon_opts;
+    mon_opts.push_back(mdnspp::monitor_options{});
 
     grp.monitor(std::move(mon_opts));
 

@@ -64,9 +64,9 @@ uint64_t read_be64(const std::byte *p)
             static_cast<uint64_t>(static_cast<uint8_t>(p[7]));
 }
 
-} // namespace
+}
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
 // --- secure_key implementation ---
 
@@ -163,6 +163,16 @@ bool init_crypto()
         result = (sodium_init() != -1);
     });
     return result;
+}
+
+// --- random_sequence_start ---
+
+uint64_t random_sequence_start() noexcept
+{
+    init_crypto();
+    uint32_t high = 0;
+    randombytes_buf(&high, 3);
+    return static_cast<uint64_t>(high & 0x00FFFFFFu) << 40;
 }
 
 // --- aead_encrypt ---

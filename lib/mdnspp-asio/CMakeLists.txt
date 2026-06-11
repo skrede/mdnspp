@@ -4,7 +4,7 @@ if (MDNSPP_CMAKE_FETCH_DEPS)
     FetchContent_Declare(
         asio
         GIT_REPOSITORY https://github.com/chriskohlhoff/asio.git
-        GIT_TAG asio-1-36-0
+        GIT_TAG 231cb29bab30f82712fcd54faaea42424cc6e710 # asio-1-36-0
     )
     FetchContent_MakeAvailable(asio)
     add_library(mdnspp_asio_dep INTERFACE)
@@ -66,6 +66,9 @@ set(PUBLIC_HEADERS
 
 add_library(mdnspp_asio INTERFACE)
 add_library(mdnspp::asio ALIAS mdnspp_asio)
+set_target_properties(mdnspp_asio PROPERTIES EXPORT_NAME asio)
+
+target_compile_features(mdnspp_asio INTERFACE cxx_std_20)
 
 target_include_directories(mdnspp_asio INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
@@ -90,10 +93,20 @@ install(FILES
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp
 )
 
-if (_mdnspp_asio_vendored)
+if (_mdnspp_asio_vendored AND MDNSPP_INSTALL_VENDORED_ASIO)
+    message(WARNING
+        "MDNSPP_INSTALL_VENDORED_ASIO=ON: the vendored asio header tree is "
+        "installed into ${CMAKE_INSTALL_INCLUDEDIR} and shadows any asio "
+        "already present in the install prefix.")
     install(DIRECTORY ${asio_SOURCE_DIR}/asio/include/
         DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
     )
+    set(MDNSPP_ASIO_HEADERS_INSTALLED ON PARENT_SCOPE)
+elseif (_mdnspp_asio_vendored)
+    message(STATUS
+        "mdnspp: vendored asio headers are not installed "
+        "(MDNSPP_INSTALL_VENDORED_ASIO=OFF); installed consumers of "
+        "mdnspp::asio must provide asio themselves.")
 endif ()
 
 install(TARGETS mdnspp_asio EXPORT mdnsppTargets)

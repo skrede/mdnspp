@@ -199,9 +199,20 @@ SCENARIO("encode_txt_records handles entry with value, entry without value, and 
         };
 
         auto result = mdnspp::detail::encode_txt_records(entries);
-        THEN("it is skipped")
+        THEN("it is skipped, leaving the RFC 6763 §6.1 single zero byte")
         {
-            REQUIRE(result.empty());
+            REQUIRE(result.size() == 1);
+            REQUIRE(result[0] == std::byte{0x00});
+        }
+    }
+
+    GIVEN("no TXT entries at all")
+    {
+        auto result = mdnspp::detail::encode_txt_records({});
+        THEN("the rdata is a single zero byte (RFC 6763 §6.1)")
+        {
+            REQUIRE(result.size() == 1);
+            REQUIRE(result[0] == std::byte{0x00});
         }
     }
 }
@@ -218,8 +229,9 @@ SCENARIO("encode_dns_name with empty string returns single null byte", "[dns_rea
 
         THEN("it returns a single \\x00 root label byte")
         {
-            REQUIRE(result.size() == 1);
-            REQUIRE(result[0] == std::byte{0});
+            REQUIRE(result.has_value());
+            REQUIRE(result->size() == 1);
+            REQUIRE((*result)[0] == std::byte{0});
         }
     }
 }
@@ -233,7 +245,9 @@ SCENARIO("encode_dns_name with trailing dot produces same encoding as without", 
 
         THEN("both produce identical wire encodings")
         {
-            REQUIRE(with_dot == without_dot);
+            REQUIRE(with_dot.has_value());
+            REQUIRE(without_dot.has_value());
+            REQUIRE(*with_dot == *without_dot);
         }
     }
 }
@@ -286,21 +300,21 @@ SCENARIO("encode_dns_name rejects labels exceeding 63 bytes", "[dns_read][encode
     {
         std::string long_label(64, 'a');
         auto result = encode_dns_name(long_label);
-        THEN("it returns empty") { REQUIRE(result.empty()); }
+        THEN("it returns invalid_name") { REQUIRE_FALSE(result.has_value()); }
     }
 
     GIVEN("a name with a 63-byte label")
     {
         std::string label(63, 'a');
         auto result = encode_dns_name(label);
-        THEN("it encodes successfully") { REQUIRE_FALSE(result.empty()); }
+        THEN("it encodes successfully") { REQUIRE(result.has_value()); }
     }
 
     GIVEN("a multi-label name where one label exceeds 63 bytes")
     {
         std::string name = "short." + std::string(64, 'b') + ".end";
         auto result = encode_dns_name(name);
-        THEN("it returns empty") { REQUIRE(result.empty()); }
+        THEN("it returns invalid_name") { REQUIRE_FALSE(result.has_value()); }
     }
 
     GIVEN("the fuzz crash input with a 192-byte label causing uint8_t truncation to 0xC0")
@@ -311,9 +325,9 @@ SCENARIO("encode_dns_name rejects labels exceeding 63 bytes", "[dns_read][encode
         input += "c.";
         input += std::string(192, 'C');
         auto result = encode_dns_name(input);
-        THEN("it returns empty because the third label exceeds 63 bytes")
+        THEN("it returns invalid_name because the third label exceeds 63 bytes")
         {
-            REQUIRE(result.empty());
+            REQUIRE_FALSE(result.has_value());
         }
     }
 }
@@ -354,7 +368,7 @@ SCENARIO("encode_dns_name rejects names exceeding 255 wire bytes", "[dns_read][e
         std::string name = std::string(63, 'a') + "." + std::string(63, 'b') + "."
                          + std::string(63, 'c') + "." + std::string(63, 'd');
         auto result = encode_dns_name(name);
-        THEN("it returns empty") { REQUIRE(result.empty()); }
+        THEN("it returns invalid_name") { REQUIRE_FALSE(result.has_value()); }
     }
 
     GIVEN("a name at exactly 255 wire bytes (3 labels of 63 + one of 61)")
@@ -363,8 +377,8 @@ SCENARIO("encode_dns_name rejects names exceeding 255 wire bytes", "[dns_read][e
         std::string name = std::string(63, 'a') + "." + std::string(63, 'b') + "."
                          + std::string(63, 'c') + "." + std::string(61, 'd');
         auto result = encode_dns_name(name);
-        THEN("it encodes successfully") { REQUIRE_FALSE(result.empty()); }
-        THEN("wire size is exactly 255") { REQUIRE(result.size() == 255); }
+        THEN("it encodes successfully") { REQUIRE(result.has_value()); }
+        THEN("wire size is exactly 255") { REQUIRE(result->size() == 255); }
     }
 }
 
@@ -379,5 +393,141 @@ SCENARIO("append_dns_rr skips records with empty owner name", "[dns_write][appen
             mdnspp::dns_type::a, 120, rdata);
 
         THEN("nothing is appended to the buffer") { REQUIRE(buf.empty()); }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// RFC 1035 section 5.1 escaping and case preservation
+// ---------------------------------------------------------------------------
+
+SCENARIO("encode_dns_name and read_dns_name round-trip an instance label containing a dot",
+         "[dns_read][encode_dns_name][escaping]")
+{
+    using mdnspp::detail::read_dns_name;
+
+    GIVEN("the RFC 6763 section 4.3 instance name Dr\\. Smith._http._tcp.local.")
+    {
+        const std::string presentation = "Dr\\. Smith._http._tcp.local.";
+        auto encoded = encode_dns_name(presentation);
+
+        THEN("the first label is the 9 unescaped bytes 'Dr. Smith'")
+        {
+            REQUIRE(encoded.has_value());
+            REQUIRE(static_cast<uint8_t>((*encoded)[0]) == 9);
+            std::string label;
+            for(std::size_t i = 1; i <= 9; ++i)
+                label += static_cast<char>(static_cast<uint8_t>((*encoded)[i]));
+            REQUIRE(label == "Dr. Smith");
+        }
+
+        THEN("decoding restores the escaped presentation form exactly")
+        {
+            REQUIRE(encoded.has_value());
+            auto decoded = read_dns_name(std::span<const std::byte>(*encoded), 0);
+            REQUIRE(decoded.has_value());
+            REQUIRE(*decoded == presentation);
+        }
+
+        THEN("the escaped form encodes three labels, not four")
+        {
+            auto unescaped = encode_dns_name("Dr. Smith._http._tcp.local.");
+            REQUIRE(encoded.has_value());
+            REQUIRE(unescaped.has_value());
+            REQUIRE(*encoded != *unescaped);
+        }
+    }
+}
+
+SCENARIO("encode_dns_name preserves original byte case", "[dns_read][encode_dns_name][case]")
+{
+    using mdnspp::detail::read_dns_name;
+
+    GIVEN("a mixed-case instance name")
+    {
+        auto encoded = encode_dns_name("MyPrinter._ipp._tcp.local.");
+        THEN("the wire bytes carry the original case (RFC 6763 section 4.1)")
+        {
+            REQUIRE(encoded.has_value());
+            auto decoded = read_dns_name(std::span<const std::byte>(*encoded), 0);
+            REQUIRE(decoded.has_value());
+            REQUIRE(*decoded == "MyPrinter._ipp._tcp.local.");
+        }
+    }
+}
+
+SCENARIO("encode_dns_name rejects empty labels", "[dns_read][encode_dns_name][escaping]")
+{
+    GIVEN("the name a..b.local with an embedded empty label")
+    {
+        auto result = encode_dns_name("a..b.local");
+        THEN("it returns invalid_name instead of emitting a zero-length label")
+        {
+            REQUIRE_FALSE(result.has_value());
+            REQUIRE(result.error() == mdnspp::mdns_error::invalid_name);
+        }
+    }
+
+    GIVEN("a name with a leading dot")
+    {
+        auto result = encode_dns_name(".a.local");
+        THEN("it returns invalid_name") { REQUIRE_FALSE(result.has_value()); }
+    }
+}
+
+SCENARIO("encode_dns_name parses backslash-DDD decimal escapes", "[dns_read][encode_dns_name][escaping]")
+{
+    GIVEN("the escape \\009 (horizontal tab) inside a label")
+    {
+        auto result = encode_dns_name("a\\009b.local.");
+        THEN("the label contains the raw byte 0x09")
+        {
+            REQUIRE(result.has_value());
+            REQUIRE(static_cast<uint8_t>((*result)[0]) == 3);
+            REQUIRE(static_cast<uint8_t>((*result)[2]) == 0x09);
+        }
+    }
+
+    GIVEN("malformed decimal escapes")
+    {
+        THEN("a truncated escape is rejected")
+        {
+            REQUIRE_FALSE(encode_dns_name("a\\09.local").has_value());
+        }
+        THEN("a value above 255 is rejected")
+        {
+            REQUIRE_FALSE(encode_dns_name("a\\999.local").has_value());
+        }
+        THEN("a dangling backslash is rejected")
+        {
+            REQUIRE_FALSE(encode_dns_name("a.local\\").has_value());
+        }
+    }
+}
+
+SCENARIO("skip_dns_name rejects reserved label tags exactly like read_dns_name",
+         "[dns_read][skip_dns_name][safety]")
+{
+    using mdnspp::detail::read_dns_name;
+
+    GIVEN("a buffer whose first byte carries the reserved 01 tag (0x40)")
+    {
+        auto buf = bytes({0x40, 'a', 0x00});
+        size_t offset = 0;
+        THEN("skip and read agree on rejection")
+        {
+            REQUIRE_FALSE(skip_dns_name(std::span<const std::byte>(buf), offset));
+            REQUIRE_FALSE(read_dns_name(std::span<const std::byte>(buf), 0).has_value());
+        }
+    }
+
+    GIVEN("a buffer whose first byte carries the reserved 10 tag (0x80)")
+    {
+        auto buf = bytes({0x80, 'a', 0x00});
+        size_t offset = 0;
+        THEN("skip and read agree on rejection")
+        {
+            REQUIRE_FALSE(skip_dns_name(std::span<const std::byte>(buf), offset));
+            REQUIRE_FALSE(read_dns_name(std::span<const std::byte>(buf), 0).has_value());
+        }
     }
 }

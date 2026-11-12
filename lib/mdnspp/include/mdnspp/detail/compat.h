@@ -1,16 +1,13 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_COMPAT_H
 #define HPP_GUARD_MDNSPP_DETAIL_COMPAT_H
 
+#include "mdnspp/detail/expected.h"
+
 #include <functional>
 #include <memory>
 #include <type_traits>
 #include <utility>
-#include <variant>
 #include <version>
-
-#if defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L
-#  include <expected>
-#endif
 
 namespace mdnspp::detail {
 
@@ -91,82 +88,15 @@ public:
 
 #endif
 
-// --- expected/unexpected compat ---
-
-#if defined(__cpp_lib_expected) && __cpp_lib_expected >= 202202L
-template <typename T, typename E>
-using expected = std::expected<T, E>;
-
-template <typename E>
-using unexpected = std::unexpected<E>;
-#else
-
-template <typename E>
-class unexpected
-{
-    E m_error;
-
-public:
-    explicit constexpr unexpected(E e) : m_error(std::move(e))
-    {
-    }
-
-    constexpr const E &error() const & noexcept { return m_error; }
-    constexpr E &error() & noexcept { return m_error; }
-    constexpr E &&error() && noexcept { return std::move(m_error); }
-};
-
-template <typename T, typename E>
-class expected
-{
-    std::variant<T, unexpected<E>> m_storage;
-
-public:
-    // NOLINTNEXTLINE(google-explicit-constructor)
-    constexpr expected(T val) : m_storage(std::move(val))
-    {
-    }
-
-    template <typename U,
-              std::enable_if_t<std::is_constructible_v<T, U> &&
-                               !std::is_same_v<std::remove_cvref_t<U>, expected>, int> = 0>
-    // NOLINTNEXTLINE(google-explicit-constructor)
-    constexpr expected(U &&val) : m_storage(T(std::forward<U>(val)))
-    {
-    }
-
-    // NOLINTNEXTLINE(google-explicit-constructor)
-    constexpr expected(unexpected<E> err) : m_storage(std::move(err))
-    {
-    }
-
-    constexpr explicit operator bool() const noexcept { return m_storage.index() == 0; }
-    [[nodiscard]] constexpr bool has_value() const noexcept { return m_storage.index() == 0; }
-
-    constexpr T &operator*() & { return std::get<0>(m_storage); }
-    constexpr const T &operator*() const & { return std::get<0>(m_storage); }
-    constexpr T &&operator*() && { return std::get<0>(std::move(m_storage)); }
-
-    constexpr T *operator->() { return &std::get<0>(m_storage); }
-    constexpr const T *operator->() const { return &std::get<0>(m_storage); }
-
-    [[nodiscard]] constexpr T &value() & { return std::get<0>(m_storage); }
-    [[nodiscard]] constexpr const T &value() const & { return std::get<0>(m_storage); }
-
-    [[nodiscard]] constexpr const E &error() const & { return std::get<1>(m_storage).error(); }
-};
-
-#endif
-
 }
 
 namespace mdnspp {
 
-// Public names for the compat vocabulary types. These resolve to the std::
-// C++23 types when the standard library provides them, so a future migration
-// off the compat layer changes only detail/compat.h.
 using detail::expected;
 using detail::unexpected;
+using detail::unexpect;
+using detail::unexpect_t;
+using detail::bad_expected_access;
 using detail::move_only_function;
 
 }

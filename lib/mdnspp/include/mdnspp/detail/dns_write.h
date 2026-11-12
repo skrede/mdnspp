@@ -6,15 +6,14 @@
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_read.h"
-#include "mdnspp/detail/platform.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/address_encode.h"
 
 #include <string>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
-#include <charconv>
 
 namespace mdnspp::detail {
 
@@ -41,59 +40,6 @@ inline void append_dns_rr(std::vector<std::byte> &buf,
     push_u32_be(buf, ttl);
     push_u16_be(buf, static_cast<uint16_t>(rdata.size()));
     buf.insert(buf.end(), rdata.begin(), rdata.end());
-}
-
-// Encodes an IPv4 address string "a.b.c.d" into 4 raw bytes.
-// Returns expected with mdns_error::invalid_ipv4_address on parse failure (never throws).
-inline detail::expected<std::vector<std::byte>, mdnspp::mdns_error>
-encode_ipv4(const std::string &addr)
-{
-    std::vector<std::byte> result;
-    result.reserve(4);
-
-    const char *p = addr.data();
-    const char *end = p + addr.size();
-
-    for(int32_t i = 0; i < 4; ++i)
-    {
-        if(p >= end)
-            return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
-
-        int32_t octet{};
-        auto [ptr, ec] = std::from_chars(p, end, octet);
-        if(ec != std::errc{} || octet < 0 || octet > 255)
-            return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
-
-        result.push_back(static_cast<std::byte>(static_cast<uint8_t>(octet)));
-
-        if(i < 3)
-        {
-            if(ptr >= end || *ptr != '.')
-                return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
-            p = ptr + 1;
-        }
-        else
-        {
-            if(ptr != end)
-                return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
-        }
-    }
-    return result;
-}
-
-// Encodes an IPv6 address string into 16 raw bytes using inet_pton.
-// Returns expected with mdns_error::invalid_ipv6_address on parse failure.
-inline detail::expected<std::vector<std::byte>, mdnspp::mdns_error>
-encode_ipv6(const std::string &addr)
-{
-    uint8_t raw[16];
-    if(::inet_pton(AF_INET6, addr.c_str(), raw) != 1)
-        return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv6_address);
-    std::vector<std::byte> result;
-    result.reserve(16);
-    for(auto b : raw)
-        result.push_back(static_cast<std::byte>(b));
-    return result;
 }
 
 // Encodes a vector of service_txt entries as RFC 6763 TXT rdata.
@@ -133,6 +79,32 @@ enum class nsec_owner : uint8_t
     hostname,
 };
 
+inline void set_owner_type_bits(std::vector<uint8_t> &bitmap, nsec_owner owner, const mdnspp::service_info &info)
+{
+    auto set_bit = [&](uint16_t type_val)
+    {
+        bitmap[type_val / 8] |= static_cast<uint8_t>(1u << (7u - (type_val % 8u)));
+    };
+
+    switch(owner)
+    {
+    case nsec_owner::service_type:
+        set_bit(detail::to_underlying(dns_type::ptr));
+        break;
+    case nsec_owner::service_name:
+        set_bit(detail::to_underlying(dns_type::txt));
+        set_bit(detail::to_underlying(dns_type::srv));
+        set_bit(detail::to_underlying(dns_type::nsec));
+        break;
+    case nsec_owner::hostname:
+        if(info.address_ipv4.has_value())
+            set_bit(detail::to_underlying(dns_type::a));
+        if(info.address_ipv6.has_value())
+            set_bit(detail::to_underlying(dns_type::aaaa));
+        break;
+    }
+}
+
 // Builds an RFC 4034 section 4.1.2 window-block-0 type bitmap for NSEC records.
 // RFC 6762 section 6.1: the bitmap lists the types that DO exist at the owner
 // name. service_type owns PTR(12); service_name owns SRV(33), TXT(16) and the
@@ -143,38 +115,14 @@ inline std::vector<std::byte> build_nsec_bitmap(nsec_owner owner, const mdnspp::
 {
     // Highest type bit needed is NSEC=47, which falls in byte index 5 (types 40-47).
     std::vector<uint8_t> bitmap(6, 0);
+    set_owner_type_bits(bitmap, owner, info);
 
-    auto set_bit = [&](uint16_t type_val)
-    {
-        bitmap[type_val / 8] |= static_cast<uint8_t>(1u << (7u - (type_val % 8u)));
-    };
-
-    switch(owner)
-    {
-    case nsec_owner::service_type:
-        set_bit(detail::to_underlying(dns_type::ptr));  // 12
-        break;
-    case nsec_owner::service_name:
-        set_bit(detail::to_underlying(dns_type::txt));  // 16
-        set_bit(detail::to_underlying(dns_type::srv));  // 33
-        set_bit(detail::to_underlying(dns_type::nsec)); // 47
-        break;
-    case nsec_owner::hostname:
-        if(info.address_ipv4.has_value())
-            set_bit(detail::to_underlying(dns_type::a));    // 1
-        if(info.address_ipv6.has_value())
-            set_bit(detail::to_underlying(dns_type::aaaa)); // 28
-        break;
-    }
-
-    // Trim trailing zero bytes
     while(!bitmap.empty() && bitmap.back() == 0)
         bitmap.pop_back();
 
     if(bitmap.empty())
         return {}; // no types exist at this name — no valid NSEC can be built
 
-    // Build window block: [window=0x00][length][bitmap bytes...]
     std::vector<std::byte> result;
     result.reserve(2 + bitmap.size());
     result.push_back(std::byte{0x00}); // window number

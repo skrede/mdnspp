@@ -27,7 +27,10 @@ set(INCLUDE_DIRECTORY include)
 
 add_library(mdnspp_encrypt STATIC
     src/aead.cpp
+    src/crypto.cpp
+    src/secure_key.cpp
     src/encrypt_error.cpp
+    src/packet_header.cpp
     src/replay_window.cpp
 )
 add_library(mdnspp::encrypt ALIAS mdnspp_encrypt)

@@ -96,7 +96,7 @@ public:
     {
         auto labels = detail::parse_presentation_labels(name);
         if(!labels.has_value())
-            return detail::make_unexpected(labels.error());
+            return detail::unexpected(labels.error());
         dns_name result;
         result.m_name = detail::make_canonical_presentation(*labels);
         return result;

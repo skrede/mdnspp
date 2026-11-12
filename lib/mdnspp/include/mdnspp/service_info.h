@@ -107,7 +107,7 @@ service_info::make(std::string_view instance, std::string_view service_type,
                    uint16_t port, service_make_options opts)
 {
     if(port == 0)
-        return detail::make_unexpected(mdns_error::invalid_argument);
+        return detail::unexpected(mdns_error::invalid_argument);
 
     // Normalize the type: strip the trailing dot, append ".local" when the
     // input has no domain, then validate the three RFC 6763 labels.
@@ -117,12 +117,12 @@ service_info::make(std::string_view instance, std::string_view service_type,
     if(!parse_service_type_checked(type).has_value())
         type += ".local";
     if(auto checked = parse_service_type_checked(type); !checked.has_value())
-        return detail::make_unexpected(checked.error());
+        return detail::unexpected(checked.error());
     type.push_back('.');
 
     auto type_name = dns_name::parse(type);
     if(!type_name.has_value())
-        return detail::make_unexpected(type_name.error());
+        return detail::unexpected(type_name.error());
 
     // Escape the instance label (RFC 6763 §4.3: dots and backslashes inside
     // an instance name are content, not label separators) and join it with
@@ -134,7 +134,7 @@ service_info::make(std::string_view instance, std::string_view service_type,
     name += type;
     auto instance_name = dns_name::parse(name);
     if(!instance_name.has_value())
-        return detail::make_unexpected(instance_name.error());
+        return detail::unexpected(instance_name.error());
 
     // Hostname: the override, or the OS hostname sanitized to a single label;
     // either way normalized to a ".local."-suffixed FQDN.
@@ -163,7 +163,7 @@ service_info::make(std::string_view instance, std::string_view service_type,
     }
     auto host_name = dns_name::parse(host);
     if(!host_name.has_value())
-        return detail::make_unexpected(host_name.error());
+        return detail::unexpected(host_name.error());
 
     service_info info;
     info.service_name = std::move(*instance_name);

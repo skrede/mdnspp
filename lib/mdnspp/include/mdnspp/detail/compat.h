@@ -99,19 +99,21 @@ using expected = std::expected<T, E>;
 
 template <typename E>
 using unexpected = std::unexpected<E>;
-
-template <typename E>
-auto make_unexpected(E e) { return std::unexpected<E>(std::move(e)); }
 #else
 
 template <typename E>
-struct unexpected
+class unexpected
 {
-    E value;
+    E m_error;
 
-    explicit constexpr unexpected(E e) : value(std::move(e))
+public:
+    explicit constexpr unexpected(E e) : m_error(std::move(e))
     {
     }
+
+    constexpr const E &error() const & noexcept { return m_error; }
+    constexpr E &error() & noexcept { return m_error; }
+    constexpr E &&error() && noexcept { return std::move(m_error); }
 };
 
 template <typename T, typename E>
@@ -151,11 +153,8 @@ public:
     [[nodiscard]] constexpr T &value() & { return std::get<0>(m_storage); }
     [[nodiscard]] constexpr const T &value() const & { return std::get<0>(m_storage); }
 
-    [[nodiscard]] constexpr const E &error() const & { return std::get<1>(m_storage).value; }
+    [[nodiscard]] constexpr const E &error() const & { return std::get<1>(m_storage).error(); }
 };
-
-template <typename E>
-constexpr auto make_unexpected(E e) { return unexpected<E>(std::move(e)); }
 
 #endif
 

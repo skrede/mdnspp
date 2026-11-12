@@ -53,7 +53,7 @@ encode_ipv4(const std::string &addr)
     for(int32_t i = 0; i < 4; ++i)
     {
         if(!read_ipv4_octet(p, end, i, result))
-            return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv4_address);
+            return detail::unexpected(mdnspp::mdns_error::invalid_ipv4_address);
     }
     return result;
 }
@@ -65,7 +65,7 @@ encode_ipv6(const std::string &addr)
 {
     uint8_t raw[16];
     if(::inet_pton(AF_INET6, addr.c_str(), raw) != 1)
-        return detail::make_unexpected(mdnspp::mdns_error::invalid_ipv6_address);
+        return detail::unexpected(mdnspp::mdns_error::invalid_ipv6_address);
     std::vector<std::byte> result;
     result.reserve(16);
     for(auto b : raw)

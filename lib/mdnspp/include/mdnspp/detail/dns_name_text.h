@@ -126,14 +126,14 @@ parse_presentation_labels(std::string_view name)
     for(std::size_t i = 0; i < name.size();)
     {
         if(!consume_presentation_char(name, i, acc))
-            return make_unexpected(mdns_error::invalid_name);
+            return unexpected(mdns_error::invalid_name);
     }
 
     if(!acc.current.empty() && !acc.flush())
-        return make_unexpected(mdns_error::invalid_name);
+        return unexpected(mdns_error::invalid_name);
 
     if(acc.wire_length > 255)
-        return make_unexpected(mdns_error::invalid_name);
+        return unexpected(mdns_error::invalid_name);
 
     return std::move(acc.labels);
 }

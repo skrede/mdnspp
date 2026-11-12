@@ -36,7 +36,7 @@ extract_owner_name(std::span<const std::byte> buffer, const record_metadata &met
 {
     auto name = detail::read_dns_name(buffer, meta.name_offset);
     if(!name)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
     return std::move(*name);
 }
 
@@ -46,7 +46,7 @@ make_record_with_header(std::span<const std::byte> buffer, const record_metadata
 {
     auto owner = extract_owner_name(buffer, meta);
     if(!owner)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
 
     Record r;
     r.name = std::move(*owner);
@@ -71,10 +71,10 @@ inline expected<mdns_record_variant, mdns_error>
 a(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     if(buffer.size() < meta.record_offset + meta.record_length)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
 
     if(meta.record_length != 4)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
 
     sockaddr_in addr{};
     addr.sin_family = AF_INET;
@@ -82,7 +82,7 @@ a(std::span<const std::byte> buffer, const record_metadata &meta)
 
     auto r = make_record_with_header<record_a>(buffer, meta);
     if(!r)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
     r->address_string = detail::ip_address_to_string(addr);
 
     return std::move(*r);
@@ -92,10 +92,10 @@ inline expected<mdns_record_variant, mdns_error>
 aaaa(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     if(buffer.size() < meta.record_offset + meta.record_length)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
 
     if(meta.record_length != 16)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
 
     sockaddr_in6 addr{};
     addr.sin6_family = AF_INET6;
@@ -103,7 +103,7 @@ aaaa(std::span<const std::byte> buffer, const record_metadata &meta)
 
     auto r = make_record_with_header<record_aaaa>(buffer, meta);
     if(!r)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
     r->address_string = detail::ip_address_to_string(addr);
 
     return std::move(*r);
@@ -113,14 +113,14 @@ inline expected<mdns_record_variant, mdns_error>
 ptr(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     if(buffer.size() < meta.record_offset + meta.record_length)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
 
     auto ptr_name = read_bounded_name(buffer, meta, meta.record_offset);
-    if(!ptr_name) return detail::make_unexpected(mdns_error::parse_error);
+    if(!ptr_name) return detail::unexpected(mdns_error::parse_error);
 
     auto r = make_record_with_header<record_ptr>(buffer, meta);
     if(!r)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
     r->ptr_name = std::move(*ptr_name);
 
     return std::move(*r);
@@ -130,10 +130,10 @@ inline expected<mdns_record_variant, mdns_error>
 srv(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     if(buffer.size() < meta.record_offset + meta.record_length)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
 
     if(meta.record_length < 7)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
 
     const std::byte *rdata = buffer.data() + meta.record_offset;
     uint16_t priority = detail::read_u16_be(rdata + 0);
@@ -141,11 +141,11 @@ srv(std::span<const std::byte> buffer, const record_metadata &meta)
     uint16_t port = detail::read_u16_be(rdata + 4);
 
     auto srv_name = read_bounded_name(buffer, meta, meta.record_offset + 6);
-    if(!srv_name) return detail::make_unexpected(mdns_error::parse_error);
+    if(!srv_name) return detail::unexpected(mdns_error::parse_error);
 
     auto r = make_record_with_header<record_srv>(buffer, meta);
     if(!r)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
     r->priority = priority;
     r->weight = weight;
     r->port = port;
@@ -158,11 +158,11 @@ inline expected<mdns_record_variant, mdns_error>
 txt(std::span<const std::byte> buffer, const record_metadata &meta)
 {
     if(buffer.size() < meta.record_offset + meta.record_length)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
 
     auto r = make_record_with_header<record_txt>(buffer, meta);
     if(!r)
-        return detail::make_unexpected(mdns_error::parse_error);
+        return detail::unexpected(mdns_error::parse_error);
     r->entries = parse_txt_entries(buffer, meta.record_offset, meta.record_offset + meta.record_length);
 
     return std::move(*r);
@@ -178,7 +178,7 @@ record(std::span<const std::byte> buffer, const record_metadata &meta)
     case dns_type::txt: return txt(buffer, meta);
     case dns_type::aaaa: return aaaa(buffer, meta);
     case dns_type::srv: return srv(buffer, meta);
-    default: return detail::make_unexpected(mdns_error::parse_error);
+    default: return detail::unexpected(mdns_error::parse_error);
     }
 }
 

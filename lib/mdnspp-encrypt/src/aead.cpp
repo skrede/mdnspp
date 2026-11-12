@@ -103,7 +103,7 @@ detail::expected<std::vector<std::byte>, encrypt_error> decrypt_sealed(
         as_uchar(hdr.nonce.data()), as_uchar(key.data()));
 
     if(rc != 0)
-        return detail::make_unexpected(encrypt_error::decrypt_failed);
+        return detail::unexpected(encrypt_error::decrypt_failed);
 
     plaintext.resize(plaintext_len);
     return plaintext;
@@ -130,7 +130,7 @@ detail::expected<std::vector<std::byte>, encrypt_error> decrypt_authenticated(
         as_uchar(hdr.nonce.data()), as_uchar(key.data()));
 
     if(rc != 0)
-        return detail::make_unexpected(encrypt_error::decrypt_failed);
+        return detail::unexpected(encrypt_error::decrypt_failed);
 
     return std::vector<std::byte>(payload_ptr, payload_ptr + payload_len);
 }
@@ -161,15 +161,15 @@ detail::expected<std::vector<std::byte>, encrypt_error> aead_decrypt(
     init_crypto();
 
     if(packet.size() < encrypted_header_size + encrypted_tag_size)
-        return detail::make_unexpected(encrypt_error::invalid_header);
+        return detail::unexpected(encrypt_error::invalid_header);
 
     auto hdr = deserialize_header(packet.data());
 
     if(hdr.magic != encrypted_magic)
-        return detail::make_unexpected(encrypt_error::invalid_header);
+        return detail::unexpected(encrypt_error::invalid_header);
 
     if(hdr.version != encrypted_version)
-        return detail::make_unexpected(encrypt_error::unsupported_version);
+        return detail::unexpected(encrypt_error::unsupported_version);
 
     // The AAD must match the serialized header used during encrypt.
     const auto header_bytes = serialize_header(hdr);

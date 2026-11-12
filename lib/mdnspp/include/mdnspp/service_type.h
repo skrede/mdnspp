@@ -58,7 +58,7 @@ parse_service_type_checked(std::string_view name)
 {
     auto info = parse_service_type(name);
     if(info.type_name.empty() || info.protocol.empty() || info.domain.empty())
-        return detail::make_unexpected(mdns_error::invalid_name);
+        return detail::unexpected(mdns_error::invalid_name);
     return info;
 }
 

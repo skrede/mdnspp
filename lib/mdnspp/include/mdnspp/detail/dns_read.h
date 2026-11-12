@@ -119,7 +119,7 @@ inline bool append_wire_label(std::span<const std::byte> buf, size_t &offset, ui
 // dot (e.g. "_http._tcp.local."). The root name (\x00) returns an empty
 // string. encode_dns_name parses this form back to identical wire bytes.
 //
-// Returns detail::make_unexpected(mdns_error::parse_error) on any bounds violation,
+// Returns unexpected(mdns_error::parse_error) on any bounds violation,
 // pointer safety violation, or name-length overflow.
 inline detail::expected<std::string, mdns_error>
 read_dns_name(std::span<const std::byte> buf, size_t offset)
@@ -144,7 +144,7 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
         else if(!append_wire_label(buf, offset, label_len, wire_len, result))
             break;
     }
-    return detail::make_unexpected(mdns_error::parse_error);
+    return detail::unexpected(mdns_error::parse_error);
 }
 
 // Converts a presentation-format DNS name (RFC 1035 §5.1 escaping, e.g.
@@ -153,7 +153,7 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
 // label is prefixed by its length byte and the name is terminated by the
 // \x00 root label. "" and "." encode the root name.
 //
-// Returns detail::make_unexpected(mdns_error::invalid_name) on empty labels
+// Returns unexpected(mdns_error::invalid_name) on empty labels
 // ("a..b"), malformed escapes, labels over 63 octets or names over 255 wire
 // octets — callers must surface the failure rather than emit a partial name.
 inline detail::expected<std::vector<std::byte>, mdns_error>
@@ -161,7 +161,7 @@ encode_dns_name(std::string_view name)
 {
     auto labels = parse_presentation_labels(name);
     if(!labels.has_value())
-        return detail::make_unexpected(labels.error());
+        return detail::unexpected(labels.error());
 
     size_t total = 1;
     for(const auto &label : *labels)

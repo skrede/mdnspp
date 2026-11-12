@@ -42,11 +42,11 @@ Unit tests cover:
 - Multi-NIC orchestration: group instance lifecycle, dynamic builder, and
   interface monitoring (nic_group_test, nic_group_dynamic_test, nic_monitor_test)
 - Multicast capability validation (validate_multicast_test)
-- Encrypt component: AEAD encrypt/decrypt and tamper detection
-  (encrypt_aead_test), replay window (encrypt_replay_window_test), epoch-based
-  key rotation and grace periods (encrypt_key_rotation_test), socket framing
-  and cleartext detection modes (encrypt_socket_test), policy/trait conformance
-  (encrypt_policy_test, encrypt_policy_trait_test)
+- Encrypt component (tests/unit/encrypt/): AEAD encrypt/decrypt and tamper
+  detection (encrypt_aead_*_test), replay window (encrypt_replay_*_test),
+  epoch-based key rotation and grace periods (encrypt_key_rotation_*_test),
+  socket framing and cleartext detection modes (encrypt_socket_*_test),
+  policy/trait conformance (encrypt_policy_test, encrypt_policy_trait_test)
 - policy_like concept conformance for all built-in policies
   (concept_conformance_test, default_conformance_test, inproc_conformance_test,
   asio_conformance_test)

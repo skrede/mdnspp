@@ -12,13 +12,13 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/detail/compat.h"
-
 #include "mdnspp/detail/platform.h"
+#include "mdnspp/detail/wakeup_fd.h"
+#include "mdnspp/detail/post_queue.h"
+#include "mdnspp/detail/native_socket.h"
 
 #include <span>
 #include <array>
-#include <deque>
-#include <mutex>
 #include <atomic>
 #include <chrono>
 #include <thread>
@@ -28,106 +28,21 @@
 #include <cstdint>
 #include <cstring>
 #include <optional>
+#include <algorithm>
 #include <system_error>
 
-#ifdef _WIN32
-#  include <winsock2.h>
-#  include <ws2tcpip.h>
-#  include <mswsock.h>
-#else
-#  include <arpa/inet.h>
-#  include <fcntl.h>
-#  include <netinet/in.h>
-#  include <poll.h>
-#  include <sys/socket.h>
-#  include <unistd.h>
-#  ifdef __linux__
-#    include <sys/eventfd.h>
-#  endif
-#  ifdef __APPLE__
-#    include <net/if_dl.h>
-#  endif
-#endif
-
 namespace mdnspp {
-namespace detail {
-
-#ifdef _WIN32
-using native_socket_t = SOCKET;
-inline constexpr native_socket_t invalid_socket = INVALID_SOCKET;
-
-inline void close_socket(native_socket_t fd) noexcept
-{
-    ::closesocket(fd);
-}
-
-inline int poll_sockets(pollfd *fds, unsigned long nfds, int timeout_ms)
-{
-    return ::WSAPoll(fds, nfds, timeout_ms);
-}
-#else
-using native_socket_t = int;
-inline constexpr native_socket_t invalid_socket = -1;
-
-inline void close_socket(native_socket_t fd) noexcept
-{
-    ::close(fd);
-}
-
-inline int poll_sockets(pollfd *fds, nfds_t nfds, int timeout_ms)
-{
-    return ::poll(fds, nfds, timeout_ms);
-}
-#endif
-
-}
 
 class default_timer;
 
-// ---------------------------------------------------------------------------
-// winsock_guard — RAII Winsock initializer. No-op on POSIX.
-// ---------------------------------------------------------------------------
-class winsock_guard
-{
-public:
-    winsock_guard()
-    {
-#ifdef _WIN32
-        WSADATA data{};
-        if(const int rc = ::WSAStartup(MAKEWORD(2, 2), &data); rc != 0)
-            throw std::system_error(rc, std::system_category(), "WSAStartup failed");
-#endif
-    }
-
-    ~winsock_guard()
-    {
-#ifdef _WIN32
-        ::WSACleanup();
-#endif
-    }
-
-    winsock_guard(const winsock_guard &) = delete;
-    winsock_guard &operator=(const winsock_guard &) = delete;
-    winsock_guard(winsock_guard &&) = delete;
-    winsock_guard &operator=(winsock_guard &&) = delete;
-};
-
-// ---------------------------------------------------------------------------
-// default_context — the event loop executor
-// ---------------------------------------------------------------------------
 class default_context
 {
 public:
-    /// Constructor — creates the stop-wakeup fd.
-    /// Throws std::system_error on platform failure.
+    /// Throws std::system_error when the wakeup channel cannot be created.
     default_context()
+        : m_post_queue{[this] { m_wakeup.notify(); }}
     {
-        create_wakeup_fd();
-    }
-
-    ~default_context()
-    {
-        close_wakeup_fd();
+        m_wakeup.create();
     }
 
     default_context(const default_context &) = delete;
@@ -158,12 +73,12 @@ public:
                 break;
             }
 
-            if(wakeup_readable())
+            if(wakeup_readable() || m_post_queue.pending())
             {
-                drain_wakeup_fd();
+                m_wakeup.drain();
                 if(m_stopped.load(std::memory_order_acquire))
                     break;
-                drain_work_queue();
+                m_post_queue.drain();
             }
 
             if(any_socket_readable())
@@ -183,12 +98,12 @@ public:
         if(rc < 0)
             return;
 
-        if(wakeup_readable())
+        if(wakeup_readable() || m_post_queue.pending())
         {
-            drain_wakeup_fd();
+            m_wakeup.drain();
             if(m_stopped.load(std::memory_order_acquire))
                 return;
-            drain_work_queue();
+            m_post_queue.drain();
             return;
         }
 
@@ -205,7 +120,7 @@ public:
     void stop()
     {
         m_stopped.store(true, std::memory_order_release);
-        write_wakeup_fd();
+        m_wakeup.notify();
     }
 
     /// Reset the stopped flag so run() can be called again after stop().
@@ -213,25 +128,14 @@ public:
     void restart()
     {
         m_stopped.store(false, std::memory_order_release);
-        drain_wakeup_fd();
-        {
-            std::lock_guard lock{m_work_mutex};
-            m_work_queue.clear();
-        }
-        m_post_pending.store(false, std::memory_order_release);
+        m_wakeup.drain();
+        m_post_queue.clear();
     }
 
-    /// Post work to the event loop from any thread.
-    /// The function will be executed during the next run()/poll_one() iteration.
-    /// Uses atomic coalescing to avoid redundant wakeup fd writes under burst posting.
+    /// Safe to call from any thread; the item runs on the executor thread.
     void post(detail::move_only_function<void()> fn)
     {
-        {
-            std::lock_guard lock{m_work_mutex};
-            m_work_queue.push_back(std::move(fn));
-        }
-        if (!m_post_pending.exchange(true, std::memory_order_acq_rel))
-            write_wakeup_fd();
+        m_post_queue.post(std::move(fn));
     }
 
     // -----------------------------------------------------------------------
@@ -312,27 +216,15 @@ private:
     // winsock_guard MUST be the first member — initialised before any sockets.
     winsock_guard m_wsa{};
     std::atomic<bool> m_stopped{false};
-    std::mutex m_work_mutex;
-    std::deque<detail::move_only_function<void()>> m_work_queue;
-    std::atomic<bool> m_post_pending{false};
+    detail::wakeup_fd m_wakeup;
+    detail::post_queue<> m_post_queue;
     std::vector<socket_entry> m_sockets;
     std::vector<default_timer*> m_timers;
     std::array<std::byte, detail::max_udp_payload> m_recv_buf{};
     sockaddr_storage m_sender_addr{};
 
-    // Stop-wakeup mechanism — platform-specific members.
-#if defined(__linux__)
-    int m_wakeup_fd{-1};
-#elif defined(_WIN32)
-    detail::native_socket_t m_wakeup_recv{detail::invalid_socket};
-    detail::native_socket_t m_wakeup_send{detail::invalid_socket};
-#else
-    int m_pipe[2]{-1, -1};
-#endif
-
     // Poll state — rebuilt each do_poll() call.
     std::vector<pollfd> m_pollfds;
-    bool m_wakeup_ready{false};
 
 #ifndef NDEBUG
     // Lazily initialized on first call to run() — captures the executor thread id.
@@ -340,184 +232,24 @@ private:
     std::thread::id m_owner_thread{};
 #endif
 
-    void drain_work_queue()
-    {
-        std::deque<detail::move_only_function<void()>> local;
-        {
-            std::lock_guard lock{m_work_mutex};
-            local.swap(m_work_queue);
-        }
-        m_post_pending.store(false, std::memory_order_release);
-        for (auto &fn : local)
-            fn();
-    }
-
-    // ------------------------------------------------------------------
-    // Platform-specific wakeup fd lifecycle
-    // ------------------------------------------------------------------
-    void create_wakeup_fd()
-    {
-#if defined(__linux__)
-        m_wakeup_fd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-        if(m_wakeup_fd < 0)
-            throw std::system_error(errno, std::generic_category(), "eventfd");
-
-#elif defined(_WIN32)
-        m_wakeup_recv = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if(m_wakeup_recv == INVALID_SOCKET)
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "socket(wakeup_recv)");
-
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        addr.sin_port = 0;
-
-        if(::bind(m_wakeup_recv, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
-        {
-            ::closesocket(m_wakeup_recv);
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "bind(wakeup_recv)");
-        }
-
-        int len = sizeof(addr);
-        if(::getsockname(m_wakeup_recv, reinterpret_cast<sockaddr*>(&addr), &len) == SOCKET_ERROR)
-        {
-            ::closesocket(m_wakeup_recv);
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "getsockname");
-        }
-
-        m_wakeup_send = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if(m_wakeup_send == INVALID_SOCKET)
-        {
-            ::closesocket(m_wakeup_recv);
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "socket(wakeup_send)");
-        }
-
-        if(::connect(m_wakeup_send, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
-        {
-            ::closesocket(m_wakeup_recv);
-            ::closesocket(m_wakeup_send);
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "connect(wakeup_send)");
-        }
-
-        // Set recv socket to non-blocking so drain_wakeup_fd() doesn't hang
-        {
-            u_long mode = 1;
-            if(::ioctlsocket(m_wakeup_recv, FIONBIO, &mode) == SOCKET_ERROR)
-            {
-                ::closesocket(m_wakeup_recv);
-                ::closesocket(m_wakeup_send);
-                throw std::system_error(::WSAGetLastError(), std::system_category(), "ioctlsocket(wakeup_recv)");
-            }
-        }
-
-#else
-        // Other POSIX: self-pipe
-        if(::pipe(m_pipe) != 0)
-            throw std::system_error(errno, std::generic_category(), "pipe");
-
-        for(const int fd : m_pipe)
-        {
-            const int flags = ::fcntl(fd, F_GETFL, 0);
-            if(flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
-            {
-                ::close(m_pipe[0]);
-                ::close(m_pipe[1]);
-                throw std::system_error(errno, std::generic_category(), "fcntl(O_NONBLOCK)");
-            }
-        }
-#endif
-    }
-
-    void close_wakeup_fd() noexcept
-    {
-#if defined(__linux__)
-        if(m_wakeup_fd >= 0)
-        {
-            ::close(m_wakeup_fd);
-            m_wakeup_fd = -1;
-        }
-#elif defined(_WIN32)
-        if(m_wakeup_recv != INVALID_SOCKET)
-            ::closesocket(m_wakeup_recv);
-        if(m_wakeup_send != INVALID_SOCKET)
-            ::closesocket(m_wakeup_send);
-        m_wakeup_recv = INVALID_SOCKET;
-        m_wakeup_send = INVALID_SOCKET;
-#else
-        for(int &fd : m_pipe)
-        {
-            if(fd >= 0)
-            {
-                ::close(fd);
-                fd = -1;
-            }
-        }
-#endif
-    }
-
-    void write_wakeup_fd() noexcept
-    {
-#if defined(__linux__)
-        const uint64_t one = 1;
-        (void)::write(m_wakeup_fd, &one, sizeof(one));
-#elif defined(_WIN32)
-        const char byte = 1;
-        (void)::send(m_wakeup_send, &byte, 1, 0);
-#else
-        const char byte = 1;
-        (void)::write(m_pipe[1], &byte, 1);
-#endif
-    }
-
-    void drain_wakeup_fd() noexcept
-    {
-#if defined(__linux__)
-        uint64_t val{};
-        (void)::read(m_wakeup_fd, &val, sizeof(val));
-#elif defined(_WIN32)
-        char buf[64];
-        while(::recv(m_wakeup_recv, buf, sizeof(buf), 0) > 0)
-        {
-        }
-#else
-        char buf[64];
-        while(::read(m_pipe[0], buf, sizeof(buf)) > 0)
-        {
-        }
-#endif
-    }
-
-#if defined(__linux__)
-    [[nodiscard]] int wakeup_poll_fd() const noexcept { return m_wakeup_fd; }
-#elif defined(_WIN32)
-    [[nodiscard]] detail::native_socket_t wakeup_poll_fd() const noexcept { return m_wakeup_recv; }
-#else
-    [[nodiscard]] int wakeup_poll_fd() const noexcept { return m_pipe[0]; }
-#endif
-
     /// Build pollfd array, invoke poll, dispatch ready sockets.
     int do_poll(int timeout_ms)
     {
-        m_wakeup_ready = false;
-
-        // Build pollfd array: [wakeup_fd, socket_0, socket_1, ...]
         m_pollfds.clear();
-        m_pollfds.push_back({wakeup_poll_fd(), POLLIN, 0});
+        m_pollfds.push_back({m_wakeup.native(), POLLIN, 0});
         for(const auto &entry : m_sockets)
             m_pollfds.push_back({entry.fd, POLLIN, 0});
 
         const auto nfds = static_cast<nfds_t>(m_pollfds.size());
-        const int rc = detail::poll_sockets(m_pollfds.data(), nfds, timeout_ms);
-
-        if(rc > 0)
-            m_wakeup_ready = (m_pollfds[0].revents & POLLIN) != 0;
-
-        return rc;
+        return detail::poll_sockets(m_pollfds.data(), nfds, timeout_ms);
     }
 
-    [[nodiscard]] bool wakeup_readable() const noexcept { return m_wakeup_ready; }
+    bool wakeup_readable() const noexcept
+    {
+        return (m_pollfds[0].revents & POLLIN) != 0;
+    }
 
-    [[nodiscard]] bool any_socket_readable() const noexcept
+    bool any_socket_readable() const noexcept
     {
         for(std::size_t i = 1; i < m_pollfds.size(); ++i)
             if(m_pollfds[i].revents & POLLIN)

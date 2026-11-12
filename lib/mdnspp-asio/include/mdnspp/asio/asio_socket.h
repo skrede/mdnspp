@@ -8,6 +8,7 @@
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/validate_multicast.h"
+#include "mdnspp/detail/recv_datagram.h"
 
 #include <asio.hpp>
 
@@ -17,17 +18,11 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include <cstring>
-#  ifdef __APPLE__
-#    include <net/if_dl.h>
-#  endif
 #endif
 
 #include <span>
-#include <array>
 #include <string>
 #include <vector>
-#include <optional>
 #include <system_error>
 
 namespace mdnspp {
@@ -208,244 +203,19 @@ public:
                     return;
                 }
 
-#ifndef _WIN32
-                sockaddr_storage sender_addr{};
-                iovec iov{};
-                iov.iov_base = m_buffer.data();
-                iov.iov_len  = m_buffer.size();
-
-                alignas(cmsghdr) std::array<std::byte, 64> ctrl_buf{};
-
-                msghdr msg{};
-                msg.msg_name    = &sender_addr;
-                msg.msg_namelen = sizeof(sender_addr);
-                msg.msg_iov     = &iov;
-                msg.msg_iovlen  = 1;
-                msg.msg_control    = ctrl_buf.data();
-                msg.msg_controllen = ctrl_buf.size();
-
-                const ssize_t n = ::recvmsg(m_socket.native_handle(), &msg, 0);
-                if(n < 0)
-                {
-                    if(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)
-                    {
-                        async_receive(std::move(handler)); // spurious readiness — re-arm
-                        return;
-                    }
-                    handler(std::error_code(errno, std::generic_category()),
-                            mdnspp::recv_metadata{}, std::span<std::byte>{});
-                    return;
-                }
-#ifdef MSG_TRUNC
-                if(msg.msg_flags & MSG_TRUNC) // truncated datagram — drop and re-arm
+                const detail::datagram_result result = read_datagram();
+                if(result.would_block || result.truncated)
                 {
                     async_receive(std::move(handler));
                     return;
                 }
-#endif
-
-                std::optional<uint8_t> ttl;
-                uint32_t recv_ifindex = 0;
-                for(cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg))
+                if(result.ec)
                 {
-                    if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL)
-                    {
-                        int ttl_val{};
-                        std::memcpy(&ttl_val, CMSG_DATA(cmsg), sizeof(ttl_val));
-                        ttl = static_cast<uint8_t>(ttl_val);
-                    }
-#ifdef IPV6_HOPLIMIT
-                    else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_HOPLIMIT)
-                    {
-                        int ttl_val{};
-                        std::memcpy(&ttl_val, CMSG_DATA(cmsg), sizeof(ttl_val));
-                        ttl = static_cast<uint8_t>(ttl_val);
-                    }
-#endif
-#if defined(IP_PKTINFO)
-                    else if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO)
-                    {
-                        in_pktinfo pktinfo{};
-                        std::memcpy(&pktinfo, CMSG_DATA(cmsg), sizeof(pktinfo));
-                        recv_ifindex = static_cast<uint32_t>(pktinfo.ipi_ifindex);
-                    }
-#elif defined(__APPLE__) && defined(IP_RECVIF)
-                    else if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_RECVIF)
-                    {
-                        sockaddr_dl sdl{};
-                        std::memcpy(&sdl, CMSG_DATA(cmsg),
-                                    (std::min)(sizeof(sdl),
-                                               static_cast<std::size_t>(cmsg->cmsg_len) -
-                                               sizeof(cmsghdr)));
-                        recv_ifindex = static_cast<uint32_t>(sdl.sdl_index);
-                    }
-#endif
-#ifdef IPV6_PKTINFO
-                    else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO)
-                    {
-                        in6_pktinfo pktinfo6{};
-                        std::memcpy(&pktinfo6, CMSG_DATA(cmsg), sizeof(pktinfo6));
-                        recv_ifindex = static_cast<uint32_t>(pktinfo6.ipi6_ifindex);
-                    }
-#endif
+                    handler(result.ec, mdnspp::recv_metadata{}, std::span<std::byte>{});
+                    return;
                 }
-
-                char addr_str[INET6_ADDRSTRLEN]{};
-                uint16_t port{};
-                if(sender_addr.ss_family == AF_INET6)
-                {
-                    const auto *sa6 = reinterpret_cast<const sockaddr_in6 *>(&sender_addr);
-                    ::inet_ntop(AF_INET6, &sa6->sin6_addr, addr_str, sizeof(addr_str));
-                    port = ntohs(sa6->sin6_port);
-                }
-                else
-                {
-                    const auto *sa4 = reinterpret_cast<const sockaddr_in *>(&sender_addr);
-                    ::inet_ntop(AF_INET, &sa4->sin_addr, addr_str, sizeof(addr_str));
-                    port = ntohs(sa4->sin_port);
-                }
-
-                mdnspp::endpoint ep{addr_str, port};
-                mdnspp::recv_metadata meta{ep, ttl, recv_ifindex};
-                handler(std::error_code{}, meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(n)));
-
-#else // _WIN32
-                if(m_fn_wsarecvmsg)
-                {
-                    sockaddr_storage sender_addr{};
-                    WSABUF data_buf{};
-                    data_buf.len = static_cast<ULONG>(m_buffer.size());
-                    data_buf.buf = reinterpret_cast<char *>(m_buffer.data());
-
-                    alignas(WSACMSGHDR) std::array<std::byte, 64> ctrl_buf{};
-
-                    WSAMSG wmsg{};
-                    wmsg.name       = reinterpret_cast<LPSOCKADDR>(&sender_addr);
-                    wmsg.namelen    = sizeof(sender_addr);
-                    wmsg.lpBuffers  = &data_buf;
-                    wmsg.dwBufferCount = 1;
-                    wmsg.Control.buf = reinterpret_cast<char *>(ctrl_buf.data());
-                    wmsg.Control.len = static_cast<ULONG>(ctrl_buf.size());
-                    wmsg.dwFlags    = 0;
-
-                    DWORD received = 0;
-                    if(m_fn_wsarecvmsg(m_socket.native_handle(), &wmsg, &received, nullptr, nullptr) == SOCKET_ERROR)
-                    {
-                        const int err = ::WSAGetLastError();
-                        if(err == WSAEWOULDBLOCK || err == WSAEMSGSIZE) // spurious readiness / truncated datagram
-                        {
-                            async_receive(std::move(handler));
-                            return;
-                        }
-                        handler(std::error_code(err, std::system_category()),
-                                mdnspp::recv_metadata{}, std::span<std::byte>{});
-                        return;
-                    }
-                    if(wmsg.dwFlags & MSG_PARTIAL) // truncated datagram — drop and re-arm
-                    {
-                        async_receive(std::move(handler));
-                        return;
-                    }
-
-                    std::optional<uint8_t> ttl;
-                    uint32_t recv_ifindex = 0;
-                    for(WSACMSGHDR *cmsg = WSA_CMSG_FIRSTHDR(&wmsg); cmsg; cmsg = WSA_CMSG_NXTHDR(&wmsg, cmsg))
-                    {
-                        if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL)
-                        {
-                            int ttl_val{};
-                            std::memcpy(&ttl_val, WSA_CMSG_DATA(cmsg), sizeof(ttl_val));
-                            ttl = static_cast<uint8_t>(ttl_val);
-                        }
-#ifdef IPV6_HOPLIMIT
-                        else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_HOPLIMIT)
-                        {
-                            int ttl_val{};
-                            std::memcpy(&ttl_val, WSA_CMSG_DATA(cmsg), sizeof(ttl_val));
-                            ttl = static_cast<uint8_t>(ttl_val);
-                        }
-#endif
-#ifdef IP_PKTINFO
-                        else if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO)
-                        {
-                            IN_PKTINFO pktinfo{};
-                            std::memcpy(&pktinfo, WSA_CMSG_DATA(cmsg), sizeof(pktinfo));
-                            recv_ifindex = static_cast<uint32_t>(pktinfo.ipi_ifindex);
-                        }
-#endif
-#ifdef IPV6_PKTINFO
-                        else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO)
-                        {
-                            IN6_PKTINFO pktinfo6{};
-                            std::memcpy(&pktinfo6, WSA_CMSG_DATA(cmsg), sizeof(pktinfo6));
-                            recv_ifindex = static_cast<uint32_t>(pktinfo6.ipi6_ifindex);
-                        }
-#endif
-                    }
-
-                    char addr_str[INET6_ADDRSTRLEN]{};
-                    uint16_t port{};
-                    if(sender_addr.ss_family == AF_INET6)
-                    {
-                        const auto *sa6 = reinterpret_cast<const sockaddr_in6 *>(&sender_addr);
-                        ::inet_ntop(AF_INET6, &sa6->sin6_addr, addr_str, sizeof(addr_str));
-                        port = ntohs(sa6->sin6_port);
-                    }
-                    else
-                    {
-                        const auto *sa4 = reinterpret_cast<const sockaddr_in *>(&sender_addr);
-                        ::inet_ntop(AF_INET, &sa4->sin_addr, addr_str, sizeof(addr_str));
-                        port = ntohs(sa4->sin_port);
-                    }
-
-                    mdnspp::endpoint ep{addr_str, port};
-                    mdnspp::recv_metadata meta{ep, ttl, recv_ifindex};
-                    handler(std::error_code{}, meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(received)));
-                }
-                else
-                {
-                    // Fallback: WSARecvMsg not available -- use recvfrom, TTL stays nullopt.
-                    sockaddr_storage sender_addr{};
-                    int namelen = sizeof(sender_addr);
-                    const int n = ::recvfrom(m_socket.native_handle(),
-                                             reinterpret_cast<char *>(m_buffer.data()),
-                                             static_cast<int>(m_buffer.size()),
-                                             0,
-                                             reinterpret_cast<sockaddr *>(&sender_addr),
-                                             &namelen);
-                    if(n == SOCKET_ERROR)
-                    {
-                        const int err = ::WSAGetLastError();
-                        if(err == WSAEWOULDBLOCK || err == WSAEMSGSIZE) // spurious readiness / truncated datagram
-                        {
-                            async_receive(std::move(handler));
-                            return;
-                        }
-                        handler(std::error_code(err, std::system_category()),
-                                mdnspp::recv_metadata{}, std::span<std::byte>{});
-                        return;
-                    }
-
-                    char addr_str[INET6_ADDRSTRLEN]{};
-                    uint16_t port{};
-                    if(sender_addr.ss_family == AF_INET6)
-                    {
-                        const auto *sa6 = reinterpret_cast<const sockaddr_in6 *>(&sender_addr);
-                        ::inet_ntop(AF_INET6, &sa6->sin6_addr, addr_str, sizeof(addr_str));
-                        port = ntohs(sa6->sin6_port);
-                    }
-                    else
-                    {
-                        const auto *sa4 = reinterpret_cast<const sockaddr_in *>(&sender_addr);
-                        ::inet_ntop(AF_INET, &sa4->sin_addr, addr_str, sizeof(addr_str));
-                        port = ntohs(sa4->sin_port);
-                    }
-
-                    mdnspp::endpoint ep{addr_str, port};
-                    mdnspp::recv_metadata meta{ep, std::nullopt};
-                    handler(std::error_code{}, meta, std::span<std::byte>(m_buffer.data(), static_cast<std::size_t>(n)));
-                }
-#endif
+                handler(std::error_code{}, result.meta,
+                        std::span<std::byte>(m_buffer.data(), result.size));
             });
     }
 
@@ -488,6 +258,15 @@ public:
     }
 
 private:
+    detail::datagram_result read_datagram()
+    {
+#ifdef _WIN32
+        return detail::recv_datagram(m_socket.native_handle(), m_buffer, m_fn_wsarecvmsg);
+#else
+        return detail::recv_datagram(m_socket.native_handle(), m_buffer);
+#endif
+    }
+
     // Apply SO_REUSEPORT in addition to asio's reuse_address (SO_REUSEADDR),
     // mirroring default_socket which sets both. For co-located same-port
     // multicast sockets (e.g. an announcing server and a browsing monitor in

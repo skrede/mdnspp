@@ -9,3 +9,7 @@ make_subdir_test(receive_contract_buffered_test receive_contract/buffered.cpp)
 target_link_libraries(receive_contract_buffered_test PRIVATE mdnspp::inproc)
 
 make_test(recv_ancillary_test)
+make_test(socket_registry_test)
+
+make_subdir_test(receive_contract_default_test receive_contract/default.cpp)
+target_link_libraries(receive_contract_default_test PRIVATE mdnspp::inproc)

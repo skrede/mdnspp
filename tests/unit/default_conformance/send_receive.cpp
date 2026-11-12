@@ -7,7 +7,8 @@ TEST_CASE_METHOD(loopback_socket, "default_context dispatches data on registered
     std::string received_data;
     mdnspp::endpoint received_ep;
 
-    ctx.register_socket(fd, [&](std::error_code, const mdnspp::recv_metadata &meta, std::span<std::byte> data)
+    ctx.register_socket(fd);
+    ctx.arm_receive(fd, [&](std::error_code, const mdnspp::recv_metadata &meta, std::span<std::byte> data)
     {
         handler_called = true;
         received_data.assign(reinterpret_cast<const char *>(data.data()), data.size());
@@ -27,7 +28,8 @@ TEST_CASE_METHOD(loopback_socket, "default_context dispatches data on registered
 TEST_CASE_METHOD(loopback_socket, "default_context deregister_socket stops dispatch", "[native][context][socket]")
 {
     int32_t call_count = 0;
-    ctx.register_socket(fd, [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
+    ctx.register_socket(fd);
+    ctx.arm_receive(fd, [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
     {
         ++call_count;
     });
@@ -42,14 +44,15 @@ TEST_CASE_METHOD(loopback_socket, "default_context deregister_socket stops dispa
     REQUIRE(call_count == 0);
 }
 
-TEST_CASE_METHOD(loopback_socket, "default_context register_socket twice replaces handler",
+TEST_CASE_METHOD(loopback_socket, "default_context arming twice replaces the handler",
                  "[native][context][socket]")
 {
     int32_t first_count = 0;
     int32_t second_count = 0;
 
-    ctx.register_socket(fd, [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>) { ++first_count; });
-    ctx.register_socket(fd, [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>) { ++second_count; });
+    ctx.register_socket(fd);
+    ctx.arm_receive(fd, [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>) { ++first_count; });
+    ctx.arm_receive(fd, [&](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>) { ++second_count; });
 
     send_to_self("test");
     poll_until([&] { return second_count != 0; });

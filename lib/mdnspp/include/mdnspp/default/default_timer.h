@@ -101,7 +101,7 @@ static_assert(timer_like<default_timer>, "default_timer must satisfy timer_like 
 
 inline int default_context::compute_next_timeout_ms(std::chrono::steady_clock::time_point now) const
 {
-    assert_executor_thread();
+    m_owner.assert_current();
     int min_ms = -1; // -1 = no pending timer, poll blocks indefinitely
     for(const default_timer *t : m_timers)
     {
@@ -123,7 +123,7 @@ inline int default_context::compute_next_timeout_ms(std::chrono::steady_clock::t
 
 inline void default_context::fire_expired_timers()
 {
-    assert_executor_thread();
+    m_owner.assert_current();
     // Snapshot to avoid iterator invalidation if a handler calls register/deregister.
     const auto timers = m_timers;
     for(default_timer *t : timers)

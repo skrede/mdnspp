@@ -69,6 +69,8 @@ public:
 
     uint32_t completions_after_close() const noexcept { return m_after_close; }
 
+    bool closed() const noexcept { return m_closed; }
+
     bool consistent() const noexcept { return m_completions <= m_arms && m_after_close == 0; }
 
 private:

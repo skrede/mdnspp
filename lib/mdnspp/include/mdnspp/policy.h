@@ -63,11 +63,20 @@ struct recv_metadata
 // The receive handler is invoked with the error code first (asio convention);
 // on error the metadata is empty and the data span is empty.
 //
-// Semantic requirements (not expressible in the concept):
+// One-shot receive contract (not expressible in the concept):
+//   - One async_receive yields at most one completion. The slot is cleared
+//     before the handler runs, so the handler may call async_receive again;
+//     the socket is disarmed after a completion until it is re-armed.
+//   - After close() no handler fires, success or error, including completions
+//     the OS or the executor had already queued. A handler registered by
+//     async_receive after close() never fires.
+//   - The data span is valid only during the handler call.
+//   - Buffering backends may complete inline from async_receive when a
+//     datagram is already queued, so callers tolerate that recursion.
 //   - Receive handlers fire on the policy executor; the library never locks
 //     around handler invocation and relies on executor serialization.
-//   - close() releases the pending receive handler; after close() no handler
-//     may fire.
+//   - close() and async_receive() are executor-confined; no cross-thread
+//     close guarantee is made.
 template <typename S>
 concept socket_like = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
 {

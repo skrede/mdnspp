@@ -14,6 +14,9 @@ target_link_libraries(mdnspp_testing INTERFACE mdnspp)
 
 install(FILES
     ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_policy.h
+    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_executor.h
+    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_socket.h
+    ${INCLUDE_DIRECTORY}/mdnspp/testing/mock_timer.h
     ${INCLUDE_DIRECTORY}/mdnspp/testing/test_clock.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/testing
 )

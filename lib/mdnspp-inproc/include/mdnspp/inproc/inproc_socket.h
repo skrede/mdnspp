@@ -40,6 +40,7 @@ public:
         : m_bus(&ex.bus())
         , m_opts(opts)
         , m_ep(m_bus->register_socket(this, opts))
+        , m_closed(false)
     {
     }
 
@@ -60,6 +61,8 @@ public:
 
     void async_receive(move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
     {
+        if(m_closed)
+            return;
         if(!m_recv_queue.empty())
         {
             auto [data, from, ttl] = std::move(m_recv_queue.front());
@@ -87,6 +90,9 @@ public:
 
     void close() noexcept
     {
+        m_closed = true;
+        m_pending_receive = nullptr;
+        m_recv_queue = {};
         if(m_bus)
         {
             m_bus->deregister_socket(this);
@@ -106,6 +112,8 @@ public:
 
     void deliver(const endpoint &from, std::span<const std::byte> data, std::optional<uint8_t> ttl)
     {
+        if(m_closed)
+            return;
         if(m_pending_receive)
         {
             m_recv_buf.assign(data.begin(), data.end());
@@ -126,6 +134,7 @@ private:
     inproc_bus<Clock> *m_bus;
     inproc_socket_options m_opts;
     endpoint m_ep;
+    bool m_closed;
     move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_pending_receive;
     std::vector<std::byte> m_recv_buf;
 

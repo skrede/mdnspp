@@ -23,6 +23,8 @@ jobs:
         xcode: ["15.4", "16.2"]
     runs-on: macos-14
     name: build (Xcode ${{ matrix.xcode }})
+    env:
+      MDNSPP_REQUIRE_NETWORK: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -41,13 +43,14 @@ jobs:
             -DMDNSPP_BUILD_TESTS=ON \
             -DMDNSPP_BUILD_EXAMPLES=ON \
             -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+            -DMDNSPP_ENABLE_ENCRYPT=ON \
             -DMDNSPP_CMAKE_FETCH_DEPS=ON
 
       - name: Build
         run: cmake --build build
 
       - name: Test
-        run: cd build && ctest --output-on-failure
+        run: cd build && ctest --output-on-failure --timeout 60
 
   install-test:
     runs-on: macos-14

@@ -18,6 +18,8 @@ on:
 jobs:
   build:
     runs-on: windows-2022
+    env:
+      MDNSPP_REQUIRE_NETWORK: "1"
     steps:
       - uses: actions/checkout@v4
 
@@ -33,13 +35,14 @@ jobs:
             -DMDNSPP_BUILD_TESTS=ON `
             -DMDNSPP_BUILD_EXAMPLES=ON `
             -DMDNSPP_ENABLE_ASIO_POLICY=ON `
+            -DMDNSPP_ENABLE_ENCRYPT=ON `
             -DMDNSPP_CMAKE_FETCH_DEPS=ON
 
       - name: Build
         run: cmake --build build --config Release
 
       - name: Test
-        run: cd build && ctest -C Release --output-on-failure --timeout 30
+        run: cd build && ctest -C Release --output-on-failure --timeout 60
 
   install-test:
     runs-on: windows-2022

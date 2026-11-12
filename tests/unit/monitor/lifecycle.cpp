@@ -5,9 +5,7 @@
 TEST_CASE("basic_service_monitor: throwing constructor", "[monitor]")
 {
     mock_executor ex;
-    test_monitor mon{ex};
-    // If construction reaches here without throwing, the test passes.
-    // The monitor starts stopped (no async_start has been called).
+    REQUIRE_NOTHROW(test_monitor{ex});
 }
 
 TEST_CASE("basic_service_monitor: non-throwing constructor", "[monitor]")
@@ -87,52 +85,51 @@ TEST_CASE("basic_service_monitor: async_start after stop completes with invalid_
     CHECK(received_ec == std::errc::invalid_argument);
 }
 
-TEST_CASE("basic_service_monitor: constructor rejects invalid options", "[monitor][validate]")
+TEST_CASE("basic_service_monitor: constructor rejects backoff_multiplier below 1.0", "[monitor][validate]")
 {
     mock_executor ex;
+    mdnspp::mdns_options bad;
+    bad.backoff_multiplier = 0.5;
 
-    SECTION("backoff_multiplier below 1.0")
-    {
-        mdnspp::mdns_options bad;
-        bad.backoff_multiplier = 0.5;
+    std::error_code ec;
+    test_monitor mon{ex, mdnspp::monitor_options{}, mdnspp::socket_options{},
+                     std::move(bad), mdnspp::cache_options{}, ec};
+    CHECK(ec == std::errc::invalid_argument);
+}
 
-        std::error_code ec;
-        test_monitor mon{ex, mdnspp::monitor_options{}, mdnspp::socket_options{},
-                         std::move(bad), mdnspp::cache_options{}, ec};
-        CHECK(ec == std::errc::invalid_argument);
-    }
+TEST_CASE("basic_service_monitor: constructor rejects ttl refresh threshold outside (0,1)", "[monitor][validate]")
+{
+    mock_executor ex;
+    mdnspp::mdns_options bad;
+    bad.ttl_refresh_thresholds = {0.8, 1.5};
 
-    SECTION("ttl refresh threshold outside (0,1)")
-    {
-        mdnspp::mdns_options bad;
-        bad.ttl_refresh_thresholds = {0.8, 1.5};
+    std::error_code ec;
+    test_monitor mon{ex, mdnspp::monitor_options{}, mdnspp::socket_options{},
+                     std::move(bad), mdnspp::cache_options{}, ec};
+    CHECK(ec == std::errc::invalid_argument);
+}
 
-        std::error_code ec;
-        test_monitor mon{ex, mdnspp::monitor_options{}, mdnspp::socket_options{},
-                         std::move(bad), mdnspp::cache_options{}, ec};
-        CHECK(ec == std::errc::invalid_argument);
-    }
+TEST_CASE("basic_service_monitor: constructor rejects non-positive goodbye_grace", "[monitor][validate]")
+{
+    mock_executor ex;
+    mdnspp::cache_options bad;
+    bad.goodbye_grace = std::chrono::seconds{0};
 
-    SECTION("non-positive goodbye_grace")
-    {
-        mdnspp::cache_options bad;
-        bad.goodbye_grace = std::chrono::seconds{0};
+    std::error_code ec;
+    test_monitor mon{ex, mdnspp::monitor_options{}, mdnspp::socket_options{},
+                     mdnspp::mdns_options{}, std::move(bad), ec};
+    CHECK(ec == std::errc::invalid_argument);
+}
 
-        std::error_code ec;
-        test_monitor mon{ex, mdnspp::monitor_options{}, mdnspp::socket_options{},
-                         mdnspp::mdns_options{}, std::move(bad), ec};
-        CHECK(ec == std::errc::invalid_argument);
-    }
+TEST_CASE("basic_service_monitor: throwing constructor throws system_error on invalid options", "[monitor][validate]")
+{
+    mock_executor ex;
+    mdnspp::mdns_options bad;
+    bad.backoff_multiplier = 0.0;
 
-    SECTION("throwing constructor throws system_error")
-    {
-        mdnspp::mdns_options bad;
-        bad.backoff_multiplier = 0.0;
-
-        REQUIRE_THROWS_AS((test_monitor{ex, mdnspp::monitor_options{}, mdnspp::socket_options{},
-                                        std::move(bad)}),
-                          std::system_error);
-    }
+    REQUIRE_THROWS_AS((test_monitor{ex, mdnspp::monitor_options{}, mdnspp::socket_options{},
+                                    std::move(bad)}),
+                      std::system_error);
 }
 
 TEST_CASE("basic_service_monitor: destruction completes a pending handler with operation_canceled",

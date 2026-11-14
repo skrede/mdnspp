@@ -11,19 +11,23 @@
 
 #include <atomic>
 #include <chrono>
+#include <string>
+#include <thread>
 #include <cstdint>
 #include <optional>
-#include <thread>
+#include <string_view>
 
 using namespace std::chrono_literals;
 using mdnspp::test_support::construct_or_skip;
 
-inline mdnspp::service_info make_tsan_info()
+// Each test binary passes its own instance name: ctest runs them concurrently on the shared
+// mDNS port, and a common name would let one binary's records conflict with another's probes.
+inline mdnspp::service_info make_tsan_info(std::string_view instance)
 {
     mdnspp::service_info info;
-    info.service_name = "TSanTest._http._tcp.local.";
+    info.service_name = std::string(instance) + "._http._tcp.local.";
     info.service_type = "_http._tcp.local.";
-    info.hostname = "tsanhost.local.";
+    info.hostname = std::string(instance) + "-host.local.";
     info.port = 8080;
     info.address_ipv4 = "192.168.1.10";
     return info;

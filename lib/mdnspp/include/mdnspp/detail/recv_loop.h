@@ -91,6 +91,8 @@ private:
     static constexpr std::chrono::milliseconds transient_backoff_initial{10};
     static constexpr std::chrono::milliseconds transient_backoff_cap{500};
 
+    // The packet, silence and error callbacks may stop the loop re-entrantly,
+    // so every function that arms the socket or the timer checks m_stopped first.
     void arm_receive()
     {
         if(m_stopped.load(std::memory_order_acquire))
@@ -149,6 +151,10 @@ private:
 
     void wait_silence(std::chrono::milliseconds delay)
     {
+        if(m_stopped.load(std::memory_order_acquire))
+        {
+            return;
+        }
         m_silence_pending = true;
         m_timer.expires_after(delay);
         m_timer.async_wait(
@@ -174,6 +180,10 @@ private:
     // so no packet can re-arm the silence wait underneath it.
     void defer_rearm()
     {
+        if(m_stopped.load(std::memory_order_acquire))
+        {
+            return;
+        }
         m_timer.expires_after(transient_backoff_delay());
         m_timer.async_wait(
             [this](std::error_code ec)

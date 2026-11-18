@@ -3,15 +3,11 @@
 
 #include <sodium.h>
 
-#include <array>
-#include <vector>
 #include <algorithm>
 
 namespace mdnspp::encrypt {
 
 namespace {
-
-using header_buffer = std::array<std::byte, encrypted_header_size>;
 
 const unsigned char *as_uchar(const std::byte *p)
 {
@@ -23,160 +19,131 @@ unsigned char *as_uchar(std::byte *p)
     return reinterpret_cast<unsigned char *>(p);
 }
 
-std::vector<unsigned char> build_aad(const header_buffer &header_bytes, std::span<const std::byte> payload)
+// libsodium declares its pointer parameters nonnull, so an empty span needs a stand-in address.
+const unsigned char *readable(std::span<const std::byte> bytes, const unsigned char &stand_in)
 {
-    std::vector<unsigned char> aad;
-    aad.resize(encrypted_header_size + payload.size());
-    std::copy(header_bytes.begin(), header_bytes.end(),
-              reinterpret_cast<std::byte *>(aad.data()));
-    std::copy(payload.begin(), payload.end(),
-              reinterpret_cast<std::byte *>(aad.data() + encrypted_header_size));
-    return aad;
+    return bytes.empty() ? &stand_in : as_uchar(bytes.data());
 }
 
-std::vector<std::byte> encrypt_sealed(
-    std::span<const std::byte, 32> key,
-    const encrypted_packet_header &hdr,
-    const header_buffer &header_bytes,
-    std::span<const std::byte> plaintext)
+unsigned char *writable(std::span<std::byte> bytes, unsigned char &stand_in)
 {
-    const std::size_t ciphertext_len = plaintext.size() + crypto_aead_xchacha20poly1305_ietf_ABYTES;
-    std::vector<std::byte> output(encrypted_header_size + ciphertext_len);
-    std::copy(header_bytes.begin(), header_bytes.end(), output.begin());
+    return bytes.empty() ? &stand_in : as_uchar(bytes.data());
+}
 
-    unsigned long long actual_ciphertext_len = 0;
+std::size_t seal(std::span<const std::byte, 32> key, const encrypted_packet_header &hdr,
+                 std::span<const std::byte> plaintext, std::span<std::byte> out)
+{
+    unsigned char stand_in = 0;
+    unsigned long long ciphertext_len = 0;
     crypto_aead_xchacha20poly1305_ietf_encrypt(
-        as_uchar(output.data() + encrypted_header_size), &actual_ciphertext_len,
-        as_uchar(plaintext.data()), static_cast<unsigned long long>(plaintext.size()),
-        as_uchar(header_bytes.data()), static_cast<unsigned long long>(encrypted_header_size),
+        as_uchar(out.data() + encrypted_header_size), &ciphertext_len,
+        readable(plaintext, stand_in), static_cast<unsigned long long>(plaintext.size()),
+        as_uchar(out.data()), static_cast<unsigned long long>(encrypted_header_size),
         nullptr,
         as_uchar(hdr.nonce.data()), as_uchar(key.data()));
-
-    output.resize(encrypted_header_size + actual_ciphertext_len);
-    return output;
+    return encrypted_header_size + static_cast<std::size_t>(ciphertext_len);
 }
 
-std::vector<std::byte> encrypt_authenticated(
-    std::span<const std::byte, 32> key,
-    const encrypted_packet_header &hdr,
-    const header_buffer &header_bytes,
-    std::span<const std::byte> plaintext)
+// The tag covers header and plaintext, both already contiguous at the front of out.
+std::size_t tag_only(std::span<const std::byte, 32> key, const encrypted_packet_header &hdr,
+                     std::span<const std::byte> plaintext, std::span<std::byte> out)
 {
-    std::vector<std::byte> output(encrypted_header_size + plaintext.size() + encrypted_tag_size);
-    std::copy(header_bytes.begin(), header_bytes.end(), output.begin());
-    std::copy(plaintext.begin(), plaintext.end(),
-              output.begin() + static_cast<std::ptrdiff_t>(encrypted_header_size));
+    const std::size_t body_len = encrypted_header_size + plaintext.size();
+    std::copy(plaintext.begin(), plaintext.end(), out.begin() + static_cast<std::ptrdiff_t>(encrypted_header_size));
 
-    const auto aad = build_aad(header_bytes, plaintext);
+    unsigned char stand_in = 0;
     unsigned long long tag_len = 0;
-
-    // Zero-length message: the tag covers only the AAD (header + plaintext).
-    // libsodium's nonnull attributes still require valid pointers.
-    unsigned char dummy = 0;
     crypto_aead_xchacha20poly1305_ietf_encrypt_detached(
-        &dummy, as_uchar(output.data() + encrypted_header_size + plaintext.size()), &tag_len,
-        &dummy, 0,
-        aad.data(), static_cast<unsigned long long>(aad.size()),
+        &stand_in, as_uchar(out.data() + body_len), &tag_len,
+        &stand_in, 0,
+        as_uchar(out.data()), static_cast<unsigned long long>(body_len),
         nullptr,
         as_uchar(hdr.nonce.data()), as_uchar(key.data()));
-
-    return output;
+    return body_len + encrypted_tag_size;
 }
 
-detail::expected<std::vector<std::byte>, encrypt_error> decrypt_sealed(
-    std::span<const std::byte, 32> key,
-    const encrypted_packet_header &hdr,
-    const header_buffer &header_bytes,
-    std::span<const std::byte> packet)
+bool open_sealed(std::span<const std::byte, 32> key, const encrypted_packet_header &hdr,
+                 std::span<const std::byte> packet, std::span<std::byte> out)
 {
-    const std::byte *ciphertext_ptr = packet.data() + encrypted_header_size;
-    const std::size_t ciphertext_len = packet.size() - encrypted_header_size;
-
-    std::vector<std::byte> plaintext(ciphertext_len - crypto_aead_xchacha20poly1305_ietf_ABYTES);
+    unsigned char stand_in = 0;
     unsigned long long plaintext_len = 0;
-
-    int rc = crypto_aead_xchacha20poly1305_ietf_decrypt(
-        as_uchar(plaintext.data()), &plaintext_len,
+    const int rc = crypto_aead_xchacha20poly1305_ietf_decrypt(
+        writable(out, stand_in), &plaintext_len,
         nullptr,
-        as_uchar(ciphertext_ptr), static_cast<unsigned long long>(ciphertext_len),
-        as_uchar(header_bytes.data()), static_cast<unsigned long long>(encrypted_header_size),
+        as_uchar(packet.data() + encrypted_header_size),
+        static_cast<unsigned long long>(packet.size() - encrypted_header_size),
+        as_uchar(packet.data()), static_cast<unsigned long long>(encrypted_header_size),
         as_uchar(hdr.nonce.data()), as_uchar(key.data()));
-
-    if(rc != 0)
-        return detail::unexpected(encrypt_error::decrypt_failed);
-
-    plaintext.resize(plaintext_len);
-    return plaintext;
+    return rc == 0;
 }
 
-detail::expected<std::vector<std::byte>, encrypt_error> decrypt_authenticated(
+bool open_tag_only(std::span<const std::byte, 32> key, const encrypted_packet_header &hdr,
+                   std::span<const std::byte> packet, std::span<std::byte> out)
+{
+    const std::size_t body_len = packet.size() - encrypted_tag_size;
+    unsigned char stand_in = 0;
+    const int rc = crypto_aead_xchacha20poly1305_ietf_decrypt_detached(
+        &stand_in, nullptr, &stand_in, 0,
+        as_uchar(packet.data() + body_len),
+        as_uchar(packet.data()), static_cast<unsigned long long>(body_len),
+        as_uchar(hdr.nonce.data()), as_uchar(key.data()));
+    if(rc != 0)
+        return false;
+    std::copy(packet.begin() + static_cast<std::ptrdiff_t>(encrypted_header_size),
+              packet.begin() + static_cast<std::ptrdiff_t>(body_len), out.begin());
+    return true;
+}
+
+}
+
+std::error_code aead_encrypt(
     std::span<const std::byte, 32> key,
     const encrypted_packet_header &hdr,
-    const header_buffer &header_bytes,
-    std::span<const std::byte> packet)
+    std::span<const std::byte> plaintext,
+    std::span<std::byte> out,
+    std::size_t &written)
 {
-    const std::size_t payload_len = packet.size() - encrypted_header_size - encrypted_tag_size;
-    const std::byte *payload_ptr = packet.data() + encrypted_header_size;
-    const std::byte *tag_ptr = packet.data() + packet.size() - encrypted_tag_size;
-
-    const auto aad = build_aad(header_bytes, std::span<const std::byte>(payload_ptr, payload_len));
-
-    // Zero-length ciphertext: libsodium's nonnull attributes still require valid pointers.
-    unsigned char dummy = 0;
-    int rc = crypto_aead_xchacha20poly1305_ietf_decrypt_detached(
-        &dummy, nullptr, &dummy, 0,
-        as_uchar(tag_ptr),
-        aad.data(), static_cast<unsigned long long>(aad.size()),
-        as_uchar(hdr.nonce.data()), as_uchar(key.data()));
-
-    if(rc != 0)
-        return detail::unexpected(encrypt_error::decrypt_failed);
-
-    return std::vector<std::byte>(payload_ptr, payload_ptr + payload_len);
-}
-
-}
-
-std::vector<std::byte> aead_encrypt(
-    std::span<const std::byte, 32> key,
-    const encrypted_packet_header &hdr,
-    std::span<const std::byte> plaintext)
-{
+    written = 0;
     init_crypto();
+    if(out.size() < encrypted_overhead + plaintext.size())
+        return encrypt_error::buffer_too_small;
 
     encrypted_packet_header hdr_with_nonce = hdr;
     randombytes_buf(hdr_with_nonce.nonce.data(), encrypted_nonce_size);
-
     const auto header_bytes = serialize_header(hdr_with_nonce);
+    std::copy(header_bytes.begin(), header_bytes.end(), out.begin());
 
-    if((hdr_with_nonce.flags & flag_encrypted) != 0)
-        return encrypt_sealed(key, hdr_with_nonce, header_bytes, plaintext);
-    return encrypt_authenticated(key, hdr_with_nonce, header_bytes, plaintext);
+    const bool sealed = (hdr_with_nonce.flags & flag_encrypted) != 0;
+    written = sealed ? seal(key, hdr_with_nonce, plaintext, out) : tag_only(key, hdr_with_nonce, plaintext, out);
+    return {};
 }
 
-detail::expected<std::vector<std::byte>, encrypt_error> aead_decrypt(
+std::error_code aead_decrypt(
     std::span<const std::byte, 32> key,
-    std::span<const std::byte> packet)
+    std::span<const std::byte> packet,
+    std::span<std::byte> out,
+    std::size_t &written)
 {
+    written = 0;
     init_crypto();
+    if(packet.size() < encrypted_overhead)
+        return encrypt_error::invalid_header;
 
-    if(packet.size() < encrypted_header_size + encrypted_tag_size)
-        return detail::unexpected(encrypt_error::invalid_header);
-
-    auto hdr = deserialize_header(packet.data());
-
+    const auto hdr = deserialize_header(packet.data());
     if(hdr.magic != encrypted_magic)
-        return detail::unexpected(encrypt_error::invalid_header);
-
+        return encrypt_error::invalid_header;
     if(hdr.version != encrypted_version)
-        return detail::unexpected(encrypt_error::unsupported_version);
+        return encrypt_error::unsupported_version;
 
-    // The AAD must match the serialized header used during encrypt.
-    const auto header_bytes = serialize_header(hdr);
+    const std::size_t plaintext_len = packet.size() - encrypted_overhead;
+    if(out.size() < plaintext_len)
+        return encrypt_error::buffer_too_small;
 
-    if((hdr.flags & flag_encrypted) != 0)
-        return decrypt_sealed(key, hdr, header_bytes, packet);
-    return decrypt_authenticated(key, hdr, header_bytes, packet);
+    const bool sealed = (hdr.flags & flag_encrypted) != 0;
+    if(!(sealed ? open_sealed(key, hdr, packet, out) : open_tag_only(key, hdr, packet, out)))
+        return encrypt_error::decrypt_failed;
+    written = plaintext_len;
+    return {};
 }
 
 }

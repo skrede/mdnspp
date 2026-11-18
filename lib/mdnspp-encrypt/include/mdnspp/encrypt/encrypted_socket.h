@@ -2,10 +2,10 @@
 #define HPP_GUARD_MDNSPP_ENCRYPT_ENCRYPTED_SOCKET_H
 
 #include "mdnspp/policy.h"
-#include "mdnspp/encrypt/aead.h"
 #include "mdnspp/encrypt/key_ring.h"
 #include "mdnspp/encrypt/packet_header.h"
 #include "mdnspp/encrypt/replay_window.h"
+#include "mdnspp/encrypt/encrypted_send.h"
 #include "mdnspp/encrypt/encrypt_options.h"
 #include "mdnspp/encrypt/encrypted_receive.h"
 #include "mdnspp/encrypt/encrypt_socket_options.h"
@@ -22,12 +22,11 @@
 
 namespace mdnspp::encrypt {
 
-// Thread-safety contract: update_key() and send() may be called from any
-// thread, concurrently with each other and with the receive path; key state is
-// guarded by an internal mutex (key material is copied under the lock, AEAD
-// operations run outside it). async_receive() and handler invocation follow
-// the inner socket's executor semantics; the replay window is confined to the
-// receive path.
+// Thread-safety contract: send() is as thread-safe as the inner socket's send(), but concurrent
+// send() on one socket is not supported (shared send buffer). update_key() may be called from
+// any thread, concurrently with send and receive; key material is copied under an internal
+// mutex, AEAD runs outside it. async_receive() and handler invocation follow the inner socket's
+// executor semantics; the replay window and receive buffer are confined to the receive path.
 template <socket_like InnerSocket>
 class encrypted_socket
 {
@@ -88,16 +87,21 @@ public:
         m_inner.close();
     }
 
+    // Plaintext over max_udp_payload - encrypted_overhead is not sent: buffer_too_small (thrown here).
     void send(const endpoint &dest, std::span<const std::byte> plaintext)
     {
-        auto packet = build_encrypted_packet(plaintext);
-        m_inner.send(dest, std::span<const std::byte>(packet));
+        std::error_code ec;
+        send(dest, plaintext, ec);
+        if(ec)
+            throw std::system_error(ec, "mdnspp::encrypt: send");
     }
 
     void send(const endpoint &dest, std::span<const std::byte> plaintext, std::error_code &ec)
     {
-        auto packet = build_encrypted_packet(plaintext);
-        m_inner.send(dest, std::span<const std::byte>(packet), ec);
+        std::size_t written = 0;
+        ec = seal_outgoing(m_keys, m_seq_counter, m_header, plaintext, m_send_buf, written);
+        if(!ec)
+            m_inner.send(dest, std::span<const std::byte>(m_send_buf.data(), written), ec);
     }
 
     void async_receive(receive_handler handler)
@@ -126,6 +130,8 @@ private:
     replay_window m_replay;
     receive_rules m_rules;
     encrypted_packet_header m_header;
+    std::vector<std::byte> m_send_buf;
+    std::vector<std::byte> m_recv_buf;
     bool m_closed;
     bool m_arming;
     bool m_rearm_requested;
@@ -138,20 +144,13 @@ private:
         , m_replay(opts.replay_window_size, opts.max_senders)
         , m_rules(rules_of(opts))
         , m_header(header_template(opts))
+        , m_send_buf(detail::max_udp_payload)
+        , m_recv_buf(detail::max_udp_payload)
         , m_closed(false)
         , m_arming(false)
         , m_rearm_requested(false)
     {
         init_crypto();
-    }
-
-    std::vector<std::byte> build_encrypted_packet(std::span<const std::byte> plaintext)
-    {
-        auto hdr = m_header;
-        hdr.sequence = m_seq_counter.fetch_add(1, std::memory_order_relaxed) + 1;
-        const auto sending = m_keys.key_for_send();
-        hdr.epoch = sending.epoch;
-        return aead_encrypt(sending.key.span(), hdr, plaintext);
     }
 
     // Iterative so an inner socket that completes inline cannot grow the
@@ -180,11 +179,11 @@ private:
         if(ec)
             return complete(ec, meta, raw);
 
-        auto opened = open_packet(m_keys, m_replay, m_rules, raw);
+        const auto opened = open_packet(m_keys, m_replay, m_rules, raw, m_recv_buf);
         if(opened.outcome == receive_outcome::drop)
             return arm_inner();
         const bool plain = opened.outcome == receive_outcome::deliver_plain;
-        complete(std::error_code{}, meta, plain ? std::span<std::byte>(opened.plaintext) : raw);
+        complete(std::error_code{}, meta, plain ? std::span<std::byte>(m_recv_buf.data(), opened.written) : raw);
     }
 
     void complete(std::error_code ec, const recv_metadata &meta, std::span<std::byte> data)

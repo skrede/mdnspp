@@ -1,15 +1,16 @@
+#include "fuzz_input.h"
+#include "fuzz_socket.h"
+
 #include "mdnspp/encrypt/aead.h"
 #include "mdnspp/encrypt/encrypted_socket.h"
 #include "mdnspp/encrypt/encrypt_socket_options.h"
 
 #include <span>
 #include <array>
-#include <queue>
 #include <chrono>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 #include <utility>
 #include <optional>
 #include <system_error>
@@ -25,120 +26,6 @@
 
 namespace {
 
-struct fuzz_executor
-{
-};
-
-// Minimal socket_like implementation that records sends and replays an
-// enqueued packet on async_receive.
-class fuzz_socket
-{
-public:
-    explicit fuzz_socket(fuzz_executor &)
-    {
-    }
-
-    explicit fuzz_socket(fuzz_executor &, std::error_code &)
-    {
-    }
-
-    explicit fuzz_socket(fuzz_executor &, const mdnspp::socket_options &)
-    {
-    }
-
-    explicit fuzz_socket(fuzz_executor &, const mdnspp::socket_options &, std::error_code &)
-    {
-    }
-
-    void send(const mdnspp::endpoint &, std::span<const std::byte> data)
-    {
-        m_sent.emplace_back(data.begin(), data.end());
-    }
-
-    void send(const mdnspp::endpoint &, std::span<const std::byte> data, std::error_code &)
-    {
-        m_sent.emplace_back(data.begin(), data.end());
-    }
-
-    void async_receive(
-        mdnspp::move_only_function<void(std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)> handler)
-    {
-        if(m_queue.empty())
-            return;
-        auto packet = std::move(m_queue.front());
-        m_queue.pop();
-        handler(std::error_code{}, mdnspp::recv_metadata{}, std::span<std::byte>(packet));
-    }
-
-    void close()
-    {
-    }
-
-    void enqueue(std::vector<std::byte> packet)
-    {
-        m_queue.push(std::move(packet));
-    }
-
-    std::vector<std::vector<std::byte>> &sent() noexcept
-    {
-        return m_sent;
-    }
-
-private:
-    std::vector<std::vector<std::byte>> m_sent;
-    std::queue<std::vector<std::byte>> m_queue;
-};
-
-static_assert(mdnspp::socket_like<fuzz_socket>, "fuzz_socket must satisfy socket_like");
-
-// Sequential consumer over the fuzz input.
-class input_reader
-{
-public:
-    input_reader(const uint8_t *data, size_t size) noexcept
-        : m_data(data), m_size(size)
-    {
-    }
-
-    uint8_t u8() noexcept
-    {
-        if(m_pos >= m_size)
-            return 0;
-        return m_data[m_pos++];
-    }
-
-    uint16_t u16() noexcept
-    {
-        return static_cast<uint16_t>(static_cast<uint16_t>(u8()) << 8 | u8());
-    }
-
-    uint32_t u32() noexcept
-    {
-        return static_cast<uint32_t>(u16()) << 16 | u16();
-    }
-
-    std::vector<std::byte> remaining_bytes(size_t cap) noexcept
-    {
-        const size_t available = m_size - m_pos;
-        const size_t n = available < cap ? available : cap;
-        std::vector<std::byte> out(n);
-        if(n > 0)
-            std::memcpy(out.data(), m_data + m_pos, n);
-        m_pos += n;
-        return out;
-    }
-
-    size_t left() const noexcept
-    {
-        return m_size - m_pos;
-    }
-
-private:
-    const uint8_t *m_data;
-    size_t m_size;
-    size_t m_pos{0};
-};
-
 std::array<std::byte, 32> fixed_key()
 {
     std::array<std::byte, 32> key{};
@@ -149,21 +36,24 @@ std::array<std::byte, 32> fixed_key()
 void fuzz_raw_decrypt(const uint8_t *data, size_t size)
 {
     auto key = fixed_key();
-    auto result = mdnspp::encrypt::aead_decrypt(
+    std::vector<std::byte> out(size);
+    std::size_t written = 0;
+    auto ec = mdnspp::encrypt::aead_decrypt(
         std::span<const std::byte, 32>(key),
-        std::span<const std::byte>(reinterpret_cast<const std::byte *>(data), size));
-    if(result.has_value() && !result->empty())
+        std::span<const std::byte>(reinterpret_cast<const std::byte *>(data), size),
+        out, written);
+    if(!ec && written > 0)
     {
-        volatile std::byte sink = (*result)[0];
+        volatile std::byte sink = out[0];
         (void)sink;
     }
 }
 
-void fuzz_round_trip(input_reader &in)
+void fuzz_round_trip(mdnspp::fuzz::input_reader &in)
 {
-    using socket_type = mdnspp::encrypt::encrypted_socket<fuzz_socket>;
+    using socket_type = mdnspp::encrypt::encrypted_socket<mdnspp::fuzz::fuzz_socket>;
 
-    fuzz_executor ex;
+    mdnspp::fuzz::fuzz_executor ex;
 
     const uint8_t cfg = in.u8();
     const auto detection = static_cast<mdnspp::encrypt::cleartext_detection>(cfg % 3);
@@ -259,7 +149,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     if(!crypto_ok || size == 0)
         return 0;
 
-    input_reader in(data, size);
+    mdnspp::fuzz::input_reader in(data, size);
     const uint8_t mode = in.u8();
 
     if(mode % 2 == 0)

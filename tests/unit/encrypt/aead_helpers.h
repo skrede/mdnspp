@@ -7,11 +7,13 @@
 #include "mdnspp/encrypt/packet_header.h"
 #include "mdnspp/encrypt/encrypt_options.h"
 
+#include <span>
 #include <array>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
 #include <algorithm>
+#include <system_error>
 
 inline std::array<std::byte, 32> make_raw_key(uint8_t fill = 0x42)
 {
@@ -41,6 +43,32 @@ inline std::vector<std::byte> make_payload()
     for(std::size_t i = 0; i < raw.size(); ++i)
         v[i] = static_cast<std::byte>(raw[i]);
     return v;
+}
+
+struct unsealed
+{
+    std::error_code ec;
+    std::vector<std::byte> plaintext;
+    std::size_t written;
+};
+
+inline std::vector<std::byte> seal_packet(std::span<const std::byte, 32> key,
+                                          const mdnspp::encrypt::encrypted_packet_header &hdr,
+                                          std::span<const std::byte> plaintext)
+{
+    std::vector<std::byte> out(mdnspp::encrypt::encrypted_overhead + plaintext.size());
+    std::size_t written = 0;
+    mdnspp::encrypt::aead_encrypt(key, hdr, plaintext, out, written);
+    out.resize(written);
+    return out;
+}
+
+inline unsealed unseal_packet(std::span<const std::byte, 32> key, std::span<const std::byte> packet)
+{
+    unsealed result{{}, std::vector<std::byte>(packet.size()), 0};
+    result.ec = mdnspp::encrypt::aead_decrypt(key, packet, result.plaintext, result.written);
+    result.plaintext.resize(result.written);
+    return result;
 }
 
 #endif

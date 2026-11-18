@@ -2,9 +2,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <vector>
 #include <cstddef>
 #include <cstdint>
-#include <vector>
+#include <system_error>
 
 TEST_CASE("send encrypts plaintext and forwards to inner socket", "[encrypted_socket][send]")
 {
@@ -50,4 +51,60 @@ TEST_CASE("sequence counter start is randomized per socket", "[encrypted_socket]
 
     // Independent CSPRNG draws of the top 24 bits collide with probability 2^-24.
     CHECK(hdr_a.sequence != hdr_b.sequence);
+}
+
+namespace {
+
+plain_bytes largest_plaintext()
+{
+    return plain_bytes(mdnspp::detail::max_udp_payload - mdnspp::encrypt::encrypted_overhead, std::byte{0x5A});
+}
+
+}
+
+TEST_CASE("send of the largest plaintext fills one datagram and arrives intact", "[encrypted_socket][send]")
+{
+    paired_sockets pair;
+    payloads got;
+    arm_collecting(pair.receiver, got);
+    std::error_code ec;
+    const auto plaintext = largest_plaintext();
+
+    pair.sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext), ec);
+
+    REQUIRE_FALSE(ec);
+    CHECK(sent_packet_at(pair.sender, 0).size() == mdnspp::detail::max_udp_payload);
+    inject(pair.receiver, sent_packet_at(pair.sender, 0));
+    CHECK(got == payloads{plaintext});
+}
+
+TEST_CASE("send of one byte more than fits reports buffer_too_small and sends nothing", "[encrypted_socket][send]")
+{
+    paired_sockets pair;
+    auto plaintext = largest_plaintext();
+    plaintext.push_back(std::byte{0x5A});
+    std::error_code ec;
+
+    pair.sender.send(mdnspp::endpoint{}, std::span<const std::byte>(plaintext), ec);
+
+    CHECK(ec == mdnspp::encrypt::encrypt_error::buffer_too_small);
+    CHECK(sent_count(pair.sender) == 0);
+}
+
+TEST_CASE("throwing send carries the same buffer_too_small code and sends nothing", "[encrypted_socket][send]")
+{
+    paired_sockets pair;
+    auto plaintext = largest_plaintext();
+    plaintext.push_back(std::byte{0x5A});
+
+    try
+    {
+        send_bytes(pair.sender, plaintext);
+        FAIL("expected std::system_error");
+    }
+    catch(const std::system_error &e)
+    {
+        CHECK(e.code() == mdnspp::encrypt::encrypt_error::buffer_too_small);
+    }
+    CHECK(sent_count(pair.sender) == 0);
 }

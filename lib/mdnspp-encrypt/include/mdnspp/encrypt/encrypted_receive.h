@@ -8,7 +8,6 @@
 #include "mdnspp/encrypt/encrypt_options.h"
 
 #include <span>
-#include <vector>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
@@ -34,7 +33,7 @@ struct receive_rules
 struct opened_packet
 {
     receive_outcome outcome;
-    std::vector<std::byte> plaintext;
+    std::size_t written;
 };
 
 inline receive_rules rules_of(const encrypt_options &opts) noexcept
@@ -99,36 +98,36 @@ inline bool mode_accepts(receive_mode mode, uint8_t flags) noexcept
 }
 
 inline opened_packet authenticate(key_ring &keys, replay_window &replay, const receive_rules &rules,
-                                  std::span<const std::byte> raw)
+                                  std::span<const std::byte> raw, std::span<std::byte> out)
 {
     const auto hdr = deserialize_header(raw.data());
     const auto key = keys.key_for_epoch(hdr.epoch);
     if(!key)
-        return {receive_outcome::drop, {}};
+        return {receive_outcome::drop, 0};
 
-    auto result = aead_decrypt(key->key.span(), raw);
-    if(!result.has_value() || !mode_accepts(rules.mode, hdr.flags))
-        return {receive_outcome::drop, {}};
+    std::size_t written = 0;
+    if(aead_decrypt(key->key.span(), raw, out, written) || !mode_accepts(rules.mode, hdr.flags))
+        return {receive_outcome::drop, 0};
     if(replay.check_and_record(hdr.sender_id, hdr.sequence).has_value())
-        return {receive_outcome::drop, {}};
+        return {receive_outcome::drop, 0};
     if(key->is_previous)
         keys.note_previous_key_packet();
-    return {receive_outcome::deliver_plain, std::move(*result)};
+    return {receive_outcome::deliver_plain, written};
 }
 
 inline opened_packet open_packet(key_ring &keys, replay_window &replay, const receive_rules &rules,
-                                 std::span<const std::byte> raw)
+                                 std::span<const std::byte> raw, std::span<std::byte> out)
 {
     switch(classify_pre_auth(raw, rules.detection, rules.accept_cleartext))
     {
     case pre_auth::deliver_cleartext:
-        return {receive_outcome::deliver_cleartext, {}};
+        return {receive_outcome::deliver_cleartext, 0};
     case pre_auth::authenticate:
-        return authenticate(keys, replay, rules, raw);
+        return authenticate(keys, replay, rules, raw, out);
     case pre_auth::drop:
         break;
     }
-    return {receive_outcome::drop, {}};
+    return {receive_outcome::drop, 0};
 }
 
 }

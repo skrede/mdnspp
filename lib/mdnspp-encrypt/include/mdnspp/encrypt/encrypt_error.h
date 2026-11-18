@@ -15,6 +15,7 @@ enum class encrypt_error : uint32_t
     invalid_header      = 4,
     unsupported_version = 5,
     sender_evicted      = 6,
+    buffer_too_small    = 7,
 };
 
 const std::error_category &encrypt_error_category() noexcept;

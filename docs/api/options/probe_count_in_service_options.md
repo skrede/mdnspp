@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Type** | `unsigned` |
+| **Type** | `uint8_t` |
 | **Default** | `3` |
 | **RFC** | RFC 6762 §8.1 |
 | **One-liner** | Number of probe packets sent before a service is considered conflict-free and announcing begins. |

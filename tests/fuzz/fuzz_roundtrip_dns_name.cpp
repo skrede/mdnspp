@@ -9,18 +9,13 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     std::string_view input(reinterpret_cast<const char *>(data), size);
 
-    try
-    {
-        mdnspp::dns_name name(input);
-        mdnspp::dns_name name2(name.str());
+    mdnspp::dns_name name(input);
+    mdnspp::dns_name name2(name.str());
 
-        // Idempotency: applying normalization twice yields the same result
-        assert(name.str() == name2.str());
-    }
-    catch(...)
-    {
-        // dns_name may throw on invalid input — that is correct behavior
-    }
+    // Idempotency: normalizing the canonical form yields the same bytes
+    assert(name.str() == name2.str());
+    assert(name == name2);
+    assert(std::hash<mdnspp::dns_name>{}(name) == std::hash<mdnspp::dns_name>{}(name2));
 
     return 0;
 }

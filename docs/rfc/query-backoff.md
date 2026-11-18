@@ -5,7 +5,7 @@ network with repeated queries at a fixed rate. RFC 6762 section 5.2 requires
 exponential backoff: the first re-query fires after 1 second, then 2 s, 4 s,
 8 s, and so on up to a 60-minute ceiling. Additionally, active records close to
 expiry trigger TTL refresh queries at 80%, 85%, 90%, and 95% of their remaining
-TTL, each offset by a small random jitter to desynchronise simultaneous queriers.
+TTL, each offset by a small random jitter to desynchronize simultaneous queriers.
 
 **RFC Reference:** RFC 6762 section 5.2
 
@@ -16,21 +16,28 @@ Backoff and TTL refresh are automatic when using `service_monitor`. The default
 
 ```cpp
 #include <mdnspp/defaults.h>
-#include <mdnspp/service_monitor.h>
+
+#include <iostream>
 
 int main()
 {
     mdnspp::context ctx;
 
     // Backoff and TTL refresh happen automatically with default options
-    mdnspp::service_monitor monitor{ctx};
-
-    monitor.async_watch("_http._tcp.local.",
-        [](std::error_code ec, mdnspp::service_event ev,
-           mdnspp::service_instance inst)
+    mdnspp::monitor_options opts{
+        .on_found = [](const mdnspp::resolved_service &svc)
         {
-            // called when services appear, change, or disappear
-        });
+            std::cout << "found: " << svc.instance_name << std::endl;
+        },
+        .on_lost = [](const mdnspp::resolved_service &svc, mdnspp::loss_reason)
+        {
+            std::cout << "lost: " << svc.instance_name << std::endl;
+        },
+    };
+
+    mdnspp::service_monitor monitor{ctx, std::move(opts)};
+    monitor.watch("_http._tcp.local.");
+    monitor.async_start();
 
     ctx.run();
 }
@@ -41,22 +48,20 @@ To adjust the backoff schedule (advanced use):
 ```cpp
 #include <mdnspp/defaults.h>
 #include <mdnspp/mdns_options.h>
-#include <mdnspp/service_monitor.h>
 
 int main()
 {
     mdnspp::context ctx;
 
-    mdnspp::mdns_options opts{
+    mdnspp::mdns_options mdns_opts{
         .initial_interval = std::chrono::milliseconds{500}, // start at 0.5 s
         .max_interval     = std::chrono::minutes{10},        // cap at 10 min
         .backoff_multiplier = 2.0,
     };
 
-    mdnspp::service_monitor monitor{ctx, opts};
-
-    monitor.async_watch("_http._tcp.local.",
-        [](std::error_code, mdnspp::service_event, mdnspp::service_instance) {});
+    mdnspp::service_monitor monitor{ctx, {}, {}, mdns_opts};
+    monitor.watch("_http._tcp.local.");
+    monitor.async_start();
 
     ctx.run();
 }
@@ -69,9 +74,11 @@ See also: [examples/service_monitor/](../../examples/service_monitor/)
 | Status | Aspect | Notes |
 |--------|--------|-------|
 | Implemented | Exponential backoff 1 s → 60 min | Configurable via `mdns_options` |
+| Implemented | Per-watch scheduling | Each watched type carries its own deadline; one timer fires at the earliest deadline and only due watches are queried |
+| Implemented | Randomized first-query delay (20–120 ms) | Per RFC 6762 section 5.2, drawn from `[response_delay_min, response_delay_max]` |
 | Implemented | TTL refresh queries at 80/85/90/95% | With 2% random jitter per threshold |
 | Implemented | Configurable backoff parameters | `initial_interval`, `max_interval`, `backoff_multiplier` |
-| Not implemented | Client-side known-answer continuation (TC bit on queries) | PROTO-04 |
+| Implemented | Client-side known-answer continuation (TC bit on queries) | Scheduled PTR queries carry cached known answers, split across TC continuations when needed; see [tc-handling.md](tc-handling.md) |
 
 ## In-Depth
 
@@ -90,6 +97,14 @@ the next interval:
 The sequence with default options is: 1 s, 2 s, 4 s, 8 s, 16 s, 32 s, 64 s,
 128 s, 256 s, 512 s, 1024 s, … 3600 s (60 min, then constant).
 
+The monitor tracks a separate deadline per watched service type (and per TTL
+refresh fire point) and arms a single timer for the earliest deadline. When
+the timer fires, only the watches whose deadlines have actually passed are
+advanced and queried — a refresh fire point or a second watched type never
+triggers a premature query for an unrelated watch, preserving the section
+5.2 minimum-one-second and doubling requirements per name. The first query
+of each watch is additionally delayed by a random 20–120 ms interval.
+
 ### TTL refresh scheduling
 
 When a record is inserted into the cache, `make_refresh_schedule` computes a
@@ -103,7 +118,7 @@ fire_time = inserted_at + wire_ttl * t + jitter
 ```
 
 where `jitter` is uniform-random in `[0, wire_ttl * refresh_jitter_pct]`
-(default 2% of the wire TTL). Jitter desynchronises simultaneous queriers that
+(default 2% of the wire TTL). Jitter desynchronizes simultaneous queriers that
 monitor the same record on the same network segment.
 
 When a fire time is reached, the monitor sends fresh queries for the record's

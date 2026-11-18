@@ -414,6 +414,125 @@ static void gen_walk_frame(const fs::path &root)
                0x00, 0x00}));
 }
 
+// Appends a dotted name ("_fuzz._tcp.local.") in DNS wire label format.
+static void append_name(std::vector<std::byte> &v, std::string_view name)
+{
+    size_t pos = 0;
+    while(pos < name.size())
+    {
+        size_t dot = name.find('.', pos);
+        if(dot == std::string_view::npos)
+            dot = name.size();
+        v.push_back(static_cast<std::byte>(dot - pos));
+        for(size_t i = pos; i < dot; ++i)
+            v.push_back(static_cast<std::byte>(name[i]));
+        pos = dot + 1;
+    }
+    v.push_back(std::byte{0x00}); // root label
+}
+
+static void append_u16(std::vector<std::byte> &v, unsigned value)
+{
+    v.push_back(static_cast<std::byte>((value >> 8) & 0xFF));
+    v.push_back(static_cast<std::byte>(value & 0xFF));
+}
+
+// Seeds for the server-side query parsers (match_queries, parse_known_answers,
+// extract_authority_records). Names match the fixed service_info used by the
+// harnesses so the match paths are reached from the first iteration.
+static void gen_server_query(const fs::path &root)
+{
+    const fs::path dir = root / "server_query";
+
+    // ptr_question: QDCOUNT=1, PTR question for "_fuzz._tcp.local."
+    {
+        std::vector<std::byte> v;
+        append_u16(v, 0x0000); // ID
+        append_u16(v, 0x0000); // flags: query
+        append_u16(v, 0x0001); // QDCOUNT
+        append_u16(v, 0x0000); // ANCOUNT
+        append_u16(v, 0x0000); // NSCOUNT
+        append_u16(v, 0x0000); // ARCOUNT
+        append_name(v, "_fuzz._tcp.local.");
+        append_u16(v, 0x000C); // QTYPE = PTR
+        append_u16(v, 0x0001); // QCLASS = IN
+        write_seed(dir, "ptr_question", std::move(v));
+    }
+
+    // meta_query: PTR question for "_services._dns-sd._udp.local."
+    {
+        std::vector<std::byte> v;
+        append_u16(v, 0x0000);
+        append_u16(v, 0x0000);
+        append_u16(v, 0x0001);
+        append_u16(v, 0x0000);
+        append_u16(v, 0x0000);
+        append_u16(v, 0x0000);
+        append_name(v, "_services._dns-sd._udp.local.");
+        append_u16(v, 0x000C);
+        append_u16(v, 0x8001); // QCLASS = IN with QU bit
+        write_seed(dir, "meta_query", std::move(v));
+    }
+
+    // known_answer: PTR question plus a PTR known answer naming the instance
+    {
+        std::vector<std::byte> v;
+        append_u16(v, 0x0000);
+        append_u16(v, 0x0000);
+        append_u16(v, 0x0001); // QDCOUNT
+        append_u16(v, 0x0001); // ANCOUNT
+        append_u16(v, 0x0000);
+        append_u16(v, 0x0000);
+        append_name(v, "_fuzz._tcp.local.");
+        append_u16(v, 0x000C);
+        append_u16(v, 0x0001);
+        // answer: owner "_fuzz._tcp.local." PTR -> "Fuzzer._fuzz._tcp.local."
+        append_name(v, "_fuzz._tcp.local.");
+        append_u16(v, 0x000C); // TYPE = PTR
+        append_u16(v, 0x0001); // CLASS = IN
+        v.push_back(std::byte{0x00});
+        v.push_back(std::byte{0x00});
+        append_u16(v, 0x1194); // TTL = 4500
+        std::vector<std::byte> rdata;
+        append_name(rdata, "Fuzzer._fuzz._tcp.local.");
+        append_u16(v, static_cast<unsigned>(rdata.size())); // RDLENGTH
+        v.insert(v.end(), rdata.begin(), rdata.end());
+        write_seed(dir, "known_answer", std::move(v));
+    }
+
+    // probe_authority: ANY question plus an SRV authority record (RFC 6762 §8.2)
+    {
+        std::vector<std::byte> v;
+        append_u16(v, 0x0000);
+        append_u16(v, 0x0000);
+        append_u16(v, 0x0001); // QDCOUNT
+        append_u16(v, 0x0000); // ANCOUNT
+        append_u16(v, 0x0001); // NSCOUNT
+        append_u16(v, 0x0000);
+        append_name(v, "Fuzzer._fuzz._tcp.local.");
+        append_u16(v, 0x00FF); // QTYPE = ANY
+        append_u16(v, 0x0001);
+        // authority: SRV record for the instance
+        append_name(v, "Fuzzer._fuzz._tcp.local.");
+        append_u16(v, 0x0021); // TYPE = SRV
+        append_u16(v, 0x0001); // CLASS = IN
+        v.push_back(std::byte{0x00});
+        v.push_back(std::byte{0x00});
+        append_u16(v, 0x0078); // TTL = 120
+        std::vector<std::byte> rdata;
+        append_u16(rdata, 0x0000); // priority
+        append_u16(rdata, 0x0000); // weight
+        append_u16(rdata, 8080);   // port
+        append_name(rdata, "fuzzhost.local.");
+        append_u16(v, static_cast<unsigned>(rdata.size())); // RDLENGTH
+        v.insert(v.end(), rdata.begin(), rdata.end());
+        write_seed(dir, "probe_authority", std::move(v));
+    }
+
+    // empty
+    write_seed(dir, "empty", {});
+}
+
 static void gen_roundtrip(const fs::path &root)
 {
     const fs::path dir = root / "roundtrip";
@@ -445,6 +564,7 @@ int main(int argc, char *argv[])
     gen_parse_txt(root);
     gen_walk_frame(root);
     gen_roundtrip(root);
+    gen_server_query(root);
 
     return 0;
 }

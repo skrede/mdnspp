@@ -8,7 +8,7 @@
 
 ## What
 
-`tc_wait_max` defines the upper bound of the random wait window applied after receiving a TC-flagged query (RFC 6762 §6). The actual wait is drawn uniformly from `[tc_wait_min, tc_wait_max]`. This jitter desynchronises multiple responders that simultaneously receive the same TC query so they do not all respond at the same instant.
+`tc_wait_max` defines the upper bound of the random wait window applied after receiving a TC-flagged query (RFC 6762 §6). The actual wait is drawn uniformly from `[tc_wait_min, tc_wait_max]`. This jitter desynchronizes multiple responders that simultaneously receive the same TC query so they do not all respond at the same instant.
 
 See `tc_wait_min` for the full description of the TC accumulation mechanism.
 
@@ -29,4 +29,4 @@ Reasons to reduce it:
 
 Increasing `tc_wait_max` lengthens known-answer collection but delays responses visible to queriers on the network. A querier that expects a response within 500 ms may time out before a responder with `tc_wait_max = 2000` ms has even started composing its reply.
 
-`tc_wait_max` must always be greater than or equal to `tc_wait_min`. If `tc_wait_max < tc_wait_min`, the sampling range is invalid. The resulting behaviour is implementation-defined.
+`tc_wait_max` must always be greater than or equal to `tc_wait_min`. If `tc_wait_max < tc_wait_min`, the sampling range is invalid. The resulting behavior is implementation-defined.

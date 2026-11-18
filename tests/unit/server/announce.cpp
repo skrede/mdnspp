@@ -13,7 +13,7 @@ SCENARIO("announcement burst sends announce_count announcements", "[service_serv
         opts.announce_interval = std::chrono::milliseconds(500);
         opts.respond_to_meta_queries = false;
 
-        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
 
         WHEN("probing completes and announcements are sent")
         {
@@ -65,7 +65,7 @@ SCENARIO("update_service_info sends announcement burst", "[service_server][updat
         opts.announce_count = 2;
         opts.respond_to_meta_queries = false;
 
-        basic_service_server<MockPolicy> server{ex, make_test_info(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -89,6 +89,65 @@ SCENARIO("update_service_info sends announcement burst", "[service_server][updat
                     {
                         REQUIRE(server.socket().sent_packets().size() == 2);
                     }
+                }
+            }
+        }
+    }
+}
+
+SCENARIO("update_service_info announce does not cancel a scheduled delayed response", "[service_server][update][delay]")
+{
+    GIVEN("a live service_server with a delayed shared-record response pending")
+    {
+        mock_executor ex;
+
+        service_options opts;
+        opts.announce_count = 2;
+        opts.respond_to_meta_queries = false;
+
+        basic_service_server<mock_policy> server{ex, make_test_info(), std::move(opts)};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        // A multicast PTR query schedules a shared-record response on the
+        // dedicated delay timer (RFC 6762 section 6, 20-120 ms).
+        endpoint sender{"192.168.1.50", 5353};
+        server.socket().inject_receive(sender, make_ptr_query("_http._tcp.local."));
+        REQUIRE(server.delay_timer().has_pending());
+
+        WHEN("update_service_info fires an announce burst before the delay elapses")
+        {
+            auto new_info = make_test_info();
+            new_info.port = 9090;
+            server.update_service_info(std::move(new_info));
+            ex.drain_posted();
+
+            THEN("the announce burst armed the response timer without touching the delay timer")
+            {
+                REQUIRE(server.timer().has_pending());      // second announcement
+                REQUIRE(server.delay_timer().has_pending()); // delayed response intact
+            }
+
+            AND_WHEN("the delay timer fires")
+            {
+                auto sent_before = server.socket().sent_packets().size();
+                server.delay_timer().fire();
+
+                THEN("the delayed response still goes out")
+                {
+                    REQUIRE(server.socket().sent_packets().size() == sent_before + 1);
+                    const auto &pkt = server.socket().sent_packets().back();
+                    REQUIRE(pkt.dest == endpoint{"224.0.0.251", 5353});
+
+                    auto records = parse_response(pkt.data);
+                    bool has_ptr = false;
+                    for(const auto &rv : records)
+                    {
+                        if(std::holds_alternative<record_ptr>(rv))
+                            has_ptr = true;
+                    }
+                    REQUIRE(has_ptr);
                 }
             }
         }
@@ -132,13 +191,14 @@ SCENARIO("Server sends goodbye packet on stop when live", "[goodbye]")
     GIVEN("a server that has been advanced to live state")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
 
-        WHEN("stop() is called")
+        WHEN("stop() is called and the posted teardown runs")
         {
             server.stop();
+            ex.drain_posted();
 
             THEN("a goodbye packet with TTL=0 is sent")
             {
@@ -178,7 +238,7 @@ SCENARIO("Server does NOT send goodbye when stopped during probing", "[goodbye][
     GIVEN("a server that has been started but not advanced past probing")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         // Fire only the initial delay timer, still in probing
         server.timer().fire();
@@ -186,6 +246,7 @@ SCENARIO("Server does NOT send goodbye when stopped during probing", "[goodbye][
         WHEN("stop() is called during probing")
         {
             server.stop();
+            ex.drain_posted();
 
             THEN("no goodbye packet is sent")
             {
@@ -203,13 +264,14 @@ SCENARIO("Server skips goodbye when send_goodbye is false", "[goodbye][opt-out]"
         mock_executor ex;
         service_options opts;
         opts.send_goodbye = false;
-        basic_service_server<MockPolicy> server{ex, make_test_service(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_service(), std::move(opts)};
         server.async_start();
         advance_to_live(server);
 
         WHEN("stop() is called")
         {
             server.stop();
+            ex.drain_posted();
 
             THEN("no goodbye packet is sent")
             {
@@ -225,7 +287,7 @@ SCENARIO("Goodbye sent at most once on double stop", "[goodbye][idempotent]")
     GIVEN("a server that has been advanced to live state")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
 
@@ -233,6 +295,7 @@ SCENARIO("Goodbye sent at most once on double stop", "[goodbye][idempotent]")
         {
             server.stop();
             server.stop();
+            ex.drain_posted();
 
             THEN("exactly one goodbye packet is sent")
             {
@@ -250,7 +313,7 @@ SCENARIO("Server sends goodbye when stopped during announcing", "[goodbye][annou
         mock_executor ex;
         service_options opts;
         opts.announce_count = 3; // need 3 announcements
-        basic_service_server<MockPolicy> server{ex, make_test_service(), std::move(opts)};
+        basic_service_server<mock_policy> server{ex, make_test_service(), std::move(opts)};
         server.async_start();
 
         // Complete probing: 4 timer fires
@@ -264,6 +327,7 @@ SCENARIO("Server sends goodbye when stopped during announcing", "[goodbye][annou
         WHEN("stop() is called during announcing")
         {
             server.stop();
+            ex.drain_posted();
 
             THEN("a goodbye packet is sent")
             {
@@ -279,7 +343,7 @@ SCENARIO("update_service_info posts work to executor", "[service_server][update]
     GIVEN("a live service_server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
 
@@ -317,21 +381,21 @@ SCENARIO("Server invokes on_error with invalid_ipv4_address when address encodin
     {
         mock_executor ex;
 
+        std::vector<std::error_code> error_codes;
+        std::vector<std::string> error_msgs;
+
         service_options opts;
         opts.respond_to_meta_queries = false;
+        opts.on_error = [&](std::error_code ec, std::string_view msg)
+        {
+            error_codes.push_back(ec);
+            error_msgs.push_back(std::string(msg));
+        };
 
         service_info info = make_test_info();
         info.address_ipv4 = "999.1.2.3";  // intentionally malformed
 
-        basic_service_server<MockPolicy> server{ex, std::move(info), std::move(opts)};
-
-        std::vector<std::error_code> error_codes;
-        std::vector<std::string> error_msgs;
-        server.on_error([&](std::error_code ec, std::string_view msg)
-        {
-            error_codes.push_back(ec);
-            error_msgs.push_back(std::string(msg));
-        });
+        basic_service_server<mock_policy> server{ex, std::move(info), std::move(opts)};
 
         server.async_start();
         advance_to_live(server);
@@ -358,7 +422,7 @@ SCENARIO("update_service_info sends unsolicited announcement to multicast", "[se
     GIVEN("a live service_server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
 

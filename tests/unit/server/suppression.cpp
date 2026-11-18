@@ -9,7 +9,7 @@ SCENARIO("NSEC in Additional for unmatched type", "[nsec]")
         mock_executor ex;
         auto info = make_test_service();
         info.address_ipv6 = std::nullopt; // no IPv6
-        basic_service_server<MockPolicy> server{ex, std::move(info)};
+        basic_service_server<mock_policy> server{ex, std::move(info)};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -19,7 +19,7 @@ SCENARIO("NSEC in Additional for unmatched type", "[nsec]")
             auto query = build_dns_query("myhost.local.", dns_type::aaaa, response_mode::multicast);
             endpoint sender{"192.168.1.50", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the response contains an NSEC record in Additional")
             {
@@ -59,7 +59,7 @@ SCENARIO("NSEC in Additional for unmatched type", "[nsec]")
                     offset += 4; // ttl
                     uint16_t rdlen = read_u16_be(pkt.data() + offset);
                     offset += 2;
-                    if(rtype == std::to_underlying(dns_type::nsec))
+                    if(rtype == mdnspp::detail::to_underlying(dns_type::nsec))
                         found_nsec = true;
                     offset += rdlen;
                 }
@@ -74,7 +74,7 @@ SCENARIO("No NSEC in announcements", "[nsec][announce]")
     GIVEN("a service server that is advancing through announcing")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_service()};
+        basic_service_server<mock_policy> server{ex, make_test_service()};
         server.async_start();
         advance_to_live(server);
 
@@ -105,7 +105,7 @@ SCENARIO("No NSEC in announcements", "[nsec][announce]")
                     if(!skip_dns_name(cdata, offset) || offset + 10 > sp.data.size())
                         break;
                     uint16_t rtype = read_u16_be(sp.data.data() + offset);
-                    REQUIRE(rtype != std::to_underlying(dns_type::nsec));
+                    REQUIRE(rtype != mdnspp::detail::to_underlying(dns_type::nsec));
                     offset += 2;
                     offset += 2; // rclass
                     offset += 4; // ttl
@@ -136,13 +136,13 @@ static std::vector<std::byte> make_query_with_known_answer(
     push_u16_be(packet, 0x0000);
 
     // Question section
-    auto encoded_qname = encode_dns_name(qname);
+    auto encoded_qname = encode_dns_name(qname).value();
     packet.insert(packet.end(), encoded_qname.begin(), encoded_qname.end());
-    push_u16_be(packet, std::to_underlying(qtype));
+    push_u16_be(packet, mdnspp::detail::to_underlying(qtype));
     push_u16_be(packet, 0x0001); // qclass=IN (multicast)
 
     // Answer section
-    auto encoded_answer = encode_dns_name(answer_name);
+    auto encoded_answer = encode_dns_name(answer_name).value();
     append_dns_rr(packet, encoded_answer, answer_rtype, answer_ttl, answer_rdata, false);
 
     return packet;
@@ -153,7 +153,7 @@ SCENARIO("known-answer suppression skips records with TTL >= 50%", "[known-answe
     GIVEN("a live service server")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
         server.socket().clear_sent();
@@ -161,7 +161,7 @@ SCENARIO("known-answer suppression skips records with TTL >= 50%", "[known-answe
         WHEN("a PTR query with known answer TTL=3000 (>2250) is injected")
         {
             // Build PTR rdata pointing to service_name
-            auto ptr_rdata = encode_dns_name("MyService._http._tcp.local.");
+            auto ptr_rdata = encode_dns_name("MyService._http._tcp.local.").value();
 
             auto query = make_query_with_known_answer(
                 "_http._tcp.local.", dns_type::ptr,
@@ -170,7 +170,7 @@ SCENARIO("known-answer suppression skips records with TTL >= 50%", "[known-answe
 
             endpoint sender{"192.168.1.50", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the response does not contain a PTR record (suppressed)")
             {
@@ -196,7 +196,7 @@ SCENARIO("suppress_known_answers=false sends full response", "[known-answer-supp
     GIVEN("a live service server with suppress_known_answers=false")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info(),
+        basic_service_server<mock_policy> server{ex, make_test_info(),
             service_options{.suppress_known_answers = false}};
         server.async_start();
         advance_to_live(server);
@@ -204,7 +204,7 @@ SCENARIO("suppress_known_answers=false sends full response", "[known-answer-supp
 
         WHEN("a PTR query with known answer TTL=3000 is injected")
         {
-            auto ptr_rdata = encode_dns_name("MyService._http._tcp.local.");
+            auto ptr_rdata = encode_dns_name("MyService._http._tcp.local.").value();
 
             auto query = make_query_with_known_answer(
                 "_http._tcp.local.", dns_type::ptr,
@@ -213,7 +213,7 @@ SCENARIO("suppress_known_answers=false sends full response", "[known-answer-supp
 
             endpoint sender{"192.168.1.50", 5353};
             server.socket().inject_receive(sender, std::move(query));
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the response DOES contain a PTR record (suppression disabled)")
             {
@@ -246,7 +246,7 @@ SCENARIO("Multicast response from another host suppresses our answer during dela
     GIVEN("a live service server with a pending multicast response")
     {
         mock_executor ex;
-        basic_service_server<MockPolicy> server{ex, make_test_info()};
+        basic_service_server<mock_policy> server{ex, make_test_info()};
         server.async_start();
         advance_to_live(server);
 
@@ -254,7 +254,7 @@ SCENARIO("Multicast response from another host suppresses our answer during dela
         auto query_pkt = make_ptr_query("_http._tcp.local.");
         server.socket().inject_receive(endpoint{}, query_pkt);
 
-        REQUIRE(server.timer().has_pending());
+        REQUIRE(server.delay_timer().has_pending());
         auto sent_before = server.socket().sent_packets().size();
 
         WHEN("another host's PTR response arrives before the delay timer fires")
@@ -268,7 +268,7 @@ SCENARIO("Multicast response from another host suppresses our answer during dela
             {
                 // The observation happens inline; fire the delay timer and check suppression.
                 // If suppression works, the server may send fewer records or nothing at all.
-                server.timer().fire();
+                server.delay_timer().fire();
 
                 // The exact suppression effect depends on record identity match.
                 // The key invariant: the server did not crash and processed gracefully.
@@ -282,12 +282,97 @@ SCENARIO("Multicast response from another host suppresses our answer during dela
 
         WHEN("no other response arrives before the delay timer fires")
         {
-            server.timer().fire();
+            server.delay_timer().fire();
 
             THEN("the server sends its own response normally")
             {
                 auto sent_after = server.socket().sent_packets().size();
                 REQUIRE(sent_after > sent_before);
+            }
+        }
+    }
+}
+
+SCENARIO("known answer with stale rdata does NOT suppress the answer", "[known-answer-suppression][rdata]")
+{
+    GIVEN("a live service server")
+    {
+        mock_executor ex;
+        basic_service_server<mock_policy> server{ex, make_test_info()};
+        server.async_start();
+        advance_to_live(server);
+        server.socket().clear_sent();
+
+        WHEN("an SRV query carries a known answer with a stale port")
+        {
+            // RFC 6762 §7.1: suppression requires matching rdata. A querier
+            // holding a stale SRV (old port) must still receive our answer.
+            std::vector<std::byte> stale_rdata;
+            push_u16_be(stale_rdata, 0);    // priority
+            push_u16_be(stale_rdata, 0);    // weight
+            push_u16_be(stale_rdata, 9999); // stale port (ours is 8080)
+            auto target = encode_dns_name("myhost.local.").value();
+            stale_rdata.insert(stale_rdata.end(), target.begin(), target.end());
+
+            auto query = make_query_with_known_answer(
+                "MyService._http._tcp.local.", dns_type::srv,
+                "MyService._http._tcp.local.", dns_type::srv, 4500,
+                stale_rdata);
+
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.delay_timer().fire(); // in case the response was delayed
+
+            THEN("the response contains our SRV record with the correct port")
+            {
+                bool has_correct_srv = false;
+                for(const auto &sp : server.socket().sent_packets())
+                {
+                    auto records = parse_response(sp.data);
+                    for(const auto &rv : records)
+                    {
+                        if(const auto *srv = std::get_if<record_srv>(&rv))
+                        {
+                            if(srv->port == 8080)
+                                has_correct_srv = true;
+                        }
+                    }
+                }
+                REQUIRE(has_correct_srv);
+            }
+        }
+
+        WHEN("an SRV query carries a known answer with matching rdata")
+        {
+            std::vector<std::byte> matching_rdata;
+            push_u16_be(matching_rdata, 0);
+            push_u16_be(matching_rdata, 0);
+            push_u16_be(matching_rdata, 8080);
+            auto target = encode_dns_name("myhost.local.").value();
+            matching_rdata.insert(matching_rdata.end(), target.begin(), target.end());
+
+            auto query = make_query_with_known_answer(
+                "MyService._http._tcp.local.", dns_type::srv,
+                "MyService._http._tcp.local.", dns_type::srv, 4500,
+                matching_rdata);
+
+            endpoint sender{"192.168.1.50", 5353};
+            server.socket().inject_receive(sender, std::move(query));
+            server.delay_timer().fire();
+
+            THEN("no SRV answer is sent (suppressed)")
+            {
+                bool has_srv = false;
+                for(const auto &sp : server.socket().sent_packets())
+                {
+                    auto records = parse_response(sp.data);
+                    for(const auto &rv : records)
+                    {
+                        if(std::holds_alternative<record_srv>(rv))
+                            has_srv = true;
+                    }
+                }
+                REQUIRE_FALSE(has_srv);
             }
         }
     }

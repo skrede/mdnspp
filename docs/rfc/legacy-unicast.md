@@ -1,10 +1,11 @@
 # Legacy Unicast Responses
 
 RFC 6762 §6.7 defines legacy unicast responses for compatibility with pre-mDNS DNS
-resolvers. A legacy unicast query is identified by two properties: the source port is
-not 5353, or the query ID (DNS message ID) is non-zero. When these conditions are met,
-the responder sends a conventional DNS unicast response directly to the sender rather
-than multicasting the answer.
+resolvers. mdnspp identifies a legacy unicast query by its source port: a query
+arriving from a port other than 5353 is treated as legacy unicast. The responder
+then sends a conventional DNS unicast response directly to the sender rather than
+multicasting the answer: the response repeats the query's message ID and question
+section, never sets the cache-flush bit, and caps record TTLs.
 
 The TTL of records in legacy unicast responses is intentionally capped at a small value
 (10 seconds by default) to prevent non-mDNS resolvers from caching the records for too
@@ -14,7 +15,7 @@ long.
 
 ## Example
 
-Legacy unicast support is opt-in via `service_options`:
+Legacy unicast support is enabled by default and controlled via `service_options`:
 
 ```cpp
 #include <mdnspp/defaults.h>
@@ -55,7 +56,10 @@ Legacy unicast response handling is enabled by default. To disable it, set
 
 | Status | Aspect | Notes |
 |--------|--------|-------|
-| Implemented | Legacy unicast detection | Source port != 5353 or query ID != 0 |
+| Implemented | Legacy unicast detection | Source port != 5353 only; the query ID is not used for detection |
+| Implemented | Query ID echo (§6.7 MUST) | The response repeats the query's DNS message ID |
+| Implemented | Question echo (§6.7 MUST) | The response repeats the query's question section |
+| Implemented | No cache-flush bit (§6.7 MUST) | The cache-flush bit is never set in legacy unicast responses |
 | Implemented | Unicast response routing | Response sent directly to sender's address and port |
 | Implemented | TTL cap on outgoing records | `mdns_options::legacy_unicast_ttl` (default 10 s) |
 | Implemented | Configurable opt-out | `service_options::respond_to_legacy_unicast` |
@@ -64,13 +68,13 @@ Legacy unicast response handling is enabled by default. To disable it, set
 
 ### What makes a query "legacy unicast"
 
-RFC 6762 §6.7 identifies a legacy unicast query by either of:
-- Source port is not 5353 (the dedicated mDNS port).
-- The DNS message ID field is non-zero (standard mDNS sets ID=0).
-
-Conventional DNS clients that use mDNS before the `.local.` pseudo-TLD was reserved
-send queries from ephemeral ports with non-zero IDs. mdnspp detects these conditions
-and routes its response accordingly.
+RFC 6762 §6.7 defines a legacy unicast query as one arriving from a source
+port other than 5353 — such a sender cannot receive multicast replies on the
+mDNS port. mdnspp implements exactly this port check; the DNS message ID is
+not consulted for detection (a fully compliant mDNS querier always sends
+from port 5353, so the port check alone is decisive). The query's message ID
+is, however, echoed back in the response as §6.7 requires, together with the
+question section, and the cache-flush bit is suppressed on all records.
 
 ### TTL capping
 
@@ -82,9 +86,11 @@ resolvers do not monitor the mDNS multicast group for updates or goodbye packets
 
 ### Multicast vs unicast routing
 
-For a standard mDNS query (source port 5353, ID=0), the response is multicast to the
-mDNS group address. For a legacy unicast query, the response is sent unicast to the
-sender's exact address and port, matching the behavior of a conventional DNS server.
+For a standard mDNS query (source port 5353), the response is multicast to the
+mDNS group address (or unicast when the QU bit requests it; see
+[quqm-routing](quqm-routing.md)). For a legacy unicast query, the response is
+sent unicast to the sender's exact address and port, matching the behavior of
+a conventional DNS server.
 
 ## See Also
 

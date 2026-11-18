@@ -19,6 +19,7 @@ enum class encrypt_error : uint32_t
     invalid_header      = 4,
     unsupported_version = 5,
     sender_evicted      = 6,
+    buffer_too_small    = 7,
 };
 ```
 
@@ -27,11 +28,27 @@ enum class encrypt_error : uint32_t
 | Enumerator | Value | Description |
 |------------|-------|-------------|
 | `decrypt_failed` | `1` | AEAD decryption or authentication tag verification failed. The packet was either tampered with, corrupted, or encrypted with a different key. |
-| `replay_detected` | `2` | The packet's sequence number was already seen within the replay window for this sender. The packet is a duplicate or replay attack. |
-| `unknown_sender` | `3` | The `sender_id` in the packet header is not recognized and the replay window has no slot for it. |
-| `invalid_header` | `4` | The packet is too short to contain a valid encrypted packet header, or the header fields are malformed. |
-| `unsupported_version` | `5` | The packet header version field indicates a protocol version not supported by this implementation. |
-| `sender_evicted` | `6` | The sender's replay window entry was evicted to make room for a new sender (when `max_senders` is reached). |
+| `replay_detected` | `2` | The packet's sequence number was already seen within the replay window for its (`sender_id`, session) pair, or lies below that window. Produced by `replay_window::check_and_record`. |
+| `unknown_sender` | `3` | Reserved. No code path in the library currently produces it. |
+| `invalid_header` | `4` | `aead_decrypt` was given a packet shorter than `encrypted_overhead` (68 bytes) or without the `0x4D43` magic. |
+| `unsupported_version` | `5` | `aead_decrypt` was given a packet whose version byte is not `0x02`. |
+| `sender_evicted` | `6` | Reserved. No code path in the library currently produces it; sender eviction is silent. |
+| `buffer_too_small` | `7` | The caller-supplied output buffer cannot hold the result. Reported through `ec` by `encrypted_socket::send` when the plaintext exceeds `max_udp_payload - 68` bytes (8932), and by `aead_encrypt` / `aead_decrypt` when `out` is too small. |
+
+## Where Codes Surface
+
+The receive path of `encrypted_socket` drops a packet that fails classification, authentication, the mode check, or the replay check, and waits for the next datagram; these errors are not delivered to the receive handler. The codes reach the application from the send path (`buffer_too_small` through `ec`, or as the `std::system_error` thrown by the throwing `send`) and from direct use of the low-level functions declared in `mdnspp/encrypt/aead.h`:
+
+```cpp
+std::error_code aead_encrypt(std::span<const std::byte, 32> key, const encrypted_packet_header &hdr,
+                             std::span<const std::byte> plaintext, std::span<std::byte> out,
+                             std::size_t &written);
+
+std::error_code aead_decrypt(std::span<const std::byte, 32> key, std::span<const std::byte> packet,
+                             std::span<std::byte> out, std::size_t &written);
+```
+
+Both work on caller-provided buffers and do not allocate. `aead_encrypt` needs `out.size() >= plaintext.size() + 68`; `aead_decrypt` needs `out.size() >= packet.size() - 68`. `written` is the packet length (encrypt) or plaintext length (decrypt) on success and `0` on every failure. `aead_decrypt` checks, in order: size (`invalid_header`), magic (`invalid_header`), version (`unsupported_version`), output capacity (`buffer_too_small`), then the tag (`decrypt_failed`).
 
 ## Free Functions
 
@@ -55,14 +72,14 @@ Constructs a `std::error_code` from an `encrypt_error` enumerator using `encrypt
 
 ```cpp
 template <>
-struct std::is_error_code_enum<mdnspp::encrypt_error> : std::true_type {};
+struct std::is_error_code_enum<mdnspp::encrypt::encrypt_error> : std::true_type {};
 ```
 
 This specialization (defined in the global namespace as required by the standard) enables implicit conversion of `encrypt_error` to `std::error_code` and comparison with `std::errc` values.
 
 ```cpp
-std::error_code ec = mdnspp::encrypt_error::decrypt_failed; // implicit
-if (ec == mdnspp::encrypt_error::replay_detected) { ... }
+std::error_code ec = mdnspp::encrypt::encrypt_error::decrypt_failed; // implicit
+if (ec == mdnspp::encrypt::encrypt_error::replay_detected) { ... }
 ```
 
 ## Usage Example
@@ -75,7 +92,7 @@ if (ec == mdnspp::encrypt_error::replay_detected) { ... }
 
 void report(std::error_code ec)
 {
-    if (ec.category() == mdnspp::encrypt_error_category())
+    if (ec.category() == mdnspp::encrypt::encrypt_error_category())
     {
         std::cout << "Encrypt error: " << ec.message() << std::endl;
     }
@@ -83,7 +100,7 @@ void report(std::error_code ec)
 
 void example()
 {
-    std::error_code ec = mdnspp::encrypt_error::decrypt_failed;
+    std::error_code ec = mdnspp::encrypt::encrypt_error::decrypt_failed;
     report(ec); // prints: Encrypt error: decrypt failed
 }
 ```
@@ -91,4 +108,4 @@ void example()
 ## See Also
 
 - [encrypted_socket](encrypted_socket.md) -- where `encrypt_error` codes arise during packet processing
-- [encrypt_options](encrypt_options.md) -- `replay_window_size` and `max_senders` influence when `replay_detected` and `sender_evicted` occur
+- [encrypt_options](encrypt_options.md) -- `replay_window_size`, `max_senders` and `max_sessions_per_sender` influence when `replay_detected` occurs and how long replay state is kept

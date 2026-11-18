@@ -2,7 +2,7 @@
 
 #include <iostream>
 
-// Observe mDNS multicast traffic using DefaultPolicy.
+// Observe mDNS multicast traffic using default_policy.
 // Prints each record to stdout, stops after 10 records.
 
 int main()

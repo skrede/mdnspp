@@ -4,21 +4,21 @@
 |---|---|
 | **Type** | `std::chrono::seconds` |
 | **Default** | `4500` (75 minutes) |
-| **RFC** | RFC 6762 §11.3 |
+| **RFC** | RFC 6762 §10 |
 | **One-liner** | TTL for TXT records in outgoing responses. |
 
 ## What
 
 `txt_ttl` sets the TTL on TXT records sent in responses. TXT records carry arbitrary key-value metadata for a service instance (e.g., version, capabilities, path). Queriers cache TXT records for `txt_ttl` seconds.
 
-RFC 6762 §11.3 recommends 4500 seconds for most record types. The default matches the RFC.
+RFC 6762 §10 recommends 4500 seconds for records that do not contain a host name. The default matches the RFC.
 
 ## Why
 
 Reduce `txt_ttl` when:
 
 - Service metadata (TXT key-value pairs) changes frequently and you want resolvers to re-query sooner after updates.
-- TXT attributes are versioned and stale metadata causes incorrect client behaviour.
+- TXT attributes are versioned and stale metadata causes incorrect client behavior.
 
 Increase `txt_ttl` when:
 

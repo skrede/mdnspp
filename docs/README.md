@@ -1,24 +1,25 @@
 # mdnspp Documentation
 
-Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
+Guides and API reference for the mdnspp C++20 mDNS/DNS-SD library.
 
 ## Getting Started
 
-- [Getting Started](getting-started.md) -- Install mdnspp and run your first query or service announcement
+- [Getting Started](getting-started.md) &mdash; Install mdnspp and run your first query or service announcement
 
 ## Guides
 
-- [Policies](policies.md) -- Understand DefaultPolicy, AsioPolicy, and MockPolicy
-- [Socket Options](socket-options.md) -- Network interface selection, multicast TTL, and loopback control
-- [Async Patterns](async-patterns.md) -- ASIO completion tokens: callbacks, futures, coroutines, deferred
-- [CMake Integration](cmake-integration.md) -- FetchContent, find_package, and building from source
-- [Service Monitor](service-monitor.md) -- Continuous service tracking: monitoring modes, TTL refresh, loss detection
-- [Record Cache](record-cache.md) -- Standalone TTL-aware record cache: standalone vs wired usage, cache-flush semantics
-- [mDNS Options](mdns-options.md) -- Protocol timing tunables: query backoff, TTL refresh thresholds, TC handling
-- [Custom Policies](custom-policies.md) -- Writing your own Policy, SocketLike, and TimerLike implementations
-- [In-Process Bus](inproc-bus.md) -- InProcPolicy and shared bus for in-process mDNS scenarios
+- [Policies](policies.md) &mdash; Understand default_policy, asio_policy, and mock_policy
+- [Socket Options](socket-options.md) &mdash; Network interface selection, multicast TTL, and loopback control
+- [Async Patterns](async-patterns.md) &mdash; ASIO completion tokens: callbacks, futures, coroutines, deferred
+- [CMake Integration](cmake-integration.md) &mdash; FetchContent, find_package, and building from source
+- [Service Monitor](service-monitor.md) &mdash; Continuous service tracking: monitoring modes, TTL refresh, loss detection
+- [Record Cache](record-cache.md) &mdash; Standalone TTL-aware record cache: standalone vs wired usage, cache-flush semantics
+- [mDNS Options](mdns-options.md) &mdash; Protocol timing tunables: query backoff, TTL refresh thresholds, TC handling
+- [Custom Policies](custom-policies.md) &mdash; Writing your own policy_like, socket_like, and timer_like implementations
+- [In-Process Bus](inproc-bus.md) &mdash; inproc_policy and shared bus for in-process mDNS scenarios
 - [Test Landscape](testing.md) -- Unit, integration, fuzz, and compile test categories
-- [NIC Group](nic-group.md) -- Multi-NIC orchestration: basic_nic_group, basic_nic_monitor, dynamic_nic_group
+- [NIC Group](nic-group.md) -- Multi-NIC orchestration: basic_nic_group, basic_nic_monitor, basic_dynamic_nic_group
+- [Troubleshooting](troubleshooting.md) -- Firewalls, port 5353 conflicts, VPN/virtual interfaces, IGMP snooping, same-host multi-process
 
 ## Encrypted mDNS
 
@@ -30,6 +31,15 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
   - API Reference: [encrypt_options](encrypt/api/encrypt_options.md) | [encrypted_socket](encrypt/api/encrypted_socket.md) | [encrypted_policy](encrypt/api/encrypted_policy.md) | [secure_key](encrypt/api/secure_key.md) | [encrypt_socket_options](encrypt/api/encrypt_socket_options.md) | [encrypt_error](encrypt/api/encrypt_error.md) | [defaults](encrypt/api/defaults.md)
 
 ## API Reference
+
+### Choosing a Peer Type
+
+| Peer type | Activity | Lifetime | Result form | Use when |
+|-----------|----------|----------|-------------|----------|
+| [observer](api/observer.md) | Passive (no queries sent) | Continuous until `stop()` | Raw records (every parsed record, including query packets) | You want to watch all mDNS traffic on the segment, e.g. for diagnostics or custom caching. |
+| [querier](api/querier.md) | Active (one query, exponential follow-up not included) | One-shot (completes at silence timeout) | Raw records matching the queried name | You need the records for one specific name and type, once. |
+| [service_discovery](api/service_discovery.md) | Active (one PTR/meta query) | One-shot (completes at silence timeout) | Raw records (`async_discover`) or aggregated `resolved_service` values (`async_browse`) | You want a snapshot of the services of a type currently on the network. |
+| [service_monitor](api/service_monitor.md) | Active (RFC 6762 §5.2 continuous querying) or passive (`monitor_mode::observe`) | Continuous until `stop()` | Resolved services with found/updated/lost lifecycle callbacks | You need to track services over time, with TTL refresh and loss detection. |
 
 ### Core Types
 
@@ -51,6 +61,7 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 ### Service Announcement
 
 - [service_server](api/service_server.md) -- mDNS service responder
+- [service_info](api/service_info.md) -- Service description struct, service_info::make(), address auto-detection
 - [service_options](api/service_options.md) -- Service announcement configuration
 
 ### Cache
@@ -61,7 +72,7 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 
 ### Multi-NIC and Receive Metadata
 
-- [nic_group](api/nic_group.md) -- Multi-NIC orchestrator: basic_nic_group, basic_nic_monitor, dynamic_nic_group
+- [nic_group](api/nic_group.md) -- Multi-NIC orchestrator: basic_nic_group, basic_nic_monitor, basic_dynamic_nic_group
 - [nic_group_options](api/nic_group_options.md) -- nic_group_options, nic_monitor_options, server_peer_options, dedup_mode
 - [recv_metadata](api/recv_metadata.md) -- recv_metadata struct (sender, optional ttl, recv_ifindex) and ttl_unknown_policy
 
@@ -69,6 +80,10 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
 
 - [mdns_options](api/mdns_options.md) -- Protocol timing tunables: query backoff, TTL refresh, TC handling
 - [Options Deep-Dive](api/options/README.md) -- Per-field reference for every option in mdns_options, service_options, and cache_options
+
+### Errors
+
+- [Errors](api/errors.md) -- mdns_error enum, std::error_code conventions, where errors surface
 
 ## RFC Compliance
 
@@ -78,7 +93,7 @@ Guides and API reference for the mdnspp C++23 mDNS/DNS-SD library.
   - [Known-Answer Suppression](rfc/known-answer-suppression.md) -- RFC 6762 §7.1 known-answer lists
   - [Duplicate Suppression](rfc/duplicate-suppression.md) -- RFC 6762 §7.4 duplicate answer suppression
   - [Cache Flush](rfc/cache-flush.md) -- RFC 6762 §10.2 cache-flush semantics
-  - [Goodbye](rfc/goodbye.md) -- RFC 6762 §11.3 goodbye packet handling
+  - [Goodbye](rfc/goodbye.md) -- RFC 6762 §10.1 goodbye packet handling
   - [Probing](rfc/probing.md) -- RFC 6762 §8 name uniqueness probing
   - [DNS-SD](rfc/dns-sd.md) -- RFC 6763 DNS-SD service discovery
   - [Traffic Reduction](rfc/traffic-reduction.md) -- RFC 6762 §11 traffic reduction techniques

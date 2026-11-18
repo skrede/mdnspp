@@ -124,10 +124,11 @@ struct mdns_options
     std::size_t max_known_answers{0};
 
     /// Default TTL (in seconds) for outgoing DNS resource records
-    /// (RFC 6762 §11.3).
+    /// (RFC 6762 §10).
     ///
     /// Applied to all outgoing records unless overridden by a per-type TTL in
-    /// @c service_options. Typically 75 minutes for most record types.
+    /// @c service_options. Typically 75 minutes for records that do not
+    /// contain host names.
     ///
     /// RFC default: 4500 seconds (75 minutes).
     ///

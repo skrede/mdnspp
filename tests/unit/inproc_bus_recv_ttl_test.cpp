@@ -11,7 +11,7 @@
 // with a controlled TTL, then confirm whether on_record fires based on the threshold.
 //
 // The inject-with-ttl path uses inproc_socket::deliver(from, data, ttl) which is the
-// test-only overload added in phase 47-03.
+// test-only overload added for deterministic receive-TTL injection.
 
 #include "mdnspp/inproc/inproc_harness.h"
 #include "mdnspp/inproc/inproc_socket.h"
@@ -70,7 +70,7 @@ std::vector<std::byte> make_ptr_response(std::string_view service_name,
         srv_opts);
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-13a: receive_ttl_minimum=255 filters TTL=254 packets

@@ -144,7 +144,7 @@ TEST_CASE("on_lost fires with timeout when SRV record expires", "[monitor][MON-0
     ex.drain_posted();
 
     REQUIRE(lost_names.size() == 1);
-    CHECK(lost_names[0] == "expiring._http._tcp.local.");
+    CHECK(lost_names[0] == "Expiring._http._tcp.local.");
     REQUIRE(lost_reasons.size() == 1);
     CHECK(lost_reasons[0] == mdnspp::loss_reason::timeout);
 }
@@ -197,7 +197,7 @@ TEST_CASE("on_lost fires with goodbye when SRV goodbye packet received", "[monit
     ex.drain_posted();
 
     REQUIRE(lost_names.size() == 1);
-    CHECK(lost_names[0] == "goodbyesvc._http._tcp.local.");
+    CHECK(lost_names[0] == "GoodbyeSvc._http._tcp.local.");
     REQUIRE(lost_reasons.size() == 1);
     CHECK(lost_reasons[0] == mdnspp::loss_reason::goodbye);
 }

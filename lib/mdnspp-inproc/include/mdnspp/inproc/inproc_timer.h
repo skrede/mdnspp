@@ -39,7 +39,6 @@ public:
     void expires_after(std::chrono::milliseconds d)
     {
         m_expiry = Clock::now() + d;
-        // Cancel any pending handler
         if(m_handler)
         {
             auto h = std::exchange(m_handler, nullptr);
@@ -55,7 +54,6 @@ public:
 
     void cancel()
     {
-        ++m_cancel_count;
         m_active = false;
         if(m_handler)
         {
@@ -85,7 +83,6 @@ private:
     typename Clock::time_point m_expiry{};
     detail::move_only_function<void(std::error_code)> m_handler;
     bool m_active{false};
-    int m_cancel_count{0};
 };
 
 }

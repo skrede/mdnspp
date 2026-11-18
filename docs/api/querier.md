@@ -9,22 +9,22 @@ For multicast (QM) queries, the querier implements a 20--120 ms random delay bef
 | Form | Header |
 |------|--------|
 | `basic_querier<P>` | `#include <mdnspp/basic_querier.h>` |
-| `mdnspp::querier` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
+| `mdnspp::querier` (default_policy alias) | `#include <mdnspp/defaults.h>` |
 
 ```cpp
 // Template form
-template <Policy P>
+template <policy_like P>
 class basic_querier;
 
-// DefaultPolicy alias (from defaults.h)
-using querier = basic_querier<DefaultPolicy>;
+// default_policy alias (from defaults.h)
+using querier = basic_querier<default_policy>;
 ```
 
 ## Template Parameters
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `P` | satisfies `Policy` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
+| `P` | satisfies `policy_like` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
 
 ## Type Aliases
 
@@ -49,23 +49,25 @@ using error_handler      = mdnspp::error_handler;      // void(std::error_code, 
 ```cpp
 explicit basic_querier(executor_type ex,
                        query_options opts = {},
-                       socket_options sock_opts = {},
+                       policy_socket_options_t<P> sock_opts = {},
                        mdns_options mdns_opts = {});
 ```
 
-Constructs the querier from an executor, optional [`query_options`](query_options.md) (per-record callback and silence timeout), optional [`socket_options`](../socket-options.md) (network interface, multicast TTL, loopback), and optional [`mdns_options`](mdns_options.md) (query backoff, TTL refresh tunables). All options default to sensible values -- construct with just an executor for a 3-second silence timeout and no per-record callback. Throws on socket construction failure.
+Constructs the querier from an executor, optional [`query_options`](query_options.md) (per-record callback, error handler, and silence timeout), optional socket options (network interface, multicast TTL, loopback; type `policy_socket_options_t<P>` — plain `socket_options` for the default and asio policies), and optional [`mdns_options`](mdns_options.md) (query backoff, TTL refresh tunables). Construct with just an executor for a 3-second silence timeout and no per-record callback. Throws `std::system_error` on socket construction failure or invalid options (`std::errc::invalid_argument`, e.g. non-positive `silence_timeout`).
 
 ### Non-throwing
 
 ```cpp
 basic_querier(executor_type ex,
               query_options opts,
-              socket_options sock_opts,
+              policy_socket_options_t<P> sock_opts,
               mdns_options mdns_opts,
               std::error_code &ec);
 ```
 
 Same as the throwing constructor, but sets `ec` instead of throwing on failure. All parameters must be provided explicitly (no defaults).
+
+`basic_querier` is non-copyable and non-movable (receive-loop and timer handlers capture `this`).
 
 ## Methods
 
@@ -76,9 +78,16 @@ void async_query(std::string_view name, dns_type qtype, completion_handler on_do
                  response_mode mode = response_mode::multicast);
 ```
 
-Sends a DNS query for `name` with record type `qtype` to the mDNS multicast group (`224.0.0.251:5353`), then listens for responses. The `on_done` handler fires with the accumulated results when the silence timeout expires or `stop()` is called. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 section 5.4) is set in the outgoing query, requesting a direct unicast response.
+Sends a DNS query for `name` with record type `qtype` to the mDNS multicast group (`224.0.0.251:5353`), then listens for responses. Only records carried in response packets (QR=1) are collected. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 section 5.4) is set in the outgoing query, requesting a direct unicast response.
 
-Must only be called once per lifetime.
+Completion semantics:
+
+- **Natural completion** (silence timeout elapsed): `on_done` fires with `std::error_code{}` and the accumulated results.
+- **`stop()` before natural completion**: `on_done` fires with `std::errc::operation_canceled` and the results accumulated so far.
+- **Destruction with a pending operation**: `on_done` is invoked with `std::errc::operation_canceled` before teardown — never silently dropped.
+- **Invalid `name`** (failing RFC 1035 §5.1 validation): the handler completes with `mdns_error::invalid_name`; no query is sent.
+
+`async_query` is one-shot: a second call completes the supplied handler with `std::errc::operation_in_progress`; a call after `stop()` completes it with `std::errc::invalid_argument`. The running query is unaffected. Construct a new instance per query.
 
 #### QM delay behavior
 
@@ -87,7 +96,7 @@ For multicast (QM) queries, the query is not sent immediately. Instead:
 1. The receive loop starts first to listen for traffic.
 2. A random delay of 20--120 ms is chosen (RFC 6762 section 5.2).
 3. During the delay window, incoming QM queries with a matching name and type are checked for duplicate question suppression (RFC 6762 section 7.3).
-4. If a duplicate is detected, the outgoing query is suppressed entirely -- another host has already asked the same question.
+4. If a duplicate is detected, the outgoing query is suppressed entirely &mdash; another host has already asked the same question.
 5. If no duplicate is seen, the query is sent after the delay expires.
 
 For unicast (QU) queries, the query is sent immediately with no delay and no duplicate suppression.
@@ -98,15 +107,11 @@ For unicast (QU) queries, the query is sent immediately with no delay and no dup
 void stop();
 ```
 
-Cancels the delay timer and stops the receive loop. Fires the completion handler with the results accumulated so far.
+Idempotent; posts teardown to the executor. Cancels the delay timer and stops the receive loop. The completion handler fires with `std::errc::operation_canceled` and the results accumulated so far.
 
-### on_error
+### Error reporting
 
-```cpp
-void on_error(error_handler handler);
-```
-
-Sets a handler invoked when a fire-and-forget send operation fails. The handler receives the error code and a context string identifying the send site (e.g. `"query send"`). Without a handler, send errors are silently ignored.
+Fire-and-forget send failures and fatal receive errors are reported through the `query_options::on_error` field (`error_handler`, `void(std::error_code, std::string_view)`). The context string identifies the failure site (e.g. `"query send"`, `"receive"`). Without a handler, these errors are silently ignored.
 
 ### results
 
@@ -114,7 +119,7 @@ Sets a handler invoked when a fire-and-forget send operation fails. The handler 
 const std::vector<mdns_record_variant>& results() const noexcept;
 ```
 
-Returns a reference to the accumulated results. Remains valid after completion -- the completion handler receives a copy.
+Returns a reference to the accumulated results. Remains valid after completion &mdash; the completion handler receives a copy. The buffer is mutated on the executor thread while the query is in flight; read it only after completion or from the executor thread.
 
 ### Accessors
 
@@ -202,8 +207,8 @@ int main()
 
 ## See Also
 
-- [query_options](query_options.md) -- per-record callback and silence timeout configuration
-- [observer](observer.md) -- passively listen to all mDNS traffic
-- [service_discovery](service_discovery.md) -- higher-level service browsing
-- [resolved_service](resolved_service.md) -- aggregated service view
-- [Socket Options](../socket-options.md) -- network interface selection, multicast TTL, loopback control
+- [query_options](query_options.md) &mdash; per-record callback and silence timeout configuration
+- [observer](observer.md) &mdash; passively listen to all mDNS traffic
+- [service_discovery](service_discovery.md) &mdash; higher-level service browsing
+- [resolved_service](resolved_service.md) &mdash; aggregated service view
+- [Socket Options](../socket-options.md) &mdash; network interface selection, multicast TTL, loopback control

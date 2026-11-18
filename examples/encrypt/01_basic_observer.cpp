@@ -1,4 +1,5 @@
-#include "mdnspp/encrypt/defaults.h"
+#include <mdnspp/encrypt/aead.h>
+#include <mdnspp/encrypt/defaults.h>
 
 #include <array>
 #include <cstddef>
@@ -7,7 +8,7 @@
 #include <iostream>
 #include <variant>
 
-// Observe encrypted mDNS multicast traffic using DefaultPolicy.
+// Observe encrypted mDNS multicast traffic using default_policy.
 //
 // Encrypted mDNS is not defined by any RFC. It is a project-specific extension
 // that wraps standard mDNS multicast traffic with XChaCha20-Poly1305 AEAD.
@@ -72,17 +73,20 @@ static std::array<std::byte, 32> load_psk_from_env()
 int main()
 {
     // Step 1: Load the PSK from an application-managed source.
-    // secure_key accepts a std::array<std::byte, 32> and zeroes its own storage
-    // in the destructor, preventing key material from lingering in memory.
+    // secure_key copies the std::array<std::byte, 32> and zeroes its own copy
+    // in the destructor. The caller's source buffer is the caller's
+    // responsibility: wipe it once the secure_key has been constructed,
+    // otherwise the key material remains on the stack.
     std::array<std::byte, 32> raw_key = load_psk_from_env();
-    mdnspp::secure_key psk{raw_key};
+    mdnspp::encrypt::secure_key psk{raw_key};
+    mdnspp::encrypt::secure_zero(raw_key.data(), raw_key.size());
 
     // Step 2: Populate encrypt_socket_options.
     // encrypt_socket_options extends socket_options (interface address, multicast
     // TTL, etc.) with a nested encrypt_options field.
     // sender_id must be non-zero. Real deployments should derive it from a stable
     // device identity (e.g., a truncated hash of the MAC address or a UUID).
-    mdnspp::encrypt_socket_options sock_opts{
+    mdnspp::encrypt::encrypt_socket_options sock_opts{
         .encrypt = {
             .psk       = std::move(psk),
             .sender_id = 0x00000001,
@@ -93,11 +97,11 @@ int main()
 
     // Step 3: Construct the encrypted observer.
     // encrypted_observer is defined in mdnspp/encrypt/defaults.h as:
-    //   using encrypted_observer = basic_observer<encrypted_policy<DefaultPolicy>>;
+    //   using encrypted_observer = basic_observer<encrypted_policy<default_policy>>;
     // Constructor order: (executor, observer_options, encrypt_socket_options).
     mdnspp::context ctx;
 
-    mdnspp::encrypted_observer obs{
+    mdnspp::encrypt::encrypted_observer obs{
         ctx,
         // Step 4: observer_options carries the per-record callback.
         // on_record receives fully decrypted mdns_record_variant values.

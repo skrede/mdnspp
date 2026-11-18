@@ -1,6 +1,7 @@
 #ifndef HPP_GUARD_MDNSPP_MONITOR_OPTIONS_H
 #define HPP_GUARD_MDNSPP_MONITOR_OPTIONS_H
 
+#include "mdnspp/callback_types.h"
 #include "mdnspp/resolved_service.h"
 
 #include "mdnspp/detail/compat.h"
@@ -53,7 +54,7 @@ enum class update_event
 ///                    presumed gone.
 ///
 /// - @c goodbye    -- A goodbye packet (TTL=0) was received. After the RFC 6762
-///                    section 11.3 one-second grace period the service is
+///                    section 10.1 one-second grace period the service is
 ///                    considered lost.
 ///
 /// - @c unwatched  -- The user called unwatch() for the service type. All
@@ -83,7 +84,7 @@ struct monitor_options
     /// Fires only when the minimum resolution threshold is met:
     /// PTR + SRV + at least one A or AAAA address record. Partial records are
     /// accumulated silently; users always receive a usable @c resolved_service.
-    detail::move_only_function<void(const resolved_service &)> on_found{};
+    move_only_function<void(const resolved_service &)> on_found{};
 
     /// Callback invoked when a record change alters an already-resolved service.
     ///
@@ -91,14 +92,18 @@ struct monitor_options
     /// degradations (address removed, TXT removed) while the SRV anchor record
     /// is still alive. Does not fire on TTL refreshes with identical rdata.
     /// One callback fires per changed record type within a single packet.
-    detail::move_only_function<void(const resolved_service &, update_event, dns_type)> on_updated{};
+    move_only_function<void(const resolved_service &, update_event, dns_type)> on_updated{};
 
     /// Callback invoked when a service is no longer reachable.
     ///
     /// Fires when the SRV anchor record expires or is explicitly withdrawn.
     /// Delivers the last-known fully-resolved @c resolved_service together with
     /// the reason for loss.
-    detail::move_only_function<void(const resolved_service &, loss_reason)> on_lost{};
+    move_only_function<void(const resolved_service &, loss_reason)> on_lost{};
+
+    /// Optional handler invoked on fire-and-forget send failures and fatal
+    /// receive errors.
+    error_handler on_error{};
 
     /// Query scheduling strategy.
     ///

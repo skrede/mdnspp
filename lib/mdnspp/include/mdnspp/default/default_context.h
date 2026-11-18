@@ -1,709 +1,185 @@
-#ifndef HPP_GUARD_MDNSPP_DEFAULT_CONTEXT_H
-#define HPP_GUARD_MDNSPP_DEFAULT_CONTEXT_H
+#ifndef HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_CONTEXT_H
+#define HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_CONTEXT_H
 
-// DefaultContext — standalone poll-based event loop for NativePolicy.
-// No ASIO includes. POSIX/Linux primary, Windows via #ifdef guards.
-//
-// NOTE: compute_next_timeout_ms() and fire_expired_timers() are declared here
-// but defined in native_timer.h (after DefaultTimer is fully defined), because
-// they dereference DefaultTimer*. Include native_timer.h to get the full
-// implementation — that header includes this one first.
+// compute_next_timeout_ms() and fire_expired_timers() are defined in default_timer.h
+// because they dereference default_timer, which is incomplete here.
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/detail/compat.h"
-
-#include "mdnspp/detail/platform.h"
+#include "mdnspp/detail/poll_set.h"
+#include "mdnspp/detail/wakeup_fd.h"
+#include "mdnspp/detail/post_queue.h"
+#include "mdnspp/detail/native_socket.h"
+#include "mdnspp/detail/recv_datagram.h"
+#include "mdnspp/detail/executor_owner.h"
+#include "mdnspp/detail/socket_registry.h"
 
 #include <span>
 #include <array>
-#include <deque>
-#include <mutex>
 #include <atomic>
 #include <chrono>
-#include <thread>
 #include <vector>
-#include <cassert>
 #include <cstddef>
-#include <cstdint>
-#include <cstring>
-#include <optional>
+#include <utility>
+#include <algorithm>
 #include <system_error>
 
-#ifdef _WIN32
-#  include <winsock2.h>
-#  include <ws2tcpip.h>
-#  include <mswsock.h>
-#else
-#  include <arpa/inet.h>
-#  include <fcntl.h>
-#  include <netinet/in.h>
-#  include <poll.h>
-#  include <sys/socket.h>
-#  include <unistd.h>
-#  ifdef __linux__
-#    include <sys/eventfd.h>
-#  endif
-#  ifdef __APPLE__
-#    include <net/if_dl.h>
-#  endif
-#endif
-
 namespace mdnspp {
-namespace detail {
 
-#ifdef _WIN32
-using native_socket_t = SOCKET;
-inline constexpr native_socket_t invalid_socket = INVALID_SOCKET;
+class default_timer;
 
-inline void close_socket(native_socket_t fd) noexcept
-{
-    ::closesocket(fd);
-}
-
-inline int poll_sockets(pollfd *fds, unsigned long nfds, int timeout_ms)
-{
-    return ::WSAPoll(fds, nfds, timeout_ms);
-}
-#else
-using native_socket_t = int;
-inline constexpr native_socket_t invalid_socket = -1;
-
-inline void close_socket(native_socket_t fd) noexcept
-{
-    ::close(fd);
-}
-
-inline int poll_sockets(pollfd *fds, nfds_t nfds, int timeout_ms)
-{
-    return ::poll(fds, nfds, timeout_ms);
-}
-#endif
-
-}
-
-class DefaultTimer;
-
-// ---------------------------------------------------------------------------
-// winsock_guard — RAII Winsock initializer. No-op on POSIX.
-// ---------------------------------------------------------------------------
-class winsock_guard
+class default_context
 {
 public:
-    winsock_guard()
+    default_context()
+        : m_wsa{}
+        , m_stopped{false}
+        , m_wakeup{}
+        , m_post_queue{[this] { m_wakeup.notify(); }}
+        , m_recv_buf{}
     {
-#ifdef _WIN32
-        WSADATA data{};
-        if(const int rc = ::WSAStartup(MAKEWORD(2, 2), &data); rc != 0)
-            throw std::system_error(rc, std::system_category(), "WSAStartup failed");
-#endif
+        m_wakeup.create();
     }
 
-    ~winsock_guard()
-    {
-#ifdef _WIN32
-        ::WSACleanup();
-#endif
-    }
+    default_context(const default_context &) = delete;
+    default_context &operator=(const default_context &) = delete;
+    default_context(default_context &&) = delete;
+    default_context &operator=(default_context &&) = delete;
 
-    winsock_guard(const winsock_guard &) = delete;
-    winsock_guard &operator=(const winsock_guard &) = delete;
-    winsock_guard(winsock_guard &&) = delete;
-    winsock_guard &operator=(winsock_guard &&) = delete;
-};
-
-// ---------------------------------------------------------------------------
-// DefaultContext — the event loop executor
-// ---------------------------------------------------------------------------
-class DefaultContext
-{
-public:
-    /// Constructor — creates the stop-wakeup fd.
-    /// Throws std::system_error on platform failure.
-    DefaultContext()
-    {
-        create_wakeup_fd();
-    }
-
-    ~DefaultContext()
-    {
-        close_wakeup_fd();
-    }
-
-    DefaultContext(const DefaultContext &) = delete;
-    DefaultContext &operator=(const DefaultContext &) = delete;
-    DefaultContext(DefaultContext &&) = delete;
-    DefaultContext &operator=(DefaultContext &&) = delete;
-
-    /// Block until stop() is called, processing I/O and expired timers.
-    /// Call restart() before re-entering run() after a stop().
     void run()
     {
-#ifndef NDEBUG
-        if(!m_owner_set.exchange(true, std::memory_order_acq_rel))
-            m_owner_thread = std::this_thread::get_id();
-#endif
-        while(!m_stopped.load(std::memory_order_acquire))
-        {
-            const auto now = std::chrono::steady_clock::now();
-            const int timeout = compute_next_timeout_ms(now);
-            const int rc = do_poll(timeout);
-
-            if(rc < 0)
-            {
-#ifndef _WIN32
-                if(errno == EINTR)
-                    continue; // EINTR — retry
-#endif
-                break;
-            }
-
-            if(wakeup_readable())
-            {
-                drain_wakeup_fd();
-                if(m_stopped.load(std::memory_order_acquire))
-                    break;
-                drain_work_queue();
-            }
-
-            if(any_socket_readable())
-                dispatch_receives();
-
-            fire_expired_timers();
-        }
+        m_owner.claim();
+        bool keep_going = true;
+        while(keep_going && !m_stopped.load(std::memory_order_acquire))
+            keep_going = run_once(compute_next_timeout_ms(std::chrono::steady_clock::now()), false);
     }
 
     void poll_one()
     {
-#ifndef NDEBUG
-        if(!m_owner_set.exchange(true, std::memory_order_acq_rel))
-            m_owner_thread = std::this_thread::get_id();
-#endif
-        const int rc = do_poll(0);
-        if(rc < 0)
-            return;
-
-        if(wakeup_readable())
-        {
-            drain_wakeup_fd();
-            if(m_stopped.load(std::memory_order_acquire))
-                return;
-            drain_work_queue();
-            return;
-        }
-
-        if(any_socket_readable())
-        {
-            dispatch_receives();
-            return;
-        }
-
-        fire_expired_timers();
+        m_owner.claim();
+        run_once(0, true);
     }
 
-    /// Signal the event loop to stop. Thread-safe and idempotent.
     void stop()
     {
         m_stopped.store(true, std::memory_order_release);
-        write_wakeup_fd();
+        m_wakeup.notify();
     }
 
-    /// Reset the stopped flag so run() can be called again after stop().
-    /// Clears any stale work left over from the previous run.
     void restart()
     {
         m_stopped.store(false, std::memory_order_release);
-        drain_wakeup_fd();
-        {
-            std::lock_guard lock{m_work_mutex};
-            m_work_queue.clear();
-        }
-        m_post_pending.store(false, std::memory_order_release);
+        m_wakeup.drain();
+        m_post_queue.clear();
     }
 
-    /// Post work to the event loop from any thread.
-    /// The function will be executed during the next run()/poll_one() iteration.
-    /// Uses atomic coalescing to avoid redundant wakeup fd writes under burst posting.
     void post(detail::move_only_function<void()> fn)
     {
-        {
-            std::lock_guard lock{m_work_mutex};
-            m_work_queue.push_back(std::move(fn));
-        }
-        if (!m_post_pending.exchange(true, std::memory_order_acq_rel))
-            write_wakeup_fd();
+        m_post_queue.post(std::move(fn));
     }
 
-    // -----------------------------------------------------------------------
-    // Internal interface — called by NativeSocket / DefaultTimer
-    // -----------------------------------------------------------------------
-
-    void register_socket(detail::native_socket_t fd,
-                          detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler
-#ifdef _WIN32
-                          , LPFN_WSARECVMSG fn_wsarecvmsg = nullptr
-#endif
-                          )
+    void register_socket(detail::native_socket_t fd)
     {
-        // Replace if already registered (e.g. async_receive re-arms)
-        for(auto &entry : m_sockets)
-        {
-            if(entry.fd == fd)
-            {
-                entry.handler = std::move(handler);
-#ifdef _WIN32
-                entry.fn_wsarecvmsg = fn_wsarecvmsg;
-#endif
-                return;
-            }
-        }
-#ifdef _WIN32
-        m_sockets.push_back({fd, std::move(handler), fn_wsarecvmsg});
-#else
-        m_sockets.push_back({fd, std::move(handler)});
-#endif
+        m_sockets.add(fd);
     }
+
+#ifdef _WIN32
+    void register_socket(detail::native_socket_t fd, LPFN_WSARECVMSG fn_wsarecvmsg)
+    {
+        m_sockets.add(fd, fn_wsarecvmsg);
+    }
+#endif
 
     void deregister_socket(detail::native_socket_t fd)
     {
-        std::erase_if(m_sockets, [fd](const auto &e) { return e.fd == fd; });
+        m_sockets.remove(fd);
     }
 
-    void register_timer(DefaultTimer *t)
+    void arm_receive(detail::native_socket_t fd, detail::receive_handler handler)
     {
-        assert_executor_thread();
+        m_sockets.arm(fd, std::move(handler));
+    }
+
+    void register_timer(default_timer *t)
+    {
+        m_owner.assert_current();
         if(std::find(m_timers.begin(), m_timers.end(), t) == m_timers.end())
             m_timers.push_back(t);
     }
 
-    void deregister_timer(DefaultTimer *t)
+    void deregister_timer(default_timer *t)
     {
-        assert_executor_thread();
+        m_owner.assert_current();
         std::erase(m_timers, t);
     }
 
-    // -----------------------------------------------------------------------
-    // Private helpers (declared here; timer-dependent ones defined in
-    // native_timer.h after DefaultTimer is fully defined)
-    // -----------------------------------------------------------------------
     int compute_next_timeout_ms(std::chrono::steady_clock::time_point now) const;
+
     void fire_expired_timers();
 
 private:
-    struct socket_entry
+    // winsock_guard must be the first member so winsock is initialized before any socket
+    winsock_guard m_wsa;
+    std::atomic<bool> m_stopped;
+    detail::wakeup_fd m_wakeup;
+    detail::post_queue<> m_post_queue;
+    detail::socket_registry m_sockets;
+    detail::poll_set m_poll;
+    detail::executor_owner m_owner;
+    std::vector<default_timer *> m_timers;
+    std::vector<detail::native_socket_t> m_ready;
+    std::array<std::byte, detail::max_udp_payload> m_recv_buf;
+
+    // single_step ends the pass after the first kind of work, as poll_one does
+    bool run_once(int timeout_ms, bool single_step)
     {
-        detail::native_socket_t fd{detail::invalid_socket};
-        detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler;
-#ifdef _WIN32
-        LPFN_WSARECVMSG fn_wsarecvmsg{nullptr};
-#endif
-    };
-
-    void assert_executor_thread() const noexcept
-    {
-#ifndef NDEBUG
-        // Only enforce once an executor thread has been established (first run()/poll_one()).
-        if(m_owner_set.load(std::memory_order_acquire))
-            assert(std::this_thread::get_id() == m_owner_thread &&
-                   "DefaultContext: m_timers accessed from wrong thread");
-#endif
-    }
-
-    // winsock_guard MUST be the first member — initialised before any sockets.
-    winsock_guard m_wsa{};
-    std::atomic<bool> m_stopped{false};
-    std::mutex m_work_mutex;
-    std::deque<detail::move_only_function<void()>> m_work_queue;
-    std::atomic<bool> m_post_pending{false};
-    std::vector<socket_entry> m_sockets;
-    std::vector<DefaultTimer*> m_timers;
-    std::array<std::byte, 4096> m_recv_buf{};
-    sockaddr_storage m_sender_addr{};
-
-    // Stop-wakeup mechanism — platform-specific members.
-#if defined(__linux__)
-    int m_wakeup_fd{-1};
-#elif defined(_WIN32)
-    detail::native_socket_t m_wakeup_recv{detail::invalid_socket};
-    detail::native_socket_t m_wakeup_send{detail::invalid_socket};
-#else
-    int m_pipe[2]{-1, -1};
-#endif
-
-    // Poll state — rebuilt each do_poll() call.
-    std::vector<pollfd> m_pollfds;
-    bool m_wakeup_ready{false};
-
-#ifndef NDEBUG
-    // Lazily initialized on first call to run() — captures the executor thread id.
-    std::atomic<bool> m_owner_set{false};
-    std::thread::id m_owner_thread{};
-#endif
-
-    void drain_work_queue()
-    {
-        std::deque<detail::move_only_function<void()>> local;
+        if(m_poll.wait(m_wakeup.native(), m_sockets, timeout_ms) < 0)
+            return detail::poll_set::interrupted();
+        if(m_poll.wake_ready() || m_post_queue.pending())
         {
-            std::lock_guard lock{m_work_mutex};
-            local.swap(m_work_queue);
-        }
-        m_post_pending.store(false, std::memory_order_release);
-        for (auto &fn : local)
-            fn();
-    }
-
-    // ------------------------------------------------------------------
-    // Platform-specific wakeup fd lifecycle
-    // ------------------------------------------------------------------
-    void create_wakeup_fd()
-    {
-#if defined(__linux__)
-        m_wakeup_fd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-        if(m_wakeup_fd < 0)
-            throw std::system_error(errno, std::generic_category(), "eventfd");
-
-#elif defined(_WIN32)
-        m_wakeup_recv = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if(m_wakeup_recv == INVALID_SOCKET)
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "socket(wakeup_recv)");
-
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        addr.sin_port = 0;
-
-        if(::bind(m_wakeup_recv, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
-        {
-            ::closesocket(m_wakeup_recv);
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "bind(wakeup_recv)");
-        }
-
-        int len = sizeof(addr);
-        if(::getsockname(m_wakeup_recv, reinterpret_cast<sockaddr*>(&addr), &len) == SOCKET_ERROR)
-        {
-            ::closesocket(m_wakeup_recv);
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "getsockname");
-        }
-
-        m_wakeup_send = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if(m_wakeup_send == INVALID_SOCKET)
-        {
-            ::closesocket(m_wakeup_recv);
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "socket(wakeup_send)");
-        }
-
-        if(::connect(m_wakeup_send, reinterpret_cast<sockaddr*>(&addr), sizeof(addr)) == SOCKET_ERROR)
-        {
-            ::closesocket(m_wakeup_recv);
-            ::closesocket(m_wakeup_send);
-            throw std::system_error(::WSAGetLastError(), std::system_category(), "connect(wakeup_send)");
-        }
-
-        // Set recv socket to non-blocking so drain_wakeup_fd() doesn't hang
-        {
-            u_long mode = 1;
-            if(::ioctlsocket(m_wakeup_recv, FIONBIO, &mode) == SOCKET_ERROR)
-            {
-                ::closesocket(m_wakeup_recv);
-                ::closesocket(m_wakeup_send);
-                throw std::system_error(::WSAGetLastError(), std::system_category(), "ioctlsocket(wakeup_recv)");
-            }
-        }
-
-#else
-        // Other POSIX: self-pipe
-        if(::pipe(m_pipe) != 0)
-            throw std::system_error(errno, std::generic_category(), "pipe");
-
-        for(const int fd : m_pipe)
-        {
-            const int flags = ::fcntl(fd, F_GETFL, 0);
-            if(flags < 0 || ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)
-            {
-                ::close(m_pipe[0]);
-                ::close(m_pipe[1]);
-                throw std::system_error(errno, std::generic_category(), "fcntl(O_NONBLOCK)");
-            }
-        }
-#endif
-    }
-
-    void close_wakeup_fd() noexcept
-    {
-#if defined(__linux__)
-        if(m_wakeup_fd >= 0)
-        {
-            ::close(m_wakeup_fd);
-            m_wakeup_fd = -1;
-        }
-#elif defined(_WIN32)
-        if(m_wakeup_recv != INVALID_SOCKET)
-            ::closesocket(m_wakeup_recv);
-        if(m_wakeup_send != INVALID_SOCKET)
-            ::closesocket(m_wakeup_send);
-        m_wakeup_recv = INVALID_SOCKET;
-        m_wakeup_send = INVALID_SOCKET;
-#else
-        for(int &fd : m_pipe)
-        {
-            if(fd >= 0)
-            {
-                ::close(fd);
-                fd = -1;
-            }
-        }
-#endif
-    }
-
-    void write_wakeup_fd() noexcept
-    {
-#if defined(__linux__)
-        const uint64_t one = 1;
-        (void)::write(m_wakeup_fd, &one, sizeof(one));
-#elif defined(_WIN32)
-        const char byte = 1;
-        (void)::send(m_wakeup_send, &byte, 1, 0);
-#else
-        const char byte = 1;
-        (void)::write(m_pipe[1], &byte, 1);
-#endif
-    }
-
-    void drain_wakeup_fd() noexcept
-    {
-#if defined(__linux__)
-        uint64_t val{};
-        (void)::read(m_wakeup_fd, &val, sizeof(val));
-#elif defined(_WIN32)
-        char buf[64];
-        while(::recv(m_wakeup_recv, buf, sizeof(buf), 0) > 0)
-        {
-        }
-#else
-        char buf[64];
-        while(::read(m_pipe[0], buf, sizeof(buf)) > 0)
-        {
-        }
-#endif
-    }
-
-#if defined(__linux__)
-    [[nodiscard]] int wakeup_poll_fd() const noexcept { return m_wakeup_fd; }
-#elif defined(_WIN32)
-    [[nodiscard]] detail::native_socket_t wakeup_poll_fd() const noexcept { return m_wakeup_recv; }
-#else
-    [[nodiscard]] int wakeup_poll_fd() const noexcept { return m_pipe[0]; }
-#endif
-
-    /// Build pollfd array, invoke poll, dispatch ready sockets.
-    int do_poll(int timeout_ms)
-    {
-        m_wakeup_ready = false;
-
-        // Build pollfd array: [wakeup_fd, socket_0, socket_1, ...]
-        m_pollfds.clear();
-        m_pollfds.push_back({wakeup_poll_fd(), POLLIN, 0});
-        for(const auto &entry : m_sockets)
-            m_pollfds.push_back({entry.fd, POLLIN, 0});
-
-        const auto nfds = static_cast<nfds_t>(m_pollfds.size());
-        const int rc = detail::poll_sockets(m_pollfds.data(), nfds, timeout_ms);
-
-        if(rc > 0)
-            m_wakeup_ready = (m_pollfds[0].revents & POLLIN) != 0;
-
-        return rc;
-    }
-
-    [[nodiscard]] bool wakeup_readable() const noexcept { return m_wakeup_ready; }
-
-    [[nodiscard]] bool any_socket_readable() const noexcept
-    {
-        for(std::size_t i = 1; i < m_pollfds.size(); ++i)
-            if(m_pollfds[i].revents & POLLIN)
+            m_wakeup.drain();
+            if(m_stopped.load(std::memory_order_acquire))
+                return false;
+            m_post_queue.drain();
+            if(single_step)
                 return true;
-        return false;
+        }
+        const bool received = dispatch_receives();
+        if(!single_step || !received)
+            fire_expired_timers();
+        return true;
     }
 
-    void dispatch_receives()
+    bool dispatch_receives()
     {
-        for(std::size_t i = 1; i < m_pollfds.size(); ++i)
-        {
-            if(!(m_pollfds[i].revents & POLLIN))
-                continue;
+        m_poll.ready_sockets(m_ready);
+        for(const detail::native_socket_t fd : m_ready)
+            deliver_datagram(fd);
+        return !m_ready.empty();
+    }
 
-            const auto sock_idx = i - 1;
-            if(sock_idx >= m_sockets.size() || !m_sockets[sock_idx].handler)
-                continue;
+    void deliver_datagram(detail::native_socket_t fd)
+    {
+        if(!m_sockets.armed(fd))
+            return;
+        const detail::datagram_result result = read_datagram(fd);
+        if(result.would_block || result.truncated)
+            return;
+        detail::receive_handler handler = m_sockets.take_handler(fd);
+        if(result.ec)
+            handler(result.ec, recv_metadata{}, std::span<std::byte>{});
+        else
+            handler(std::error_code{}, result.meta, std::span<std::byte>{m_recv_buf.data(), result.size});
+    }
 
-            std::optional<uint8_t> recv_ttl;
-            uint32_t recv_ifindex = 0;
-            std::ptrdiff_t bytes = 0;
-
+    detail::datagram_result read_datagram(detail::native_socket_t fd)
+    {
 #ifdef _WIN32
-            if(m_sockets[sock_idx].fn_wsarecvmsg)
-            {
-                WSABUF data_buf{static_cast<ULONG>(m_recv_buf.size()),
-                                reinterpret_cast<char*>(m_recv_buf.data())};
-                alignas(WSACMSGHDR) std::array<std::byte, 64> ctrl_buf{};
-
-                WSAMSG wmsg{};
-                wmsg.name    = reinterpret_cast<LPSOCKADDR>(&m_sender_addr);
-                wmsg.namelen = sizeof(m_sender_addr);
-                wmsg.lpBuffers     = &data_buf;
-                wmsg.dwBufferCount = 1;
-                wmsg.Control.buf = reinterpret_cast<char*>(ctrl_buf.data());
-                wmsg.Control.len = static_cast<ULONG>(ctrl_buf.size());
-                wmsg.dwFlags = 0;
-
-                DWORD received = 0;
-                if(m_sockets[sock_idx].fn_wsarecvmsg(
-                       m_sockets[sock_idx].fd, &wmsg, &received, nullptr, nullptr) == SOCKET_ERROR)
-                    continue;
-
-                bytes = static_cast<std::ptrdiff_t>(received);
-
-                for(WSACMSGHDR *cmsg = WSA_CMSG_FIRSTHDR(&wmsg);
-                    cmsg; cmsg = WSA_CMSG_NXTHDR(&wmsg, cmsg))
-                {
-                    if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL)
-                    {
-                        int ttl_val{};
-                        std::memcpy(&ttl_val, WSA_CMSG_DATA(cmsg), sizeof(ttl_val));
-                        recv_ttl = static_cast<uint8_t>(ttl_val);
-                    }
-#ifdef IPV6_HOPLIMIT
-                    else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_HOPLIMIT)
-                    {
-                        int ttl_val{};
-                        std::memcpy(&ttl_val, WSA_CMSG_DATA(cmsg), sizeof(ttl_val));
-                        recv_ttl = static_cast<uint8_t>(ttl_val);
-                    }
-#endif
-#ifdef IP_PKTINFO
-                    else if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO)
-                    {
-                        IN_PKTINFO pktinfo{};
-                        std::memcpy(&pktinfo, WSA_CMSG_DATA(cmsg), sizeof(pktinfo));
-                        recv_ifindex = static_cast<uint32_t>(pktinfo.ipi_ifindex);
-                    }
-#endif
-#ifdef IPV6_PKTINFO
-                    else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO)
-                    {
-                        IN6_PKTINFO pktinfo6{};
-                        std::memcpy(&pktinfo6, WSA_CMSG_DATA(cmsg), sizeof(pktinfo6));
-                        recv_ifindex = static_cast<uint32_t>(pktinfo6.ipi6_ifindex);
-                    }
-#endif
-                }
-            }
-            else
-            {
-                // Fallback: recvfrom when WSARecvMsg is unavailable. TTL and ifindex stay unset.
-                int sender_len = sizeof(m_sender_addr);
-                const int recv_bytes = ::recvfrom(
-                    m_sockets[sock_idx].fd,
-                    reinterpret_cast<char*>(m_recv_buf.data()),
-                    static_cast<int>(m_recv_buf.size()),
-                    0,
-                    reinterpret_cast<sockaddr*>(&m_sender_addr),
-                    &sender_len);
-                if(recv_bytes == SOCKET_ERROR)
-                    continue;
-                bytes = static_cast<std::ptrdiff_t>(recv_bytes);
-            }
+        return detail::recv_datagram(fd, m_recv_buf, m_sockets.wsarecvmsg(fd));
 #else
-            iovec iov{};
-            iov.iov_base = m_recv_buf.data();
-            iov.iov_len = m_recv_buf.size();
-
-            alignas(cmsghdr) std::array<std::byte, 64> ctrl_buf{};
-
-            msghdr msg{};
-            msg.msg_name = &m_sender_addr;
-            msg.msg_namelen = sizeof(m_sender_addr);
-            msg.msg_iov = &iov;
-            msg.msg_iovlen = 1;
-            msg.msg_control = ctrl_buf.data();
-            msg.msg_controllen = ctrl_buf.size();
-
-            bytes = ::recvmsg(m_sockets[sock_idx].fd, &msg, 0);
-
-            if(bytes < 0)
-                continue;
-
-            for(cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg))
-            {
-                if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL)
-                {
-                    int ttl_val{};
-                    std::memcpy(&ttl_val, CMSG_DATA(cmsg), sizeof(ttl_val));
-                    recv_ttl = static_cast<uint8_t>(ttl_val);
-                }
-#ifdef IPV6_HOPLIMIT
-                else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_HOPLIMIT)
-                {
-                    int ttl_val{};
-                    std::memcpy(&ttl_val, CMSG_DATA(cmsg), sizeof(ttl_val));
-                    recv_ttl = static_cast<uint8_t>(ttl_val);
-                }
+        return detail::recv_datagram(fd, m_recv_buf);
 #endif
-#if defined(IP_PKTINFO)
-                else if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_PKTINFO)
-                {
-                    in_pktinfo pktinfo{};
-                    std::memcpy(&pktinfo, CMSG_DATA(cmsg), sizeof(pktinfo));
-                    recv_ifindex = static_cast<uint32_t>(pktinfo.ipi_ifindex);
-                }
-#elif defined(__APPLE__) && defined(IP_RECVIF)
-                else if(cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_RECVIF)
-                {
-                    sockaddr_dl sdl{};
-                    std::memcpy(&sdl, CMSG_DATA(cmsg),
-                                (std::min)(sizeof(sdl),
-                                           static_cast<std::size_t>(cmsg->cmsg_len) -
-                                           sizeof(cmsghdr)));
-                    recv_ifindex = static_cast<uint32_t>(sdl.sdl_index);
-                }
-#endif
-#ifdef IPV6_PKTINFO
-                else if(cmsg->cmsg_level == IPPROTO_IPV6 && cmsg->cmsg_type == IPV6_PKTINFO)
-                {
-                    in6_pktinfo pktinfo6{};
-                    std::memcpy(&pktinfo6, CMSG_DATA(cmsg), sizeof(pktinfo6));
-                    recv_ifindex = static_cast<uint32_t>(pktinfo6.ipi6_ifindex);
-                }
-#endif
-            }
-#endif
-
-            char addr_str[INET6_ADDRSTRLEN]{};
-            std::uint16_t port{};
-
-            if(m_sender_addr.ss_family == AF_INET6)
-            {
-                auto &sa6 = *reinterpret_cast<sockaddr_in6 *>(&m_sender_addr);
-                ::inet_ntop(AF_INET6, &sa6.sin6_addr, addr_str, sizeof(addr_str));
-                port = ntohs(sa6.sin6_port);
-            }
-            else
-            {
-                auto &sa4 = *reinterpret_cast<sockaddr_in *>(&m_sender_addr);
-                ::inet_ntop(AF_INET, &sa4.sin_addr, addr_str, sizeof(addr_str));
-                port = ntohs(sa4.sin_port);
-            }
-
-            recv_metadata meta{
-                .sender       = {addr_str, port},
-                .ttl          = recv_ttl,
-                .recv_ifindex = recv_ifindex,
-            };
-
-            m_sockets[sock_idx].handler(
-                meta,
-                std::span<std::byte>{m_recv_buf.data(), static_cast<std::size_t>(bytes)});
-        }
     }
 };
 

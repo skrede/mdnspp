@@ -12,10 +12,12 @@ set (`flag_encrypted = 0x01`). In auth-only mode that bit is cleared (`flags =
 0x00`), and the payload field carries the raw plaintext DNS message instead of
 ciphertext.
 
-The Poly1305 authentication tag still covers the 44-byte header and the payload
+The Poly1305 authentication tag still covers the 52 byte header and the payload
 bytes as AAD (Additional Authenticated Data), so any modification to either
-region is detected. The 60-byte overhead (44-byte header + 16-byte tag) is
-identical to full encryption mode.
+region is detected. The 68 byte overhead (52 byte header + 16 byte tag) is
+identical to full encryption mode, and so is the largest payload one packet can
+carry: `max_udp_payload - 68`, 8932 bytes. The wire layout is described in the
+[Encrypted mDNS Guide](encrypted-mdns.md#wire-format).
 
 ## Sender Configuration
 
@@ -23,9 +25,9 @@ Set `encrypt_options::auth_only = true` to make the sender produce auth-only
 packets:
 
 ```cpp
-mdnspp::encrypt_socket_options opts{
+mdnspp::encrypt::encrypt_socket_options opts{
     .encrypt = {
-        .psk       = mdnspp::secure_key{raw_key},
+        .psk       = mdnspp::encrypt::secure_key{raw_key},
         .sender_id = 0x00000002,
         .auth_only = true,
     },
@@ -47,6 +49,10 @@ accepts:
 | `receive_mode::encrypted_only` | Only encrypted packets; auth-only packets are silently dropped |
 | `receive_mode::auth_only` | Only auth-only packets; encrypted packets are silently dropped |
 
+`receive_mode` is evaluated after the packet has authenticated. A packet that
+authenticates but does not match the mode is dropped; it is never delivered as
+cleartext, even with `accept_cleartext` set.
+
 `receive_mode` is independent of `auth_only`. A receiver can accept auth-only
 packets from a sender that is in auth-only mode while itself sending fully
 encrypted packets, or vice versa.
@@ -67,6 +73,17 @@ encrypted mDNS and others have not, setting `accept_cleartext = true` alongside
 `auth_only = true` allows upgraded peers to authenticate each other while still
 receiving cleartext from legacy peers.
 
+**Warning — unauthenticated downgrade path.** `accept_cleartext = true`
+forwards packets classified as cleartext with *no* authentication whatsoever:
+any sender on the LAN bypasses every guarantee of this extension (origin
+authentication, integrity, anti-replay) by sending a packet without the 0x4D43
+magic prefix. During a gradual deployment the effective security level is
+therefore that of plain mDNS, regardless of how many peers already
+authenticate. Treat the combination as a migration tool with a planned end
+date, and set `accept_cleartext = false` (or `cleartext_detection::reject_all`)
+once all peers are upgraded. See the
+[Threat Model](threat-model.md#cleartext-downgrade-via-accept_cleartext--not-protected).
+
 **Monitoring and diagnostics**: a monitoring peer that needs to inspect DNS
 records for debugging can operate in auth-only mode to preserve visibility
 without removing the authentication guarantee.
@@ -83,17 +100,17 @@ int main()
     std::array<std::byte, 32> raw_key{};
     // ... load raw_key ...
 
-    mdnspp::encrypt_socket_options opts{
+    mdnspp::encrypt::encrypt_socket_options opts{
         .encrypt = {
-            .psk       = mdnspp::secure_key{raw_key},
+            .psk       = mdnspp::encrypt::secure_key{raw_key},
             .sender_id = 0x00000002,
             .auth_only = true,
-            .recv_mode = mdnspp::receive_mode::auth_only,
+            .recv_mode = mdnspp::encrypt::receive_mode::auth_only,
         },
     };
 
     mdnspp::context ctx;
-    mdnspp::encrypted_observer obs{
+    mdnspp::encrypt::encrypted_observer obs{
         ctx,
         mdnspp::observer_options{
             .on_record = [](const mdnspp::endpoint &,

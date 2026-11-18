@@ -5,7 +5,7 @@
 #include <array>
 #include <cstddef>
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
 class secure_key
 {

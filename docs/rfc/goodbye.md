@@ -37,7 +37,7 @@ int main()
         [](std::error_code ec)
         {
             if (!ec)
-                std::cout << "server is live (no goodbye on stop)\n";
+                std::cout << "server is live (no goodbye on stop)" << std::endl;
         },
         [&ctx](std::error_code)
         {
@@ -56,8 +56,8 @@ See also: [examples/service_server/](../../examples/service_server/)
 |--------|--------|-------|
 | Implemented | Goodbye packet (TTL=0) on shutdown | Sent when `send_goodbye = true` (default) |
 | Implemented | Goodbye sent from live or announcing state only | No goodbye during probe phase — nothing to retract |
-| Implemented | Best-effort synchronous send | No completion handler; single multicast UDP packet |
-| Implemented | Cache-side goodbye handling | `record_cache` retains TTL=0 records for 1 s before eviction |
+| Implemented | Best-effort send on the executor | Prebuilt in `stop()`, sent from the posted teardown; single multicast UDP packet |
+| Implemented | Cache-side goodbye handling | `record_cache` retains TTL=0 records for `goodbye_grace` (default 1 s) before eviction |
 
 ## In-Depth
 
@@ -72,17 +72,21 @@ A TTL of 0 tells mDNS caches on the network to flush the associated records.
 Without goodbye packets, other hosts would continue to cache stale records
 until their original TTL expires (4500 seconds by default).
 
-Goodbye packets are sent synchronously during `stop()` — they are best-effort
-UDP and do not use completion handlers. The server sends the goodbye from the
-`live` or `announcing` state only; if the server is still probing when `stop()`
-is called, no goodbye is sent (there was nothing to retract).
+The goodbye packet is prebuilt in `stop()` and moved into the teardown that
+`stop()` posts to the executor; the send therefore happens on the executor
+thread, serialized with the receive path (no cross-thread data race), and is
+best-effort UDP without a completion handler. A send failure is reported
+through `service_options::on_error` when set. The goodbye is sent from the
+`live` or `announcing` state only; if the server is still probing when
+`stop()` is called, no goodbye is sent (there was nothing to retract).
 
 ### Cache-side TTL=0 handling
 
 `record_cache` follows RFC 6762 section 10.1 by retaining TTL=0 (goodbye)
-records for 1 second before eviction. This 1-second hold prevents immediate
-re-caching of the record if a simultaneous announcement races with the goodbye.
-The effective TTL for storage purposes is forced to 1 when the wire TTL is 0.
+records for `cache_options::goodbye_grace` (default 1 second) before
+eviction. This hold gives the application time to observe the goodbye before
+the entry disappears. The effective TTL for storage purposes is forced to
+`goodbye_grace` when the wire TTL is 0.
 
 ### Configuration
 

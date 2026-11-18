@@ -1,0 +1,15 @@
+make_test(concept_conformance_test)
+
+make_subdir_test(recv_loop_lifecycle_test recv_loop/lifecycle.cpp)
+make_subdir_test(recv_loop_delivery_test recv_loop/delivery.cpp)
+make_subdir_test(recv_loop_errors_test recv_loop/errors.cpp)
+make_subdir_test(recv_loop_stop_test recv_loop/stop.cpp)
+
+make_subdir_test(receive_contract_buffered_test receive_contract/buffered.cpp)
+target_link_libraries(receive_contract_buffered_test PRIVATE mdnspp::inproc)
+
+make_test(recv_ancillary_test)
+make_test(socket_registry_test)
+
+make_subdir_test(receive_contract_default_test receive_contract/default.cpp)
+target_link_libraries(receive_contract_default_test PRIVATE mdnspp::inproc)

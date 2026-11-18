@@ -103,7 +103,7 @@ void inject(inproc_harness &h, std::span<const std::byte> data)
     injector.send(mdns_multicast_ep(), data);
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-03: Known-answer suppression end-to-end
@@ -136,7 +136,7 @@ TEST_CASE("Known-answer suppression", "[inproc][rfc]")
 
     // Disable loopback so the server's own multicast announcements do not feed
     // back into m_dup_suppression and suppress the response to the plain query.
-    socket_options srv_sock;
+    inproc::inproc_socket_options srv_sock;
     srv_sock.multicast_loopback = loopback_mode::disabled;
 
     auto server = h.make_server(
@@ -455,6 +455,14 @@ TEST_CASE("Cache-flush propagation across monitors", "[inproc][rfc]")
 
     service_options srv_opts;
     srv_opts.respond_to_meta_queries = false;
+    // RFC 6762 §9: the stale A record injected below (our hostname, different
+    // rdata) is a conflict; keep the name so the server re-probes and then
+    // re-announces the authoritative records.
+    srv_opts.on_conflict = [](std::string_view name, uint32_t, conflict_type)
+        -> std::optional<std::string>
+    {
+        return std::string(name);
+    };
 
     auto server = h.make_server(
         make_service("FlushServer._http._tcp.local.", "_http._tcp.local.",
@@ -529,20 +537,16 @@ TEST_CASE("Cache-flush propagation across monitors", "[inproc][rfc]")
     inject(h, std::span<const std::byte>(stale_pkt));
     h.executor.drain();
 
-    // Now the real server re-announces (update_service_info triggers announcements
-    // with the authoritative records, which carry cache_flush=true for SRV/A/TXT).
-    // Each monitor receives the announcement from the server's endpoint. The A record
-    // (flushserver.local. -> 192.168.1.1) has cache_flush=true. When inserted into
-    // each monitor's cache, apply_cache_flush sees the stale entry from the injector
+    // The server saw the conflicting A record and re-entered probing (RFC 6762
+    // §9). Drive it through the re-probe (initial delay + 3 probes at 250 ms
+    // spacing); the first re-announcement is sent immediately afterwards with
+    // the authoritative records, which carry cache_flush=true for SRV/A/TXT.
+    // Each monitor receives that announcement from the server's endpoint; when
+    // the A record (flushserver.local. -> 192.168.1.1) is inserted into each
+    // monitor's cache, apply_cache_flush sees the stale entry from the injector
     // endpoint and marks it for eviction, firing on_cache_flush.
-    server.update_service_info(
-        make_service("FlushServer._http._tcp.local.", "_http._tcp.local.",
-                     "flushserver.local.", 9300));
-
-    // Advance to let announcements propagate (default announce_count=2,
-    // announce_interval=1000ms — first announcement is immediate).
-    h.advance(std::chrono::milliseconds{200});
-    h.advance(std::chrono::milliseconds{50});
+    for(int i = 0; i < 6; ++i)
+        h.advance(std::chrono::milliseconds{250});
 
     // Both monitors received the cache-flush signal from the authoritative re-announcement.
     CHECK(flush_a >= 1);

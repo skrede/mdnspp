@@ -63,7 +63,7 @@ mdns_options fast_scheduler_opts()
     return opts;
 }
 
-} // namespace
+}
 
 // ---------------------------------------------------------------------------
 // TEST-01: Probe conflict resolution between two servers
@@ -83,21 +83,19 @@ TEST_CASE("Probe conflict resolution between two servers", "[inproc][discovery]"
     bool conflict_b = false;
 
     service_options opts_a;
-    opts_a.on_conflict = [&](const std::string &, std::string &new_name,
-                              unsigned, conflict_type) -> bool
+    opts_a.on_conflict = [&](std::string_view, uint32_t, conflict_type)
+        -> std::optional<std::string>
     {
         conflict_a = true;
-        new_name   = "SharedName-2._http._tcp.local.";
-        return true; // rename and re-probe
+        return "SharedName-2._http._tcp.local."; // rename and re-probe
     };
 
     service_options opts_b;
-    opts_b.on_conflict = [&](const std::string &, std::string &new_name,
-                              unsigned, conflict_type) -> bool
+    opts_b.on_conflict = [&](std::string_view, uint32_t, conflict_type)
+        -> std::optional<std::string>
     {
         conflict_b = true;
-        new_name   = "SharedName-3._http._tcp.local.";
-        return true; // rename and re-probe
+        return "SharedName-3._http._tcp.local."; // rename and re-probe
     };
 
     // Same service name, different ports (different SRV rdata => deterministic tiebreak)
@@ -173,7 +171,7 @@ TEST_CASE("Discovery lifecycle: found and lost", "[inproc][discovery]")
 
     // DNS names are lowercased on the wire — instance_name.str() is lowercase.
     REQUIRE_FALSE(found_services.empty());
-    CHECK(found_services[0].instance_name.str() == "myserver._http._tcp.local.");
+    CHECK(found_services[0].instance_name.str() == "MyServer._http._tcp.local.");
     CHECK(found_services[0].port == 8080);
     CHECK_FALSE(found_services[0].ipv4_addresses.empty());
 

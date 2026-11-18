@@ -30,12 +30,12 @@ int main()
     w.join();
 
     auto entries = cache.snapshot();
-    std::cout << "cached " << entries.size() << " record(s)\n";
+    std::cout << "cached " << entries.size() << " record(s)" << std::endl;
     for(const auto &e : entries)
     {
         std::visit([&e](const auto &r)
         {
-            std::cout << "  " << r.name << " ttl=" << e.wire_ttl << "s" << " remaining=" << std::chrono::duration_cast<std::chrono::seconds>(e.ttl_remaining).count() << "s\n";
+            std::cout << "  " << r.name << " ttl=" << e.wire_ttl << "s" << " remaining=" << std::chrono::duration_cast<std::chrono::seconds>(e.ttl_remaining).count() << "s" << std::endl;
         }, e.record);
     }
 }

@@ -9,7 +9,7 @@
 
 ## What
 
-When the library receives an mDNS record with TTL set to 0 (a goodbye announcement, RFC 6762 §11.3), it does not evict the record immediately. Instead, it retains the record for `goodbye_grace` seconds so that the application has time to observe the goodbye before the entry disappears from the cache.
+When the library receives an mDNS record with TTL set to 0 (a goodbye announcement, RFC 6762 §10.1), it does not evict the record immediately. Instead, it retains the record for `goodbye_grace` seconds so that the application has time to observe the goodbye before the entry disappears from the cache.
 
 RFC 6762 §10.1 specifies that goodbye records should be retained for 1 second. After the grace period, the record is evicted and `on_expired` fires with the expired entry.
 

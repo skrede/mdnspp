@@ -27,8 +27,10 @@ struct recv_metadata {
 | `ttl` | `std::optional<uint8_t>` | `std::nullopt` | IP hop limit (TTL) of the received packet. `nullopt` when the platform or socket type could not extract the TTL. |
 | `recv_ifindex` | `uint32_t` | `0` | Interface index on which the packet arrived. Populated from `IP_PKTINFO` (Linux/Windows) or `IP_RECVIF` with `sockaddr_dl` (macOS). `0` when not populated. |
 
-`recv_metadata` is passed by const reference to the `SocketLike::async_receive` handler
-and flows through the receive loop. It is not directly accessible from `monitor_options`,
+`recv_metadata` is passed by const reference to the `socket_like::async_receive` handler
+(signature `void(std::error_code, const recv_metadata &, std::span<std::byte>)`, error
+code first; on error the metadata is empty) and flows through the receive loop. It is
+not directly accessible from `monitor_options`,
 `observer_options`, or other public callback APIs — it is consumed internally to apply
 `receive_ttl_minimum` filtering and to populate `resolved_service::source_interface`.
 
@@ -66,7 +68,7 @@ TTL extraction is configured when the socket is constructed (via `IP_RECVTTL` /
 `IPV6_RECVHOPLIMIT` `setsockopt` or `WSAIoctl`). Failure is silent: the socket opens
 normally and `recv_metadata::ttl` is left as `nullopt`.
 
-| Platform | DefaultSocket | AsioSocket |
+| Platform | default_socket | asio_socket |
 |----------|--------------|------------|
 | Linux | `recvmsg()` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT`; always available when socket opens | `async_wait` + `recvmsg()` on `native_handle()`; same ancillary data path |
 | macOS | `recvmsg()` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT`; always available when socket opens | `async_wait` + `recvmsg()` on `native_handle()`; same ancillary data path |
@@ -85,5 +87,5 @@ For the RFC rationale for receive-side TTL enforcement, see
 
 - [rfc/receive-ttl](../rfc/receive-ttl.md) — RFC 6762 §11 receive-side TTL verification
 - [mdns_options](mdns_options.md) — `receive_ttl_minimum` and `unknown_ttl_policy` fields
-- [policies](../policies.md) — how `recv_metadata` flows through the `SocketLike` concept
+- [policies](../policies.md) — how `recv_metadata` flows through the `socket_like` concept
 - [resolved_service](resolved_service.md) — `source_interface` field populated from `recv_ifindex`

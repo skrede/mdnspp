@@ -187,6 +187,67 @@ SCENARIO("parse_service_type splits PTR name into components", "[dns_wire][parse
     }
 }
 
+SCENARIO("parse_service_type_checked rejects structurally incomplete names",
+         "[dns_wire][parse_service_type]")
+{
+    GIVEN("a complete service type")
+    {
+        auto result = mdnspp::parse_service_type_checked("_http._tcp.local.");
+
+        THEN("parsing succeeds with all components populated")
+        {
+            REQUIRE(result.has_value());
+            REQUIRE(result->type_name == "_http");
+            REQUIRE(result->protocol == "_tcp");
+            REQUIRE(result->domain == "local");
+        }
+    }
+
+    GIVEN("a name missing the domain label")
+    {
+        auto result = mdnspp::parse_service_type_checked("_http._tcp");
+
+        THEN("parsing fails with invalid_name")
+        {
+            REQUIRE_FALSE(result.has_value());
+            REQUIRE(result.error() == mdnspp::mdns_error::invalid_name);
+        }
+    }
+
+    GIVEN("a single label")
+    {
+        auto result = mdnspp::parse_service_type_checked("_http");
+
+        THEN("parsing fails with invalid_name")
+        {
+            REQUIRE_FALSE(result.has_value());
+            REQUIRE(result.error() == mdnspp::mdns_error::invalid_name);
+        }
+    }
+
+    GIVEN("an empty label between dots")
+    {
+        auto result = mdnspp::parse_service_type_checked("_http..local");
+
+        THEN("parsing fails with invalid_name")
+        {
+            REQUIRE_FALSE(result.has_value());
+            REQUIRE(result.error() == mdnspp::mdns_error::invalid_name);
+        }
+    }
+
+    GIVEN("an empty string")
+    {
+        auto result = mdnspp::parse_service_type_checked("");
+
+        THEN("parsing fails with invalid_name")
+        {
+            REQUIRE_FALSE(result.has_value());
+            REQUIRE(result.error() == mdnspp::mdns_error::invalid_name);
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // build_dns_query_tc tests -- RFC 6762 §7.1 known-answer TC splitting
 // ---------------------------------------------------------------------------
@@ -297,6 +358,13 @@ SCENARIO("build_dns_query_tc splits large known-answer list across packets",
             {
                 for(std::size_t i = 0; i + 1 < packets.size(); ++i)
                     REQUIRE(has_tc_bit(packets[i]));
+            }
+
+            THEN("only the first packet carries questions; continuations have qdcount=0 (RFC 6762 §7.2)")
+            {
+                REQUIRE(::read_u16_be(packets.front(), 4) == 1);
+                for(std::size_t i = 1; i < packets.size(); ++i)
+                    REQUIRE(::read_u16_be(packets[i], 4) == 0);
             }
         }
     }

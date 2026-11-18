@@ -2,7 +2,7 @@
 
 `record_cache` is a standalone, policy-free type that stores mDNS records with
 TTL tracking. It has no dependency on sockets, timers, or any `basic_*` type
-from mdnspp -- it holds records and lets you query or expire them at any time.
+from mdnspp &mdash; it holds records and lets you query or expire them at any time.
 
 `record_cache` is not included from `<mdnspp/defaults.h>`. Include it directly:
 
@@ -66,7 +66,7 @@ ctx.run();
 auto snap = cache.snapshot();
 ```
 
-This wiring is entirely manual -- `record_cache` does not know about `observer`
+This wiring is entirely manual &mdash; `record_cache` does not know about `observer`
 and `observer` does not know about `record_cache`. Any code that receives
 `mdns_record_variant` values can feed them in.
 
@@ -180,6 +180,6 @@ so they may call `find()` or `snapshot()` without deadlock.
 
 ## See Also
 
-- [examples/record_cache/](../examples/record_cache/) -- runnable examples
-- [API reference: record_cache](api/record_cache.md) -- full type documentation
-- [Service Monitor](service-monitor.md) -- higher-level continuous service tracking built on top of record_cache
+- [examples/record_cache/](../examples/record_cache/) &mdash; runnable examples
+- [API reference: record_cache](api/record_cache.md) &mdash; full type documentation
+- [Service Monitor](service-monitor.md) &mdash; higher-level continuous service tracking built on top of record_cache

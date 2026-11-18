@@ -4,7 +4,7 @@
 |---|---|
 | **Type** | `bool` |
 | **Default** | `true` |
-| **One-liner** | Whether the service honours known-answer suppression per RFC 6762 §7.1. |
+| **One-liner** | Whether the service honors known-answer suppression per RFC 6762 §7.1. |
 
 ## What
 

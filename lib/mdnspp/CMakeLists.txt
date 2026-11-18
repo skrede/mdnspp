@@ -37,6 +37,11 @@ add_library(mdnspp INTERFACE ${PUBLIC_HEADERS})
 
 add_library(mdnspp::mdnspp ALIAS mdnspp)
 
+target_compile_features(mdnspp INTERFACE cxx_std_20)
+
+find_package(Threads REQUIRED)
+target_link_libraries(mdnspp INTERFACE Threads::Threads)
+
 target_include_directories(mdnspp
     INTERFACE
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/${INCLUDE_DIRECTORY}>
@@ -63,30 +68,4 @@ install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/default/
 
 install(DIRECTORY ${INCLUDE_DIRECTORY}/mdnspp/detail/
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/mdnspp/detail
-)
-
-# --- CMake package config ---
-set(mdnspp_INSTALL_CMAKEDIR ${CMAKE_INSTALL_LIBDIR}/cmake/mdnspp)
-
-install(EXPORT mdnsppTargets
-    FILE mdnsppTargets.cmake
-    NAMESPACE mdnspp::
-    DESTINATION ${mdnspp_INSTALL_CMAKEDIR}
-)
-
-configure_package_config_file(
-    ${PROJECT_SOURCE_DIR}/cmake/mdnsppConfig.cmake.in
-    "${CMAKE_CURRENT_BINARY_DIR}/mdnsppConfig.cmake"
-    INSTALL_DESTINATION ${mdnspp_INSTALL_CMAKEDIR}
-)
-
-write_basic_package_version_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/mdnsppConfigVersion.cmake"
-    COMPATIBILITY SameMajorVersion
-)
-
-install(FILES
-    "${CMAKE_CURRENT_BINARY_DIR}/mdnsppConfig.cmake"
-    "${CMAKE_CURRENT_BINARY_DIR}/mdnsppConfigVersion.cmake"
-    DESTINATION ${mdnspp_INSTALL_CMAKEDIR}
 )

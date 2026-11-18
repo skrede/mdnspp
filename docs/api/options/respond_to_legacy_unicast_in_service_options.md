@@ -11,7 +11,7 @@
 
 Legacy unicast queries arrive from a source port other than 5353. They are used by resolvers that implement DNS-SD-compatible discovery but do not use full mDNS (e.g., some Windows implementations, iOS device discovery in managed networks).
 
-RFC 6762 §6.7 defines the response behaviour: when `respond_to_legacy_unicast = true`, the service sends a unicast reply with all TTL values capped at `mdns_options::legacy_unicast_ttl` (default 10 seconds) to prevent aggressive caching by non-mDNS resolvers. With `false`, legacy unicast queries are silently ignored.
+RFC 6762 §6.7 defines the response behavior: when `respond_to_legacy_unicast = true`, the service sends a unicast reply with all TTL values capped at `mdns_options::legacy_unicast_ttl` (default 10 seconds) to prevent aggressive caching by non-mDNS resolvers. With `false`, legacy unicast queries are silently ignored.
 
 ## Why
 

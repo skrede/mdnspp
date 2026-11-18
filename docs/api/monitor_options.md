@@ -12,10 +12,11 @@ Configuration struct for `service_monitor` lifecycle callbacks and monitoring mo
 
 ```cpp
 struct monitor_options {
-    detail::move_only_function<void(const resolved_service &)>                     on_found{};
-    detail::move_only_function<void(const resolved_service &, update_event, dns_type)> on_updated{};
-    detail::move_only_function<void(const resolved_service &, loss_reason)>        on_lost{};
-    monitor_mode                                                                   mode{monitor_mode::discover};
+    move_only_function<void(const resolved_service &)>                         on_found{};
+    move_only_function<void(const resolved_service &, update_event, dns_type)> on_updated{};
+    move_only_function<void(const resolved_service &, loss_reason)>            on_lost{};
+    error_handler                                                              on_error{};
+    monitor_mode                                                               mode{monitor_mode::discover};
 };
 ```
 
@@ -24,6 +25,7 @@ struct monitor_options {
 | `on_found` | `move_only_function<void(const resolved_service &)>` | `{}` | Fires once per fully-resolved service instance (PTR + SRV + at least one address record). Partial records are accumulated silently; the callback always receives a usable `resolved_service`. |
 | `on_updated` | `move_only_function<void(const resolved_service &, update_event, dns_type)>` | `{}` | Fires when a record change alters an already-resolved service. Delivers the current service state, the direction of change (`update_event`), and the record type that changed (`dns_type`). Does not fire on TTL refreshes with identical rdata. |
 | `on_lost` | `move_only_function<void(const resolved_service &, loss_reason)>` | `{}` | Fires when a service is no longer reachable. Delivers the last-known `resolved_service` and the reason for loss. |
+| `on_error` | `error_handler` (`move_only_function<void(std::error_code, std::string_view)>`) | `{}` | Optional handler invoked on fire-and-forget send failures and fatal receive errors. |
 | `mode` | `monitor_mode` | `monitor_mode::discover` | Controls whether and how the monitor issues automatic mDNS queries. |
 
 **Note:** `monitor_options` is a move-only struct (the function fields are non-copyable). Use `std::move` when passing a named variable to the `service_monitor` constructor.
@@ -88,7 +90,7 @@ Reason code delivered to `on_lost` callbacks.
 | Value | Description |
 |-------|-------------|
 | `timeout` | SRV record TTL expired without a refresh. The service is presumed gone. |
-| `goodbye` | A goodbye packet (TTL=0) was received. After the RFC 6762 §11.3 one-second grace period the service is considered lost. |
+| `goodbye` | A goodbye packet (TTL=0) was received. After the RFC 6762 §10.1 one-second grace period the service is considered lost. |
 | `unwatched` | The user called `unwatch()` for the service type. All tracked services of that type are reported as lost with this reason before their cache entries are purged. |
 
 ## Usage Example
@@ -103,13 +105,13 @@ mdnspp::monitor_options make_opts()
     return mdnspp::monitor_options{
         .on_found = [](const mdnspp::resolved_service &svc)
         {
-            std::cout << "found: " << svc.instance_name << "\n";
+            std::cout << "found: " << svc.instance_name << std::endl;
         },
         .on_lost = [](const mdnspp::resolved_service &svc, mdnspp::loss_reason reason)
         {
             std::cout << "lost: " << svc.instance_name
                       << (reason == mdnspp::loss_reason::goodbye ? " (goodbye)" : " (timeout)")
-                      << "\n";
+                      << std::endl;
         },
         .mode = mdnspp::monitor_mode::discover,
     };

@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DNS_RESPONSE_H
-#define HPP_GUARD_MDNSPP_DNS_RESPONSE_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_RESPONSE_H
+#define HPP_GUARD_MDNSPP_DETAIL_DNS_RESPONSE_H
 
 #include "mdnspp/service_info.h"
 #include "mdnspp/service_options.h"
@@ -9,13 +9,73 @@
 #include "mdnspp/detail/dns_enums.h"
 
 #include <vector>
-#include <cstdio>
 #include <climits>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <algorithm>
 
 namespace mdnspp::detail {
+
+// Pre-encoded wire forms of every record the service owns. Empty rdata_a /
+// rdata_aaaa means the address is unset or failed to encode (the server
+// validates and reports address errors separately via on_error).
+// valid is false when a DNS name fails to encode.
+struct service_wire_records
+{
+    std::vector<std::byte> name_service_type;
+    std::vector<std::byte> name_service_name;
+    std::vector<std::byte> name_hostname;
+    std::vector<std::byte> rdata_ptr;
+    std::vector<std::byte> rdata_srv;
+    std::vector<std::byte> rdata_txt;
+    std::vector<std::byte> rdata_a;
+    std::vector<std::byte> rdata_aaaa;
+    bool valid{false};
+};
+
+inline service_wire_records encode_service_records(const mdnspp::service_info &info)
+{
+    service_wire_records w;
+
+    auto name_service_type = encode_dns_name(info.service_type);
+    auto name_service_name = encode_dns_name(info.service_name);
+    auto name_hostname = encode_dns_name(info.hostname);
+
+    if(!name_service_type.has_value() || !name_service_name.has_value() || !name_hostname.has_value())
+        return w;
+
+    w.name_service_type = std::move(*name_service_type);
+    w.name_service_name = std::move(*name_service_name);
+    w.name_hostname = std::move(*name_hostname);
+
+    // PTR rdata: DNS-encoded service_name
+    w.rdata_ptr = w.name_service_name;
+
+    // SRV rdata: priority(2) + weight(2) + port(2) + DNS-encoded hostname
+    push_u16_be(w.rdata_srv, info.priority);
+    push_u16_be(w.rdata_srv, info.weight);
+    push_u16_be(w.rdata_srv, info.port);
+    w.rdata_srv.insert(w.rdata_srv.end(), w.name_hostname.begin(), w.name_hostname.end());
+
+    // TXT rdata: length-prefixed key[=value] strings; a single zero byte when
+    // there are no entries (RFC 6763 §6.1)
+    w.rdata_txt = encode_txt_records(info.txt_records);
+
+    if(info.address_ipv4.has_value())
+    {
+        if(auto enc = encode_ipv4(*info.address_ipv4); enc.has_value())
+            w.rdata_a = std::move(*enc);
+    }
+    if(info.address_ipv6.has_value())
+    {
+        if(auto enc = encode_ipv6(*info.address_ipv6); enc.has_value())
+            w.rdata_aaaa = std::move(*enc);
+    }
+
+    w.valid = true;
+    return w;
+}
 
 // ---------------------------------------------------------------------------
 // build_dns_response -- DNS response wire builder for mDNS service announcements
@@ -23,7 +83,7 @@ namespace mdnspp::detail {
 // Produces a complete mDNS response packet for the given service_info and query type.
 // Follows RFC 6762 section 6 (response format) and RFC 6763 (DNS-SD record layout):
 //
-//   qtype=12  (PTR): answer=PTR, additional=SRV + A/AAAA (if available) + TXT (if any)
+//   qtype=12  (PTR): answer=PTR, additional=SRV + A/AAAA (if available) + TXT
 //   qtype=33  (SRV): answer=SRV, additional=A/AAAA (if available)
 //   qtype=1   (A):   answer=A (owner=hostname); empty vector if no address_ipv4
 //   qtype=28  (AAAA): answer=AAAA (owner=hostname); empty vector if no address_ipv6
@@ -31,10 +91,12 @@ namespace mdnspp::detail {
 //   qtype=255 (ANY): all available records as answers
 //   other:           empty vector
 //
+// The TXT record is always present in PTR/ANY responses; with no TXT entries
+// its rdata is a single zero byte (RFC 6763 §6.1).
+//
 // Header: id=0, flags=0x8400 (QR=1, AA=1), qdcount=0, ancount and arcount set from content.
 //
 // Per-type TTLs are taken from opts (ptr_ttl, srv_ttl, txt_ttl, a_ttl, aaaa_ttl).
-// NSEC and fallback records use opts.record_ttl.
 //
 // legacy_unicast_cap: when set to a value below UINT32_MAX, each record TTL is
 // capped at min(per_type_ttl, legacy_unicast_cap) per RFC 6762 section 6.7.
@@ -53,58 +115,15 @@ inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &inf
     uint32_t txt_t  = ttl_for(opts.txt_ttl);
     uint32_t a_t    = ttl_for(opts.a_ttl);
     uint32_t aaaa_t = ttl_for(opts.aaaa_ttl);
-    uint32_t rec_t  = ttl_for(opts.record_ttl); // fallback for NSEC
 
-    // Pre-encode frequently used names (empty = encoding failure)
-    auto name_service_type = encode_dns_name(info.service_type);
-    auto name_service_name = encode_dns_name(info.service_name);
-    auto name_hostname = encode_dns_name(info.hostname);
-
-    if(name_service_type.empty() || name_service_name.empty() || name_hostname.empty())
+    auto w = encode_service_records(info);
+    if(!w.valid)
         return {};
-
-    // Build rdata buffers for each record type
-    // PTR rdata: DNS-encoded service_name
-    auto rdata_ptr = name_service_name;
-
-    // SRV rdata: priority(2) + weight(2) + port(2) + DNS-encoded hostname
-    std::vector<std::byte> rdata_srv;
-    push_u16_be(rdata_srv, info.priority);
-    push_u16_be(rdata_srv, info.weight);
-    push_u16_be(rdata_srv, info.port);
-    rdata_srv.insert(rdata_srv.end(), name_hostname.begin(), name_hostname.end());
-
-    // A rdata: 4 IPv4 octets (may be empty if no address_ipv4 or encoding fails)
-    std::vector<std::byte> rdata_a;
-    if(info.address_ipv4.has_value())
-    {
-        auto enc = encode_ipv4(*info.address_ipv4);
-        if(enc.has_value())
-            rdata_a = std::move(*enc);
-        else
-            std::fprintf(stderr, "encode_ipv4 failed: %s\n", info.address_ipv4->c_str());
-    }
-
-    // AAAA rdata: 16 IPv6 bytes (may be empty if no address_ipv6 or encoding fails)
-    std::vector<std::byte> rdata_aaaa;
-    if(info.address_ipv6.has_value())
-    {
-        auto enc = encode_ipv6(*info.address_ipv6);
-        if(enc.has_value())
-            rdata_aaaa = std::move(*enc);
-        else
-            std::fprintf(stderr, "encode_ipv6 failed: %s\n", info.address_ipv6->c_str());
-    }
-
-    // TXT rdata: length-prefixed key[=value] strings
-    std::vector<std::byte> rdata_txt;
-    if(!info.txt_records.empty())
-        rdata_txt = encode_txt_records(info.txt_records);
 
     // Handle unresolvable cases early
-    if(qtype == dns_type::a && rdata_a.empty())
+    if(qtype == dns_type::a && w.rdata_a.empty())
         return {};
-    if(qtype == dns_type::aaaa && rdata_aaaa.empty())
+    if(qtype == dns_type::aaaa && w.rdata_aaaa.empty())
         return {};
 
     // Allocate answer and additional RR buffers
@@ -138,61 +157,57 @@ inline std::vector<std::byte> build_dns_response(const mdnspp::service_info &inf
     // Helper: add A and AAAA records to a section
     auto append_address_records = [&](auto add_fn)
     {
-        if(!rdata_a.empty())
-            add_fn(name_hostname, dns_type::a, a_t, rdata_a);
-        if(!rdata_aaaa.empty())
-            add_fn(name_hostname, dns_type::aaaa, aaaa_t, rdata_aaaa);
+        if(!w.rdata_a.empty())
+            add_fn(w.name_hostname, dns_type::a, a_t, w.rdata_a);
+        if(!w.rdata_aaaa.empty())
+            add_fn(w.name_hostname, dns_type::aaaa, aaaa_t, w.rdata_aaaa);
     };
-
-    (void)rec_t; // used for NSEC in server_response_aggregation.h
 
     switch(qtype)
     {
     case dns_type::ptr: // PTR -- service type lookup
         {
             // Answer: PTR record (owner = service_type)
-            add_answer(name_service_type, dns_type::ptr, ptr_t, rdata_ptr);
+            add_answer(w.name_service_type, dns_type::ptr, ptr_t, w.rdata_ptr);
             // Additional: SRV
-            add_additional(name_service_name, dns_type::srv, srv_t, rdata_srv);
+            add_additional(w.name_service_name, dns_type::srv, srv_t, w.rdata_srv);
             // Additional: A / AAAA
             append_address_records(add_additional);
-            // Additional: TXT (if any)
-            if(!rdata_txt.empty())
-                add_additional(name_service_name, dns_type::txt, txt_t, rdata_txt);
+            // Additional: TXT (mandatory for DNS-SD instances, RFC 6763 §6.1)
+            add_additional(w.name_service_name, dns_type::txt, txt_t, w.rdata_txt);
             break;
         }
     case dns_type::srv: // SRV -- service instance lookup
         {
-            add_answer(name_service_name, dns_type::srv, srv_t, rdata_srv);
+            add_answer(w.name_service_name, dns_type::srv, srv_t, w.rdata_srv);
             append_address_records(add_additional);
             break;
         }
     case dns_type::a: // A -- hostname lookup (IPv4)
         {
-            add_answer(name_hostname, dns_type::a, a_t, rdata_a);
+            add_answer(w.name_hostname, dns_type::a, a_t, w.rdata_a);
             break;
         }
     case dns_type::aaaa: // AAAA -- hostname lookup (IPv6)
         {
-            add_answer(name_hostname, dns_type::aaaa, aaaa_t, rdata_aaaa);
+            add_answer(w.name_hostname, dns_type::aaaa, aaaa_t, w.rdata_aaaa);
             break;
         }
     case dns_type::txt: // TXT -- service metadata
         {
-            // Even if txt_records is empty, produce a valid (zero-length) TXT record
-            add_answer(name_service_name, dns_type::txt, txt_t, rdata_txt);
+            // With no entries the rdata is a single zero byte (RFC 6763 §6.1)
+            add_answer(w.name_service_name, dns_type::txt, txt_t, w.rdata_txt);
             break;
         }
     case dns_type::any: // ANY -- all available records
         {
-            add_answer(name_service_type, dns_type::ptr, ptr_t, rdata_ptr);
-            add_answer(name_service_name, dns_type::srv, srv_t, rdata_srv);
-            if(!rdata_a.empty())
-                add_answer(name_hostname, dns_type::a, a_t, rdata_a);
-            if(!rdata_aaaa.empty())
-                add_answer(name_hostname, dns_type::aaaa, aaaa_t, rdata_aaaa);
-            if(!rdata_txt.empty())
-                add_answer(name_service_name, dns_type::txt, txt_t, rdata_txt);
+            add_answer(w.name_service_type, dns_type::ptr, ptr_t, w.rdata_ptr);
+            add_answer(w.name_service_name, dns_type::srv, srv_t, w.rdata_srv);
+            if(!w.rdata_a.empty())
+                add_answer(w.name_hostname, dns_type::a, a_t, w.rdata_a);
+            if(!w.rdata_aaaa.empty())
+                add_answer(w.name_hostname, dns_type::aaaa, aaaa_t, w.rdata_aaaa);
+            add_answer(w.name_service_name, dns_type::txt, txt_t, w.rdata_txt);
             break;
         }
     default:

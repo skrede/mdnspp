@@ -8,7 +8,7 @@
 
 ## What
 
-`max_query_payload` is the UDP payload size threshold at which the query builder switches from a single packet to a TC (truncation) split (RFC 6762 §6). When the serialised query — questions plus known-answer section — exceeds this limit, the TC bit is set and the overflow known answers are sent in one or more continuation packets.
+`max_query_payload` is the UDP payload size threshold at which the query builder switches from a single packet to a TC (truncation) split (RFC 6762 §6). When the serialized query — questions plus known-answer section — exceeds this limit, the TC bit is set and the overflow known answers are sent in one or more continuation packets.
 
 The default of 1472 bytes matches the Ethernet MTU of 1500 bytes minus 20 bytes for the IPv4 header and 8 bytes for the UDP header. This is the largest payload that fits in a single Ethernet frame without IP fragmentation.
 

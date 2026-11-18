@@ -83,7 +83,7 @@ inline std::vector<std::byte> make_ptr_query(std::string_view service_type)
 // Probing: 1 fire (initial delay) + 2 fires (probes 2 and 3) + 1 fire (conflict window) = 4
 // Announcing: first announcement is immediate (no fire), then (announce_count - 1) fires
 // With default announce_count=2: 4 + 1 = 5 timer fires total.
-inline void advance_to_live(basic_service_server<MockPolicy> &server, unsigned announce_count = 2)
+inline void advance_to_live(basic_service_server<mock_policy> &server, unsigned announce_count = 2)
 {
     // 4 timer fires to complete probing
     for(unsigned i = 0; i < 4; ++i)

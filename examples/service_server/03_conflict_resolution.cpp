@@ -1,6 +1,10 @@
 #include <mdnspp/defaults.h>
 
+#include <string>
+#include <cstdint>
 #include <iostream>
+#include <optional>
+#include <string_view>
 
 // Demonstrates service name conflict resolution using service_options::on_conflict.
 // Two servers with the same name are started simultaneously. When they detect each other's probes, the on_conflict callback renames the service and retries.
@@ -25,18 +29,19 @@ int main()
     auto make_opts = [](const std::string &label)
     {
         mdnspp::service_options opts;
-        opts.on_conflict = [label](const std::string &conflicting_name, std::string &new_name, unsigned attempt, mdnspp::conflict_type) -> bool
+        opts.on_conflict = [label](std::string_view conflicting_name, uint32_t attempt, mdnspp::conflict_type)
+            -> std::optional<std::string>
         {
             if(attempt >= 3)
-                return false;
+                return std::nullopt; // give up: the server tears down and on_done fires
 
-            new_name = conflicting_name;
+            std::string new_name{conflicting_name};
             auto pos = new_name.find("._http");
             if(pos != std::string::npos)
                 new_name.insert(pos, " (" + std::to_string(attempt + 1) + ")");
 
             std::cout << "[" << label << "] Conflict on \"" << conflicting_name << "\", retrying as \"" << new_name << "\"" << std::endl;
-            return true;
+            return new_name;
         };
         return opts;
     };

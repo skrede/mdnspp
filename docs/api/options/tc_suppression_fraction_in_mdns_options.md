@@ -25,4 +25,4 @@ Reasons to adjust `tc_suppression_fraction` independently:
 
 The same trade-offs as `ka_suppression_fraction` apply: lowering accepts stale known answers (risking cache gaps), raising causes more re-announcements (increasing traffic). The difference is that these risks are confined to the TC accumulation code path — queries without the TC bit set are unaffected.
 
-Mismatching `tc_suppression_fraction` and `ka_suppression_fraction` significantly (e.g., `0.1` vs `0.9`) creates inconsistent suppression behaviour: the same record may be suppressed when seen in a standard query but re-announced when the same record arrives in a TC query, or vice versa. This inconsistency is generally undesirable.
+Mismatching `tc_suppression_fraction` and `ka_suppression_fraction` significantly (e.g., `0.1` vs `0.9`) creates inconsistent suppression behavior: the same record may be suppressed when seen in a standard query but re-announced when the same record arrives in a TC query, or vice versa. This inconsistency is generally undesirable.

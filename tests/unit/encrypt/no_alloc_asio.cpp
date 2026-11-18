@@ -73,6 +73,7 @@ private:
         m_receiver.async_wait(asio::ip::udp::socket::wait_read,
             [this, token = std::weak_ptr<char>(m_token), pad](std::error_code ec) mutable
             {
+                static_cast<void>(pad);
                 if(token.expired() || ec)
                     return;
                 m_receiver.receive_from(asio::buffer(m_buffer), m_from);

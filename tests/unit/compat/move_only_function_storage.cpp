@@ -36,12 +36,19 @@ struct throwing_move_callable
     int operator()() { return 2; }
 };
 
+// Publishing each object's address through a volatile pointer stops the
+// optimizer from eliding the paired new/delete, which would otherwise read as
+// zero allocations in optimized builds.
+function_type *volatile escape = nullptr;
+
 template <typename Callable>
 uint64_t allocations_when_built_and_moved(int &result)
 {
     mdnspp::test_support::reset_allocation_count();
     function_type fn{Callable{}};
+    escape = &fn;
     function_type moved(std::move(fn));
+    escape = &moved;
     result = moved();
     return mdnspp::test_support::allocation_count();
 }

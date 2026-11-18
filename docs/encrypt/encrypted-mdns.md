@@ -246,18 +246,20 @@ socket's executor semantics.
 
 In steady state the encrypt layer performs no heap allocation per datagram,
 for either sending or receiving and delivering a packet. This is measured, not
-assumed: a test counts global `operator new` calls across repeated send and
-receive-deliver cycles and requires zero on a mock inner socket, on the default
-socket (IPv4 loopback, Linux), and on the asio socket (IPv4 loopback, Linux),
-where the count also equals that of a plain asio receive loop, which is zero as
-well. On the asio path the mdnspp layers add no allocation; asio recycles its
-own operation memory through a per-thread cache, and no allocation inside asio
-itself was observed in steady state on Linux. The following are outside that
-guarantee:
+assumed, on Linux: a test counts global `operator new` calls across repeated
+send and receive-deliver cycles and requires zero on a mock inner socket, on the
+default socket over IPv4 and IPv6 loopback, and on the asio socket over IPv4 and
+IPv6 loopback, where the count also equals that of a plain asio receive loop,
+which is zero as well. Filling the receive metadata for a sender address longer
+than the standard library's small-string buffer also allocates nothing: the
+sender text is written into storage reserved once per socket. On the asio path
+the mdnspp layers add no allocation; asio recycles its own operation memory
+through a per-thread cache, and no allocation inside asio itself was observed in
+steady state on Linux. The following are outside that guarantee:
 
 - The first datagram from a sender or session that the receiver does not yet
   track allocates replay-window state.
-- IPv6, macOS and Windows were not measured.
+- macOS, Windows and the in-process bus socket were not measured.
 - Code above the socket (peers, record parsing, caches) and the application's
   receive handler are not covered.
 

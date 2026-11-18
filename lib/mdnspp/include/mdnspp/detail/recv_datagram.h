@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DETAIL_RECV_DATAGRAM_H
 
 #include "mdnspp/detail/native_socket.h"
+#include "mdnspp/detail/sockaddr_text.h"
 #include "mdnspp/detail/recv_ancillary.h"
 
 #include "mdnspp/policy.h"
@@ -10,6 +11,7 @@
 #include <array>
 #include <cerrno>
 #include <cstddef>
+#include <optional>
 #include <system_error>
 
 namespace mdnspp::detail {
@@ -20,7 +22,6 @@ struct datagram_result
     std::size_t size;
     bool truncated;
     bool would_block;
-    recv_metadata meta;
 };
 
 inline datagram_result truncated_datagram()
@@ -30,16 +31,24 @@ inline datagram_result truncated_datagram()
     return result;
 }
 
-inline datagram_result datagram_with_metadata(std::size_t size, const sockaddr_storage &sender,
-                                              const ancillary_data &ancillary)
+inline recv_metadata reserved_metadata()
 {
+    return recv_metadata{.sender = reserved_endpoint(), .ttl = std::nullopt, .recv_ifindex = 0};
+}
+
+inline void fill_metadata(recv_metadata &meta, const sockaddr_storage &sender, const ancillary_data &ancillary)
+{
+    assign_endpoint(sender, meta.sender);
+    meta.ttl = ancillary.ttl;
+    meta.recv_ifindex = ancillary.ifindex;
+}
+
+inline datagram_result received_datagram(std::size_t size, const sockaddr_storage &sender,
+                                         const ancillary_data &ancillary, recv_metadata &meta)
+{
+    fill_metadata(meta, sender, ancillary);
     datagram_result result{};
     result.size = size;
-    result.meta = recv_metadata{
-        .sender = endpoint_from_sockaddr(sender),
-        .ttl = ancillary.ttl,
-        .recv_ifindex = ancillary.ifindex,
-    };
     return result;
 }
 
@@ -56,7 +65,7 @@ inline datagram_result classify_wsa_error(int err)
 }
 
 inline datagram_result recv_with_wsarecvmsg(native_socket_t fd, std::span<std::byte> buf,
-                                            LPFN_WSARECVMSG fn_wsarecvmsg)
+                                            LPFN_WSARECVMSG fn_wsarecvmsg, recv_metadata &meta)
 {
     sockaddr_storage sender{};
     WSABUF data_buf{static_cast<ULONG>(buf.size()), reinterpret_cast<char *>(buf.data())};
@@ -75,10 +84,10 @@ inline datagram_result recv_with_wsarecvmsg(native_socket_t fd, std::span<std::b
         return classify_wsa_error(::WSAGetLastError());
     if(wmsg.dwFlags & MSG_PARTIAL)
         return truncated_datagram();
-    return datagram_with_metadata(received, sender, parse_ancillary(wmsg));
+    return received_datagram(received, sender, parse_ancillary(wmsg), meta);
 }
 
-inline datagram_result recv_with_recvfrom(native_socket_t fd, std::span<std::byte> buf)
+inline datagram_result recv_with_recvfrom(native_socket_t fd, std::span<std::byte> buf, recv_metadata &meta)
 {
     sockaddr_storage sender{};
     int sender_len = sizeof(sender);
@@ -87,15 +96,15 @@ inline datagram_result recv_with_recvfrom(native_socket_t fd, std::span<std::byt
                                     reinterpret_cast<sockaddr *>(&sender), &sender_len);
     if(received == SOCKET_ERROR)
         return classify_wsa_error(::WSAGetLastError());
-    return datagram_with_metadata(static_cast<std::size_t>(received), sender, ancillary_data{});
+    return received_datagram(static_cast<std::size_t>(received), sender, ancillary_data{}, meta);
 }
 
 inline datagram_result recv_datagram(native_socket_t fd, std::span<std::byte> buf,
-                                     LPFN_WSARECVMSG fn_wsarecvmsg)
+                                     LPFN_WSARECVMSG fn_wsarecvmsg, recv_metadata &meta)
 {
     if(fn_wsarecvmsg)
-        return recv_with_wsarecvmsg(fd, buf, fn_wsarecvmsg);
-    return recv_with_recvfrom(fd, buf);
+        return recv_with_wsarecvmsg(fd, buf, fn_wsarecvmsg, meta);
+    return recv_with_recvfrom(fd, buf, meta);
 }
 
 #else
@@ -109,7 +118,7 @@ inline datagram_result classify_recv_error(int err)
     return result;
 }
 
-inline datagram_result recv_datagram(native_socket_t fd, std::span<std::byte> buf)
+inline datagram_result recv_datagram(native_socket_t fd, std::span<std::byte> buf, recv_metadata &meta)
 {
     sockaddr_storage sender{};
     iovec iov{buf.data(), buf.size()};
@@ -130,7 +139,7 @@ inline datagram_result recv_datagram(native_socket_t fd, std::span<std::byte> bu
     if(msg.msg_flags & MSG_TRUNC)
         return truncated_datagram();
 #endif
-    return datagram_with_metadata(static_cast<std::size_t>(received), sender, parse_ancillary(msg));
+    return received_datagram(static_cast<std::size_t>(received), sender, parse_ancillary(msg), meta);
 }
 
 #endif

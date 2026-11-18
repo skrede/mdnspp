@@ -29,7 +29,10 @@ struct recv_metadata {
 
 `recv_metadata` is passed by const reference to the `socket_like::async_receive` handler
 (signature `void(std::error_code, const recv_metadata &, std::span<std::byte>)`, error
-code first; on error the metadata is empty) and flows through the receive loop. It is
+code first; on error the metadata is empty) and flows through the receive loop. The
+reference, like the data span, is valid only during the handler call: the default and asio
+sockets fill one `recv_metadata` reserved per context or socket, so a handler that keeps the
+sender copies it. It is
 not directly accessible from `monitor_options`,
 `observer_options`, or other public callback APIs — it is consumed internally to apply
 `receive_ttl_minimum` filtering and to populate `resolved_service::source_interface`.

@@ -1,4 +1,7 @@
+#include "mdnspp/detail/sockaddr_text.h"
 #include "mdnspp/detail/recv_ancillary.h"
+
+#include "mdnspp/endpoint.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -32,17 +35,19 @@ sockaddr_storage make_v6(const char *text, uint16_t port)
 
 }
 
-TEST_CASE("endpoint_from_sockaddr renders an IPv4 sender", "[recv_ancillary]")
+TEST_CASE("an IPv4 sender is rendered as dotted-quad text with its port", "[recv_ancillary]")
 {
-    const auto ep = endpoint_from_sockaddr(make_v4("192.0.2.1", 5353));
+    mdnspp::endpoint ep{};
+    assign_endpoint(make_v4("192.0.2.1", 5353), ep);
 
     REQUIRE(ep.address == "192.0.2.1");
     REQUIRE(ep.port == 5353);
 }
 
-TEST_CASE("endpoint_from_sockaddr renders an IPv6 sender", "[recv_ancillary]")
+TEST_CASE("an IPv6 sender is rendered as colon-hex text with its port", "[recv_ancillary]")
 {
-    const auto ep = endpoint_from_sockaddr(make_v6("2001:db8::1", 5353));
+    mdnspp::endpoint ep{};
+    assign_endpoint(make_v6("2001:db8::1", 5353), ep);
 
     REQUIRE(ep.address == "2001:db8::1");
     REQUIRE(ep.port == 5353);

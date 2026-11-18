@@ -42,6 +42,7 @@ public:
         : m_socket(io)
         , m_buffer(detail::max_udp_payload)
         , m_token(std::make_shared<char>())
+        , m_meta(detail::reserved_metadata())
 #ifdef _WIN32
         , m_fn_wsarecvmsg(nullptr)
 #endif
@@ -56,6 +57,7 @@ public:
         : m_socket(io)
         , m_buffer(detail::max_udp_payload)
         , m_token(std::make_shared<char>())
+        , m_meta(detail::reserved_metadata())
 #ifdef _WIN32
         , m_fn_wsarecvmsg(nullptr)
 #endif
@@ -102,7 +104,7 @@ public:
         m_token = std::make_shared<char>();
     }
 
-    auto native_handle() { return m_socket.native_handle(); }
+    asio::ip::udp::socket::native_handle_type native_handle() { return m_socket.native_handle(); }
 
     // asio::basic_socket::get_executor() is non-const but only reads the stored executor.
     executor_type get_executor() const noexcept
@@ -114,6 +116,7 @@ private:
     asio::ip::udp::socket m_socket;
     std::vector<std::byte> m_buffer;
     std::shared_ptr<char> m_token;
+    mdnspp::recv_metadata m_meta;
 #ifdef _WIN32
     LPFN_WSARECVMSG m_fn_wsarecvmsg;
 #endif
@@ -140,15 +143,15 @@ private:
         else if(result.ec)
             handler(result.ec, mdnspp::recv_metadata{}, std::span<std::byte>{});
         else
-            handler(std::error_code{}, result.meta, std::span<std::byte>(m_buffer.data(), result.size));
+            handler(std::error_code{}, m_meta, std::span<std::byte>(m_buffer.data(), result.size));
     }
 
     detail::datagram_result read_datagram()
     {
 #ifdef _WIN32
-        return detail::recv_datagram(m_socket.native_handle(), m_buffer, m_fn_wsarecvmsg);
+        return detail::recv_datagram(m_socket.native_handle(), m_buffer, m_fn_wsarecvmsg, m_meta);
 #else
-        return detail::recv_datagram(m_socket.native_handle(), m_buffer);
+        return detail::recv_datagram(m_socket.native_handle(), m_buffer, m_meta);
 #endif
     }
 };

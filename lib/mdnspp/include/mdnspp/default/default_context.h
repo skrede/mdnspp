@@ -38,6 +38,7 @@ public:
         , m_wakeup{}
         , m_post_queue{[this] { m_wakeup.notify(); }}
         , m_recv_buf{}
+        , m_recv_meta(detail::reserved_metadata())
     {
         m_wakeup.create();
     }
@@ -130,6 +131,7 @@ private:
     std::vector<default_timer *> m_timers;
     std::vector<detail::native_socket_t> m_ready;
     std::array<std::byte, detail::max_udp_payload> m_recv_buf;
+    recv_metadata m_recv_meta;
 
     // single_step ends the pass after the first kind of work, as poll_one does
     bool run_once(int timeout_ms, bool single_step)
@@ -170,15 +172,15 @@ private:
         if(result.ec)
             handler(result.ec, recv_metadata{}, std::span<std::byte>{});
         else
-            handler(std::error_code{}, result.meta, std::span<std::byte>{m_recv_buf.data(), result.size});
+            handler(std::error_code{}, m_recv_meta, std::span<std::byte>{m_recv_buf.data(), result.size});
     }
 
     detail::datagram_result read_datagram(detail::native_socket_t fd)
     {
 #ifdef _WIN32
-        return detail::recv_datagram(fd, m_recv_buf, m_sockets.wsarecvmsg(fd));
+        return detail::recv_datagram(fd, m_recv_buf, m_sockets.wsarecvmsg(fd), m_recv_meta);
 #else
-        return detail::recv_datagram(fd, m_recv_buf);
+        return detail::recv_datagram(fd, m_recv_buf, m_recv_meta);
 #endif
     }
 };

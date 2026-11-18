@@ -70,7 +70,7 @@ struct recv_metadata
 //   - After close() no handler fires, success or error, including completions
 //     the OS or the executor had already queued. A handler registered by
 //     async_receive after close() never fires.
-//   - The data span is valid only during the handler call.
+//   - The data span and the metadata are valid only during the handler call.
 //   - Buffering backends may complete inline from async_receive when a
 //     datagram is already queued, so callers tolerate that recursion.
 //   - Receive handlers fire on the policy executor; the library never locks

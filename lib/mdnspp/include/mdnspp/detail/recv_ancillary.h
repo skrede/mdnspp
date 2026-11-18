@@ -3,8 +3,6 @@
 
 #include "mdnspp/detail/native_socket.h"
 
-#include "mdnspp/endpoint.h"
-
 #include <cstdint>
 #include <cstring>
 #include <optional>
@@ -27,20 +25,6 @@ using pktinfo4_t = in_pktinfo;
 #  endif
 using pktinfo6_t = in6_pktinfo;
 #endif
-
-inline endpoint endpoint_from_sockaddr(const sockaddr_storage &addr)
-{
-    char text[INET6_ADDRSTRLEN]{};
-    if(addr.ss_family == AF_INET6)
-    {
-        const auto &sa6 = reinterpret_cast<const sockaddr_in6 &>(addr);
-        ::inet_ntop(AF_INET6, &sa6.sin6_addr, text, sizeof(text));
-        return {text, ntohs(sa6.sin6_port)};
-    }
-    const auto &sa4 = reinterpret_cast<const sockaddr_in &>(addr);
-    ::inet_ntop(AF_INET, &sa4.sin_addr, text, sizeof(text));
-    return {text, ntohs(sa4.sin_port)};
-}
 
 inline void read_ttl_message(int level, int type, const void *data, ancillary_data &out)
 {

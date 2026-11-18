@@ -25,6 +25,7 @@ if (MDNSPP_ENABLE_ENCRYPT)
         target_sources(encrypt_no_alloc_test PRIVATE
             "${CMAKE_CURRENT_LIST_DIR}/encrypt/no_alloc_receive.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/encrypt/no_alloc_backends.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/encrypt/no_alloc_metadata.cpp"
             "${CMAKE_CURRENT_LIST_DIR}/../support/alloc_counter.cpp")
         if (TARGET mdnspp::asio)
             target_sources(encrypt_no_alloc_test PRIVATE "${CMAKE_CURRENT_LIST_DIR}/encrypt/no_alloc_asio.cpp")

@@ -38,16 +38,20 @@ struct encrypt_options
     uint16_t max_senders{256};
     cleartext_detection detection{cleartext_detection::magic_byte};
     receive_mode recv_mode{receive_mode::accept_both};
+    // Independent replay windows kept per sender, one per sender session; the least recently used
+    // session is evicted when a sender exceeds this.
+    uint16_t max_sessions_per_sender{8};
 
     // Returns std::errc::invalid_argument if sender_id is zero, the PSK is
-    // all-zero, or replay_window_size is zero; a default-constructed
-    // std::error_code otherwise. Enforced (in all build configurations) by the
-    // encrypted_socket constructors that take encrypt_socket_options.
-    [[nodiscard]] std::error_code validate() const noexcept
+    // all-zero, or replay_window_size or max_sessions_per_sender is zero; a
+    // default-constructed std::error_code otherwise. Enforced (in all build
+    // configurations) by the encrypted_socket constructors that take
+    // encrypt_socket_options.
+    std::error_code validate() const noexcept
     {
         const bool zero_key = std::ranges::all_of(psk.bytes(),
             [](std::byte b) { return b == std::byte{0}; });
-        if(sender_id == 0 || replay_window_size == 0 || zero_key)
+        if(sender_id == 0 || replay_window_size == 0 || max_sessions_per_sender == 0 || zero_key)
             return std::make_error_code(std::errc::invalid_argument);
         return {};
     }

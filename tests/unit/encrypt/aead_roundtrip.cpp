@@ -65,7 +65,7 @@ TEST_CASE("aead two encrypts with same key+plaintext produce different ciphertex
     auto packet1 = seal_packet(key, hdr, payload);
     auto packet2 = seal_packet(key, hdr, payload);
 
-    // Full packets must differ (nonce occupies bytes 20-43 of header, and ciphertext will differ)
+    // The random nonce is part of the header, and the ciphertext differs with it
     REQUIRE(packet1 != packet2);
 }
 

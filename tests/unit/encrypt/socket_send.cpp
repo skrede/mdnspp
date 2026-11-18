@@ -20,7 +20,7 @@ TEST_CASE("send encrypts plaintext and forwards to inner socket", "[encrypted_so
     CHECK(pkt[1] == std::byte{0x43});
 }
 
-TEST_CASE("send increments sequence counter", "[encrypted_socket][sequence]")
+TEST_CASE("send numbers packets from one and increments by one", "[encrypted_socket][sequence]")
 {
     paired_sockets pair;
     plain_bytes plaintext{std::byte{0xAB}};
@@ -28,30 +28,27 @@ TEST_CASE("send increments sequence counter", "[encrypted_socket][sequence]")
         send_bytes(pair.sender, plaintext);
 
     REQUIRE(sent_count(pair.sender) == 3);
-
-    // The counter starts at a per-boot randomized base (top 24 bits random,
-    // low 40 bits zero) and increments by one per packet.
-    constexpr uint64_t low40_mask = (uint64_t{1} << 40) - 1;
-    auto hdr0 = header_of(sent_packet_at(pair.sender, 0));
-    CHECK((hdr0.sequence & low40_mask) == 1);
-
     for(std::size_t i = 0; i < 3; ++i)
-        CHECK(header_of(sent_packet_at(pair.sender, i)).sequence == hdr0.sequence + i);
+        CHECK(header_of(sent_packet_at(pair.sender, i)).sequence == i + 1);
 }
 
-TEST_CASE("sequence counter start is randomized per socket", "[encrypted_socket][sequence]")
+TEST_CASE("packets carry version 2 and a nonzero session id that is fixed per socket and differs between sockets",
+          "[encrypted_socket][session]")
 {
     paired_sockets pair;
     plain_bytes plaintext{std::byte{0x01}};
-    send_bytes(pair.sender, plaintext);
+    for(std::size_t i = 0; i < 2; ++i)
+        send_bytes(pair.sender, plaintext);
     send_bytes(pair.receiver, plaintext);
 
-    auto hdr_a = header_of(sent_packet_at(pair.sender, 0));
-    auto hdr_b = header_of(sent_packet_at(pair.receiver, 0));
-
-    // Independent CSPRNG draws of the top 24 bits collide with probability 2^-24.
-    CHECK(hdr_a.sequence != hdr_b.sequence);
+    const auto first = header_of(sent_packet_at(pair.sender, 0));
+    CHECK(sent_packet_at(pair.sender, 0)[2] == std::byte{0x02});
+    CHECK(first.session_id != 0);
+    CHECK(header_of(sent_packet_at(pair.sender, 1)).session_id == first.session_id);
+    CHECK(header_of(sent_packet_at(pair.receiver, 0)).session_id != first.session_id);
 }
+
+static_assert(mdnspp::encrypt::encrypted_overhead == 68);
 
 namespace {
 

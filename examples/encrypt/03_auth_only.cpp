@@ -11,7 +11,7 @@
 //
 // Auth-only mode provides packet authentication without confidentiality.
 // The DNS payload is transmitted in plaintext, but a Poly1305 authentication
-// tag covers the 44-byte packet header and the plaintext payload. Any peer
+// tag covers the packet header and the plaintext payload. Any peer
 // without the PSK cannot forge an authenticated packet, and any modification
 // to the header or payload in transit is detected and the packet dropped.
 //
@@ -19,7 +19,7 @@
 //   In full encryption mode, the flags byte in the packet header has bit 0 set
 //   (flag_encrypted = 0x01) and the payload field contains ciphertext.
 //   In auth-only mode, bit 0 is cleared (flags = 0x00) and the payload field
-//   carries the raw plaintext DNS message. The 60-byte overhead is identical.
+//   carries the raw plaintext DNS message. The packet overhead is identical.
 //
 // receive_mode controls which packet types are accepted on the receive path:
 //   receive_mode::accept_both      -- accepts encrypted and auth-only packets

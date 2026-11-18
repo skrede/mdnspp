@@ -82,6 +82,7 @@ void fuzz_round_trip(mdnspp::fuzz::input_reader &in)
     recv_opts.encrypt.recv_mode = recv_mode;
     recv_opts.encrypt.replay_window_size = static_cast<uint16_t>(in.u16() % 256);
     recv_opts.encrypt.max_senders = 4;
+    recv_opts.encrypt.max_sessions_per_sender = 2;
 
     std::error_code send_ec;
     std::error_code recv_ec;

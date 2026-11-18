@@ -15,8 +15,8 @@
 
 namespace mdnspp::encrypt {
 
-// The length of the version-1 header. A magic-prefixed packet at least this long is never delivered
-// as cleartext, so ciphertext of that version cannot reach the handler.
+// The shortest header any wire version has used. A magic-prefixed packet at least this long is never
+// delivered as cleartext, so ciphertext of an older version cannot reach the handler.
 inline constexpr std::size_t smallest_known_header_size = 44;
 
 enum class receive_outcome { deliver_plain, deliver_cleartext, drop };
@@ -41,10 +41,11 @@ inline receive_rules rules_of(const encrypt_options &opts) noexcept
     return receive_rules{opts.accept_cleartext, opts.detection, opts.recv_mode};
 }
 
-inline encrypted_packet_header header_template(const encrypt_options &opts) noexcept
+inline encrypted_packet_header header_template(const encrypt_options &opts, uint64_t session_id) noexcept
 {
     encrypted_packet_header hdr;
     hdr.sender_id = opts.sender_id;
+    hdr.session_id = session_id;
     hdr.flags = opts.auth_only ? uint8_t{0} : flag_encrypted;
     return hdr;
 }
@@ -108,7 +109,7 @@ inline opened_packet authenticate(key_ring &keys, replay_window &replay, const r
     std::size_t written = 0;
     if(aead_decrypt(key->key.span(), raw, out, written) || !mode_accepts(rules.mode, hdr.flags))
         return {receive_outcome::drop, 0};
-    if(replay.check_and_record(hdr.sender_id, hdr.sequence).has_value())
+    if(replay.check_and_record(hdr.sender_id, hdr.session_id, hdr.sequence).has_value())
         return {receive_outcome::drop, 0};
     if(key->is_previous)
         keys.note_previous_key_packet();

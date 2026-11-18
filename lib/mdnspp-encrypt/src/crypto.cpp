@@ -3,6 +3,7 @@
 #include <sodium.h>
 
 #include <mutex>
+#include <array>
 #include <cstdint>
 
 namespace mdnspp::encrypt {
@@ -22,12 +23,18 @@ bool init_crypto()
     return result;
 }
 
-uint64_t random_sequence_start() noexcept
+uint64_t random_session_id() noexcept
 {
     init_crypto();
-    uint32_t high = 0;
-    randombytes_buf(&high, 3);
-    return static_cast<uint64_t>(high & 0x00FFFFFFu) << 40;
+    uint64_t id = 0;
+    while(id == 0)
+    {
+        std::array<unsigned char, 8> bytes{};
+        randombytes_buf(bytes.data(), bytes.size());
+        for(const unsigned char byte : bytes)
+            id = (id << 8) | byte;
+    }
+    return id;
 }
 
 }

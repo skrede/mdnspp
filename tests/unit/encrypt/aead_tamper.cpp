@@ -1,6 +1,7 @@
 #include "aead_helpers.h"
 
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <vector>
 #include <cstddef>
@@ -53,6 +54,22 @@ TEST_CASE("flipping sender_id byte causes decrypt_failed", "[aead][tamper][heade
     REQUIRE(result.written == 0);
 }
 
+TEST_CASE("flipping a session_id byte causes decrypt_failed", "[aead][tamper][header]")
+{
+    auto key     = make_raw_key();
+    auto hdr     = make_header();
+    auto payload = make_payload();
+    hdr.session_id = 0x0102030405060708;
+
+    const auto offset = GENERATE(std::size_t{8}, std::size_t{11}, std::size_t{15});
+    auto packet = seal_packet(key, hdr, payload);
+    packet[offset] ^= std::byte{0x01};
+
+    auto result = unseal_packet(key, packet);
+    REQUIRE(result.ec == mdnspp::encrypt::encrypt_error::decrypt_failed);
+    REQUIRE(result.written == 0);
+}
+
 TEST_CASE("flipping sequence byte causes decrypt_failed", "[aead][tamper][header]")
 {
     auto key     = make_raw_key();
@@ -61,8 +78,8 @@ TEST_CASE("flipping sequence byte causes decrypt_failed", "[aead][tamper][header
 
     auto packet = seal_packet(key, hdr, payload);
 
-    // sequence starts at offset 8 (magic=2, version=1, flags=1, sender_id=4)
-    packet[8] ^= std::byte{0x01};
+    // sequence starts at offset 16 (magic=2, version=1, flags=1, sender_id=4, session_id=8)
+    packet[16] ^= std::byte{0x01};
 
     auto result = unseal_packet(key, packet);
     REQUIRE(result.ec == mdnspp::encrypt::encrypt_error::decrypt_failed);
@@ -77,8 +94,8 @@ TEST_CASE("flipping epoch byte causes decrypt_failed", "[aead][tamper][header]")
 
     auto packet = seal_packet(key, hdr, payload);
 
-    // epoch starts at offset 16 (magic=2, version=1, flags=1, sender_id=4, sequence=8)
-    packet[16] ^= std::byte{0x01};
+    // epoch starts at offset 24 (magic=2, version=1, flags=1, sender_id=4, session_id=8, sequence=8)
+    packet[24] ^= std::byte{0x01};
 
     auto result = unseal_packet(key, packet);
     REQUIRE(result.ec == mdnspp::encrypt::encrypt_error::decrypt_failed);
@@ -111,7 +128,7 @@ TEST_CASE("wrong version returns unsupported_version", "[aead][header]")
     auto packet = seal_packet(key, hdr, payload);
 
     // Version at offset 2
-    packet[2] = std::byte{0x02};
+    packet[2] = std::byte{0x01};
 
     auto result = unseal_packet(key, packet);
     REQUIRE(result.ec == mdnspp::encrypt::encrypt_error::unsupported_version);

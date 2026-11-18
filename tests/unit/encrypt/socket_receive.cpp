@@ -85,7 +85,7 @@ TEST_CASE("attempt_decrypt delivers cleartext shorter than the encrypted header 
     "[encrypted_socket][cleartext][attempt_decrypt]")
 {
     // A legitimate cleartext mDNS query can be ~28 bytes, below
-    // encrypted_header_size (44). It must still be deliverable under
+    // encrypted_header_size. It must still be deliverable under
     // attempt_decrypt with accept_cleartext = true.
     auto small_cleartext = small_cleartext_packet();
     auto result = receive_cleartext(small_cleartext, true, cleartext_detection::attempt_decrypt);

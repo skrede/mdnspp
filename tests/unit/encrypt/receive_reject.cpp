@@ -40,7 +40,7 @@ plain_bytes bad_magic(paired_sockets &pair)
 plain_bytes unsupported_version(paired_sockets &pair)
 {
     auto packet = sealed(pair, probe);
-    packet[2] = std::byte{0x02};
+    packet[2] = std::byte{0x01};
     return packet;
 }
 

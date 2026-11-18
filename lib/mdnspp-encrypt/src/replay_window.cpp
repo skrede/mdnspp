@@ -35,113 +35,96 @@ void shift_left(std::vector<uint64_t> &bitmap, uint64_t shift)
 
 namespace mdnspp::encrypt {
 
-replay_window::replay_window(uint16_t window_size, uint16_t max_senders)
+replay_window::session_window::session_window(std::size_t words)
+    : session_id(0)
+    , max_seq(0)
+    , bitmap(words, uint64_t{0})
+{
+}
+
+void replay_window::session_window::restart(uint64_t id, uint64_t sequence)
+{
+    session_id = id;
+    max_seq = sequence;
+    std::ranges::fill(bitmap, uint64_t{0});
+    bitmap[0] = 1;
+}
+
+std::optional<encrypt_error> replay_window::session_window::admit(uint64_t sequence, uint64_t window_size)
+{
+    if(sequence > max_seq)
+    {
+        shift_left(bitmap, sequence - max_seq);
+        bitmap[0] |= uint64_t{1};
+        max_seq = sequence;
+        return std::nullopt;
+    }
+
+    const uint64_t diff = max_seq - sequence;
+    if(diff >= window_size)
+        return encrypt_error::replay_detected;
+
+    const auto word = static_cast<std::size_t>(diff / 64);
+    const uint64_t mask = uint64_t{1} << (diff % 64);
+    if(bitmap[word] & mask)
+        return encrypt_error::replay_detected;
+
+    bitmap[word] |= mask;
+    return std::nullopt;
+}
+
+replay_window::replay_window(uint16_t window_size, uint16_t max_senders, uint16_t max_sessions_per_sender)
     : m_window_size(window_size == 0 ? uint16_t{1} : window_size)
     , m_max_senders(max_senders)
+    , m_max_sessions(max_sessions_per_sender == 0 ? uint16_t{1} : max_sessions_per_sender)
     , m_words((static_cast<std::size_t>(m_window_size) + 63) / 64)
 {
 }
 
-std::optional<encrypt_error> replay_window::check_and_record(uint32_t sender_id, uint64_t sequence)
+std::optional<encrypt_error> replay_window::check_and_record(uint32_t sender_id, uint64_t session_id,
+                                                             uint64_t sequence)
 {
-    window_state &ws = get_or_create(sender_id);
-    touch_lru(sender_id);
-
-    if(!ws.initialized)
+    auto &sessions = sender_for(sender_id).sessions;
+    const auto found = std::ranges::find(sessions, session_id, &session_window::session_id);
+    if(found == sessions.end())
     {
-        ws.max_seq = sequence;
-        std::ranges::fill(ws.bitmap, uint64_t{0});
-        ws.bitmap[0] = 1;
-        ws.initialized = true;
+        open_session(sessions, session_id, sequence);
         return std::nullopt;
     }
-
-    if(sequence > ws.max_seq)
-    {
-        // Advance the window.
-        // Semantics: bit i means (max_seq - i) has been seen.
-        // When max_seq increases by `shift`, old bit i moves to bit (i + shift).
-        // Left-shift preserves older entries at higher bit positions.
-        shift_left(ws.bitmap, sequence - ws.max_seq);
-        ws.bitmap[0] |= uint64_t{1};
-        ws.max_seq = sequence;
-        return std::nullopt;
-    }
-
-    if(sequence == ws.max_seq)
-    {
-        // bit 0 is always set for max_seq
-        return encrypt_error::replay_detected;
-    }
-
-    // sequence < max_seq
-    const uint64_t diff = ws.max_seq - sequence;
-
-    if(diff >= restart_threshold)
-    {
-        // Far backward jump: sender restart or sequence wrap.
-        // Re-initialize the window at the new position (see header rationale).
-        ws.max_seq = sequence;
-        std::ranges::fill(ws.bitmap, uint64_t{0});
-        ws.bitmap[0] = 1;
-        return std::nullopt;
-    }
-
-    if(diff >= static_cast<uint64_t>(m_window_size))
-        return encrypt_error::replay_detected;
-
-    // Within window: check bit at position diff
-    const auto word = static_cast<std::size_t>(diff / 64);
-    const uint64_t mask = uint64_t{1} << (diff % 64);
-    if(ws.bitmap[word] & mask)
-        return encrypt_error::replay_detected;
-
-    ws.bitmap[word] |= mask;
-    return std::nullopt;
+    std::rotate(sessions.begin(), found, found + 1);
+    return sessions.front().admit(sequence, m_window_size);
 }
 
 void replay_window::reset()
 {
-    m_windows.clear();
+    m_senders.clear();
     m_lru.clear();
-    m_lru_index.clear();
 }
 
-replay_window::window_state &replay_window::get_or_create(uint32_t sender_id)
+replay_window::sender_state &replay_window::sender_for(uint32_t sender_id)
 {
-    auto it = m_windows.find(sender_id);
-    if (it != m_windows.end())
+    auto it = m_senders.find(sender_id);
+    if(it != m_senders.end())
+    {
+        m_lru.splice(m_lru.end(), m_lru, it->second.lru_pos);
         return it->second;
+    }
 
-    if (m_max_senders > 0 && m_windows.size() >= static_cast<size_t>(m_max_senders))
-        evict_oldest();
-
-    window_state ws;
-    ws.bitmap.assign(m_words, uint64_t{0});
-    auto [inserted_it, ok] = m_windows.emplace(sender_id, std::move(ws));
+    if(m_max_senders > 0 && m_senders.size() >= static_cast<std::size_t>(m_max_senders))
+    {
+        m_senders.erase(m_lru.front());
+        m_lru.pop_front();
+    }
     m_lru.push_back(sender_id);
-    m_lru_index.emplace(sender_id, std::prev(m_lru.end()));
-    return inserted_it->second;
+    return m_senders.emplace(sender_id, sender_state{{}, std::prev(m_lru.end())}).first->second;
 }
 
-void replay_window::touch_lru(uint32_t sender_id)
+void replay_window::open_session(std::vector<session_window> &sessions, uint64_t session_id, uint64_t sequence)
 {
-    auto index_it = m_lru_index.find(sender_id);
-    if (index_it == m_lru_index.end())
-        return;
-
-    m_lru.splice(m_lru.end(), m_lru, index_it->second);
-}
-
-void replay_window::evict_oldest()
-{
-    if (m_lru.empty())
-        return;
-
-    uint32_t oldest = m_lru.front();
-    m_lru.pop_front();
-    m_lru_index.erase(oldest);
-    m_windows.erase(oldest);
+    if(sessions.size() < m_max_sessions)
+        sessions.emplace_back(m_words);
+    std::rotate(sessions.begin(), sessions.end() - 1, sessions.end());
+    sessions.front().restart(session_id, sequence);
 }
 
 }

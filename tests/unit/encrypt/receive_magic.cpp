@@ -91,7 +91,7 @@ TEST_CASE("a sealed packet with a foreign version or a forged tag is dropped in 
     const auto cfg = GENERATE_COPY(from_range(all_configs()));
     paired_sockets pair(make_test_opts(std::byte{0x42}, 1), options_of(cfg));
     auto foreign = sealed(pair, probe);
-    foreign[2] = GENERATE(std::byte{0x00}, std::byte{0x02}, std::byte{0xFF});
+    foreign[2] = GENERATE(std::byte{0x00}, std::byte{0x01}, std::byte{0xFF});
     auto forged = sealed(pair, probe);
     forged.back() ^= std::byte{0x01};
     payloads got;

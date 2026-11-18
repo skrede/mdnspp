@@ -22,6 +22,10 @@
 
 using test_socket = mdnspp::encrypt::encrypted_socket<mdnspp::testing::mock_socket>;
 using plain_bytes = std::vector<std::byte>;
+using payloads = std::vector<plain_bytes>;
+
+inline const plain_bytes probe{std::byte{0x01}, std::byte{0x02}};
+inline const plain_bytes follow_up{std::byte{0x03}, std::byte{0x04}};
 
 struct received_packet
 {
@@ -115,5 +119,51 @@ struct paired_sockets
     {
     }
 };
+
+inline void arm_collecting(test_socket &sock, payloads &out)
+{
+    sock.async_receive([&sock, &out](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
+    {
+        out.emplace_back(data.begin(), data.end());
+        arm_collecting(sock, out);
+    });
+}
+
+inline plain_bytes sealed_by(test_socket &sender, const plain_bytes &payload)
+{
+    send_bytes(sender, payload);
+    return sent_packet_at(sender, sent_count(sender) - 1);
+}
+
+inline plain_bytes sealed(paired_sockets &pair, const plain_bytes &payload)
+{
+    return sealed_by(pair.sender, payload);
+}
+
+inline void inject(test_socket &sock, plain_bytes packet)
+{
+    sock.inner().inject_receive(mdnspp::endpoint{"192.0.2.1", 5353}, std::move(packet));
+}
+
+inline mdnspp::encrypt::encrypt_socket_options receiver_options(mdnspp::encrypt::cleartext_detection detection,
+                                                                bool accept_cleartext)
+{
+    auto opts = make_test_opts(std::byte{0x42}, 2);
+    opts.encrypt.detection = detection;
+    opts.encrypt.accept_cleartext = accept_cleartext;
+    return opts;
+}
+
+// Injects the packet, then a valid one; the second proves the receive re-armed.
+inline payloads deliveries_after(const mdnspp::encrypt::encrypt_socket_options &receiver_opts,
+                                 const plain_bytes &packet)
+{
+    paired_sockets pair(make_test_opts(std::byte{0x42}, 1), receiver_opts);
+    payloads got;
+    arm_collecting(pair.receiver, got);
+    inject(pair.receiver, packet);
+    inject(pair.receiver, sealed(pair, follow_up));
+    return got;
+}
 
 #endif

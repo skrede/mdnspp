@@ -14,35 +14,6 @@ namespace {
 using mdnspp::encrypt::cleartext_detection;
 using mdnspp::encrypt::encrypt_socket_options;
 using mdnspp::encrypt::receive_mode;
-using payloads = std::vector<plain_bytes>;
-
-const plain_bytes probe{std::byte{0x01}, std::byte{0x02}};
-const plain_bytes follow_up{std::byte{0x03}, std::byte{0x04}};
-
-void arm_collecting(test_socket &sock, payloads &out)
-{
-    sock.async_receive([&sock, &out](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte> data)
-    {
-        out.emplace_back(data.begin(), data.end());
-        arm_collecting(sock, out);
-    });
-}
-
-plain_bytes sealed_by(test_socket &sender, const plain_bytes &payload)
-{
-    send_bytes(sender, payload);
-    return sent_packet_at(sender, sent_count(sender) - 1);
-}
-
-plain_bytes sealed(paired_sockets &pair, const plain_bytes &payload)
-{
-    return sealed_by(pair.sender, payload);
-}
-
-void inject(test_socket &sock, plain_bytes packet)
-{
-    sock.inner().inject_receive(mdnspp::endpoint{"192.0.2.1", 5353}, std::move(packet));
-}
 
 encrypt_socket_options receiver_opts(receive_mode mode, cleartext_detection detection)
 {

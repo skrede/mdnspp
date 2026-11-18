@@ -16,6 +16,10 @@
 
 namespace mdnspp::encrypt {
 
+// The length of the version-1 header. A magic-prefixed packet at least this long is never delivered
+// as cleartext, so ciphertext of that version cannot reach the handler.
+inline constexpr std::size_t smallest_known_header_size = 44;
+
 enum class receive_outcome { deliver_plain, deliver_cleartext, drop };
 
 enum class pre_auth { authenticate, deliver_cleartext, drop };
@@ -63,20 +67,25 @@ inline bool has_magic_prefix(std::span<const std::byte> raw) noexcept
     return raw.size() >= 2 && raw[0] == std::byte{0x4D} && raw[1] == std::byte{0x43};
 }
 
+inline pre_auth classify_magic_prefixed(std::span<const std::byte> raw, cleartext_detection detection,
+                                        bool accept_cleartext) noexcept
+{
+    if(raw.size() < smallest_known_header_size)
+    {
+        const bool fall_through = accept_cleartext && detection == cleartext_detection::attempt_decrypt;
+        return fall_through ? pre_auth::deliver_cleartext : pre_auth::drop;
+    }
+    const bool parses = raw.size() >= encrypted_overhead && raw[2] == std::byte{encrypted_version};
+    return parses ? pre_auth::authenticate : pre_auth::drop;
+}
+
 inline pre_auth classify_pre_auth(std::span<const std::byte> raw, cleartext_detection detection,
                                   bool accept_cleartext) noexcept
 {
-    const bool magic = has_magic_prefix(raw);
-    if(detection == cleartext_detection::reject_all && !magic)
-        return pre_auth::drop;
-    if(detection == cleartext_detection::magic_byte && !magic)
-        return accept_cleartext ? pre_auth::deliver_cleartext : pre_auth::drop;
-    if(raw.size() < encrypted_header_size)
-    {
-        const bool small_cleartext = detection == cleartext_detection::attempt_decrypt && accept_cleartext && !magic;
-        return small_cleartext ? pre_auth::deliver_cleartext : pre_auth::drop;
-    }
-    return pre_auth::authenticate;
+    if(has_magic_prefix(raw))
+        return classify_magic_prefixed(raw, detection, accept_cleartext);
+    const bool deliver = accept_cleartext && detection != cleartext_detection::reject_all;
+    return deliver ? pre_auth::deliver_cleartext : pre_auth::drop;
 }
 
 inline bool mode_accepts(receive_mode mode, uint8_t flags) noexcept
@@ -93,21 +102,13 @@ inline opened_packet authenticate(key_ring &keys, replay_window &replay, const r
                                   std::span<const std::byte> raw)
 {
     const auto hdr = deserialize_header(raw.data());
-    if(!mode_accepts(rules.mode, hdr.flags))
-        return {receive_outcome::drop, {}};
-
     const auto key = keys.key_for_epoch(hdr.epoch);
     if(!key)
         return {receive_outcome::drop, {}};
 
     auto result = aead_decrypt(key->key.span(), raw);
-    if(!result.has_value())
-    {
-        const bool as_cleartext = rules.detection == cleartext_detection::attempt_decrypt
-            && rules.accept_cleartext && !has_magic_prefix(raw);
-        return {as_cleartext ? receive_outcome::deliver_cleartext : receive_outcome::drop, {}};
-    }
-
+    if(!result.has_value() || !mode_accepts(rules.mode, hdr.flags))
+        return {receive_outcome::drop, {}};
     if(replay.check_and_record(hdr.sender_id, hdr.sequence).has_value())
         return {receive_outcome::drop, {}};
     if(key->is_previous)

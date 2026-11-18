@@ -31,9 +31,9 @@ jobs:
             echo "$dups"
             exit 1
           fi
-          bad=$(printf '%s\n' "$guards" | grep -vE '^HPP_GUARD_MDNSPP[A-Z_]*_H$' || true)
+          bad=$(printf '%s\n' "$guards" | grep -vE '^HPP_GUARD_MDNSPP[A-Z0-9_]*_H$' || true)
           if [ -n "$bad" ]; then
-            echo "Header guards not matching HPP_GUARD_MDNSPP[A-Z_]*_H:"
+            echo "Header guards not matching HPP_GUARD_MDNSPP[A-Z0-9_]*_H:"
             echo "$bad"
             exit 1
           fi

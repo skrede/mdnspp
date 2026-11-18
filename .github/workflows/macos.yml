@@ -20,8 +20,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        xcode: ["15.4", "16.2"]
-    runs-on: macos-14
+        xcode: ["16.0", "16.4"]
+    runs-on: macos-15
     name: build (Xcode ${{ matrix.xcode }})
     env:
       MDNSPP_REQUIRE_NETWORK: "1"
@@ -53,7 +53,7 @@ jobs:
         run: cd build && ctest --output-on-failure --timeout 60
 
   install-test:
-    runs-on: macos-14
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 

@@ -102,6 +102,7 @@ TEST_CASE("parse_ancillary reads an int-sized IP_TTL", "[recv_ancillary]")
     }
 }
 
+#ifdef IPV6_HOPLIMIT
 TEST_CASE("parse_ancillary reads an int-sized IPV6_HOPLIMIT", "[recv_ancillary]")
 {
     control_buffer control;
@@ -112,6 +113,7 @@ TEST_CASE("parse_ancillary reads an int-sized IPV6_HOPLIMIT", "[recv_ancillary]"
     REQUIRE(data.ttl == 255);
     REQUIRE(data.ifindex == 0);
 }
+#endif
 
 #ifdef IP_PKTINFO
 TEST_CASE("parse_ancillary reads the interface index of IP_PKTINFO", "[recv_ancillary]")
@@ -128,6 +130,7 @@ TEST_CASE("parse_ancillary reads the interface index of IP_PKTINFO", "[recv_anci
 }
 #endif
 
+#ifdef IPV6_PKTINFO
 TEST_CASE("parse_ancillary reads the interface index of IPV6_PKTINFO", "[recv_ancillary]")
 {
     in6_pktinfo info{};
@@ -140,7 +143,9 @@ TEST_CASE("parse_ancillary reads the interface index of IPV6_PKTINFO", "[recv_an
     REQUIRE(data.ifindex == 9);
     REQUIRE_FALSE(data.ttl.has_value());
 }
+#endif
 
+#if defined(IPV6_HOPLIMIT) && defined(IPV6_PKTINFO)
 TEST_CASE("parse_ancillary combines the TTL and the interface index of one datagram", "[recv_ancillary]")
 {
     in6_pktinfo info{};
@@ -154,6 +159,7 @@ TEST_CASE("parse_ancillary combines the TTL and the interface index of one datag
     REQUIRE(data.ttl == 255);
     REQUIRE(data.ifindex == 4);
 }
+#endif
 
 TEST_CASE("parse_ancillary yields no TTL and interface zero for an empty control buffer", "[recv_ancillary]")
 {

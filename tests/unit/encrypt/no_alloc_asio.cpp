@@ -13,6 +13,7 @@
 
 #include <span>
 #include <array>
+#include <chrono>
 #include <memory>
 #include <cstddef>
 #include <cstdint>
@@ -24,13 +25,14 @@ constexpr int window_cycles = 50;
 
 using backend_socket = mdnspp::encrypt::encrypted_socket<mdnspp::asio_socket>;
 
+// Windows asio reports UDP readiness from a background select thread, so a zero-timeout poll can
+// return before the completion of a datagram that already arrived is queued; wait for it instead.
 void drain(asio::io_context &io, const uint64_t &delivered, uint64_t target)
 {
-    for(int i = 0; i < 16 && delivered < target; ++i)
-    {
-        io.restart();
-        io.poll();
-    }
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    io.restart();
+    while(delivered < target && io.run_one_until(deadline) != 0)
+        continue;
 }
 
 class plain_rig

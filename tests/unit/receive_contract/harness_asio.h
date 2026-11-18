@@ -12,6 +12,7 @@
 #include <asio.hpp>
 
 #include <span>
+#include <chrono>
 #include <cstdint>
 #include <system_error>
 
@@ -48,18 +49,18 @@ struct harness<asio_socket>
         m_sender.send_to(asio::buffer(bytes.data(), bytes.size()), target);
     }
 
+    // Windows asio reports UDP readiness from a background select thread, so a zero-timeout poll can
+    // return before the completion of a datagram that already arrived is queued; run until idle instead.
     void pump()
     {
-        for(uint32_t i = 0; i < pump_polls; ++i)
-        {
-            m_io.restart();
-            m_io.poll();
-        }
+        m_io.restart();
+        while(m_io.run_one_for(settle_time) != 0)
+            continue;
         REQUIRE(m_socket.consistent());
     }
 
 private:
-    static constexpr uint32_t pump_polls = 8;
+    static constexpr std::chrono::milliseconds settle_time{100};
 
     static uint16_t bound_port(asio::ip::udp::socket::native_handle_type fd)
     {

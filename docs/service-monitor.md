@@ -44,7 +44,7 @@ int main()
 }
 ```
 
-`monitor_options` callbacks are move-only (`std::move_only_function` internally),
+`monitor_options` callbacks are move-only (`mdnspp::move_only_function` internally),
 so use `std::move(opts)` when passing to the constructor &mdash; do not copy.
 
 ### Lifecycle callbacks

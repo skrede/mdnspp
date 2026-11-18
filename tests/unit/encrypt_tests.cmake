@@ -20,7 +20,9 @@ if (MDNSPP_ENABLE_ENCRYPT)
     target_link_libraries(receive_contract_encrypted_test PRIVATE mdnspp::inproc)
     if (NOT CMAKE_CXX_FLAGS MATCHES "fsanitize=thread")
         make_encrypt_subdir_test(encrypt_no_alloc_test encrypt/no_alloc_send.cpp)
-        target_sources(encrypt_no_alloc_test PRIVATE "${CMAKE_CURRENT_LIST_DIR}/../support/alloc_counter.cpp")
+        target_sources(encrypt_no_alloc_test PRIVATE
+            "${CMAKE_CURRENT_LIST_DIR}/encrypt/no_alloc_receive.cpp"
+            "${CMAKE_CURRENT_LIST_DIR}/../support/alloc_counter.cpp")
     endif ()
     make_encrypt_test(encrypt_policy_test)
     target_link_libraries(encrypt_policy_test PRIVATE mdnspp::testing mdnspp::inproc)

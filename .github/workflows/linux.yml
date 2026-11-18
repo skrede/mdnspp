@@ -250,7 +250,13 @@ jobs:
         run: ./build-consumer/integration_test
 
   install-test-encrypt:
+    name: install-test-encrypt (C++${{ matrix.std }} consumer)
     runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        std: [20, 23]
 
     steps:
       - uses: actions/checkout@v4
@@ -268,11 +274,18 @@ jobs:
           cmake --build build
           cmake --install build
 
+      - name: Check compat types are not instantiated in the compiled library
+        shell: bash
+        run: |
+          nm -C build/lib/mdnspp-encrypt/libmdnspp_encrypt.a > symbols.txt
+          ! grep -E "(mdnspp|std)::([A-Za-z0-9_]+::)?(expected|unexpected|bad_expected_access|move_only_function)<" symbols.txt
+
       - name: Build consumer project
         run: |
           cmake tests/integration -B build-consumer \
             -DCMAKE_PREFIX_PATH=${{ github.workspace }}/install \
-            -DCMAKE_BUILD_TYPE=Release
+            -DCMAKE_BUILD_TYPE=Release \
+            -DMDNSPP_CONSUMER_CXX_STANDARD=${{ matrix.std }}
           cmake --build build-consumer
 
       - name: Run consumer test

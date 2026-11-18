@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+CONSUMER_STD="${1:-}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
@@ -21,7 +23,8 @@ cmake --install "$BUILD_LIB"
 echo "=== Configuring downstream project ==="
 cmake -S "$SCRIPT_DIR" -B "$BUILD_TEST" \
     -DCMAKE_PREFIX_PATH="$PREFIX" \
-    -DCMAKE_BUILD_TYPE=Release
+    -DCMAKE_BUILD_TYPE=Release \
+    ${CONSUMER_STD:+-DMDNSPP_CONSUMER_CXX_STANDARD="$CONSUMER_STD"}
 
 echo "=== Building downstream project ==="
 cmake --build "$BUILD_TEST"

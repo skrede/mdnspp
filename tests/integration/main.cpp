@@ -15,9 +15,14 @@
 #include <mdnspp/encrypt/aead.h>
 #endif
 
+#include <system_error>
 #include <type_traits>
+#include <algorithm>
+#include <cstddef>
 #include <iostream>
 #include <chrono>
+#include <array>
+#include <span>
 
 // Validate that the exported compile features propagate cxx_std_20 to a
 // consumer that does not set CMAKE_CXX_STANDARD itself.
@@ -51,6 +56,72 @@ static_assert(std::is_class_v<mdnspp::basic_querier<mdnspp::inproc_test_policy>>
 static_assert(std::is_class_v<mdnspp::basic_querier<mdnspp::asio_policy>>);
 #endif
 
+#ifdef MDNSPP_HAS_ENCRYPT
+namespace {
+
+using mdnspp::encrypt::encrypted_overhead;
+
+constexpr std::array<std::byte, 32> consumer_key()
+{
+    std::array<std::byte, 32> key{};
+    for(std::size_t i = 0; i < key.size(); ++i)
+        key[i] = static_cast<std::byte>(i + 1);
+    return key;
+}
+
+constexpr std::array<std::byte, 5> consumer_payload{
+    std::byte{'m'}, std::byte{'d'}, std::byte{'n'}, std::byte{'s'}, std::byte{'!'}};
+
+std::size_t seal(std::array<std::byte, 128> &packet)
+{
+    mdnspp::encrypt::encrypted_packet_header hdr;
+    hdr.sender_id = 7;
+    hdr.sequence = 1;
+    std::size_t written = 0;
+    const std::error_code ec = mdnspp::encrypt::aead_encrypt(
+        consumer_key(), hdr, consumer_payload, packet, written);
+    return ec ? 0 : written;
+}
+
+bool round_trip_matches(std::span<const std::byte> packet)
+{
+    std::array<std::byte, 128> plain{};
+    std::size_t written = 0;
+    const std::error_code ec = mdnspp::encrypt::aead_decrypt(consumer_key(), packet, plain, written);
+    return !ec && written == consumer_payload.size()
+        && std::equal(consumer_payload.begin(), consumer_payload.end(), plain.begin());
+}
+
+bool forged_packet_rejected(std::span<const std::byte> packet)
+{
+    std::array<std::byte, 128> forged{};
+    std::copy(packet.begin(), packet.end(), forged.begin());
+    forged[packet.size() - 1] ^= std::byte{0x01};
+    std::array<std::byte, 128> plain{};
+    std::size_t written = 1;
+    const std::error_code ec = mdnspp::encrypt::aead_decrypt(
+        consumer_key(), std::span<const std::byte>(forged.data(), packet.size()), plain, written);
+    return ec && written == 0;
+}
+
+// The compiled library is built at C++20 and the consumer may be C++23, so only a
+// runtime round trip and a forged-packet rejection prove the boundary types agree;
+// init_crypto also resolves a libsodium-dependent symbol from the installed archive.
+bool encrypt_boundary_holds()
+{
+    if(!mdnspp::encrypt::init_crypto())
+        return false;
+    std::array<std::byte, 128> packet{};
+    const std::size_t size = seal(packet);
+    if(size != consumer_payload.size() + encrypted_overhead)
+        return false;
+    const std::span<const std::byte> wire(packet.data(), size);
+    return round_trip_matches(wire) && forged_packet_rejected(wire);
+}
+
+}
+#endif
+
 int main()
 {
     // Prove the installed headers compile and the template instantiates correctly.
@@ -69,12 +140,9 @@ int main()
     [[maybe_unused]] mdnspp::resolved_service svc{};
 
 #ifdef MDNSPP_HAS_ENCRYPT
-    // Prove mdnspp::encrypt links: this resolves a symbol from the installed
-    // static library, which in turn requires the libsodium dependency that the
-    // package config file must have provided.
-    if(!mdnspp::encrypt::init_crypto())
+    if(!encrypt_boundary_holds())
     {
-        std::cerr << "mdnspp integration test FAILED: init_crypto" << std::endl;
+        std::cerr << "mdnspp integration test FAILED: encrypt boundary" << std::endl;
         return 1;
     }
 #endif

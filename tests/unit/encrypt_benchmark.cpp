@@ -55,6 +55,13 @@ std::vector<std::byte> buffer_for(std::size_t payload_size)
     return std::vector<std::byte>(payload_size + mdnspp::encrypt::encrypted_overhead);
 }
 
+std::vector<std::byte> cleartext_copy(const std::vector<std::byte> &payload)
+{
+    std::vector<std::byte> dst(payload.size());
+    std::memcpy(dst.data(), payload.data(), payload.size());
+    return dst;
+}
+
 }
 
 TEST_CASE("Encrypt benchmark smoke test", "[encrypt]")
@@ -82,33 +89,10 @@ TEST_CASE("Cleartext baseline throughput", "[!benchmark][encrypt]")
     auto payload512  = make_payload(512);
     auto payload1400 = make_payload(1400);
 
-    BENCHMARK("cleartext copy 64-byte payload")
-    {
-        std::vector<std::byte> dst(payload64.size());
-        std::memcpy(dst.data(), payload64.data(), payload64.size());
-        return dst;
-    };
-
-    BENCHMARK("cleartext copy 200-byte payload")
-    {
-        std::vector<std::byte> dst(payload200.size());
-        std::memcpy(dst.data(), payload200.data(), payload200.size());
-        return dst;
-    };
-
-    BENCHMARK("cleartext copy 512-byte payload")
-    {
-        std::vector<std::byte> dst(payload512.size());
-        std::memcpy(dst.data(), payload512.data(), payload512.size());
-        return dst;
-    };
-
-    BENCHMARK("cleartext copy 1400-byte payload")
-    {
-        std::vector<std::byte> dst(payload1400.size());
-        std::memcpy(dst.data(), payload1400.data(), payload1400.size());
-        return dst;
-    };
+    BENCHMARK("cleartext copy 64-byte payload") { return cleartext_copy(payload64); };
+    BENCHMARK("cleartext copy 200-byte payload") { return cleartext_copy(payload200); };
+    BENCHMARK("cleartext copy 512-byte payload") { return cleartext_copy(payload512); };
+    BENCHMARK("cleartext copy 1400-byte payload") { return cleartext_copy(payload1400); };
 }
 
 TEST_CASE("Encrypt throughput", "[!benchmark][encrypt]")

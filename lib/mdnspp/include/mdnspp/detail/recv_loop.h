@@ -4,12 +4,12 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/mdns_options.h"
 #include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/recv_filter.h"
 
 #include <span>
 #include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <algorithm>
 
 namespace mdnspp::detail {
 
@@ -83,64 +83,43 @@ public:
     }
 
 private:
-    // Bounded backoff for consecutive transient receive failures (e.g. a
-    // persistent ENOMEM/ENOBUFS condition): the first failure re-arms
-    // immediately, each further consecutive failure delays the re-arm,
-    // doubling from 10 ms up to a 500 ms cap. A successful receive resets
-    // the counter.
-    static constexpr std::chrono::milliseconds transient_backoff_initial{10};
-    static constexpr std::chrono::milliseconds transient_backoff_cap{500};
-
     // The packet, silence and error callbacks may stop the loop re-entrantly,
     // so every function that arms the socket or the timer checks m_stopped first.
     void arm_receive()
     {
         if(m_stopped.load(std::memory_order_acquire))
-        {
             return;
-        }
         m_socket.async_receive(
             [this](std::error_code ec, const recv_metadata &meta, std::span<std::byte> data)
             {
                 if(m_stopped.load(std::memory_order_acquire))
-                {
                     return;
-                }
                 if(ec)
-                {
-                    if(is_fatal(ec))
-                    {
-                        if(m_on_error)
-                            m_on_error(ec);
-                        return;
-                    }
-                    if(++m_transient_failures > 1)
-                    {
-                        defer_rearm();
-                        return;
-                    }
-                    arm_receive();
-                    return;
-                }
-                m_transient_failures = 0;
-                if(meta.ttl.has_value())
-                {
-                    if(static_cast<uint32_t>(*meta.ttl) < m_receive_ttl_minimum)
-                    {
-                        arm_receive();
-                        return;
-                    }
-                }
-                else if(m_ttl_unknown_policy == ttl_unknown_policy::reject)
-                {
-                    arm_receive();
-                    return;
-                }
-                bool relevant = m_on_packet(meta, data);
-                if(relevant)
-                    arm_silence_timer();
-                arm_receive();
+                    on_receive_error(ec);
+                else
+                    on_receive(meta, data);
             });
+    }
+
+    void on_receive_error(std::error_code ec)
+    {
+        if(is_fatal_receive_error(ec))
+        {
+            if(m_on_error)
+                m_on_error(ec);
+        }
+        else if(++m_transient_failures > 1)
+            defer_rearm();
+        else
+            arm_receive();
+    }
+
+    void on_receive(const recv_metadata &meta, std::span<std::byte> data)
+    {
+        m_transient_failures = 0;
+        if(ttl_accepted(meta, m_receive_ttl_minimum, m_ttl_unknown_policy) && m_on_packet(meta, data))
+            arm_silence_timer();
+        arm_receive();
     }
 
     void arm_silence_timer()
@@ -170,21 +149,18 @@ private:
     }
 
     // Re-purposes the shared timer for the transient backoff delay, then
-    // restores a still-owed silence wait for the remainder of its window
-    // (the deadline is absolute, so the backoff does not extend it) before
-    // re-arming the receive. m_silence_pending stays true across the
-    // implicit cancellation by expires_after -- it means "a silence wait is
-    // owed", not "a wait is armed" -- and is false when the silence handler
-    // already fired, in which case no wait is restored. The timer cannot be
-    // double-booked: no receive is armed while the backoff wait is pending,
-    // so no packet can re-arm the silence wait underneath it.
+    // restores a still-owed silence wait for the remainder of its absolute
+    // deadline before re-arming the receive. m_silence_pending stays true
+    // across the implicit cancellation by expires_after: it means "a silence
+    // wait is owed", not "a wait is armed". No receive is armed during the
+    // backoff, so no packet can re-arm the silence wait underneath it.
     void defer_rearm()
     {
         if(m_stopped.load(std::memory_order_acquire))
         {
             return;
         }
-        m_timer.expires_after(transient_backoff_delay());
+        m_timer.expires_after(transient_backoff_delay(m_transient_failures));
         m_timer.async_wait(
             [this](std::error_code ec)
             {
@@ -202,21 +178,6 @@ private:
                 }
                 arm_receive();
             });
-    }
-
-    std::chrono::milliseconds transient_backoff_delay() const noexcept
-    {
-        const uint32_t doublings = (std::min)(m_transient_failures - 2, uint32_t{6});
-        return (std::min)(transient_backoff_initial * (uint32_t{1} << doublings),
-                          transient_backoff_cap);
-    }
-
-    // Errors that mean the socket can no longer deliver packets; everything
-    // else (e.g. ECONNRESET from a stray ICMP, ENOBUFS) is transient.
-    static bool is_fatal(std::error_code ec) noexcept
-    {
-        return ec == std::errc::operation_canceled
-            || ec == std::errc::bad_file_descriptor;
     }
 
     bool m_silence_pending{false};

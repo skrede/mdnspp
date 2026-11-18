@@ -122,22 +122,23 @@ bool encrypt_boundary_holds()
 }
 #endif
 
-int main()
+// Proves the installed headers compile and the templates instantiate correctly.
+// No network calls -- this is a compile-and-link verification.
+void prove_header_surface()
 {
-    // Prove the installed headers compile and the template instantiates correctly.
-    // No network calls -- this is a compile-and-link verification.
-
-    // Prove dns_type enum is accessible from mdnspp namespace.
     constexpr auto qtype = mdnspp::dns_type::a;
     static_assert(qtype == mdnspp::dns_type::a);
 
-    // Prove endpoint is accessible and supports operator<=>.
     mdnspp::endpoint ep1{"192.168.1.1", 5353};
     mdnspp::endpoint ep2{"192.168.1.2", 5353};
     static_assert(std::three_way_comparable<mdnspp::endpoint>);
 
-    // Prove resolved_service is accessible (CMAKE-04 verification).
     [[maybe_unused]] mdnspp::resolved_service svc{};
+}
+
+int main()
+{
+    prove_header_surface();
 
 #ifdef MDNSPP_HAS_ENCRYPT
     if(!encrypt_boundary_holds())

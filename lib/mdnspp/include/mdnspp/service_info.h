@@ -6,14 +6,13 @@
 #include "mdnspp/service_type.h"
 
 #include "mdnspp/detail/compat.h"
-#include "mdnspp/detail/mdns_util.h"
+#include "mdnspp/detail/service_names.h"
 
 #include <string>
 #include <vector>
 #include <cstdint>
 #include <utility>
 #include <optional>
-#include <algorithm>
 #include <string_view>
 
 namespace mdnspp {
@@ -102,6 +101,24 @@ struct service_info
          uint16_t port, service_make_options opts = {});
 };
 
+namespace detail {
+
+inline void apply_make_options(service_info &info, service_make_options &&opts)
+{
+    info.priority = opts.priority;
+    info.weight = opts.weight;
+    info.txt_records = std::move(opts.txt_records);
+    info.subtypes = std::move(opts.subtypes);
+    if(!opts.advertise_addresses)
+        return;
+    info.address_ipv4 = std::move(opts.address_ipv4);
+    info.address_ipv6 = std::move(opts.address_ipv6);
+    // Auto-detection fills only the fields the caller left unset.
+    info.auto_address = !(info.address_ipv4.has_value() && info.address_ipv6.has_value());
+}
+
+}
+
 inline expected<service_info, mdns_error>
 service_info::make(std::string_view instance, std::string_view service_type,
                    uint16_t port, service_make_options opts)
@@ -109,78 +126,16 @@ service_info::make(std::string_view instance, std::string_view service_type,
     if(port == 0)
         return detail::unexpected(mdns_error::invalid_argument);
 
-    // Normalize the type: strip the trailing dot, append ".local" when the
-    // input has no domain, then validate the three RFC 6763 labels.
-    std::string type{service_type};
-    if(!type.empty() && type.back() == '.')
-        type.pop_back();
-    if(!parse_service_type_checked(type).has_value())
-        type += ".local";
-    if(auto checked = parse_service_type_checked(type); !checked.has_value())
-        return detail::unexpected(checked.error());
-    type.push_back('.');
-
-    auto type_name = dns_name::parse(type);
-    if(!type_name.has_value())
-        return detail::unexpected(type_name.error());
-
-    // Escape the instance label (RFC 6763 §4.3: dots and backslashes inside
-    // an instance name are content, not label separators) and join it with
-    // the normalized type.
-    std::string name;
-    for(char c : instance)
-        detail::append_escaped_label_byte(name, c);
-    name.push_back('.');
-    name += type;
-    auto instance_name = dns_name::parse(name);
-    if(!instance_name.has_value())
-        return detail::unexpected(instance_name.error());
-
-    // Hostname: the override, or the OS hostname sanitized to a single label;
-    // either way normalized to a ".local."-suffixed FQDN.
-    std::string host;
-    if(opts.hostname.has_value())
-    {
-        host = std::move(*opts.hostname);
-        if(!host.empty() && host.back() == '.')
-            host.pop_back();
-        constexpr std::string_view suffix = ".local";
-        const bool suffixed = host.size() > suffix.size()
-            && std::equal(suffix.begin(), suffix.end(), host.end() - suffix.size(),
-                          [](char a, char b) { return a == dns_name::ascii_fold(b); });
-        if(!suffixed)
-            host += suffix;
-        host.push_back('.');
-    }
-    else
-    {
-        std::string label = detail::os_hostname();
-        if(auto dot = label.find('.'); dot != std::string::npos)
-            label.resize(dot); // strip any domain part
-        for(char c : label)
-            detail::append_escaped_label_byte(host, c);
-        host += ".local.";
-    }
-    auto host_name = dns_name::parse(host);
-    if(!host_name.has_value())
-        return detail::unexpected(host_name.error());
+    auto names = detail::parse_service_names(instance, service_type, std::move(opts.hostname));
+    if(!names.has_value())
+        return detail::unexpected(names.error());
 
     service_info info;
-    info.service_name = std::move(*instance_name);
-    info.service_type = std::move(*type_name);
-    info.hostname = std::move(*host_name);
+    info.service_name = std::move(names->instance);
+    info.service_type = std::move(names->type);
+    info.hostname = std::move(names->host);
     info.port = port;
-    info.priority = opts.priority;
-    info.weight = opts.weight;
-    info.txt_records = std::move(opts.txt_records);
-    info.subtypes = std::move(opts.subtypes);
-    if(opts.advertise_addresses)
-    {
-        info.address_ipv4 = std::move(opts.address_ipv4);
-        info.address_ipv6 = std::move(opts.address_ipv6);
-        // Auto-detection fills only the fields the caller left unset.
-        info.auto_address = !(info.address_ipv4.has_value() && info.address_ipv6.has_value());
-    }
+    detail::apply_make_options(info, std::move(opts));
     return info;
 }
 

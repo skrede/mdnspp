@@ -34,9 +34,9 @@
 //   - Monitoring: diagnostic peers can inspect DNS records while still
 //     benefiting from packet authentication guarantees.
 
-int main()
+std::array<std::byte, 32> example_key()
 {
-    std::array<std::byte, 32> raw_key{
+    return {
         std::byte{0x01}, std::byte{0x02}, std::byte{0x03}, std::byte{0x04},
         std::byte{0x05}, std::byte{0x06}, std::byte{0x07}, std::byte{0x08},
         std::byte{0x09}, std::byte{0x0A}, std::byte{0x0B}, std::byte{0x0C},
@@ -46,12 +46,16 @@ int main()
         std::byte{0x19}, std::byte{0x1A}, std::byte{0x1B}, std::byte{0x1C},
         std::byte{0x1D}, std::byte{0x1E}, std::byte{0x1F}, std::byte{0x20},
     };
+}
 
-    // auth_only = true: this socket sends plaintext payloads with a Poly1305 tag.
-    // recv_mode = auth_only: this socket drops fully encrypted packets;
-    // only auth-only packets from peers are passed through to the application.
-    // Remove recv_mode (or use accept_both) to also accept encrypted packets.
-    mdnspp::encrypt::encrypt_socket_options sock_opts{
+// auth_only = true: this socket sends plaintext payloads with a Poly1305 tag.
+// recv_mode = auth_only: this socket drops fully encrypted packets;
+// only auth-only packets from peers are passed through to the application.
+// Remove recv_mode (or use accept_both) to also accept encrypted packets.
+mdnspp::encrypt::encrypt_socket_options auth_only_options()
+{
+    auto raw_key = example_key();
+    mdnspp::encrypt::encrypt_socket_options opts{
         .encrypt = {
             .psk       = mdnspp::encrypt::secure_key{raw_key},
             .sender_id = 0x00000002,
@@ -61,25 +65,28 @@ int main()
     };
     // secure_key copies the key material; wipe the stack source buffer.
     mdnspp::encrypt::secure_zero(raw_key.data(), raw_key.size());
+    return opts;
+}
 
+// Received records are authenticated (Poly1305 verified) but the
+// payloads arrived in plaintext. The application still sees
+// mdns_record_variant values; auth-only mode is transparent above
+// the socket layer.
+void print_record(const mdnspp::endpoint &sender, const mdnspp::mdns_record_variant &rec)
+{
+    std::visit([&sender](const auto &r) {
+        std::cout << sender << " -> " << r << std::endl;
+    }, rec);
+}
+
+int main()
+{
     mdnspp::context ctx;
 
     mdnspp::encrypt::encrypted_observer obs{
         ctx,
-        mdnspp::observer_options{
-            // Received records are authenticated (Poly1305 verified) but the
-            // payloads arrived in plaintext. The application still sees
-            // mdns_record_variant values; auth-only mode is transparent above
-            // the socket layer.
-            .on_record = [](const mdnspp::endpoint &sender,
-                            const mdnspp::mdns_record_variant &rec)
-            {
-                std::visit([&sender](const auto &r) {
-                    std::cout << sender << " -> " << r << std::endl;
-                }, rec);
-            }
-        },
-        std::move(sock_opts),
+        mdnspp::observer_options{.on_record = print_record},
+        auth_only_options(),
     };
 
     obs.async_observe([&ctx](std::error_code ec)

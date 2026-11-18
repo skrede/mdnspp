@@ -119,6 +119,13 @@ public:
         secure_zero(m_prev_key.data(), m_prev_key.size());
     }
 
+    static key_ring make(const encrypt_options &opts, bool keyed)
+    {
+        if(!keyed)
+            return key_ring();
+        return key_ring(opts.psk.bytes(), opts.initial_epoch);
+    }
+
     void update(secure_key new_psk, grace_period gp)
     {
         if(!gp.duration.has_value() && !gp.packet_count.has_value())

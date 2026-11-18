@@ -63,7 +63,8 @@ struct peer_initiation
 {
     Peer &peer;
 
-    using executor_type = typename Peer::socket_type::executor_type;
+    // Naming Peer::socket_type::executor_type trips an MSVC access check through the peer's private base.
+    using executor_type = decltype(std::declval<Peer &>().socket().get_executor());
 
     executor_type get_executor() const noexcept
     {

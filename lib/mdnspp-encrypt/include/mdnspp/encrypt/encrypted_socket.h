@@ -139,7 +139,8 @@ private:
     template <typename MakeInner, typename Check>
     encrypted_socket(delegated, MakeInner &&make_inner, const encrypt_options &opts, Check &&check)
         : m_inner(make_inner())
-        , m_keys(check(opts) ? key_ring() : key_ring(opts.psk.bytes(), opts.initial_epoch))
+        // MSVC rejects a conditional expression whose operands are prvalues of a non-movable type.
+        , m_keys(key_ring::make(opts, !check(opts)))
         , m_seq_counter(0)
         , m_replay(opts.replay_window_size, opts.max_senders, opts.max_sessions_per_sender)
         , m_rules(rules_of(opts))

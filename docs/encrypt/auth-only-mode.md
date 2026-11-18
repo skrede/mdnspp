@@ -12,10 +12,12 @@ set (`flag_encrypted = 0x01`). In auth-only mode that bit is cleared (`flags =
 0x00`), and the payload field carries the raw plaintext DNS message instead of
 ciphertext.
 
-The Poly1305 authentication tag still covers the 44-byte header and the payload
+The Poly1305 authentication tag still covers the 52 byte header and the payload
 bytes as AAD (Additional Authenticated Data), so any modification to either
-region is detected. The 60-byte overhead (44-byte header + 16-byte tag) is
-identical to full encryption mode.
+region is detected. The 68 byte overhead (52 byte header + 16 byte tag) is
+identical to full encryption mode, and so is the largest payload one packet can
+carry: `max_udp_payload - 68`, 8932 bytes. The wire layout is described in the
+[Encrypted mDNS Guide](encrypted-mdns.md#wire-format).
 
 ## Sender Configuration
 
@@ -46,6 +48,10 @@ accepts:
 | `receive_mode::accept_both` | Both encrypted (`flags = 0x01`) and auth-only (`flags = 0x00`) packets |
 | `receive_mode::encrypted_only` | Only encrypted packets; auth-only packets are silently dropped |
 | `receive_mode::auth_only` | Only auth-only packets; encrypted packets are silently dropped |
+
+`receive_mode` is evaluated after the packet has authenticated. A packet that
+authenticates but does not match the mode is dropped; it is never delivered as
+cleartext, even with `accept_cleartext` set.
 
 `receive_mode` is independent of `auth_only`. A receiver can accept auth-only
 packets from a sender that is in auth-only mode while itself sending fully

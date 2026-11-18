@@ -52,7 +52,7 @@ Delegates directly to `Inner::post(ex, std::move(fn))`. Thread-safe work schedul
 - `executor_type`, `socket_type`, and `timer_type` are present.
 - `socket_type` (`encrypted_socket<Inner::socket_type>`) satisfies `socket_like`.
 - `timer_type` satisfies `timer_like` (same type as `Inner::timer_type`).
-- `socket_type` is constructible from `(executor_type)`, `(executor_type, std::error_code&)`, `(executor_type, const socket_options&)`, and `(executor_type, const socket_options&, std::error_code&)` via the four `encrypted_socket` constructors.
+- `socket_type` is constructible from `(executor_type)`, `(executor_type, std::error_code&)`, `(executor_type, const encrypt_socket_options&)`, and `(executor_type, const encrypt_socket_options&, std::error_code&)` via the four `encrypted_socket` constructors (the options type is `policy_socket_options_t<encrypted_policy<Inner>>`, i.e. `encrypt_socket_options`).
 - `post()` is a valid static call with the required signature.
 
 The optional `socket_options_type` member causes `policy_socket_options_t<encrypted_policy<Inner>>` to resolve to `encrypt_socket_options`, enabling the `basic_*` types to pass encryption parameters to the socket on construction.

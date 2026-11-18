@@ -23,11 +23,12 @@ struct encrypt_socket_options : socket_options
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `interface_address` | `std::string` | `""` (empty) | IPv4 address of the NIC to bind. Empty means `INADDR_ANY`. |
-| `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. |
+| `interface_address` | `std::string` | `""` (empty) | Address of the NIC to bind, in the family of `multicast_group`. Empty with no `interface_name` or `interface_index` means all interfaces. |
+| `interface_name` | `std::optional<std::string>` | `std::nullopt` | Interface name (e.g. `eth0`) to bind; takes precedence over `interface_address`. |
+| `interface_index` | `std::optional<uint32_t>` | `std::nullopt` | OS interface index to bind; takes precedence over `interface_name`. |
+| `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port; its address family selects the socket family. |
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets loop back to the local host. |
 | `multicast_ttl` | `std::optional<uint8_t>` | `std::nullopt` | IP multicast TTL. |
-| `port_override` | `std::optional<uint16_t>` | `std::nullopt` | inproc_policy source port override for testing. |
 
 See [Socket Options](../../socket-options.md) for full field documentation.
 
@@ -35,7 +36,7 @@ See [Socket Options](../../socket-options.md) for full field documentation.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `encrypt` | `encrypt_options` | default-constructed | Encryption configuration: PSK, sender_id, replay window, cleartext detection, receive mode. |
+| `encrypt` | `encrypt_options` | default-constructed | Encryption configuration: PSK, sender_id, initial epoch, replay window and session limits, cleartext handling, receive mode. A default-constructed value fails `validate()` (zero `sender_id`, all-zero PSK); the constructors that take these options enforce it. |
 
 ## Policy Integration
 

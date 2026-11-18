@@ -1,11 +1,12 @@
 # encrypted_socket
 
-Transparent encrypt/decrypt wrapper around any `socket_like` socket. Satisfies the `socket_like` concept itself, so it can be composed directly into `encrypted_policy`. Outgoing packets are encrypted with XChaCha20-Poly1305 AEAD; incoming packets are decrypted and anti-replay-checked before being delivered to the receive handler.
+Transparent encrypt/decrypt wrapper around any `socket_like` socket. Satisfies the `socket_like` concept itself, so it can be composed directly into `encrypted_policy`. Outgoing packets are encrypted with XChaCha20-Poly1305 AEAD (or authenticated only, with `auth_only`); incoming packets are authenticated, mode-checked, and anti-replay-checked before being delivered to the receive handler.
 
 ## Thread Safety
 
-- `update_key()` and `send()` may be called from any thread, concurrently with each other and with the receive path. The key, epoch, and grace-period state are guarded by an internal `std::mutex`; key material is copied under the lock and the AEAD operation runs outside it, so the critical section is a 32-byte copy.
-- `async_receive()` arming and handler invocation follow the inner socket's executor semantics. The per-sender replay window is confined to the receive path and is not protected by the mutex; it must not be accessed from other threads.
+- `send()` is as thread-safe as the inner socket's `send()`. Concurrent `send()` calls on one socket are not supported: the socket encrypts into one shared send buffer.
+- `update_key()` may be called from any thread, concurrently with `send()` and with the receive path. The key, epoch, and grace-period state are guarded by an internal `std::mutex`; key material is copied under the lock and the AEAD operation runs outside it, so the critical section is a 32-byte copy.
+- `async_receive()` arming and handler invocation follow the inner socket's executor semantics. The replay windows and the receive buffer are confined to the receive path and are not protected by the mutex; they must not be accessed from other threads.
 
 ## Header and Alias
 
@@ -56,7 +57,7 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex, const encrypt_socket_options &opts);
 ```
 
-Constructs the inner socket from `ex` and the base `socket_options` portion of `opts`. Validates `opts.encrypt` before copying the PSK: if `validate()` fails (`sender_id == 0`, all-zero PSK, or `replay_window_size == 0`), throws `std::system_error` with `std::errc::invalid_argument` and the key is never copied. Validation is active in all build configurations, including release builds. On success, copies the PSK, sets the starting epoch from `initial_epoch`, and configures the replay window, cleartext, and auth-only behaviour. This is the primary constructor for production use.
+Constructs the inner socket from `ex` and the base `socket_options` portion of `opts`. Validates `opts.encrypt` before copying the PSK: if `validate()` fails (`sender_id == 0`, all-zero PSK, `replay_window_size == 0`, or `max_sessions_per_sender == 0`), throws `std::system_error` with `std::errc::invalid_argument` and the key is never copied. Validation is active in all build configurations, including release builds. On success, copies the PSK, sets the starting epoch from `initial_epoch`, and draws a random nonzero session ID for this socket, and configures the replay window, cleartext, and auth-only behavior. This is the primary constructor for production use.
 
 ### Non-throwing, with options
 
@@ -70,23 +71,16 @@ Same as the throwing with-options constructor, but sets `ec` instead of throwing
 
 ## Copy and Move
 
-`encrypted_socket` is non-copyable and non-movable. The previously defaulted move constructor was silently deleted by the atomic sequence counter and is now deleted explicitly, matching the non-movable peer convention; the internal mutex and the `this` capture in the receive path make moving unsound in any case.
+`encrypted_socket` is non-copyable and non-movable. The copy constructor and copy assignment are deleted; because they are user-declared, no move operations are generated. The internal mutex and the `this` capture in the receive path make moving unsound in any case.
 
 ```cpp
 encrypted_socket(const encrypted_socket &) = delete;
 encrypted_socket &operator=(const encrypted_socket &) = delete;
-
-encrypted_socket(encrypted_socket &&) = delete;
-encrypted_socket &operator=(encrypted_socket &&) = delete;
 ```
 
-## Destructor
+## Destruction
 
-```cpp
-~encrypted_socket();
-```
-
-Zeroes both the current key and the previous key (held during grace periods) using `secure_zero` before the object is destroyed.
+The destructor is implicit. Destroying the socket destroys its key ring, which zeroes the current key and the previous key (held during grace periods) with `secure_zero`. The per-send key copy is zeroed when the send call returns.
 
 ## Methods
 
@@ -96,7 +90,7 @@ Zeroes both the current key and the previous key (held during grace periods) usi
 void close();
 ```
 
-Closes the underlying inner socket. Ongoing `async_receive` operations complete with an error.
+Closes the underlying inner socket and discards the pending receive handler without invoking it. A later `async_receive` call is ignored.
 
 ### send (throwing)
 
@@ -104,9 +98,7 @@ Closes the underlying inner socket. Ongoing `async_receive` operations complete 
 void send(const endpoint &dest, std::span<const std::byte> plaintext);
 ```
 
-Encrypts `plaintext` with the current epoch key and `sender_id`, then passes the resulting ciphertext to the inner socket's `send`. The sequence counter is incremented atomically; it starts at a per-boot randomized position (top 24 bits from the CSPRNG, low 40 bits zero, see `random_sequence_start()`) so that a restarted sender does not collide with the replay-window state receivers hold from its previous run. May be called from any thread (see Thread Safety).
-
-When `auth_only` mode is enabled, the plaintext is included as additional authenticated data and no ciphertext is produced; the packet carries only the AEAD tag and header.
+Calls the non-throwing overload and throws `std::system_error` (message `mdnspp::encrypt: send`) carrying the resulting error code if it is set. There is a single send implementation.
 
 ### send (non-throwing)
 
@@ -114,7 +106,16 @@ When `auth_only` mode is enabled, the plaintext is included as additional authen
 void send(const endpoint &dest, std::span<const std::byte> plaintext, std::error_code &ec);
 ```
 
-Same as the throwing overload, but sets `ec` instead of throwing if the underlying send fails.
+Seals `plaintext` into the socket's send buffer with the current epoch key, the `sender_id`, this socket's session ID, and the next sequence number (the first packet carries 1), then passes the datagram to the inner socket's `send`. The encrypt layer allocates nothing per call; the send buffer is sized once at construction. Failures are reported through `ec`:
+
+- `encrypt_error::buffer_too_small` if the sealed packet would not fit in `max_udp_payload` (9000) bytes. The maximum plaintext is therefore `max_udp_payload - 68` (`encrypted_overhead`), i.e. 8932 bytes; a larger plaintext is not sent and the inner socket sees nothing.
+- Whatever error the inner socket's `send` reports.
+
+When `auth_only` mode is enabled, the plaintext is not encrypted: the packet carries the header, the plaintext, and the AEAD tag covering both (the `flag_encrypted` bit is cleared). The overhead is the same 68 bytes.
+
+Each socket draws its session ID once at construction, so a restarted sender is a new session at receivers; the sequence counter is not randomized.
+
+`send()` is as thread-safe as the inner socket's `send()`; concurrent `send()` calls on one socket are not supported (see Thread Safety).
 
 ### async_receive
 
@@ -123,15 +124,14 @@ void async_receive(
     move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler);
 ```
 
-Arms the inner socket's receive loop. Inner-socket errors are forwarded to the handler with the error code set and an empty data span. For each received datagram, the socket:
+Arms the inner socket's receive loop. Inner-socket errors are forwarded to the handler unchanged. Every datagram that is not delivered (a drop) re-arms the receive without calling the handler; a delivered datagram completes the handler once. For each received datagram, the socket:
 
-1. Checks for the encrypted magic byte sequence (`0x4D 0x43`) according to `cleartext_detection`. Packets shorter than `encrypted_header_size` (44 bytes) cannot be encrypted packets; in `attempt_decrypt` mode with `accept_cleartext = true` they are forwarded as cleartext (a legitimate cleartext mDNS query can be ~28 bytes), otherwise they are dropped.
-2. Deserializes the packet header to extract `sender_id`, `sequence`, `epoch`, and `flags`.
-3. Filters by `receive_mode` (encrypted-only or auth-only-only).
-4. Selects the key by epoch under the internal mutex: the current key for the current epoch and for one epoch ahead (epoch-counter skew with shared key material), or the previous key for one epoch behind within the grace period. The previous key is zeroized as soon as grace expiry is observed.
-5. Decrypts with AEAD outside the lock. On failure in `attempt_decrypt` mode, forwards the raw packet as cleartext if `accept_cleartext` is set.
-6. Checks the per-sender replay window. Duplicate or replayed sequences are silently dropped; a backward jump of at least `replay_window::restart_threshold` (2^39) re-initializes the sender's window (sender restart).
-7. Calls `handler` with the decrypted plaintext.
+1. Classifies it according to `cleartext_detection` and `accept_cleartext`. A packet without the magic prefix is cleartext (forwarded when `accept_cleartext` is set and detection is not `reject_all`, dropped otherwise). A magic-prefixed packet shorter than `smallest_known_header_size` (44 bytes) is forwarded as cleartext only in `attempt_decrypt` mode with `accept_cleartext`, otherwise dropped. A magic-prefixed packet of 44 bytes or more is never forwarded as cleartext: it proceeds only if it is at least `encrypted_overhead` (68) bytes long and carries version `0x02`, and is dropped otherwise.
+2. Reads the epoch from the header and selects the key under the internal mutex: the current key for the current epoch and for one epoch ahead (initial-epoch skew under the same key), or the previous key for one epoch behind within the grace period. Any other epoch is dropped. The previous key is zeroized as soon as grace expiry is observed.
+3. Authenticates and decrypts (for auth-only packets, verifies and copies the payload) into the socket's receive buffer, outside the lock. A failure is a drop; it never falls through to cleartext.
+4. Checks `receive_mode` against the authenticated `flags` byte. A mismatch is a drop.
+5. Checks the replay window of the packet's (`sender_id`, session ID) pair. A duplicate, or a sequence below the window, is a drop. A window is never reset by a packet; a packet of an untracked session is accepted once and opens a window (see the [Threat Model](../threat-model.md)).
+6. Calls `handler` with the plaintext, a span into a socket buffer that is valid only for the duration of the call.
 
 ### update_key
 
@@ -139,9 +139,11 @@ Arms the inner socket's receive loop. Inner-socket errors are forwarded to the h
 void update_key(secure_key new_psk, grace_period gp);
 ```
 
-Performs a key rotation. The current key becomes the previous key and is retained for decrypting packets from peers still using the old epoch. The new key is installed as the current key, the epoch counter is incremented by one, and the grace period timer is started. Thread-safe: may be called from any thread, concurrently with the receive path (see Thread Safety).
+Performs a key rotation. The current key becomes the previous key and is retained for decrypting packets from peers still using the old epoch. The new key is installed as the current key, the epoch counter is incremented by one, and the grace period timer is started. May be called from any thread, concurrently with `send()` and the receive path (see Thread Safety).
 
-If `gp` sets neither `duration` nor `packet_count`, a duration bound of `default_grace_duration` (`std::chrono::seconds{30}`) is applied so the previous key cannot remain accepted indefinitely. The previous key is zeroized (`sodium_memzero`) as soon as grace expiry is observed on the receive path -- either when the wall-clock duration elapses or when the count of old-epoch packets received reaches the limit, whichever comes first -- and again at destruction.
+If `gp` sets neither `duration` nor `packet_count`, a duration bound of `default_grace_duration` (`std::chrono::seconds{30}`) is applied so the previous key cannot remain accepted indefinitely. The previous key is zeroized (`sodium_memzero`) as soon as grace expiry is observed on the receive path -- either when the wall-clock duration elapses or when the count of old-epoch packets accepted reaches the limit, whichever comes first -- and again at destruction. The count includes only packets accepted with the previous key (authenticated and not rejected as replays).
+
+All peers must call `update_key()` with the same new key within the grace window: a peer that has not rotated drops new-epoch traffic until it does, and peers that have rotated stop accepting its old-epoch traffic once their grace period expires. There is no staged next-key mechanism. See [Key Rotation](../key-rotation.md).
 
 ### inner
 
@@ -156,7 +158,7 @@ Returns a reference to the wrapped inner socket. Provides access to socket-speci
 
 | State | Description |
 |-------|-------------|
-| Current key | Used for all outgoing packets. Used for decrypting packets with the current epoch number, and tried for packets one epoch ahead (epoch-counter skew with shared key material). |
+| Current key | Used for all outgoing packets. Used for decrypting packets with the current epoch number, and tried for packets one epoch ahead (initial-epoch skew under the same key; it does not decrypt traffic of a peer that has rotated). |
 | Previous key | Retained after `update_key()`. Accepted for decrypting packets with epoch minus one, until the grace period expires. Zeroized on grace period expiry and on destruction. |
 | Epoch | Monotonically increasing `uint32_t`. Starts at `encrypt_options::initial_epoch`, incremented on each `update_key()` call. Embedded in every outgoing packet header. |
 

@@ -29,6 +29,12 @@ The encrypted mDNS extension operates under the following assumptions:
   past recorded traffic can be decrypted
 - Multicast group membership and packet timing remain visible to any observer
   on the network
+- Replay protection is per sender session with bounded state: a packet of a
+  session the receiver does not track (never seen, evicted, or recorded before
+  the receiver restarted) is accepted once
+- Key rotation needs coordinated timing: all peers must rotate within the grace
+  window, because a peer that has not rotated drops new-epoch traffic
+- Accepted cleartext (`accept_cleartext`) is unauthenticated
 
 See [Threat Model](threat-model.md) for a full assessment of protected and
 unprotected attack scenarios.

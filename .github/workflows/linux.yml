@@ -82,10 +82,12 @@ jobs:
           CC: ${{ matrix.cc }}
           CXX: ${{ matrix.cxx }}
         run: |
+          # Multithreaded tests race non-atomic profile counters, gcov then reports negative hit counts
+          # (https://gcc.gnu.org/bugzilla/show_bug.cgi?id=68080) and gcovr aborts.
           if [ "${{ matrix.coverage }}" = "true" ]; then
             cmake . -B build -DCMAKE_BUILD_TYPE=Debug \
-              -DCMAKE_CXX_FLAGS="--coverage" \
-              -DCMAKE_C_FLAGS="--coverage" \
+              -DCMAKE_CXX_FLAGS="--coverage -fprofile-update=atomic" \
+              -DCMAKE_C_FLAGS="--coverage -fprofile-update=atomic" \
               -DMDNSPP_BUILD_TESTS=ON \
               -DMDNSPP_BUILD_EXAMPLES=OFF \
               -DMDNSPP_ENABLE_ASIO_POLICY=ON \

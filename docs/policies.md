@@ -330,7 +330,9 @@ static void post(executor_type ex, detail::move_only_function<void()> fn)
 ```
 
 Queues the function onto the `default_context` poll loop. The work executes on
-the thread calling `ctx.run()`.
+the thread calling `ctx.run()`. An exception thrown by posted work propagates
+out of `run()` or `poll_one()`; the work queued after it stays queued, in
+order, and runs on the next call.
 
 ### asio_policy
 

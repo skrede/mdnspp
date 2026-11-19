@@ -43,10 +43,13 @@ public:
         uint32_t receive_ttl_minimum = 0,
         ttl_unknown_policy unknown_ttl_policy = ttl_unknown_policy::accept,
         error_handler on_error = nullptr)
-        : m_receive_ttl_minimum(receive_ttl_minimum)
+        : m_silence_pending(false)
+        , m_receive_ttl_minimum(receive_ttl_minimum)
+        , m_transient_failures(0)
         , m_ttl_unknown_policy(unknown_ttl_policy)
         , m_stopped(false)
         , m_silence_timeout(silence_timeout)
+        , m_silence_deadline()
         , m_socket(socket)
         , m_timer(timer)
         , m_on_silence(std::move(on_silence))
@@ -75,9 +78,7 @@ public:
     void stop()
     {
         if(m_stopped.exchange(true))
-        {
-            return; // already stopped — idempotent
-        }
+            return;
         m_timer.cancel();
         m_socket.close();
     }
@@ -131,18 +132,14 @@ private:
     void wait_silence(std::chrono::milliseconds delay)
     {
         if(m_stopped.load(std::memory_order_acquire))
-        {
             return;
-        }
         m_silence_pending = true;
         m_timer.expires_after(delay);
         m_timer.async_wait(
             [this](std::error_code ec)
             {
                 if(ec || m_stopped.load(std::memory_order_acquire))
-                {
                     return;
-                }
                 m_silence_pending = false;
                 m_on_silence();
             });
@@ -157,17 +154,13 @@ private:
     void defer_rearm()
     {
         if(m_stopped.load(std::memory_order_acquire))
-        {
             return;
-        }
         m_timer.expires_after(transient_backoff_delay(m_transient_failures));
         m_timer.async_wait(
             [this](std::error_code ec)
             {
                 if(ec || m_stopped.load(std::memory_order_acquire))
-                {
                     return;
-                }
                 if(m_silence_pending)
                 {
                     auto now = clock_type::now();
@@ -180,13 +173,13 @@ private:
             });
     }
 
-    bool m_silence_pending{false};
+    bool m_silence_pending;
     uint32_t m_receive_ttl_minimum;
-    uint32_t m_transient_failures{0};
+    uint32_t m_transient_failures;
     ttl_unknown_policy m_ttl_unknown_policy;
     std::atomic<bool> m_stopped;
     std::chrono::milliseconds m_silence_timeout;
-    clock_type::time_point m_silence_deadline{};
+    clock_type::time_point m_silence_deadline;
     socket_type &m_socket;
     timer_type &m_timer;
     move_only_function<void()> m_on_silence;

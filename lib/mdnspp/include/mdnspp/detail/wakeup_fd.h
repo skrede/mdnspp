@@ -1,6 +1,7 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_WAKEUP_FD_H
 #define HPP_GUARD_MDNSPP_DETAIL_WAKEUP_FD_H
 
+#include "mdnspp/detail/wakeup_setup.h"
 #include "mdnspp/detail/native_socket.h"
 
 #include <cerrno>
@@ -36,6 +37,7 @@ public:
 
     void create()
     {
+        close();
 #if defined(__linux__)
         m_fd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
         if(m_fd < 0)
@@ -43,7 +45,7 @@ public:
 #elif defined(_WIN32)
         try
         {
-            create_loopback_pair();
+            create_wakeup_loopback_pair(m_recv, m_send);
         }
         catch(...)
         {
@@ -51,7 +53,7 @@ public:
             throw;
         }
 #else
-        create_pipe();
+        create_wakeup_pipe(m_pipe);
 #endif
     }
 
@@ -132,65 +134,6 @@ private:
         close_socket(fd);
         fd = invalid_socket;
     }
-
-#if defined(_WIN32)
-    static std::system_error win32_error(const char *what)
-    {
-        return std::system_error(::WSAGetLastError(), std::system_category(), what);
-    }
-
-    static native_socket_t make_udp_socket(const char *what)
-    {
-        const native_socket_t fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-        if(fd == INVALID_SOCKET)
-            throw win32_error(what);
-        return fd;
-    }
-
-    sockaddr_in bind_loopback_recv()
-    {
-        sockaddr_in addr{};
-        addr.sin_family = AF_INET;
-        addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        addr.sin_port = 0;
-        if(::bind(m_recv, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == SOCKET_ERROR)
-            throw win32_error("bind(wakeup_recv)");
-
-        int len = sizeof(addr);
-        if(::getsockname(m_recv, reinterpret_cast<sockaddr *>(&addr), &len) == SOCKET_ERROR)
-            throw win32_error("getsockname");
-        return addr;
-    }
-
-    void create_loopback_pair()
-    {
-        m_recv = make_udp_socket("socket(wakeup_recv)");
-        sockaddr_in addr = bind_loopback_recv();
-        m_send = make_udp_socket("socket(wakeup_send)");
-        if(::connect(m_send, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)) == SOCKET_ERROR)
-            throw win32_error("connect(wakeup_send)");
-
-        u_long mode = 1;
-        if(::ioctlsocket(m_recv, FIONBIO, &mode) == SOCKET_ERROR)
-            throw win32_error("ioctlsocket(wakeup_recv)");
-    }
-#elif !defined(__linux__)
-    void create_pipe()
-    {
-        if(::pipe(m_pipe) != 0)
-            throw std::system_error(errno, std::generic_category(), "pipe");
-
-        for(const int fd : m_pipe)
-        {
-            const int flags = ::fcntl(fd, F_GETFL, 0);
-            if(flags >= 0 && ::fcntl(fd, F_SETFL, flags | O_NONBLOCK) >= 0)
-                continue;
-            const int err = errno;
-            close();
-            throw std::system_error(err, std::generic_category(), "fcntl(O_NONBLOCK)");
-        }
-    }
-#endif
 };
 
 }

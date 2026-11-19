@@ -7,6 +7,7 @@
 #include <mutex>
 #include <cstddef>
 #include <utility>
+#include <iterator>
 
 namespace mdnspp::detail {
 
@@ -43,24 +44,29 @@ public:
 
     std::size_t drain()
     {
-        std::deque<move_only_function<void()>> taken;
-        {
-            std::lock_guard lock{m_mutex};
-            taken.swap(m_queue);
-            m_pending = false;
-        }
+        std::deque<move_only_function<void()>> taken = take_all();
         m_hooks.after_swap(*this);
-        for(auto &fn : taken)
-            fn();
-        return taken.size();
+        std::size_t ran = 0;
+        try
+        {
+            for(; !taken.empty(); ++ran)
+            {
+                move_only_function<void()> fn = std::move(taken.front());
+                taken.pop_front();
+                fn();
+            }
+        }
+        catch(...)
+        {
+            requeue_front(taken);
+            throw;
+        }
+        return ran;
     }
 
     void clear()
     {
-        std::deque<move_only_function<void()>> dropped;
-        std::lock_guard lock{m_mutex};
-        dropped.swap(m_queue);
-        m_pending = false;
+        take_all();
     }
 
     bool pending() const
@@ -75,6 +81,27 @@ private:
     bool m_pending;
     Hooks m_hooks;
     move_only_function<void()> m_wake_cb;
+
+    std::deque<move_only_function<void()>> take_all()
+    {
+        std::deque<move_only_function<void()>> taken;
+        std::lock_guard lock{m_mutex};
+        taken.swap(m_queue);
+        m_pending = false;
+        return taken;
+    }
+
+    void requeue_front(std::deque<move_only_function<void()>> &rest)
+    {
+        bool need_wake = false;
+        {
+            std::lock_guard lock{m_mutex};
+            m_queue.insert(m_queue.begin(), std::make_move_iterator(rest.begin()), std::make_move_iterator(rest.end()));
+            need_wake = !std::exchange(m_pending, true);
+        }
+        if(need_wake)
+            m_wake_cb();
+    }
 };
 
 }

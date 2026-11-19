@@ -8,6 +8,7 @@
 #include <vector>
 #include <cstddef>
 #include <algorithm>
+#include <stdexcept>
 
 namespace {
 
@@ -117,4 +118,39 @@ TEST_CASE("restart discards stale posts and the next post still wakes the loop",
     ctx.poll_one();
 
     REQUIRE(ran == std::vector<int>{2});
+}
+
+TEST_CASE("a throwing posted function keeps the rest of the batch queued", "[post_queue]")
+{
+    std::vector<int> ran;
+    mdnspp::detail::post_queue<> queue{[] {}};
+
+    queue.post([&ran] { ran.push_back(1); });
+    queue.post([] { throw std::runtime_error{"posted work failed"}; });
+    queue.post([&ran] { ran.push_back(3); });
+
+    REQUIRE_THROWS_AS(queue.drain(), std::runtime_error);
+    REQUIRE(ran == std::vector<int>{1});
+    REQUIRE(queue.pending());
+
+    queue.post([&ran] { ran.push_back(4); });
+    REQUIRE(queue.drain() == 2);
+    REQUIRE(ran == std::vector<int>{1, 3, 4});
+    REQUIRE_FALSE(queue.pending());
+}
+
+TEST_CASE("run resumes posted work left queued by a throwing function", "[post_queue]")
+{
+    mdnspp::default_context ctx;
+    std::vector<int> ran;
+
+    ctx.post([] { throw std::runtime_error{"posted work failed"}; });
+    ctx.post([&ctx, &ran] {
+        ran.push_back(1);
+        ctx.stop();
+    });
+
+    REQUIRE_THROWS_AS(ctx.run(), std::runtime_error);
+    ctx.run();
+    REQUIRE(ran == std::vector<int>{1});
 }

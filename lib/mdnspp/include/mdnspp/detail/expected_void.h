@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DETAIL_EXPECTED_VOID_H
 
 #include "mdnspp/detail/unexpected.h"
+#include "mdnspp/detail/expected_reinit.h"
 #include "mdnspp/detail/expected_compare.h"
 #include "mdnspp/detail/bad_expected_access.h"
 #include "mdnspp/detail/expected_monadic_ops.h"
@@ -78,8 +79,23 @@ public:
     {
     }
 
-    constexpr expected &operator=(const expected &) = default;
-    constexpr expected &operator=(expected &&) = default;
+    constexpr expected &operator=(const expected &) requires std::is_trivially_copy_assignable_v<storage_t> = default;
+
+    constexpr expected &operator=(const expected &other)
+        requires(!std::is_trivially_copy_assignable_v<storage_t> && copy_reassignable_v<std::monostate, E>)
+    {
+        assign_from(m_storage, other.m_storage);
+        return *this;
+    }
+
+    constexpr expected &operator=(expected &&) requires std::is_trivially_move_assignable_v<storage_t> = default;
+
+    constexpr expected &operator=(expected &&other) noexcept(nothrow_move_reassignable_v<std::monostate, E>)
+        requires(!std::is_trivially_move_assignable_v<storage_t> && move_reassignable_v<std::monostate, E>)
+    {
+        assign_from(m_storage, std::move(other.m_storage));
+        return *this;
+    }
 
     template <typename G>
         requires(std::is_constructible_v<E, const G &> && std::is_assignable_v<E &, const G &>)
@@ -162,10 +178,7 @@ private:
     template <typename G>
     constexpr expected &assign_error(G &&error)
     {
-        if(has_value())
-            m_storage.template emplace<1>(std::forward<G>(error));
-        else
-            std::get<1>(m_storage) = std::forward<G>(error);
+        assign_alternative<1>(m_storage, std::forward<G>(error));
         return *this;
     }
 };

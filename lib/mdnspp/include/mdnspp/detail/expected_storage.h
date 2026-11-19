@@ -106,6 +106,7 @@ protected:
     constexpr expected_storage &operator=(expected_storage &&) = default;
 
     constexpr storage_t &storage() noexcept { return m_storage; }
+    constexpr const storage_t &storage() const noexcept { return m_storage; }
 
 private:
     storage_t m_storage;

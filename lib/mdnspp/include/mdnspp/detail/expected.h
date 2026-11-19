@@ -3,6 +3,7 @@
 
 #include "mdnspp/detail/unexpected.h"
 #include "mdnspp/detail/expected_void.h"
+#include "mdnspp/detail/expected_reinit.h"
 #include "mdnspp/detail/expected_compare.h"
 #include "mdnspp/detail/expected_storage.h"
 #include "mdnspp/detail/expected_monadic_ops.h"
@@ -99,26 +100,42 @@ public:
     {
     }
 
-    constexpr expected &operator=(const expected &) = default;
-    constexpr expected &operator=(expected &&) = default;
+    constexpr expected &operator=(const expected &) requires std::is_trivially_copy_assignable_v<storage_t> = default;
+
+    constexpr expected &operator=(const expected &other)
+        requires(!std::is_trivially_copy_assignable_v<storage_t> && copy_reassignable_v<T, E>)
+    {
+        assign_from(this->storage(), other.storage());
+        return *this;
+    }
+
+    constexpr expected &operator=(expected &&) requires std::is_trivially_move_assignable_v<storage_t> = default;
+
+    constexpr expected &operator=(expected &&other) noexcept(nothrow_move_reassignable_v<T, E>)
+        requires(!std::is_trivially_move_assignable_v<storage_t> && move_reassignable_v<T, E>)
+    {
+        assign_from(this->storage(), std::move(other.storage()));
+        return *this;
+    }
 
     template <typename U = T>
         requires(!std::is_same_v<expected, std::remove_cvref_t<U>> && !is_unexpected_v<std::remove_cvref_t<U>> &&
-                 std::is_constructible_v<T, U> && std::is_assignable_v<T &, U>)
+                 std::is_constructible_v<T, U> && std::is_assignable_v<T &, U> && reinit_possible_v<T, E, U>)
     constexpr expected &operator=(U &&v)
     {
         return assign<0>(std::forward<U>(v));
     }
 
     template <typename G>
-        requires(std::is_constructible_v<E, const G &> && std::is_assignable_v<E &, const G &>)
+        requires(std::is_constructible_v<E, const G &> && std::is_assignable_v<E &, const G &> &&
+                 reinit_possible_v<E, T, const G &>)
     constexpr expected &operator=(const unexpected<G> &e)
     {
         return assign<1>(e.error());
     }
 
     template <typename G>
-        requires(std::is_constructible_v<E, G> && std::is_assignable_v<E &, G>)
+        requires(std::is_constructible_v<E, G> && std::is_assignable_v<E &, G> && reinit_possible_v<E, T, G>)
     constexpr expected &operator=(unexpected<G> &&e)
     {
         return assign<1>(std::move(e).error());
@@ -154,10 +171,7 @@ private:
     template <size_t Index, typename Arg>
     constexpr expected &assign(Arg &&arg)
     {
-        if(this->storage().index() == Index)
-            std::get<Index>(this->storage()) = std::forward<Arg>(arg);
-        else
-            this->storage().template emplace<Index>(std::forward<Arg>(arg));
+        assign_alternative<Index>(this->storage(), std::forward<Arg>(arg));
         return *this;
     }
 };

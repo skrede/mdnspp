@@ -5,6 +5,7 @@
 #include <memory>
 #include <utility>
 #include <cstddef>
+#include <functional>
 #include <type_traits>
 
 namespace mdnspp::detail {
@@ -45,9 +46,9 @@ class move_only_function<R(Args...)>
         static R invoke(void *self, Args &&...args)
         {
             if constexpr(std::is_void_v<R>)
-                static_cast<void>(target(object(self))(std::forward<Args>(args)...));
+                static_cast<void>(std::invoke(target(object(self)), std::forward<Args>(args)...));
             else
-                return target(object(self))(std::forward<Args>(args)...);
+                return std::invoke(target(object(self)), std::forward<Args>(args)...);
         }
 
         static void relocate(void *from, void *to) noexcept
@@ -88,12 +89,18 @@ public:
                   && std::is_constructible_v<D, F> && std::is_invocable_r_v<R, D &, Args...>)
     // NOLINTNEXTLINE(google-explicit-constructor)
     move_only_function(F &&fn)
-        : m_ops(&model<holder<D>>::table)
+        : m_ops(nullptr)
     {
+        if constexpr(std::is_pointer_v<std::remove_cvref_t<F>> || std::is_member_pointer_v<D>)
+        {
+            if(fn == nullptr)
+                return;
+        }
         if constexpr(stored_inline<D>)
             ::new(static_cast<void *>(m_buffer)) D(std::forward<F>(fn));
         else
             ::new(static_cast<void *>(m_buffer)) std::unique_ptr<D>(std::make_unique<D>(std::forward<F>(fn)));
+        m_ops = &model<holder<D>>::table;
     }
 
     move_only_function(move_only_function &&other) noexcept

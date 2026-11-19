@@ -10,6 +10,18 @@ namespace {
 
 using mdnspp::detail::move_only_function;
 
+struct counter
+{
+    int value;
+
+    int next() { return ++value; }
+};
+
+int twice(int value)
+{
+    return value * 2;
+}
+
 }
 
 TEST_CASE("a callable capturing a move-only value is accepted and invoked", "[move_only_function]")
@@ -58,4 +70,37 @@ TEST_CASE("a function pointer is stored and invoked", "[move_only_function]")
 {
     move_only_function<int(int)> fn{+[](int value) { return value * 2; }};
     REQUIRE(fn(21) == 42);
+}
+
+TEST_CASE("a function reference is stored and invoked", "[move_only_function]")
+{
+    move_only_function<int(int)> fn{twice};
+    REQUIRE(fn(21) == 42);
+}
+
+TEST_CASE("a null function pointer yields an empty wrapper", "[move_only_function]")
+{
+    int (*null_fn)(int) = nullptr;
+    move_only_function<int(int)> fn{null_fn};
+    REQUIRE(fn == nullptr);
+    REQUIRE_FALSE(static_cast<bool>(fn));
+}
+
+TEST_CASE("a null member pointer yields an empty wrapper", "[move_only_function]")
+{
+    int (counter::*null_method)() = nullptr;
+    int counter::*null_field = nullptr;
+    move_only_function<int(counter &)> method{null_method};
+    move_only_function<int &(counter &)> field{null_field};
+    REQUIRE(method == nullptr);
+    REQUIRE(field == nullptr);
+}
+
+TEST_CASE("non-null member pointers stay callable", "[move_only_function]")
+{
+    counter target{4};
+    move_only_function<int(counter &)> method{&counter::next};
+    move_only_function<int &(counter &)> field{&counter::value};
+    REQUIRE(method(target) == 5);
+    REQUIRE(field(target) == 5);
 }

@@ -1,5 +1,7 @@
 #include "helpers.h"
 
+#include "support/sync_wait.h"
+
 #include <atomic>
 
 TEST_CASE("default_context run/stop lifecycle", "[native][context]")
@@ -53,12 +55,14 @@ TEST_CASE("default_context stop from another thread wakes run", "[native][contex
         }
     };
 
-    std::this_thread::sleep_for(30ms);
-    REQUIRE_FALSE(run_returned.load(std::memory_order_acquire));
+    const bool running = mdnspp::test_support::round_trip([&ctx](auto marker) { ctx.post(std::move(marker)); }, 5s);
+    const bool returned_early = run_returned.load(std::memory_order_acquire);
 
     ctx.stop();
     runner.join();
 
+    REQUIRE(running);
+    REQUIRE_FALSE(returned_early);
     REQUIRE(run_returned.load(std::memory_order_acquire));
 }
 

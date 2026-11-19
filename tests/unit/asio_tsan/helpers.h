@@ -1,11 +1,14 @@
 #ifndef HPP_GUARD_MDNSPP_ASIO_TSAN_HELPERS_H
 #define HPP_GUARD_MDNSPP_ASIO_TSAN_HELPERS_H
 
+#include "support/sync_wait.h"
 #include "support/construct_or_skip.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/basic_service_server.h"
 
 #include "mdnspp/asio/asio_policy.h"
+
+#include <asio/post.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -75,6 +78,11 @@ struct tsan_fixture
     void run_io()
     {
         io_thread = std::thread([this] { io.run(); });
+    }
+
+    void sync_io()
+    {
+        REQUIRE(mdnspp::test_support::round_trip([this](auto marker) { asio::post(io, std::move(marker)); }, 5s));
     }
 
     void start_and_wait_live()

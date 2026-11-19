@@ -9,7 +9,7 @@ TEST_CASE_METHOD(server_fixture, "async_run completes only after stop() runs the
     mdnspp::async_run(*server, run.handler());
     run_io();
 
-    std::this_thread::sleep_for(300ms);
+    sync_io();
     REQUIRE_FALSE(run.fired());
 
     stop_and_join();
@@ -47,7 +47,8 @@ TEST_CASE_METHOD(server_fixture, "second async_run completes with operation_in_p
     mdnspp::async_run(*server, second.handler());
     run_io();
 
-    std::this_thread::sleep_for(200ms);
+    REQUIRE(mdnspp::test_support::wait_until([&second] { return second.fired(); }, 5s));
+    sync_io();
     REQUIRE(second.count.load() == 1);
     REQUIRE(second.ec == std::errc::operation_in_progress);
     REQUIRE(first.count.load() == 0);

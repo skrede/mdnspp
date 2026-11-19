@@ -28,6 +28,7 @@ make_test(tc_accumulator_test)
 make_test(duplicate_answer_suppression_test)
 make_test(dns_name_test)
 make_test(service_info_make_test)
+make_test(fuzz_input_test)
 
 make_subdir_test(server_response_test      server/response.cpp)
 make_subdir_test(server_lifecycle_test      server/lifecycle.cpp)

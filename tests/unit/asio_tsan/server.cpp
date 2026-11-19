@@ -13,7 +13,7 @@ TEST_CASE_METHOD(tsan_fixture, "service_server stop() from separate thread is da
     server->async_start();
     run_io();
 
-    std::this_thread::sleep_for(50ms);
+    sync_io();
     server->stop();
 
     join_and_reset();
@@ -26,7 +26,7 @@ TEST_CASE_METHOD(tsan_fixture, "service_server double stop is safe under concurr
     create(make_tsan_info(instance));
     server->async_start();
     run_io();
-    std::this_thread::sleep_for(50ms);
+    sync_io();
 
     std::thread stop_thread([this] { server->stop(); });
     server->stop();

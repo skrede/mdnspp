@@ -1,6 +1,7 @@
 #ifndef HPP_GUARD_MDNSPP_ASIO_TOKEN_HELPERS_H
 #define HPP_GUARD_MDNSPP_ASIO_TOKEN_HELPERS_H
 
+#include "support/sync_wait.h"
 #include "support/construct_or_skip.h"
 #include "mdnspp/asio.h"
 #include "mdnspp/service_info.h"
@@ -163,6 +164,11 @@ struct server_fixture
     void run_io()
     {
         io_thread = std::thread([this] { io.run(); });
+    }
+
+    void sync_io()
+    {
+        REQUIRE(mdnspp::test_support::round_trip([this](auto marker) { asio::post(io, std::move(marker)); }, 5s));
     }
 
     void stop_and_join()

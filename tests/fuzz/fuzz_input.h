@@ -12,8 +12,8 @@ namespace mdnspp::fuzz {
 class input_reader
 {
 public:
-    input_reader(const uint8_t *data, size_t size) noexcept
-        : m_data(data), m_size(size)
+    input_reader(const uint8_t *data, std::size_t size) noexcept
+        : m_data(data), m_size(size), m_pos(0)
     {
     }
 
@@ -26,18 +26,22 @@ public:
 
     uint16_t u16() noexcept
     {
-        return static_cast<uint16_t>(static_cast<uint16_t>(u8()) << 8 | u8());
+        const uint16_t high = u8();
+        const uint16_t low = u8();
+        return static_cast<uint16_t>(high << 8 | low);
     }
 
     uint32_t u32() noexcept
     {
-        return static_cast<uint32_t>(u16()) << 16 | u16();
+        const uint32_t high = u16();
+        const uint32_t low = u16();
+        return high << 16 | low;
     }
 
-    std::vector<std::byte> remaining_bytes(size_t cap) noexcept
+    std::vector<std::byte> remaining_bytes(std::size_t cap) noexcept
     {
-        const size_t available = m_size - m_pos;
-        const size_t n = available < cap ? available : cap;
+        const std::size_t available = m_size - m_pos;
+        const std::size_t n = available < cap ? available : cap;
         std::vector<std::byte> out(n);
         if(n > 0)
             std::memcpy(out.data(), m_data + m_pos, n);
@@ -45,15 +49,15 @@ public:
         return out;
     }
 
-    size_t left() const noexcept
+    std::size_t left() const noexcept
     {
         return m_size - m_pos;
     }
 
 private:
     const uint8_t *m_data;
-    size_t m_size;
-    size_t m_pos{0};
+    std::size_t m_size;
+    std::size_t m_pos;
 };
 
 }

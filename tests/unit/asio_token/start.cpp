@@ -9,8 +9,8 @@ TEST_CASE_METHOD(server_fixture, "async_start adapter completes with operation_c
     mdnspp::async_start(*server, start.handler());
 
     run_io();
-    std::this_thread::sleep_for(50ms);
-    // The default probe schedule needs about 750 ms, so the server is not yet live.
+    // The default probe schedule needs about 750 ms, so the server is still not live after a marker round trip.
+    sync_io();
     stop_and_join();
 
     REQUIRE(start.fired());

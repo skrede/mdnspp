@@ -48,12 +48,14 @@ public:
     explicit replay_window(uint16_t window_size = 64, uint16_t max_senders = 256,
                            uint16_t max_sessions_per_sender = 8);
 
+    replay_window(const replay_window &) = delete;
+    replay_window &operator=(const replay_window &) = delete;
+
     // Check and record a sequence number for a sender's session. Returns
     // std::nullopt on accept, or encrypt_error::replay_detected if the sequence
     // was already seen or is too old. Call only for authenticated packets.
     std::optional<encrypt_error> check_and_record(uint32_t sender_id, uint64_t session_id, uint64_t sequence);
 
-    // Reset all state.
     void reset();
 
 private:

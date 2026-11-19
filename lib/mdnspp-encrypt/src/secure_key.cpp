@@ -4,7 +4,12 @@
 
 namespace mdnspp::encrypt {
 
-secure_key::secure_key(std::array<std::byte, key_size> key) noexcept
+secure_key::secure_key() noexcept
+    : m_key{}
+{
+}
+
+secure_key::secure_key(const std::array<std::byte, key_size> &key) noexcept
     : m_key(key)
 {
 }

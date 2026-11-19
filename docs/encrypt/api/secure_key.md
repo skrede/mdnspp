@@ -25,7 +25,7 @@ Size of the key in bytes. All interfaces that accept or return key material use 
 ### Default
 
 ```cpp
-secure_key() = default;
+secure_key() noexcept;
 ```
 
 Constructs a zero-initialized key. Not suitable for cryptographic use until assigned from a move operation or replaced by constructing with explicit key material.
@@ -33,12 +33,12 @@ Constructs a zero-initialized key. Not suitable for cryptographic use until assi
 ### From key bytes (non-throwing)
 
 ```cpp
-explicit secure_key(std::array<std::byte, key_size> key) noexcept;
+explicit secure_key(const std::array<std::byte, key_size> &key) noexcept;
 ```
 
-Constructs from a 32-byte array. The array is copied into internal storage (`std::array` is passed by value; there is no transfer that empties the source). The `noexcept` guarantee applies because no allocation is performed.
+Constructs from a 32-byte array. The array is read through a reference and copied once into internal storage; there is no transfer that empties the source. The `noexcept` guarantee applies because no allocation is performed.
 
-**The caller's source buffer remains the caller's responsibility.** `secure_key` zeroizes only its own storage; the array the caller constructed from -- and the by-value parameter copy -- are not wiped by this class. Wipe the source with `secure_zero` (declared in `mdnspp/encrypt/aead.h`) immediately after construction:
+**The caller's source array stays the caller's responsibility.** `secure_key` zeroizes only its own storage and does not wipe the array it was constructed from. Wipe the source with `secure_zero` (declared in `mdnspp/encrypt/aead.h`) immediately after construction:
 
 ```cpp
 std::array<std::byte, 32> raw_key = load_key();

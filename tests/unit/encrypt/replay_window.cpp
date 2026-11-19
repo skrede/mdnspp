@@ -2,6 +2,13 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <type_traits>
+
+static_assert(!std::is_copy_constructible_v<mdnspp::encrypt::replay_window>,
+              "a copied replay window would hold iterators into the source window's sender list");
+static_assert(!std::is_copy_assignable_v<mdnspp::encrypt::replay_window>,
+              "a copy-assigned replay window would hold iterators into the source window's sender list");
+
 TEST_CASE("first packet is accepted", "[encrypt][replay_window]")
 {
     mdnspp::encrypt::replay_window rw;

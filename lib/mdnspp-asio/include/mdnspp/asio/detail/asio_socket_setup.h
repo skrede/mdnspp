@@ -3,6 +3,7 @@
 
 #include "mdnspp/socket_options.h"
 
+#include "mdnspp/detail/native_sockaddr.h"
 #include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/native_multicast_v4.h"
 #include "mdnspp/detail/native_multicast_v6.h"
@@ -58,16 +59,19 @@ inline void bind_any(asio::ip::udp::socket &socket, bool v6, uint16_t port, std:
 inline void join_v6(asio::ip::udp::socket &socket, const asio::ip::address &group,
                     const std::string &iface_address, std::error_code &ec)
 {
+    const uint32_t iface_idx = resolve_ipv6_interface_index(iface_address);
+    if(!iface_address.empty() && iface_idx == 0)
+    {
+        ec = std::make_error_code(std::errc::invalid_argument);
+        return;
+    }
     if(!iface_address.empty())
     {
-        const asio::ip::address_v6 iface = asio::ip::make_address_v6(iface_address, ec);
-        if(ec)
-            return;
-        socket.set_option(asio::ip::multicast::outbound_interface(static_cast<unsigned int>(iface.scope_id())), ec);
+        socket.set_option(asio::ip::multicast::outbound_interface(iface_idx), ec);
         if(ec)
             return;
     }
-    socket.set_option(asio::ip::multicast::join_group(group), ec);
+    socket.set_option(asio::ip::multicast::join_group(group.to_v6(), iface_idx), ec);
 }
 
 inline void join_v4(asio::ip::udp::socket &socket, const asio::ip::address &group,

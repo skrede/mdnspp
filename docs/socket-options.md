@@ -71,6 +71,13 @@ IPv4 address for IPv4 sockets (applied through `IP_MULTICAST_IF` /
 that has no address of the socket family fails with
 `std::errc::invalid_argument`.
 
+Both the native and the Asio backend apply the selected IPv6 interface to
+multicast output and to group membership, whether it was chosen by
+`interface_index`, `interface_name` or `interface_address`. An IPv6
+`interface_address` that is not assigned to any interface fails socket
+construction with `std::errc::invalid_argument` instead of falling back to
+the default interface.
+
 Policies may extend `socket_options`: a policy declaring a
 `socket_options_type` derived from `socket_options` substitutes its own
 struct via `policy_socket_options_t<P>`. The encrypted policy adds key

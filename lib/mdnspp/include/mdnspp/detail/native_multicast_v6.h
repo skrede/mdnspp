@@ -51,9 +51,14 @@ inline void enable_v6_receive_info(native_socket_t fd)
 inline void configure_ipv6(native_socket_t fd, const socket_options &opts, const std::string &iface_address,
                            std::error_code &ec)
 {
+    const uint32_t iface_idx = resolve_ipv6_interface_index(iface_address);
+    if(!iface_address.empty() && iface_idx == 0)
+    {
+        ec = std::make_error_code(std::errc::invalid_argument);
+        return;
+    }
     if(!bind_any_v6(fd, opts.multicast_group.port, ec))
         return;
-    const uint32_t iface_idx = resolve_ipv6_interface_index(iface_address);
     if(!iface_address.empty() && !set_option(fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, iface_idx, ec))
         return;
     if(!join_v6_group(fd, opts, iface_idx, ec) || !set_v6_multicast_options(fd, opts, ec))

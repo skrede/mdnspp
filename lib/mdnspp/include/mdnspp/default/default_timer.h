@@ -12,7 +12,11 @@
 #include "mdnspp/default/default_context.h"
 
 #include <chrono>
+#include <limits>
+#include <vector>
+#include <cstdint>
 #include <utility>
+#include <algorithm>
 #include <system_error>
 
 namespace mdnspp {
@@ -81,12 +85,12 @@ public:
         }
     }
 
-    [[nodiscard]] std::chrono::steady_clock::time_point deadline() const noexcept
+    std::chrono::steady_clock::time_point deadline() const noexcept
     {
         return m_deadline;
     }
 
-    [[nodiscard]] bool has_pending() const noexcept
+    bool has_pending() const noexcept
     {
         return m_pending_handler != nullptr;
     }
@@ -111,9 +115,8 @@ inline int default_context::compute_next_timeout_ms(std::chrono::steady_clock::t
         const auto diff = std::chrono::duration_cast<std::chrono::milliseconds>(
             t->deadline() - now);
 
-        // Clamp to 0: already-expired timers fire on the next poll cycle.
-        const auto raw = diff.count();
-        const int ms = static_cast<int>(raw > 0 ? raw : 0);
+        const int64_t raw = diff.count();
+        const int ms = static_cast<int>(std::clamp<int64_t>(raw, 0, std::numeric_limits<int>::max()));
 
         if(min_ms < 0 || ms < min_ms)
             min_ms = ms;
@@ -124,10 +127,11 @@ inline int default_context::compute_next_timeout_ms(std::chrono::steady_clock::t
 inline void default_context::fire_expired_timers()
 {
     m_owner.assert_current();
-    // Snapshot to avoid iterator invalidation if a handler calls register/deregister.
-    const auto timers = m_timers;
+    // A handler may destroy or register timers, so each snapshot entry is re-checked before dispatch.
+    const std::vector<default_timer *> timers = m_timers;
     for(default_timer *t : timers)
-        t->fire_if_expired();
+        if(std::ranges::find(m_timers, t) != m_timers.end())
+            t->fire_if_expired();
 }
 
 }

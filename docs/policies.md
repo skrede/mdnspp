@@ -144,6 +144,15 @@ prototyping.
 > callback must call `ctx.stop()` when work is done. This is the single most
 > important thing to know about default_policy.
 
+`ctx.run(std::error_code &)` and `ctx.poll_one(std::error_code &)` report an OS
+poll failure other than signal interruption through `ec` and return; `ctx.run()`
+and `ctx.poll_one()` throw `std::system_error` carrying the same code. A signal
+interruption is retried and never reported. An exception thrown by a completion
+handler or posted work propagates out of both forms. In debug builds, the
+executor's thread check applies only while a thread is inside `run` or
+`poll_one`, so a context may be run on a worker thread and its timers destroyed
+on another thread after the worker joins.
+
 ```cpp
 #include <mdnspp/defaults.h>
 #include <mdnspp/records.h>

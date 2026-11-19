@@ -23,7 +23,7 @@ struct recv_metadata {
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `sender` | `endpoint` | — | Source address and port of the received packet. |
+| `sender` | `endpoint` | — | Source address and port of the received packet. A link-local IPv6 sender carries an RFC 4007 numeric zone suffix (`fe80::1%3`, the index of the receiving interface); other senders carry no zone. |
 | `ttl` | `std::optional<uint8_t>` | `std::nullopt` | IP hop limit (TTL) of the received packet. `nullopt` when the platform or socket type could not extract the TTL. |
 | `recv_ifindex` | `uint32_t` | `0` | Interface index on which the packet arrived. Populated from `IP_PKTINFO` (Linux/Windows) or `IP_RECVIF` with `sockaddr_dl` (macOS). `0` when not populated. |
 
@@ -36,6 +36,12 @@ sender copies it. It is
 not directly accessible from `monitor_options`,
 `observer_options`, or other public callback APIs — it is consumed internally to apply
 `receive_ttl_minimum` filtering and to populate `resolved_service::source_interface`.
+
+The zone on a link-local IPv6 `sender` lets a reply sent to `sender` leave through the
+interface the packet arrived on; destination text also accepts an interface-name zone
+(`fe80::1%eth0`), and an empty or unknown zone is rejected. A destination that is neither
+IPv4 nor IPv6 text makes `send(dest, data, ec)` report `std::errc::invalid_argument` and the
+throwing `send(dest, data)` throw `std::system_error` with that code; nothing is sent.
 
 ---
 

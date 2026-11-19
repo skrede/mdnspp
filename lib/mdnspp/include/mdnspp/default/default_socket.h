@@ -12,6 +12,7 @@
 #include <span>
 #include <cstddef>
 #include <utility>
+#include <optional>
 #include <system_error>
 
 namespace mdnspp {
@@ -69,20 +70,27 @@ public:
 
     void send(const endpoint &dest, std::span<const std::byte> data)
     {
-        std::error_code ignored;
-        send(dest, data, ignored);
+        std::error_code ec;
+        send(dest, data, ec);
+        if(ec)
+            throw std::system_error(ec, "mdnspp::default_socket::send");
     }
 
     void send(const endpoint &dest, std::span<const std::byte> data, std::error_code &ec)
     {
-        const auto [ss, len] = detail::build_sockaddr(dest);
-        const sockaddr *to = reinterpret_cast<const sockaddr *>(&ss);
+        const std::optional<detail::sockaddr_result> addr = detail::build_sockaddr(dest);
+        if(!addr)
+        {
+            ec = std::make_error_code(std::errc::invalid_argument);
+            return;
+        }
+        const sockaddr *to = reinterpret_cast<const sockaddr *>(&addr->ss);
 #ifdef _WIN32
         const int sent = ::sendto(m_fd, reinterpret_cast<const char *>(data.data()),
-                                  static_cast<int>(data.size()), 0, to, static_cast<int>(len));
+                                  static_cast<int>(data.size()), 0, to, static_cast<int>(addr->len));
         ec = sent == SOCKET_ERROR ? std::error_code(::WSAGetLastError(), std::system_category()) : std::error_code{};
 #else
-        const ssize_t sent = ::sendto(m_fd, data.data(), data.size(), 0, to, len);
+        const ssize_t sent = ::sendto(m_fd, data.data(), data.size(), 0, to, addr->len);
         ec = sent < 0 ? std::error_code(errno, std::system_category()) : std::error_code{};
 #endif
     }

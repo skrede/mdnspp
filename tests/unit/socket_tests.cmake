@@ -3,6 +3,7 @@ make_subdir_test(default_conformance_send_receive_test default_conformance/send_
 make_subdir_test(default_conformance_lifecycle_test    default_conformance/lifecycle.cpp)
 make_test(socket_options_test)
 make_test(endpoint_test)
+make_test(sockaddr_text_test)
 make_test(enumerate_interfaces_test)
 if (WIN32)
     target_link_libraries(enumerate_interfaces_test PRIVATE iphlpapi)

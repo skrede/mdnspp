@@ -83,13 +83,21 @@ public:
     {
         std::error_code ec;
         send(dest, data, ec);
+        if(ec)
+            throw std::system_error(ec, "mdnspp::asio_socket::send");
     }
 
+    // Mapped to the generic code so both backends report the same value; asio's own is WSAEINVAL on Windows.
     void send(const mdnspp::endpoint &dest, std::span<const std::byte> data, std::error_code &ec)
     {
-        asio::ip::udp::endpoint ep(asio::ip::make_address(dest.address, ec), dest.port);
-        if(!ec)
-            m_socket.send_to(asio::buffer(data.data(), data.size()), ep, 0, ec);
+        const asio::ip::address address = asio::ip::make_address(dest.address, ec);
+        if(ec)
+        {
+            ec = std::make_error_code(std::errc::invalid_argument);
+            return;
+        }
+        const asio::ip::udp::endpoint ep(address, dest.port);
+        m_socket.send_to(asio::buffer(data.data(), data.size()), ep, 0, ec);
     }
 
     // Invalidates the token so a completion asio already queued is dropped.

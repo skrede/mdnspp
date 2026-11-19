@@ -6,7 +6,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <array>
 #include <string>
+#include <cstddef>
+#include <system_error>
 
 static_assert(mdnspp::policy_like<mdnspp::asio_policy>, "asio_policy must satisfy policy_like — check asio_socket/asio_timer constructor signatures");
 static_assert(mdnspp::socket_like<mdnspp::asio_socket>, "asio_socket must satisfy socket_like — check async_receive/send/close signatures");
@@ -70,4 +73,38 @@ TEST_CASE("asio_socket with socket_options error_code overload", "[concept][conf
         mdnspp::test_support::skip_or_fail("asio_socket non-throwing construction with socket_options failed: " + ec.message());
     else
         SUCCEED("asio_socket constructed with default socket_options via error_code overload");
+}
+
+TEST_CASE("asio_socket reports an unparsable destination as invalid_argument", "[conformance][asio][send]")
+{
+    asio::io_context io;
+    std::error_code ec;
+    mdnspp::asio_socket socket{io, mdnspp::socket_options{}, ec};
+    if(ec)
+        mdnspp::test_support::skip_or_fail("asio_socket construction failed: " + ec.message());
+
+    const std::array<std::byte, 4> payload{};
+    socket.send(mdnspp::endpoint{"not-an-address", 5353}, payload, ec);
+    REQUIRE(ec == std::errc::invalid_argument);
+}
+
+TEST_CASE("asio_socket throwing send throws the code of its error_code overload", "[conformance][asio][send]")
+{
+    asio::io_context io;
+    std::error_code ec;
+    mdnspp::asio_socket socket{io, mdnspp::socket_options{}, ec};
+    if(ec)
+        mdnspp::test_support::skip_or_fail("asio_socket construction failed: " + ec.message());
+
+    const std::array<std::byte, 4> payload{};
+    std::error_code thrown;
+    try
+    {
+        socket.send(mdnspp::endpoint{"not-an-address", 5353}, payload);
+    }
+    catch(const std::system_error &e)
+    {
+        thrown = e.code();
+    }
+    REQUIRE(thrown == std::errc::invalid_argument);
 }

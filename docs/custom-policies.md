@@ -132,8 +132,10 @@ empty. The socket is expected to re-arm itself internally (i.e., it keeps
 listening until `close()` is called), and after `close()` no handler may
 fire.
 
-`send` has two overloads: one that throws or ignores errors internally, and one
-that reports errors via the `std::error_code&` out-parameter.
+The library calls only the `std::error_code&` overload of `send` and reports its
+failures through the peers' `on_error` handlers. The default, asio and encrypted
+sockets implement the other overload as a thin wrapper that calls it and throws
+`std::system_error` when `ec` is set.
 
 #### timer_like concept
 

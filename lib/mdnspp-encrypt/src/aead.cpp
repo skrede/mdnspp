@@ -4,6 +4,7 @@
 #include <sodium.h>
 
 #include <algorithm>
+#include <system_error>
 
 namespace mdnspp::encrypt {
 
@@ -94,6 +95,20 @@ bool open_tag_only(std::span<const std::byte, 32> key, const encrypted_packet_he
     return true;
 }
 
+std::error_code check_packet(std::span<const std::byte> packet, std::size_t out_size)
+{
+    if(packet.size() < encrypted_overhead)
+        return encrypt_error::invalid_header;
+    const auto hdr = deserialize_header(packet.data());
+    if(hdr.magic != encrypted_magic)
+        return encrypt_error::invalid_header;
+    if(hdr.version != encrypted_version)
+        return encrypt_error::unsupported_version;
+    if(out_size < packet.size() - encrypted_overhead)
+        return encrypt_error::buffer_too_small;
+    return {};
+}
+
 }
 
 std::error_code aead_encrypt(
@@ -104,7 +119,8 @@ std::error_code aead_encrypt(
     std::size_t &written)
 {
     written = 0;
-    init_crypto();
+    if(!init_crypto())
+        return std::make_error_code(std::errc::not_supported);
     if(out.size() < encrypted_overhead + plaintext.size())
         return encrypt_error::buffer_too_small;
 
@@ -125,24 +141,16 @@ std::error_code aead_decrypt(
     std::size_t &written)
 {
     written = 0;
-    init_crypto();
-    if(packet.size() < encrypted_overhead)
-        return encrypt_error::invalid_header;
+    if(!init_crypto())
+        return std::make_error_code(std::errc::not_supported);
+    if(const auto ec = check_packet(packet, out.size()))
+        return ec;
 
     const auto hdr = deserialize_header(packet.data());
-    if(hdr.magic != encrypted_magic)
-        return encrypt_error::invalid_header;
-    if(hdr.version != encrypted_version)
-        return encrypt_error::unsupported_version;
-
-    const std::size_t plaintext_len = packet.size() - encrypted_overhead;
-    if(out.size() < plaintext_len)
-        return encrypt_error::buffer_too_small;
-
     const bool sealed = (hdr.flags & flag_encrypted) != 0;
     if(!(sealed ? open_sealed(key, hdr, packet, out) : open_tag_only(key, hdr, packet, out)))
         return encrypt_error::decrypt_failed;
-    written = plaintext_len;
+    written = packet.size() - encrypted_overhead;
     return {};
 }
 

@@ -232,13 +232,15 @@ A receiver accepts only version 0x02. A packet of the earlier version 0x01
 `send(dest, plaintext, ec)` reports failures through `ec`; the throwing
 `send(dest, plaintext)` calls it and throws `std::system_error` on error. A
 plaintext larger than `max_udp_payload - 68` (8932 bytes) is not sent and
-reports `encrypt_error::buffer_too_small`.
+reports `encrypt_error::buffer_too_small`. A socket without a usable key (one
+built from an executor alone, or whose options failed validation) reports
+`std::errc::operation_not_permitted` and sends nothing.
 
 ## Thread Safety
 
 `send()` is as thread-safe as the inner socket's `send()`, but concurrent
-`send()` calls on one socket are not supported: the socket reuses one send
-buffer. `update_key()` may be called from any thread, concurrently with send
+`send()` calls on one socket are not supported: the send buffer and the
+sequence counter are shared send-path state. `update_key()` may be called from any thread, concurrently with send
 and receive. `async_receive()` and handler invocation follow the inner
 socket's executor semantics.
 

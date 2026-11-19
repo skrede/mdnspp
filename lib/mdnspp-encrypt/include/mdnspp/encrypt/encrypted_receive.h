@@ -36,6 +36,24 @@ struct opened_packet
     std::size_t written;
 };
 
+class scoped_flag
+{
+public:
+    explicit scoped_flag(bool &flag) noexcept
+        : m_flag(flag)
+    {
+        m_flag = true;
+    }
+
+    scoped_flag(const scoped_flag &) = delete;
+    scoped_flag &operator=(const scoped_flag &) = delete;
+
+    ~scoped_flag() { m_flag = false; }
+
+private:
+    bool &m_flag;
+};
+
 inline receive_rules rules_of(const encrypt_options &opts) noexcept
 {
     return receive_rules{opts.accept_cleartext, opts.detection, opts.recv_mode};
@@ -50,13 +68,22 @@ inline encrypted_packet_header header_template(const encrypt_options &opts, uint
     return hdr;
 }
 
-inline std::error_code skip_validation(const encrypt_options &) noexcept
+inline std::error_code without_key(const encrypt_options &) noexcept
 {
-    return {};
+    return std::make_error_code(std::errc::operation_not_permitted);
+}
+
+inline std::error_code usable_options(const encrypt_options &opts)
+{
+    if(!init_crypto())
+        return std::make_error_code(std::errc::not_supported);
+    return opts.validate();
 }
 
 inline std::error_code validate_or_throw(const encrypt_options &opts)
 {
+    if(!init_crypto())
+        throw std::system_error(std::make_error_code(std::errc::not_supported), "mdnspp::encrypt: libsodium");
     if(auto ec = opts.validate())
         throw std::system_error(ec, "mdnspp::encrypt: invalid encrypt_options");
     return {};

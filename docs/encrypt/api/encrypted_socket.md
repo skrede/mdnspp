@@ -4,7 +4,7 @@ Transparent encrypt/decrypt wrapper around any `socket_like` socket. Satisfies t
 
 ## Thread Safety
 
-- `send()` is as thread-safe as the inner socket's `send()`. Concurrent `send()` calls on one socket are not supported: the socket encrypts into one shared send buffer.
+- `send()` is as thread-safe as the inner socket's `send()`. Concurrent `send()` calls on one socket are not supported: the send buffer and the sequence counter are shared send-path state and are not synchronized.
 - `update_key()` may be called from any thread, concurrently with `send()` and with the receive path. The key, epoch, and grace-period state are guarded by an internal `std::mutex`; key material is copied under the lock and the AEAD operation runs outside it, so the critical section is a 32-byte copy.
 - `async_receive()` arming and handler invocation follow the inner socket's executor semantics. The replay windows and the receive buffer are confined to the receive path and are not protected by the mutex; they must not be accessed from other threads.
 
@@ -37,7 +37,7 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex);
 ```
 
-Constructs the inner socket from `ex`. Encryption options are left at their defaults (zero key, `sender_id = 0`, `magic_byte` detection). This constructor exists to satisfy the `policy_like` constructibility requirements; a socket constructed this way holds no key and must be discarded, not used.
+Constructs the inner socket from `ex`. This constructor exists to satisfy the `policy_like` constructibility requirements. The socket has no usable key: the non-throwing `send` reports `std::errc::operation_not_permitted` and sends nothing, the throwing `send` throws `std::system_error` with that code, `async_receive` never completes (the handler is discarded without being called), and `update_key` does not make the socket usable. Discard such a socket and construct one with options.
 
 ### Non-throwing, executor only
 
@@ -47,7 +47,7 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex, std::error_code &ec);
 ```
 
-Same as above, but sets `ec` instead of throwing if the inner socket fails to construct.
+Same as above, but sets `ec` instead of throwing if the inner socket fails to construct. The resulting socket has no usable key either way.
 
 ### Throwing, with options
 
@@ -57,7 +57,7 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex, const encrypt_socket_options &opts);
 ```
 
-Constructs the inner socket from `ex` and the base `socket_options` portion of `opts`. Validates `opts.encrypt` before copying the PSK: if `validate()` fails (`sender_id == 0`, all-zero PSK, `replay_window_size == 0`, or `max_sessions_per_sender == 0`), throws `std::system_error` with `std::errc::invalid_argument` and the key is never copied. Validation is active in all build configurations, including release builds. On success, copies the PSK, sets the starting epoch from `initial_epoch`, and draws a random nonzero session ID for this socket, and configures the replay window, cleartext, and auth-only behavior. This is the primary constructor for production use.
+Constructs the inner socket from `ex` and the base `socket_options` portion of `opts`. Validates `opts.encrypt` before copying the PSK: if `validate()` fails (`sender_id == 0`, all-zero PSK, `replay_window_size == 0`, or `max_sessions_per_sender == 0`), throws `std::system_error` with `std::errc::invalid_argument` and the key is never copied. If libsodium cannot be initialized, throws `std::system_error` with `std::errc::not_supported`. Validation is active in all build configurations, including release builds. On success, copies the PSK, sets the starting epoch from `initial_epoch`, and draws a random nonzero session ID for this socket, and configures the replay window, cleartext, and auth-only behavior. This is the primary constructor for production use.
 
 ### Non-throwing, with options
 
@@ -67,7 +67,7 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex, const encrypt_socket_options &opts, std::error_code &ec);
 ```
 
-Same as the throwing with-options constructor, but sets `ec` instead of throwing: on inner socket construction failure or on failed validation (`std::errc::invalid_argument`), `ec` is set, the key is not copied, and the socket must not be used.
+Same as the throwing with-options constructor, but sets `ec` instead of throwing: on inner socket construction failure, on failed validation (`std::errc::invalid_argument`), or when libsodium cannot be initialized (`std::errc::not_supported`), `ec` is set and the key is not copied. Such a socket has no usable key and behaves like one built from an executor alone: `send` reports `std::errc::operation_not_permitted`, `async_receive` never completes, and `update_key` does not make it usable.
 
 ## Copy and Move
 
@@ -108,6 +108,7 @@ void send(const endpoint &dest, std::span<const std::byte> plaintext, std::error
 
 Seals `plaintext` into the socket's send buffer with the current epoch key, the `sender_id`, this socket's session ID, and the next sequence number (the first packet carries 1), then passes the datagram to the inner socket's `send`. The encrypt layer allocates nothing per call; the send buffer is sized once at construction. Failures are reported through `ec`:
 
+- `std::errc::operation_not_permitted` if the socket has no usable key (see Constructors); nothing is sent and the sequence number is not consumed.
 - `encrypt_error::buffer_too_small` if the sealed packet would not fit in `max_udp_payload` (9000) bytes. The maximum plaintext is therefore `max_udp_payload - 68` (`encrypted_overhead`), i.e. 8932 bytes; a larger plaintext is not sent and the inner socket sees nothing.
 - Whatever error the inner socket's `send` reports.
 
@@ -124,7 +125,7 @@ void async_receive(
     move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler);
 ```
 
-Arms the inner socket's receive loop. Inner-socket errors are forwarded to the handler unchanged. Every datagram that is not delivered (a drop) re-arms the receive without calling the handler; a delivered datagram completes the handler once. For each received datagram, the socket:
+Arms the inner socket's receive loop. On a closed socket, or one without a usable key, the call returns without arming and the handler is discarded without being called. Inner-socket errors are forwarded to the handler unchanged. Every datagram that is not delivered (a drop) re-arms the receive without calling the handler; a delivered datagram completes the handler once. For each received datagram, the socket:
 
 1. Classifies it according to `cleartext_detection` and `accept_cleartext`. A packet without the magic prefix is cleartext (forwarded when `accept_cleartext` is set and detection is not `reject_all`, dropped otherwise). A magic-prefixed packet shorter than `smallest_known_header_size` (44 bytes) is forwarded as cleartext only in `attempt_decrypt` mode with `accept_cleartext`, otherwise dropped. A magic-prefixed packet of 44 bytes or more is never forwarded as cleartext: it proceeds only if it is at least `encrypted_overhead` (68) bytes long and carries version `0x02`, and is dropped otherwise.
 2. Reads the epoch from the header and selects the key under the internal mutex: the current key for the current epoch and for one epoch ahead (initial-epoch skew under the same key), or the previous key for one epoch behind within the grace period. Any other epoch is dropped. The previous key is zeroized as soon as grace expiry is observed.
@@ -139,7 +140,7 @@ Arms the inner socket's receive loop. Inner-socket errors are forwarded to the h
 void update_key(secure_key new_psk, grace_period gp);
 ```
 
-Performs a key rotation. The current key becomes the previous key and is retained for decrypting packets from peers still using the old epoch. The new key is installed as the current key, the epoch counter is incremented by one, and the grace period timer is started. May be called from any thread, concurrently with `send()` and the receive path (see Thread Safety).
+Performs a key rotation. On a socket without a usable key it does nothing. Otherwise the current key becomes the previous key and is retained for decrypting packets from peers still using the old epoch. The new key is installed as the current key, the epoch counter is incremented by one, and the grace period timer is started. May be called from any thread, concurrently with `send()` and the receive path (see Thread Safety).
 
 If `gp` sets neither `duration` nor `packet_count`, a duration bound of `default_grace_duration` (`std::chrono::seconds{30}`) is applied so the previous key cannot remain accepted indefinitely. The previous key is zeroized (`sodium_memzero`) as soon as grace expiry is observed on the receive path -- either when the wall-clock duration elapses or when the count of old-epoch packets accepted reaches the limit, whichever comes first -- and again at destruction. The count includes only packets accepted with the previous key (authenticated and not rejected as replays).
 

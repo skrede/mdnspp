@@ -1,7 +1,11 @@
 #include "helpers.h"
+#include "aead_helpers.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <span>
+#include <array>
+#include <cstddef>
 #include <type_traits>
 #include <system_error>
 
@@ -29,6 +33,32 @@ mdnspp::encrypt::encrypt_socket_options zero_psk_opts()
     mdnspp::encrypt::encrypt_socket_options opts;
     opts.encrypt.sender_id = 1;
     return opts;
+}
+
+std::error_code send_error(test_socket &sock)
+{
+    std::error_code ec;
+    sock.send(mdnspp::endpoint{}, std::span<const std::byte>(probe), ec);
+    return ec;
+}
+
+void check_refuses_to_send(test_socket &sock)
+{
+    CHECK(send_error(sock) == std::make_error_code(std::errc::operation_not_permitted));
+    CHECK_THROWS_AS(send_bytes(sock, probe), std::system_error);
+    CHECK(sent_count(sock) == 0);
+}
+
+void check_never_delivers(test_socket &sock)
+{
+    const std::array<std::byte, 32> zero_key{};
+    bool delivered = false;
+    sock.async_receive([&delivered](std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)
+    {
+        delivered = true;
+    });
+    inject(sock, seal_packet(zero_key, make_header(1, 1, 0), probe));
+    CHECK_FALSE(delivered);
 }
 
 }
@@ -71,4 +101,43 @@ TEST_CASE("throwing constructor throws std::system_error on sender_id == 0", "[e
 TEST_CASE("valid options pass both constructors", "[encrypted_socket][validate]")
 {
     CHECK_FALSE(construct_error(make_test_opts()));
+}
+
+TEST_CASE("a socket built from an executor alone refuses to send", "[encrypted_socket][unkeyed]")
+{
+    mdnspp::testing::mock_executor ex;
+    std::error_code ec;
+    test_socket plain(ex);
+    test_socket with_ec(ex, ec);
+    check_refuses_to_send(plain);
+    check_refuses_to_send(with_ec);
+}
+
+TEST_CASE("a socket built from an executor alone never delivers a zero-key packet", "[encrypted_socket][unkeyed]")
+{
+    mdnspp::testing::mock_executor ex;
+    test_socket sock(ex);
+    check_never_delivers(sock);
+}
+
+TEST_CASE("a socket whose options failed validation refuses to send and receive", "[encrypted_socket][unkeyed]")
+{
+    mdnspp::testing::mock_executor ex;
+    std::error_code ec;
+    test_socket sock(ex, zero_psk_opts(), ec);
+    REQUIRE(ec == std::make_error_code(std::errc::invalid_argument));
+    check_refuses_to_send(sock);
+    check_never_delivers(sock);
+}
+
+TEST_CASE("update_key does not make a socket without a usable key usable", "[encrypted_socket][unkeyed]")
+{
+    mdnspp::testing::mock_executor ex;
+    std::error_code ec;
+    test_socket bare(ex);
+    test_socket invalid(ex, zero_psk_opts(), ec);
+    rotate_key(bare, std::byte{0x42});
+    rotate_key(invalid, std::byte{0x42});
+    check_refuses_to_send(bare);
+    check_refuses_to_send(invalid);
 }

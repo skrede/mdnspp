@@ -11,7 +11,6 @@
 #include "mdnspp/encrypt/encrypt_socket_options.h"
 
 #include <span>
-#include <atomic>
 #include <chrono>
 #include <vector>
 #include <cstddef>
@@ -22,11 +21,11 @@
 
 namespace mdnspp::encrypt {
 
-// Thread-safety contract: send() is as thread-safe as the inner socket's send(), but concurrent
-// send() on one socket is not supported (shared send buffer). update_key() may be called from
-// any thread, concurrently with send and receive; key material is copied under an internal
-// mutex, AEAD runs outside it. async_receive() and handler invocation follow the inner socket's
-// executor semantics; the replay window and receive buffer are confined to the receive path.
+// Thread-safety contract: send() is as thread-safe as the inner socket's send(), but concurrent send()
+// on one socket is not supported: the send buffer and the sequence counter are shared send-path state.
+// update_key() may be called from any thread, concurrently with send and receive; key material is copied
+// under an internal mutex, AEAD runs outside it. async_receive() and handler invocation follow the inner
+// socket's executor semantics; the replay window and receive buffer are confined to the receive path.
 template <socket_like InnerSocket>
 class encrypted_socket
 {
@@ -37,13 +36,13 @@ class encrypted_socket
 public:
     static constexpr std::chrono::seconds default_grace_duration{key_ring::default_grace_duration};
 
-    // The executor-only constructors satisfy policy_like; a socket built
-    // without options holds no key and must be discarded.
+    // The executor-only constructors satisfy policy_like. Such a socket has no usable key: send reports
+    // std::errc::operation_not_permitted, async_receive never completes and update_key does not change that.
     template <typename Executor>
         requires (!std::is_same_v<std::remove_cvref_t<Executor>, encrypted_socket>)
     explicit encrypted_socket(Executor &&ex)
         : encrypted_socket(delegated{}, [&] { return InnerSocket(std::forward<Executor>(ex)); },
-                           encrypt_options{}, &skip_validation)
+                           encrypt_options{}, &without_key)
     {
     }
 
@@ -51,12 +50,12 @@ public:
         requires (!std::is_same_v<std::remove_cvref_t<Executor>, encrypted_socket>)
     explicit encrypted_socket(Executor &&ex, std::error_code &ec)
         : encrypted_socket(delegated{}, [&] { return InnerSocket(std::forward<Executor>(ex), ec); },
-                           encrypt_options{}, &skip_validation)
+                           encrypt_options{}, &without_key)
     {
     }
 
-    // Throws std::system_error with std::errc::invalid_argument if
-    // opts.encrypt.validate() fails; validation runs before the key is copied.
+    // Throws std::system_error with std::errc::invalid_argument if opts.encrypt.validate() fails, or with
+    // std::errc::not_supported if libsodium cannot be initialized; both checks run before the key is copied.
     template <typename Executor>
         requires (!std::is_same_v<std::remove_cvref_t<Executor>, encrypted_socket>)
     explicit encrypted_socket(Executor &&ex, const encrypt_socket_options &opts)
@@ -66,14 +65,14 @@ public:
     {
     }
 
-    // Sets ec to std::errc::invalid_argument if opts.encrypt.validate() fails;
-    // the key is not copied in that case and the socket must not be used.
+    // Sets ec to std::errc::invalid_argument if opts.encrypt.validate() fails, or to std::errc::not_supported
+    // if libsodium cannot be initialized; the socket is then left without a usable key.
     template <typename Executor>
         requires (!std::is_same_v<std::remove_cvref_t<Executor>, encrypted_socket>)
     explicit encrypted_socket(Executor &&ex, const encrypt_socket_options &opts, std::error_code &ec)
         : encrypted_socket(delegated{},
                            [&] { return InnerSocket(std::forward<Executor>(ex), static_cast<const socket_options &>(opts), ec); },
-                           opts.encrypt, [&ec](const encrypt_options &o) { return ec ? ec : (ec = o.validate()); })
+                           opts.encrypt, [&ec](const encrypt_options &o) { return ec ? ec : (ec = usable_options(o)); })
     {
     }
 
@@ -106,7 +105,7 @@ public:
 
     void async_receive(receive_handler handler)
     {
-        if(m_closed)
+        if(m_closed || !m_keys.has_key())
             return;
         m_receive_cb = std::move(handler);
         arm_inner();
@@ -126,7 +125,7 @@ private:
     InnerSocket m_inner;
     key_ring m_keys;
     receive_handler m_receive_cb;
-    std::atomic<uint64_t> m_seq_counter;
+    uint64_t m_seq_counter;
     replay_window m_replay;
     receive_rules m_rules;
     encrypted_packet_header m_header;
@@ -151,7 +150,6 @@ private:
         , m_arming(false)
         , m_rearm_requested(false)
     {
-        init_crypto();
     }
 
     // Iterative so an inner socket that completes inline cannot grow the
@@ -161,7 +159,7 @@ private:
         m_rearm_requested = true;
         if(m_arming)
             return;
-        m_arming = true;
+        scoped_flag arming(m_arming);
         while(m_rearm_requested && !m_closed)
         {
             m_rearm_requested = false;
@@ -170,7 +168,6 @@ private:
                 on_inner(ec, meta, raw);
             });
         }
-        m_arming = false;
     }
 
     void on_inner(std::error_code ec, const recv_metadata &meta, std::span<std::byte> raw)

@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_ENCRYPT_KEY_RING_H
 
 #include "mdnspp/encrypt/aead.h"
+#include "mdnspp/encrypt/key_copy.h"
 #include "mdnspp/encrypt/secure_key.h"
 #include "mdnspp/encrypt/encrypt_options.h"
 
@@ -15,42 +16,6 @@
 #include <algorithm>
 
 namespace mdnspp::encrypt {
-
-struct key_copy
-{
-    std::array<std::byte, 32> bytes;
-
-    explicit key_copy(const std::array<std::byte, 32> &source)
-        : bytes(source)
-    {
-    }
-
-    key_copy(const key_copy &other)
-        : bytes(other.bytes)
-    {
-    }
-
-    key_copy &operator=(const key_copy &) = delete;
-
-    ~key_copy()
-    {
-        secure_zero(bytes.data(), bytes.size());
-    }
-
-    std::span<const std::byte, 32> span() const noexcept { return bytes; }
-};
-
-struct send_key
-{
-    key_copy key;
-    uint32_t epoch;
-};
-
-struct receive_key
-{
-    key_copy key;
-    bool is_previous;
-};
 
 class key_ring
 {
@@ -98,16 +63,22 @@ public:
         , m_key{}
         , m_prev_key{}
         , m_has_prev_key(false)
+        , m_keyed(false)
         , m_epoch(0)
         , m_grace()
     {
     }
 
     key_ring(std::span<const std::byte, 32> key, uint32_t epoch)
-        : key_ring()
+        : m_mutex()
+        , m_key{}
+        , m_prev_key{}
+        , m_has_prev_key(false)
+        , m_keyed(true)
+        , m_epoch(epoch)
+        , m_grace()
     {
         std::ranges::copy(key, m_key.begin());
-        m_epoch = epoch;
     }
 
     key_ring(const key_ring &) = delete;
@@ -132,6 +103,8 @@ public:
             gp.duration = default_grace_duration;
 
         std::lock_guard lock(m_mutex);
+        if(!m_keyed)
+            return;
         m_prev_key = m_key;
         m_has_prev_key = true;
         std::ranges::copy(new_psk.bytes(), m_key.begin());
@@ -139,9 +112,17 @@ public:
         m_grace.start(gp);
     }
 
-    send_key key_for_send()
+    bool has_key() const noexcept
     {
         std::lock_guard lock(m_mutex);
+        return m_keyed;
+    }
+
+    std::optional<send_key> key_for_send()
+    {
+        std::lock_guard lock(m_mutex);
+        if(!m_keyed)
+            return std::nullopt;
         return send_key{key_copy(m_key), m_epoch};
     }
 
@@ -152,6 +133,8 @@ public:
     {
         std::lock_guard lock(m_mutex);
         expire_grace_locked();
+        if(!m_keyed)
+            return std::nullopt;
         if(epoch == m_epoch || epoch == m_epoch + 1)
             return receive_key{key_copy(m_key), false};
         if(m_has_prev_key && epoch == m_epoch - 1)
@@ -170,6 +153,7 @@ private:
     std::array<std::byte, 32> m_key;
     std::array<std::byte, 32> m_prev_key;
     bool m_has_prev_key;
+    bool m_keyed;
     uint32_t m_epoch;
     grace_state m_grace;
 

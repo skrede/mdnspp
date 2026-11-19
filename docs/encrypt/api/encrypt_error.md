@@ -48,7 +48,7 @@ std::error_code aead_decrypt(std::span<const std::byte, 32> key, std::span<const
                              std::span<std::byte> out, std::size_t &written);
 ```
 
-Both work on caller-provided buffers and do not allocate. `aead_encrypt` needs `out.size() >= plaintext.size() + 68`; `aead_decrypt` needs `out.size() >= packet.size() - 68`. `written` is the packet length (encrypt) or plaintext length (decrypt) on success and `0` on every failure. `aead_decrypt` checks, in order: size (`invalid_header`), magic (`invalid_header`), version (`unsupported_version`), output capacity (`buffer_too_small`), then the tag (`decrypt_failed`).
+Both work on caller-provided buffers and do not allocate. `aead_encrypt` needs `out.size() >= plaintext.size() + 68`; `aead_decrypt` needs `out.size() >= packet.size() - 68`. `written` is the packet length (encrypt) or plaintext length (decrypt) on success and `0` on every failure. Both return `std::errc::not_supported` if libsodium cannot be initialized. `aead_decrypt` checks, in order: libsodium initialization (`std::errc::not_supported`), size (`invalid_header`), magic (`invalid_header`), version (`unsupported_version`), output capacity (`buffer_too_small`), then the tag (`decrypt_failed`).
 
 ## Free Functions
 

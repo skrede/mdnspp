@@ -25,7 +25,7 @@ struct recv_metadata {
 |-------|------|---------|-------------|
 | `sender` | `endpoint` | — | Source address and port of the received packet. A link-local IPv6 sender carries an RFC 4007 numeric zone suffix (`fe80::1%3`, the index of the receiving interface); other senders carry no zone. |
 | `ttl` | `std::optional<uint8_t>` | `std::nullopt` | IP hop limit (TTL) of the received packet. `nullopt` when the platform or socket type could not extract the TTL. |
-| `recv_ifindex` | `uint32_t` | `0` | Interface index on which the packet arrived. Populated from `IP_PKTINFO` (Linux/Windows) or `IP_RECVIF` with `sockaddr_dl` (macOS). `0` when not populated. |
+| `recv_ifindex` | `uint32_t` | `0` | Interface index on which the packet arrived. Populated from `IP_PKTINFO` for IPv4 (Linux, macOS, Windows; `IP_RECVIF` with `sockaddr_dl` where `IP_PKTINFO` is unavailable) and from `IPV6_PKTINFO` for IPv6 (on macOS through the RFC 3542 options). `0` when not populated or when the control data was truncated. |
 
 `recv_metadata` is passed by const reference to the `socket_like::async_receive` handler
 (signature `void(std::error_code, const recv_metadata &, std::span<std::byte>)`, error
@@ -80,12 +80,17 @@ normally and `recv_metadata::ttl` is left as `nullopt`.
 | Platform | default_socket | asio_socket |
 |----------|--------------|------------|
 | Linux | `recvmsg()` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT`; always available when socket opens | `async_wait` + `recvmsg()` on `native_handle()`; same ancillary data path |
-| macOS | `recvmsg()` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT`; always available when socket opens | `async_wait` + `recvmsg()` on `native_handle()`; same ancillary data path |
+| macOS | `recvmsg()` + `IP_RECVTTL` (the TTL arrives as a one-byte `IP_RECVTTL` payload) / `IPV6_RECVHOPLIMIT` (RFC 3542 options, enabled by `__APPLE_USE_RFC_3542`); always available when socket opens | `async_wait` + `recvmsg()` on `native_handle()`; same ancillary data path |
 | Windows | `WSARecvMsg` via `SIO_GET_EXTENSION_FUNCTION_POINTER`; `nullopt` on systems where the extension is unavailable (pre-Vista) | `WSARecvMsg` on `native_handle()`; same extension pointer approach |
 
 On all platforms, TTL extraction failure results in silent degradation: the socket
 continues to function and `recv_metadata::ttl` is `nullopt` for every received packet.
 `unknown_ttl_policy` governs whether those packets are accepted or rejected.
+
+Each control message is read only up to its payload length; a payload shorter than the
+option's type is ignored. When the kernel reports that the control data was truncated
+(`MSG_CTRUNC`), the packet carries `ttl == nullopt` and `recv_ifindex == 0` rather than
+partial metadata, and `unknown_ttl_policy` then governs it like any other packet without a TTL.
 
 For the RFC rationale for receive-side TTL enforcement, see
 [docs/rfc/receive-ttl.md](../rfc/receive-ttl.md).

@@ -3,6 +3,8 @@
 
 #include "mdnspp/detail/native_socket.h"
 
+#include <span>
+#include <cstddef>
 #include <cstdint>
 #include <cstring>
 #include <optional>
@@ -16,6 +18,13 @@ struct ancillary_data
     uint32_t ifindex;
 };
 
+struct control_payload
+{
+    int32_t level;
+    int32_t type;
+    std::span<const std::byte> bytes;
+};
+
 #ifdef _WIN32
 using pktinfo4_t = IN_PKTINFO;
 using pktinfo6_t = IN6_PKTINFO;
@@ -26,67 +35,96 @@ using pktinfo4_t = in_pktinfo;
 using pktinfo6_t = in6_pktinfo;
 #endif
 
-inline void read_ttl_message(int level, int type, const void *data, ancillary_data &out)
+template <typename T>
+bool read_payload(std::span<const std::byte> bytes, T &out)
 {
-    bool is_ttl = level == IPPROTO_IP && type == IP_TTL;
-#ifdef IPV6_HOPLIMIT
-    is_ttl = is_ttl || (level == IPPROTO_IPV6 && type == IPV6_HOPLIMIT);
-#endif
-    if(!is_ttl)
-        return;
-    int value{};
-    std::memcpy(&value, data, sizeof(value));
-    out.ttl = static_cast<uint8_t>(value);
+    if(bytes.size() < sizeof(T))
+        return false;
+    std::memcpy(&out, bytes.data(), sizeof(T));
+    return true;
 }
 
-inline void read_ifindex_v4_message(int level, int type, const void *data,
-                                    [[maybe_unused]] std::size_t data_len, ancillary_data &out)
+inline std::span<const std::byte> bounded_payload(const void *header, const void *data, std::size_t declared_len,
+                                                  const std::byte *buffer_end)
+{
+    const auto *start = static_cast<const std::byte *>(header);
+    const auto *first = static_cast<const std::byte *>(data);
+    const std::size_t length = (std::min)(declared_len, static_cast<std::size_t>(buffer_end - start));
+    const auto offset = static_cast<std::size_t>(first - start);
+    if(length < offset)
+        return {};
+    return {first, length - offset};
+}
+
+inline bool is_int_ttl(const control_payload &msg)
+{
+    bool is_ttl = msg.level == IPPROTO_IP && msg.type == IP_TTL;
+#ifdef IPV6_HOPLIMIT
+    is_ttl = is_ttl || (msg.level == IPPROTO_IPV6 && msg.type == IPV6_HOPLIMIT);
+#endif
+    return is_ttl;
+}
+
+inline void read_ttl_message(const control_payload &msg, ancillary_data &out)
+{
+#if defined(__APPLE__) && defined(IP_RECVTTL)
+    // Darwin reports the IPv4 TTL as an IP_RECVTTL message carrying a single u_char.
+    uint8_t byte_ttl{};
+    if(msg.level == IPPROTO_IP && msg.type == IP_RECVTTL && read_payload(msg.bytes, byte_ttl))
+        out.ttl = byte_ttl;
+#endif
+    int32_t int_ttl{};
+    if(is_int_ttl(msg) && read_payload(msg.bytes, int_ttl))
+        out.ttl = static_cast<uint8_t>(int_ttl);
+}
+
+inline void read_ifindex_v4_message(const control_payload &msg, ancillary_data &out)
 {
 #if defined(IP_PKTINFO)
-    if(level == IPPROTO_IP && type == IP_PKTINFO)
-    {
-        pktinfo4_t info{};
-        std::memcpy(&info, data, sizeof(info));
+    pktinfo4_t info{};
+    if(msg.level == IPPROTO_IP && msg.type == IP_PKTINFO && read_payload(msg.bytes, info))
         out.ifindex = static_cast<uint32_t>(info.ipi_ifindex);
-    }
 #elif defined(__APPLE__) && defined(IP_RECVIF)
-    if(level == IPPROTO_IP && type == IP_RECVIF)
-    {
-        sockaddr_dl sdl{};
-        std::memcpy(&sdl, data, (std::min)(sizeof(sdl), data_len));
-        out.ifindex = static_cast<uint32_t>(sdl.sdl_index);
-    }
+    // The kernel sends sdl_len bytes of the sockaddr_dl, often fewer than sizeof(sockaddr_dl).
+    constexpr std::size_t index_end = offsetof(sockaddr_dl, sdl_index) + sizeof(sockaddr_dl::sdl_index);
+    if(msg.level != IPPROTO_IP || msg.type != IP_RECVIF || msg.bytes.size() < index_end)
+        return;
+    sockaddr_dl sdl{};
+    std::memcpy(&sdl, msg.bytes.data(), (std::min)(sizeof(sdl), msg.bytes.size()));
+    out.ifindex = static_cast<uint32_t>(sdl.sdl_index);
 #endif
 }
 
-inline void read_ifindex_v6_message(int level, int type, const void *data, ancillary_data &out)
-{
 #ifdef IPV6_PKTINFO
-    if(level == IPPROTO_IPV6 && type == IPV6_PKTINFO)
-    {
-        pktinfo6_t info{};
-        std::memcpy(&info, data, sizeof(info));
-        out.ifindex = static_cast<uint32_t>(info.ipi6_ifindex);
-    }
-#endif
-}
-
-inline void read_control_message(int level, int type, const void *data,
-                                 std::size_t data_len, ancillary_data &out)
+inline void read_ifindex_v6_message(const control_payload &msg, ancillary_data &out)
 {
-    read_ttl_message(level, type, data, out);
-    read_ifindex_v4_message(level, type, data, data_len, out);
-    read_ifindex_v6_message(level, type, data, out);
+    pktinfo6_t info{};
+    if(msg.level == IPPROTO_IPV6 && msg.type == IPV6_PKTINFO && read_payload(msg.bytes, info))
+        out.ifindex = static_cast<uint32_t>(info.ipi6_ifindex);
+}
+#endif
+
+inline void read_control_message(const control_payload &msg, ancillary_data &out)
+{
+    read_ttl_message(msg, out);
+    read_ifindex_v4_message(msg, out);
+#ifdef IPV6_PKTINFO
+    read_ifindex_v6_message(msg, out);
+#endif
 }
 
 #ifdef _WIN32
 inline ancillary_data parse_ancillary(WSAMSG &msg)
 {
     ancillary_data out{};
+    if(msg.dwFlags & MSG_CTRUNC)
+        return out;
+    const std::byte *end = reinterpret_cast<const std::byte *>(msg.Control.buf) + msg.Control.len;
     for(WSACMSGHDR *cmsg = WSA_CMSG_FIRSTHDR(&msg); cmsg; cmsg = WSA_CMSG_NXTHDR(&msg, cmsg))
     {
-        const std::size_t data_len = static_cast<std::size_t>(cmsg->cmsg_len) - sizeof(WSACMSGHDR);
-        read_control_message(cmsg->cmsg_level, cmsg->cmsg_type, WSA_CMSG_DATA(cmsg), data_len, out);
+        const auto declared = static_cast<std::size_t>(cmsg->cmsg_len);
+        const std::span<const std::byte> bytes = bounded_payload(cmsg, WSA_CMSG_DATA(cmsg), declared, end);
+        read_control_message(control_payload{cmsg->cmsg_level, cmsg->cmsg_type, bytes}, out);
     }
     return out;
 }
@@ -94,10 +132,14 @@ inline ancillary_data parse_ancillary(WSAMSG &msg)
 inline ancillary_data parse_ancillary(msghdr &msg)
 {
     ancillary_data out{};
+    if(msg.msg_flags & MSG_CTRUNC)
+        return out;
+    const std::byte *end = static_cast<const std::byte *>(msg.msg_control) + msg.msg_controllen;
     for(cmsghdr *cmsg = CMSG_FIRSTHDR(&msg); cmsg; cmsg = CMSG_NXTHDR(&msg, cmsg))
     {
-        const std::size_t data_len = static_cast<std::size_t>(cmsg->cmsg_len) - sizeof(cmsghdr);
-        read_control_message(cmsg->cmsg_level, cmsg->cmsg_type, CMSG_DATA(cmsg), data_len, out);
+        const auto declared = static_cast<std::size_t>(cmsg->cmsg_len);
+        const std::span<const std::byte> bytes = bounded_payload(cmsg, CMSG_DATA(cmsg), declared, end);
+        read_control_message(control_payload{cmsg->cmsg_level, cmsg->cmsg_type, bytes}, out);
     }
     return out;
 }

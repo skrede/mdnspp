@@ -9,6 +9,10 @@ make_subdir_test(receive_contract_buffered_test receive_contract/buffered.cpp)
 target_link_libraries(receive_contract_buffered_test PRIVATE mdnspp::inproc)
 
 make_test(recv_ancillary_test)
+if (NOT WIN32)
+    make_test(recv_ancillary_bounds_test)
+    make_subdir_test(default_conformance_receive_metadata_test default_conformance/receive_metadata.cpp)
+endif ()
 make_test(socket_registry_test)
 
 make_subdir_test(receive_contract_default_test receive_contract/default.cpp)

@@ -1,3 +1,5 @@
+#include "support/control_buffer.h"
+
 #include "mdnspp/detail/sockaddr_text.h"
 #include "mdnspp/detail/recv_ancillary.h"
 
@@ -5,9 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <array>
 #include <cstdint>
-#include <cstring>
 
 using namespace mdnspp::detail;
 
@@ -55,43 +55,7 @@ TEST_CASE("an IPv6 sender is rendered as colon-hex text with its port", "[recv_a
 
 #ifndef _WIN32
 
-namespace {
-
-class control_buffer
-{
-public:
-    control_buffer()
-        : m_storage{}
-        , m_msg{}
-        , m_used{0}
-    {
-        m_msg.msg_control = m_storage.data();
-    }
-
-    template <typename T>
-    void add(int level, int type, const T &value)
-    {
-        auto *cmsg = reinterpret_cast<cmsghdr *>(m_storage.data() + m_used);
-        cmsg->cmsg_level = level;
-        cmsg->cmsg_type = type;
-        cmsg->cmsg_len = CMSG_LEN(sizeof(T));
-        std::memcpy(CMSG_DATA(cmsg), &value, sizeof(T));
-        m_used += CMSG_SPACE(sizeof(T));
-        m_msg.msg_controllen = m_used;
-    }
-
-    msghdr &message()
-    {
-        return m_msg;
-    }
-
-private:
-    alignas(cmsghdr) std::array<std::byte, 256> m_storage;
-    msghdr m_msg;
-    std::size_t m_used;
-};
-
-}
+using mdnspp::test_support::control_buffer;
 
 TEST_CASE("parse_ancillary reads an int-sized IP_TTL", "[recv_ancillary]")
 {

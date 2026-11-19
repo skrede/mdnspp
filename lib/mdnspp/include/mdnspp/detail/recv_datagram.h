@@ -16,6 +16,13 @@
 
 namespace mdnspp::detail {
 
+inline constexpr std::size_t control_buffer_size = 256;
+
+#ifdef __linux__
+static_assert(control_buffer_size >= CMSG_SPACE(sizeof(in6_pktinfo)) + CMSG_SPACE(sizeof(int32_t))
+                  + CMSG_SPACE(sizeof(in_pktinfo)) + CMSG_SPACE(sizeof(int32_t)));
+#endif
+
 struct datagram_result
 {
     std::error_code ec;
@@ -69,7 +76,7 @@ inline datagram_result recv_with_wsarecvmsg(native_socket_t fd, std::span<std::b
 {
     sockaddr_storage sender{};
     WSABUF data_buf{static_cast<ULONG>(buf.size()), reinterpret_cast<char *>(buf.data())};
-    alignas(WSACMSGHDR) std::array<std::byte, 64> ctrl_buf{};
+    alignas(WSACMSGHDR) std::array<std::byte, control_buffer_size> ctrl_buf{};
 
     WSAMSG wmsg{};
     wmsg.name = reinterpret_cast<LPSOCKADDR>(&sender);
@@ -122,7 +129,7 @@ inline datagram_result recv_datagram(native_socket_t fd, std::span<std::byte> bu
 {
     sockaddr_storage sender{};
     iovec iov{buf.data(), buf.size()};
-    alignas(cmsghdr) std::array<std::byte, 64> ctrl_buf{};
+    alignas(cmsghdr) std::array<std::byte, control_buffer_size> ctrl_buf{};
 
     msghdr msg{};
     msg.msg_name = &sender;

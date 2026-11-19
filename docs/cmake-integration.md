@@ -83,6 +83,8 @@ Available components: `asio`, `encrypt`, `inproc`, `testing`. The core target `m
 
 Target names are identical for FetchContent/add_subdirectory and `find_package` consumers. Most users want `mdnspp::mdnspp`. Add `mdnspp::asio` if you need ASIO completion token support (futures, coroutines, deferred). Link `mdnspp::encrypt` for encrypted transport. Link `mdnspp::inproc` for in-process bus scenarios. Link `mdnspp::testing` in your test targets for mock_policy.
 
+On Apple platforms `mdnspp::mdnspp` adds the compile definition `__APPLE_USE_RFC_3542` to every target that links it, so `<netinet/in.h>` declares the RFC 3542 IPv6 socket options (`IPV6_RECVPKTINFO`, `IPV6_RECVHOPLIMIT`) the library uses to read the receiving interface and hop limit. The definition applies to whole translation units: consumer code that relies on the older RFC 2292 IPv6 socket option names must not use them in a translation unit that includes mdnspp headers.
+
 ## CMake Options
 
 | Option | Default | Description |

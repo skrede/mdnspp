@@ -52,6 +52,7 @@ if (WIN32)
     target_link_libraries(mdnspp INTERFACE ws2_32 iphlpapi)
 elseif (APPLE)
     target_link_libraries(mdnspp INTERFACE "-framework Network")
+    target_compile_definitions(mdnspp INTERFACE __APPLE_USE_RFC_3542)
 endif ()
 
 install(TARGETS mdnspp

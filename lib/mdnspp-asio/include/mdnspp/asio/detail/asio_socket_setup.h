@@ -1,21 +1,49 @@
 #ifndef HPP_GUARD_MDNSPP_ASIO_DETAIL_ASIO_SOCKET_SETUP_H
 #define HPP_GUARD_MDNSPP_ASIO_DETAIL_ASIO_SOCKET_SETUP_H
 
+#include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/native_sockaddr.h"
 #include "mdnspp/detail/interface_resolve.h"
+#include "mdnspp/detail/validate_multicast.h"
 #include "mdnspp/detail/native_multicast_v4.h"
 #include "mdnspp/detail/native_multicast_v6.h"
-#include "mdnspp/detail/validate_multicast.h"
+#include "mdnspp/detail/ipv6_interface_index.h"
 
 #include <asio.hpp>
 
+#include <bit>
 #include <string>
 #include <cstdint>
 #include <system_error>
 
+#ifdef _WIN32
+#  include <winsock2.h>
+#  include <ws2tcpip.h>
+#else
+#  include <arpa/inet.h>
+#  include <netinet/in.h>
+#endif
+
 namespace mdnspp::detail {
+
+// The generic code rather than asio's, which is WSAEINVAL on Windows, so both backends report the same value.
+inline asio::ip::udp::endpoint to_udp_endpoint(const endpoint &dest, std::error_code &ec)
+{
+    ec.clear();
+    sockaddr_in6 addr6{};
+    if(parse_ipv6(dest.address, addr6))
+    {
+        const auto bytes = std::bit_cast<asio::ip::address_v6::bytes_type>(addr6.sin6_addr);
+        return asio::ip::udp::endpoint(asio::ip::address_v6(bytes, addr6.sin6_scope_id), dest.port);
+    }
+    sockaddr_in addr4{};
+    if(parse_ipv4(dest.address, addr4))
+        return asio::ip::udp::endpoint(asio::ip::address_v4(ntohl(addr4.sin_addr.s_addr)), dest.port);
+    ec = std::make_error_code(std::errc::invalid_argument);
+    return asio::ip::udp::endpoint{};
+}
 
 inline void enable_receive_info(asio::ip::udp::socket &socket, bool v6)
 {
@@ -99,19 +127,10 @@ inline void set_multicast_options(asio::ip::udp::socket &socket, const socket_op
     socket.set_option(asio::ip::multicast::enable_loopback(opts.multicast_loopback == loopback_mode::enabled), ec);
 }
 
-inline void configure(asio::ip::udp::socket &socket, const socket_options &opts, std::error_code &ec)
+inline void open_and_join(asio::ip::udp::socket &socket, const socket_options &opts, const asio::ip::address &group,
+                          const std::string &iface_address, std::error_code &ec)
 {
-    validate_multicast_address(opts.multicast_group.address, ec);
-    if(ec)
-        return;
-    const asio::ip::address group = asio::ip::make_address(opts.multicast_group.address, ec);
-    if(ec)
-        return;
     const bool v6 = group.is_v6();
-    // precedence index > name > address; an unknown index or name fails with invalid_argument
-    const std::string iface_address = resolve_socket_interface_address(opts, v6, ec);
-    if(ec)
-        return;
     open_socket(socket, v6, ec);
     if(!ec)
         bind_any(socket, v6, opts.multicast_group.port, ec);
@@ -121,6 +140,25 @@ inline void configure(asio::ip::udp::socket &socket, const socket_options &opts,
         join_v4(socket, group, iface_address, ec);
     if(!ec)
         set_multicast_options(socket, opts, ec);
+    if(ec)
+    {
+        std::error_code ignored;
+        socket.close(ignored);
+    }
+}
+
+inline void configure(asio::ip::udp::socket &socket, const socket_options &opts, std::error_code &ec)
+{
+    validate_multicast_address(opts.multicast_group.address, ec);
+    if(ec)
+        return;
+    const asio::ip::address group = asio::ip::make_address(opts.multicast_group.address, ec);
+    if(ec)
+        return;
+    // precedence index > name > address; an unknown index or name fails with invalid_argument
+    const std::string iface_address = resolve_socket_interface_address(opts, group.is_v6(), ec);
+    if(!ec)
+        open_and_join(socket, opts, group, iface_address, ec);
 }
 
 }

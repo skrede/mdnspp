@@ -10,12 +10,17 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <memory>
 #include <string>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string_view>
 #include <system_error>
+
+#ifndef _WIN32
+#  include <net/if.h>
+#endif
 
 using namespace mdnspp::detail;
 using mdnspp::test_support::construct_or_skip;
@@ -42,6 +47,13 @@ std::string render(const std::string &text, uint32_t scope)
     assign_endpoint(make_v6(text, scope), ep);
     return ep.address;
 }
+
+#ifndef _WIN32
+struct free_name_index
+{
+    void operator()(struct if_nameindex *list) const { ::if_freenameindex(list); }
+};
+#endif
 
 }
 
@@ -97,12 +109,13 @@ TEST_CASE("a numeric zone sets the scope id of the destination", "[sockaddr_text
 #ifndef _WIN32
 TEST_CASE("an interface-name zone resolves to the index of that interface", "[sockaddr_text]")
 {
-    char name[IF_NAMESIZE]{};
-    REQUIRE(::if_indextoname(1, name) != nullptr);
+    const std::unique_ptr<struct if_nameindex, free_name_index> list{::if_nameindex()};
+    REQUIRE(list != nullptr);
+    REQUIRE(list->if_index != 0);
 
     sockaddr_in6 addr{};
-    REQUIRE(parse_ipv6(std::string{"fe80::1%"} + name, addr));
-    REQUIRE(addr.sin6_scope_id == 1);
+    REQUIRE(parse_ipv6(std::string{"fe80::1%"} + list->if_name, addr));
+    REQUIRE(addr.sin6_scope_id == list->if_index);
 }
 #endif
 

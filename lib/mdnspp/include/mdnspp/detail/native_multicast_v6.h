@@ -4,8 +4,8 @@
 #include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/native_socket.h"
-#include "mdnspp/detail/native_sockaddr.h"
 #include "mdnspp/detail/native_socket_opts.h"
+#include "mdnspp/detail/ipv6_interface_index.h"
 
 #include <string>
 #include <cstdint>

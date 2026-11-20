@@ -33,6 +33,10 @@ class mock_socket
         std::optional<uint8_t> ttl;
     };
 
+    struct checked
+    {
+    };
+
 public:
     mock_socket()
         : m_opts{}
@@ -40,29 +44,29 @@ public:
     {
     }
 
-    explicit mock_socket(mock_executor &)
-        : mock_socket()
+    explicit mock_socket(mock_executor &ex)
+        : mock_socket(checked{}, ex, socket_options{}, std::error_code{})
     {
     }
 
-    explicit mock_socket(mock_executor &, std::error_code &ec)
-        : mock_socket()
+    explicit mock_socket(mock_executor &ex, std::error_code &ec)
+        : mock_socket(ex, socket_options{}, ec)
     {
-        if(s_fail_on_construct)
-            ec = std::make_error_code(std::errc::address_not_available);
     }
 
-    explicit mock_socket(mock_executor &, const socket_options &opts)
+    explicit mock_socket(mock_executor &ex, const socket_options &opts)
+        : mock_socket(checked{}, ex, opts, std::error_code{})
+    {
+    }
+
+    explicit mock_socket(mock_executor &, const socket_options &opts, std::error_code &ec)
         : m_opts{opts}
         , m_closed{false}
     {
-    }
-
-    explicit mock_socket(mock_executor &ex, const socket_options &opts, std::error_code &ec)
-        : mock_socket(ex, opts)
-    {
         if(s_fail_on_construct)
             ec = std::make_error_code(std::errc::address_not_available);
+        else
+            ec.clear();
     }
 
     const socket_options &options() const noexcept { return m_opts; }
@@ -134,7 +138,10 @@ public:
 
     void send(const endpoint &dest, std::span<const std::byte> data)
     {
-        m_sent_packets.push_back(sent_packet{dest, std::vector<std::byte>(data.begin(), data.end())});
+        std::error_code ec;
+        send(dest, data, ec);
+        if(ec)
+            throw std::system_error(ec, "mdnspp::testing::mock_socket::send");
     }
 
     void send(const endpoint &dest, std::span<const std::byte> data, std::error_code &ec)
@@ -145,7 +152,7 @@ public:
             return;
         }
         ec.clear();
-        send(dest, data);
+        m_sent_packets.push_back(sent_packet{dest, std::vector<std::byte>(data.begin(), data.end())});
     }
 
     void close() noexcept
@@ -167,6 +174,13 @@ private:
 
     static inline bool s_fail_on_construct{false};
     static inline bool s_fail_on_send{false};
+
+    mock_socket(checked, mock_executor &ex, const socket_options &opts, std::error_code ec)
+        : mock_socket(ex, opts, ec)
+    {
+        if(ec)
+            throw std::system_error(ec, "mdnspp::testing::mock_socket");
+    }
 };
 
 }

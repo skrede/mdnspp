@@ -25,28 +25,33 @@ namespace mdnspp::inproc {
 template <typename Clock = std::chrono::steady_clock>
 class inproc_socket
 {
+    struct checked
+    {
+    };
+
 public:
     explicit inproc_socket(inproc_executor<Clock> &ex)
-        : inproc_socket(ex, inproc_socket_options{})
+        : inproc_socket(checked{}, ex, inproc_socket_options{}, std::error_code{})
     {
     }
 
-    explicit inproc_socket(inproc_executor<Clock> &ex, std::error_code &)
-        : inproc_socket(ex, inproc_socket_options{})
+    explicit inproc_socket(inproc_executor<Clock> &ex, std::error_code &ec)
+        : inproc_socket(ex, inproc_socket_options{}, ec)
     {
     }
 
     explicit inproc_socket(inproc_executor<Clock> &ex, const inproc_socket_options &opts)
+        : inproc_socket(checked{}, ex, opts, std::error_code{})
+    {
+    }
+
+    explicit inproc_socket(inproc_executor<Clock> &ex, const inproc_socket_options &opts, std::error_code &ec)
         : m_bus(&ex.bus())
         , m_opts(opts)
         , m_ep(m_bus->register_socket(this, opts))
         , m_closed(false)
     {
-    }
-
-    explicit inproc_socket(inproc_executor<Clock> &ex, const inproc_socket_options &opts, std::error_code &)
-        : inproc_socket(ex, opts)
-    {
+        ec.clear();
     }
 
     ~inproc_socket()
@@ -78,14 +83,17 @@ public:
 
     void send(const endpoint &dest, std::span<const std::byte> data)
     {
-        if(m_bus)
-            m_bus->enqueue(m_ep, dest, data);
+        std::error_code ec;
+        send(dest, data, ec);
+        if(ec)
+            throw std::system_error(ec, "mdnspp::inproc::inproc_socket::send");
     }
 
     void send(const endpoint &dest, std::span<const std::byte> data, std::error_code &ec)
     {
         ec.clear();
-        send(dest, data);
+        if(m_bus)
+            m_bus->enqueue(m_ep, dest, data);
     }
 
     void close() noexcept
@@ -127,8 +135,8 @@ public:
         }
     }
 
-    [[nodiscard]] const endpoint &assigned_endpoint() const noexcept { return m_ep; }
-    [[nodiscard]] const inproc_socket_options &options() const noexcept { return m_opts; }
+    const endpoint &assigned_endpoint() const noexcept { return m_ep; }
+    const inproc_socket_options &options() const noexcept { return m_opts; }
 
 private:
     inproc_bus<Clock> *m_bus;
@@ -146,6 +154,13 @@ private:
     };
 
     std::queue<queued_packet> m_recv_queue;
+
+    inproc_socket(checked, inproc_executor<Clock> &ex, const inproc_socket_options &opts, std::error_code ec)
+        : inproc_socket(ex, opts, ec)
+    {
+        if(ec)
+            throw std::system_error(ec, "mdnspp::inproc::inproc_socket");
+    }
 };
 
 }

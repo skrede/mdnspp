@@ -80,6 +80,10 @@ Unit tests cover:
   default_conformance_send_receive_test, default_conformance_lifecycle_test,
   default_conformance_receive_metadata_test,
   default_conformance_ipv6_interface_test)
+- Test-double sockets: the error_code constructors and send of the mock and
+  in-process sockets, the throwing forms that wrap them, and the mock socket's
+  failure injection reaching both (mock_socket_error_code_test,
+  inproc_socket_error_code_test)
 - asio backend: IPv6 interface binding (asio_ipv6_interface_test), peer
   destruction with a pending receive (asio_peer_destroy_test), and completion
   tokens (tests/unit/asio_token/: asio_token_*_test)

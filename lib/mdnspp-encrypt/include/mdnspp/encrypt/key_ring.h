@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <optional>
 #include <algorithm>
+#include <system_error>
 
 namespace mdnspp::encrypt {
 
@@ -97,24 +98,24 @@ public:
         return key_ring(opts.psk.bytes(), opts.initial_epoch);
     }
 
-    void update(secure_key new_psk, grace_period gp)
+    std::error_code update(secure_key new_psk, grace_period gp)
     {
+        if(!m_keyed)
+            return std::make_error_code(std::errc::operation_not_permitted);
         if(!gp.duration.has_value() && !gp.packet_count.has_value())
             gp.duration = default_grace_duration;
 
         std::lock_guard lock(m_mutex);
-        if(!m_keyed)
-            return;
         m_prev_key = m_key;
         m_has_prev_key = true;
         std::ranges::copy(new_psk.bytes(), m_key.begin());
         ++m_epoch;
         m_grace.start(gp);
+        return {};
     }
 
     bool has_key() const noexcept
     {
-        std::lock_guard lock(m_mutex);
         return m_keyed;
     }
 
@@ -153,7 +154,7 @@ private:
     std::array<std::byte, 32> m_key;
     std::array<std::byte, 32> m_prev_key;
     bool m_has_prev_key;
-    bool m_keyed;
+    const bool m_keyed;
     uint32_t m_epoch;
     grace_state m_grace;
 

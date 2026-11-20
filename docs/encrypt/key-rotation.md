@@ -117,7 +117,12 @@ observed, the previous key is zeroized rather than retained until destruction.
 
 ```cpp
 void update_key(secure_key new_psk, grace_period gp);
+void update_key(secure_key new_psk, grace_period gp, std::error_code &ec);
 ```
+
+On a socket without a usable key, the non-throwing overload sets `ec` to
+`std::errc::operation_not_permitted` and the throwing overload throws
+`std::system_error` with that code; nothing is rotated.
 
 Called on the `encrypted_socket` (accessible via `peer.socket()` for
 policy-wrapped types). `update_key()` may be called from any thread,

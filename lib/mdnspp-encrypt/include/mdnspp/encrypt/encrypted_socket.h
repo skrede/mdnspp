@@ -4,10 +4,10 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/encrypt/key_ring.h"
 #include "mdnspp/encrypt/packet_header.h"
-#include "mdnspp/encrypt/replay_window.h"
 #include "mdnspp/encrypt/encrypted_send.h"
 #include "mdnspp/encrypt/encrypt_options.h"
 #include "mdnspp/encrypt/encrypted_receive.h"
+#include "mdnspp/encrypt/encrypted_receiver.h"
 #include "mdnspp/encrypt/encrypt_socket_options.h"
 
 #include <span>
@@ -36,8 +36,8 @@ class encrypted_socket
 public:
     static constexpr std::chrono::seconds default_grace_duration{key_ring::default_grace_duration};
 
-    // The executor-only constructors satisfy policy_like. Such a socket has no usable key: send reports
-    // std::errc::operation_not_permitted, async_receive never completes and update_key does not change that.
+    // The executor-only constructors satisfy policy_like. Such a socket has no usable key: send and
+    // update_key report std::errc::operation_not_permitted and async_receive never completes.
     template <typename Executor>
         requires (!std::is_same_v<std::remove_cvref_t<Executor>, encrypted_socket>)
     explicit encrypted_socket(Executor &&ex)
@@ -81,8 +81,7 @@ public:
 
     void close()
     {
-        m_closed = true;
-        m_receive_cb = nullptr;
+        m_receiver.close();
         m_inner.close();
     }
 
@@ -105,17 +104,22 @@ public:
 
     void async_receive(receive_handler handler)
     {
-        if(m_closed || !m_keys.has_key())
-            return;
-        m_receive_cb = std::move(handler);
-        arm_inner();
+        m_receiver.arm(std::move(handler));
     }
 
     // The current key stays accepted for the previous epoch until the grace
     // period expires; a gp setting neither bound gets default_grace_duration.
     void update_key(secure_key new_psk, grace_period gp)
     {
-        m_keys.update(std::move(new_psk), gp);
+        std::error_code ec;
+        update_key(std::move(new_psk), gp, ec);
+        if(ec)
+            throw std::system_error(ec, "mdnspp::encrypt: update_key");
+    }
+
+    void update_key(secure_key new_psk, grace_period gp, std::error_code &ec)
+    {
+        ec = m_keys.update(std::move(new_psk), gp);
     }
 
     InnerSocket &inner() noexcept { return m_inner; }
@@ -124,71 +128,23 @@ public:
 private:
     InnerSocket m_inner;
     key_ring m_keys;
-    receive_handler m_receive_cb;
+    encrypted_receiver<InnerSocket> m_receiver;
     uint64_t m_seq_counter;
-    replay_window m_replay;
-    receive_rules m_rules;
     encrypted_packet_header m_header;
     std::vector<std::byte> m_send_buf;
-    std::vector<std::byte> m_recv_buf;
-    bool m_closed;
-    bool m_arming;
-    bool m_rearm_requested;
 
+    // Only a keyed ring draws a session ID: an unkeyed socket never sends, and a failed libsodium
+    // initialization leaves the ring unkeyed, so the uninitialized CSPRNG is never read.
     template <typename MakeInner, typename Check>
     encrypted_socket(delegated, MakeInner &&make_inner, const encrypt_options &opts, Check &&check)
         : m_inner(make_inner())
         // MSVC rejects a conditional expression whose operands are prvalues of a non-movable type.
         , m_keys(key_ring::make(opts, !check(opts)))
+        , m_receiver(m_inner, m_keys, opts)
         , m_seq_counter(0)
-        , m_replay(opts.replay_window_size, opts.max_senders, opts.max_sessions_per_sender)
-        , m_rules(rules_of(opts))
-        , m_header(header_template(opts, random_session_id()))
+        , m_header(header_template(opts, m_keys.has_key() ? random_session_id() : 0))
         , m_send_buf(detail::max_udp_payload)
-        , m_recv_buf(detail::max_udp_payload)
-        , m_closed(false)
-        , m_arming(false)
-        , m_rearm_requested(false)
     {
-    }
-
-    // Iterative so an inner socket that completes inline cannot grow the
-    // stack however many consecutive packets are rejected.
-    void arm_inner()
-    {
-        m_rearm_requested = true;
-        if(m_arming)
-            return;
-        scoped_flag arming(m_arming);
-        while(m_rearm_requested && !m_closed)
-        {
-            m_rearm_requested = false;
-            m_inner.async_receive([this](std::error_code ec, const recv_metadata &meta, std::span<std::byte> raw)
-            {
-                on_inner(ec, meta, raw);
-            });
-        }
-    }
-
-    void on_inner(std::error_code ec, const recv_metadata &meta, std::span<std::byte> raw)
-    {
-        if(m_closed)
-            return;
-        if(ec)
-            return complete(ec, meta, raw);
-
-        const auto opened = open_packet(m_keys, m_replay, m_rules, raw, m_recv_buf);
-        if(opened.outcome == receive_outcome::drop)
-            return arm_inner();
-        const bool plain = opened.outcome == receive_outcome::deliver_plain;
-        complete(std::error_code{}, meta, plain ? std::span<std::byte>(m_recv_buf.data(), opened.written) : raw);
-    }
-
-    void complete(std::error_code ec, const recv_metadata &meta, std::span<std::byte> data)
-    {
-        auto handler = std::exchange(m_receive_cb, nullptr);
-        if(handler)
-            handler(ec, meta, data);
     }
 };
 

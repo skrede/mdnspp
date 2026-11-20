@@ -61,6 +61,25 @@ void check_never_delivers(test_socket &sock)
     CHECK_FALSE(delivered);
 }
 
+std::error_code rotation_exception(test_socket &sock)
+{
+    try
+    {
+        rotate_key(sock, std::byte{0x43});
+    }
+    catch(const std::system_error &e)
+    {
+        return e.code();
+    }
+    return {};
+}
+
+std::error_code rotation_error(test_socket &sock, std::error_code ec = {})
+{
+    sock.update_key(make_key(std::byte{0x43}), ten_second_grace(), ec);
+    return ec;
+}
+
 }
 
 TEST_CASE("all-zero PSK sets invalid_argument in the error_code constructor", "[encrypted_socket][validate]")
@@ -136,8 +155,31 @@ TEST_CASE("update_key does not make a socket without a usable key usable", "[enc
     std::error_code ec;
     test_socket bare(ex);
     test_socket invalid(ex, zero_psk_opts(), ec);
-    rotate_key(bare, std::byte{0x42});
-    rotate_key(invalid, std::byte{0x42});
+    CHECK(rotation_error(bare) == std::make_error_code(std::errc::operation_not_permitted));
+    CHECK(rotation_error(invalid) == std::make_error_code(std::errc::operation_not_permitted));
     check_refuses_to_send(bare);
     check_refuses_to_send(invalid);
+}
+
+TEST_CASE("update_key with an error_code clears it and advances the epoch on a keyed socket",
+    "[encrypted_socket][key_rotation]")
+{
+    mdnspp::testing::mock_executor ex;
+    auto opts = make_test_opts();
+    opts.encrypt.initial_epoch = 7;
+    test_socket sock(ex, opts);
+    CHECK_FALSE(rotation_error(sock, std::make_error_code(std::errc::io_error)));
+    send_bytes(sock, probe);
+    REQUIRE(sent_count(sock) == 1);
+    CHECK(header_of(sent_packet_at(sock, 0)).epoch == 8);
+}
+
+TEST_CASE("update_key throws operation_not_permitted on a socket without a usable key", "[encrypted_socket][unkeyed]")
+{
+    mdnspp::testing::mock_executor ex;
+    std::error_code ec;
+    test_socket bare(ex);
+    test_socket invalid(ex, zero_psk_opts(), ec);
+    CHECK(rotation_exception(bare) == std::make_error_code(std::errc::operation_not_permitted));
+    CHECK(rotation_exception(invalid) == std::make_error_code(std::errc::operation_not_permitted));
 }

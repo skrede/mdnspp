@@ -37,7 +37,7 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex);
 ```
 
-Constructs the inner socket from `ex`. This constructor exists to satisfy the `policy_like` constructibility requirements. The socket has no usable key: the non-throwing `send` reports `std::errc::operation_not_permitted` and sends nothing, the throwing `send` throws `std::system_error` with that code, `async_receive` never completes (the handler is discarded without being called), and `update_key` does not make the socket usable. Discard such a socket and construct one with options.
+Constructs the inner socket from `ex`. This constructor exists to satisfy the `policy_like` constructibility requirements. The socket has no usable key: the non-throwing `send` reports `std::errc::operation_not_permitted` and sends nothing, the throwing `send` throws `std::system_error` with that code, `async_receive` never completes (the handler is discarded without being called), and `update_key` reports `std::errc::operation_not_permitted`. Discard such a socket and construct one with options.
 
 ### Non-throwing, executor only
 
@@ -67,7 +67,7 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex, const encrypt_socket_options &opts, std::error_code &ec);
 ```
 
-Same as the throwing with-options constructor, but sets `ec` instead of throwing: on inner socket construction failure, on failed validation (`std::errc::invalid_argument`), or when libsodium cannot be initialized (`std::errc::not_supported`), `ec` is set and the key is not copied. Such a socket has no usable key and behaves like one built from an executor alone: `send` reports `std::errc::operation_not_permitted`, `async_receive` never completes, and `update_key` does not make it usable.
+Same as the throwing with-options constructor, but sets `ec` instead of throwing: on inner socket construction failure, on failed validation (`std::errc::invalid_argument`), or when libsodium cannot be initialized (`std::errc::not_supported`), `ec` is set and the key is not copied. Such a socket has no usable key and behaves like one built from an executor alone: `send` reports `std::errc::operation_not_permitted`, `async_receive` never completes, and `update_key` reports `std::errc::operation_not_permitted`.
 
 ## Copy and Move
 
@@ -138,9 +138,10 @@ Arms the inner socket's receive loop. On a closed socket, or one without a usabl
 
 ```cpp
 void update_key(secure_key new_psk, grace_period gp);
+void update_key(secure_key new_psk, grace_period gp, std::error_code &ec);
 ```
 
-Performs a key rotation. On a socket without a usable key it does nothing. Otherwise the current key becomes the previous key and is retained for decrypting packets from peers still using the old epoch. The new key is installed as the current key, the epoch counter is incremented by one, and the grace period timer is started. May be called from any thread, concurrently with `send()` and the receive path (see Thread Safety).
+Performs a key rotation. On a socket without a usable key (see Constructors) nothing changes: the non-throwing overload sets `ec` to `std::errc::operation_not_permitted` and the throwing overload throws `std::system_error` (message `mdnspp::encrypt: update_key`) with that code. Otherwise the non-throwing overload clears `ec`, and the current key becomes the previous key and is retained for decrypting packets from peers still using the old epoch. The new key is installed as the current key, the epoch counter is incremented by one, and the grace period timer is started. May be called from any thread, concurrently with `send()` and the receive path (see Thread Safety).
 
 If `gp` sets neither `duration` nor `packet_count`, a duration bound of `default_grace_duration` (`std::chrono::seconds{30}`) is applied so the previous key cannot remain accepted indefinitely. The previous key is zeroized (`sodium_memzero`) as soon as grace expiry is observed on the receive path -- either when the wall-clock duration elapses or when the count of old-epoch packets accepted reaches the limit, whichever comes first -- and again at destruction. The count includes only packets accepted with the previous key (authenticated and not rejected as replays).
 

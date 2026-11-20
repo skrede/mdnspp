@@ -22,38 +22,82 @@ real network I/O with controllable in-process fakes:
 
 Unit tests cover:
 
-- DNS wire format encoding and decoding (dns_wire_test, dns_test, parse_test)
+- DNS wire format encoding and decoding (tests/unit/dns_wire/:
+  dns_wire_*_test; dns_test; tests/unit/parse/: parse_*_test)
 - DNS name serialization and round-trips (dns_name_test)
-- Record construction and equality (records_test)
-- State machine correctness: probe/announce/live/stopped lifecycle
-  (server_probe_announce_test, server_query_match_test)
-- Cache operations: TTL expiry, refresh, goodbye processing (record_cache_test,
-  ttl_refresh_test)
+- Record and service description construction (records_test,
+  service_info_test, service_info_make_test, mdns_util_test)
+- State machine correctness: probe/announce/live/stopped lifecycle, query
+  matching and response construction (server_probe_announce_test,
+  server_query_match_test; tests/unit/server/: server_*_test)
+- Cache operations: TTL expiry, refresh, goodbye processing (tests/unit/cache/:
+  cache_*_test; ttl_refresh_test)
 - Known-answer suppression logic (server_known_answer_test)
 - TC accumulation across multi-packet responses (tc_accumulator_test)
 - Query deduplication and response aggregation (server_response_aggregation_test,
   duplicate_answer_suppression_test)
-- Service monitor and discovery aggregation (service_monitor_test,
-  service_discovery_test, service_aggregation_test)
-- Observer raw packet delivery (observer_test)
-- Querier query construction and result delivery (querier_test, query_backoff_test)
-- Endpoint and socket option handling (endpoint_test, socket_options_test)
-- Receive-loop error propagation and TTL filtering (recv_loop_test)
+- Service monitor and discovery aggregation (tests/unit/monitor/:
+  monitor_*_test; tests/unit/discovery/: discovery_*_test;
+  service_aggregation_test)
+- Observer raw packet delivery (tests/unit/observer/: observer_*_test)
+- Querier query construction and result delivery (tests/unit/querier/:
+  querier_*_test; query_backoff_test)
+- Endpoint, sender address text and socket option handling (endpoint_test,
+  sockaddr_text_test, socket_options_test)
+- Interface enumeration and binding resolution (enumerate_interfaces_test,
+  interface_resolve_test)
+- Receive-loop lifecycle, delivery, error propagation and stop behavior
+  (tests/unit/recv_loop/: recv_loop_*_test)
+- Receive ancillary data: TTL, hop limit and arrival interface, including
+  truncated control data (recv_ancillary_test, recv_ancillary_bounds_test)
+- The receive contract every socket honors: one completion per arm, ordering,
+  and close semantics (tests/unit/receive_contract/: receive_contract_*_test)
+- Default event loop: socket registry, timer dispatch, poll errors, wakeup
+  descriptor and cross-thread posting (socket_registry_test, default_timer_test,
+  default_timer_dispatch_test, default_poll_errors_test, wakeup_fd_test,
+  post_queue_seam_test, post_stress_test)
 - Multi-NIC orchestration: group instance lifecycle, dynamic builder, and
   interface monitoring (tests/unit/nic_group/: nic_group_server_test,
   nic_group_monitor_test, nic_group_options_test; nic_group_dynamic_test,
   nic_monitor_test)
 - Multicast capability validation (validate_multicast_test)
 - Encrypt component (tests/unit/encrypt/): AEAD encrypt/decrypt and tamper
-  detection (encrypt_aead_*_test), replay window (encrypt_replay_*_test),
-  epoch-based key rotation and grace periods (encrypt_key_rotation_*_test),
-  socket framing and cleartext detection modes (encrypt_socket_*_test),
+  detection (encrypt_aead_*_test), replay window, per-sender and per-session
+  bounds (encrypt_replay_*_test), epoch-based key rotation and grace periods
+  (encrypt_key_rotation_*_test), socket framing and cleartext detection modes
+  (encrypt_socket_*_test), receive-side rejection, cleartext handling and
+  re-arming (encrypt_receive_*_test, including encrypt_receive_rearm_test),
   policy/trait conformance (encrypt_policy_test, encrypt_policy_trait_test)
+- Encrypt allocation windows: steady-state send and receive allocate nothing
+  over the mock socket and over the default socket on IPv4 and IPv6, and no
+  more than a plain asio receive loop over the asio socket on IPv4 and IPv6;
+  filling the receive metadata allocates nothing (encrypt_no_alloc_test; not
+  built under `-fsanitize=thread`)
 - policy_like concept conformance for all built-in policies
-  (concept_conformance_test, default_conformance_test, inproc_conformance_test,
-  asio_conformance_test)
-- Cross-thread server stop/update races (service_server_tsan_test; exercised
-  under `-fsanitize=thread` in the CI `sanitize (tsan)` job)
+  (concept_conformance_test, inproc_conformance_test, asio_conformance_test;
+  tests/unit/default_conformance/: default_conformance_construct_test,
+  default_conformance_send_receive_test, default_conformance_lifecycle_test,
+  default_conformance_receive_metadata_test,
+  default_conformance_ipv6_interface_test)
+- asio backend: IPv6 interface binding (asio_ipv6_interface_test), peer
+  destruction with a pending receive (asio_peer_destroy_test), and completion
+  tokens (tests/unit/asio_token/: asio_token_*_test)
+- Cross-thread server stop/update races (tests/unit/asio_tsan/:
+  asio_tsan_server_test, asio_tsan_updates_test; exercised under
+  `-fsanitize=thread` in the CI `sanitize (tsan)` job)
+- C++20/C++23 compatibility shims: `expected` and `move_only_function` surface
+  and storage, and ODR agreement between the two standards (tests/unit/compat/:
+  expected_surface_test and its C++23 build, move_only_function_test,
+  compat_odr_test)
+- Fuzz harness input decoding (fuzz_input_test)
+
+Some targets depend on the platform or build options:
+default_poll_errors_test, wakeup_fd_test, recv_ancillary_bounds_test and
+default_conformance_receive_metadata_test are not built on Windows; the
+`asio_*` targets and receive_contract_asio_test require
+`MDNSPP_ENABLE_ASIO_POLICY=ON`; the encrypt targets other than
+encrypt_policy_trait_test, and receive_contract_encrypted_test, require
+`MDNSPP_ENABLE_ENCRYPT=ON`.
 
 **How to run:**
 
@@ -71,7 +115,9 @@ ctest --test-dir build -R dns_name_test
 
 ## Protocol integration tests (inproc)
 
-**Location:** `tests/unit/inproc_bus_*.cpp` (compiled with the unit test suite)
+**Location:** `tests/unit/inproc_bus_*.cpp` and `tests/unit/inproc_rfc/`
+(compiled with the unit test suite; targets `inproc_bus_*_test` and
+`inproc_rfc_*_test`)
 **Framework:** Catch2
 **Policy:** `inproc_test_policy` (test_clock via `inproc_harness`)
 
@@ -84,8 +130,9 @@ Beyond the ten core scenarios below, dedicated suites cover legacy unicast
 responses (`inproc_bus_legacy_unicast_test.cpp`, using
 `inproc_socket_options::port_override` to simulate a non-5353 source port),
 per-record-type TTLs (`inproc_bus_per_type_ttl_test.cpp`), receive-side TTL
-enforcement (`inproc_bus_recv_ttl_test.cpp`), and TC continuation delays
-(`inproc_bus_tc_delay_test.cpp`).
+enforcement (`inproc_bus_recv_ttl_test.cpp`), TC continuation delays
+(`inproc_bus_tc_delay_test.cpp`), and automatic address resolution from the
+bound interface (`inproc_bus_auto_address_test.cpp`).
 
 The ten core scenarios:
 
@@ -152,6 +199,11 @@ Fourteen harnesses are provided:
 | `fuzz_walk_dns_frame_smart` | Full DNS frame walker (typed record callback) |
 | `fuzz_encrypted_packet` | Encrypted packet handling (requires `MDNSPP_ENABLE_ENCRYPT=ON`); two modes selected by the first input byte: raw attacker-controlled bytes into the decrypt path, and a round-trip mode that encrypts an input-derived payload with the real key, mutates it, and drives the full receive path across cleartext-detection modes, `receive_mode` filtering, and epoch handling |
 
+`fuzz_encrypted_packet` reads multi-byte fields from the input through
+`tests/fuzz/fuzz_input.h`, which reads bytes in a fixed sequence and decodes
+high byte first, so a corpus entry replays identically with every compiler;
+fuzz_input_test covers that decoder in the unit suite.
+
 Seeds are generated at build time by `generate_corpus.cpp` into
 `${CMAKE_BINARY_DIR}/fuzz_corpus/<category>/`. The `fuzz_corpus` ALL custom
 target regenerates seeds at every build. Category names (e.g., `walk_frame`,
@@ -205,8 +257,9 @@ two additional configurations on Clang:
 
 - **asan-ubsan** — `-fsanitize=address,undefined -fno-sanitize-recover=all`
 - **tsan** — `-fsanitize=thread`; this is the configuration under which
-  `service_server_tsan_test` exercises cross-thread `stop()` /
-  `update_service_info` races meaningfully.
+  `asio_tsan_server_test` and `asio_tsan_updates_test` exercise cross-thread
+  `stop()` / `update_service_info` races meaningfully. The allocation-counting
+  encrypt_no_alloc_test is not built in this configuration.
 
 ## See also
 

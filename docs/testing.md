@@ -40,7 +40,9 @@ Unit tests cover:
 - Endpoint and socket option handling (endpoint_test, socket_options_test)
 - Receive-loop error propagation and TTL filtering (recv_loop_test)
 - Multi-NIC orchestration: group instance lifecycle, dynamic builder, and
-  interface monitoring (nic_group_test, nic_group_dynamic_test, nic_monitor_test)
+  interface monitoring (tests/unit/nic_group/: nic_group_server_test,
+  nic_group_monitor_test, nic_group_options_test; nic_group_dynamic_test,
+  nic_monitor_test)
 - Multicast capability validation (validate_multicast_test)
 - Encrypt component (tests/unit/encrypt/): AEAD encrypt/decrypt and tamper
   detection (encrypt_aead_*_test), replay window (encrypt_replay_*_test),

@@ -89,13 +89,13 @@ The ten core scenarios:
 
 | ID | Scenario | Files |
 |----|----------|-------|
-| TEST-01 | Probe conflict resolution — two servers with the same name | `inproc_bus_discovery_test.cpp`, `inproc_bus_rfc_compliance_test.cpp` |
-| TEST-02 | Discovery lifecycle — server announces, monitor finds, server stops, monitor loses | `inproc_bus_discovery_test.cpp`, `inproc_bus_rfc_compliance_test.cpp` |
-| TEST-03 | Known-answer suppression — querier suppresses records already in query | `inproc_bus_rfc_compliance_test.cpp` |
-| TEST-04 | Duplicate answer suppression across queriers | `inproc_bus_rfc_compliance_test.cpp` |
+| TEST-01 | Probe conflict resolution — two servers with the same name | `inproc_bus_discovery_test.cpp` |
+| TEST-02 | Discovery lifecycle — server announces, monitor finds, server stops, monitor loses | `inproc_bus_discovery_test.cpp` |
+| TEST-03 | Known-answer suppression — querier suppresses records already in query | `inproc_rfc/known_answer.cpp` |
+| TEST-04 | Duplicate answer suppression across queriers | `inproc_rfc/duplicate_answer.cpp` |
 | TEST-05 | Observer captures all traffic — probes, announces, queries, responses | `inproc_bus_routing_test.cpp` |
-| TEST-06 | TC bit multi-packet accumulation end-to-end | `inproc_bus_rfc_compliance_test.cpp` |
-| TEST-07 | Cache-flush propagation across monitors | `inproc_bus_rfc_compliance_test.cpp` |
+| TEST-06 | TC bit multi-packet accumulation end-to-end | `inproc_rfc/tc_accumulation.cpp` |
+| TEST-07 | Cache-flush propagation across monitors | `inproc_rfc/cache_flush.cpp` |
 | TEST-08 | Query backoff convergence — exponential backoff on repeated queries | `inproc_bus_routing_test.cpp` |
 | TEST-09 | Multiple service types — type-specific monitors see only their type | `inproc_bus_routing_test.cpp` |
 | TEST-10 | Goodbye with delayed expiry — `on_lost` does not fire before grace period | `inproc_bus_discovery_test.cpp` |

@@ -19,7 +19,7 @@
 //   - The legacy socket captures the unicast response and verifies TTL cap.
 //
 // TEST-15 closure: TC-split reassembly is verified by the existing TEST-06
-// ("TC bit multi-packet accumulation" in inproc_bus_rfc_compliance_test.cpp)
+// ("TC bit multi-packet accumulation" in inproc_rfc/tc_accumulation.cpp)
 // which proves that TC=1 first packet + continuation packet are accumulated
 // and processed as a single query with combined known-answer list.
 

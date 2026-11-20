@@ -1,5 +1,7 @@
 #include "mdnspp/default/default_timer.h"
 
+#include "support/fd_limit.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <fcntl.h>
@@ -8,7 +10,6 @@
 #include <netinet/in.h>
 
 #include <sys/socket.h>
-#include <sys/resource.h>
 
 #include <span>
 #include <chrono>
@@ -18,6 +19,8 @@
 
 using namespace std::chrono_literals;
 using mdnspp::detail::native_socket_t;
+using mdnspp::test_support::fd_limit_guard;
+using mdnspp::test_support::skip_unless_lowered;
 
 namespace {
 
@@ -110,35 +113,12 @@ uint16_t unused_port()
     return ntohs(addr.sin_port);
 }
 
-class fd_limit_guard
-{
-public:
-    explicit fd_limit_guard(rlim_t soft)
-        : m_saved{}
-    {
-        ::getrlimit(RLIMIT_NOFILE, &m_saved);
-        rlimit lowered = m_saved;
-        lowered.rlim_cur = soft;
-        ::setrlimit(RLIMIT_NOFILE, &lowered);
-    }
-
-    ~fd_limit_guard()
-    {
-        ::setrlimit(RLIMIT_NOFILE, &m_saved);
-    }
-
-    fd_limit_guard(const fd_limit_guard &) = delete;
-    fd_limit_guard &operator=(const fd_limit_guard &) = delete;
-
-private:
-    rlimit m_saved;
-};
-
 // Linux poll() fails with EINVAL once nfds exceeds the soft RLIMIT_NOFILE (poll(2)).
 template <typename F>
 std::error_code thrown_under_fd_limit(F &&fn)
 {
     const fd_limit_guard guard{1};
+    skip_unless_lowered(guard);
     try
     {
         fn();
@@ -154,6 +134,7 @@ template <typename F>
 std::error_code reported_under_fd_limit(F &&fn)
 {
     const fd_limit_guard guard{1};
+    skip_unless_lowered(guard);
     std::error_code ec;
     fn(ec);
     return ec;

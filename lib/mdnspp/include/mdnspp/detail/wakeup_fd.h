@@ -35,26 +35,27 @@ public:
     wakeup_fd(wakeup_fd &&) = delete;
     wakeup_fd &operator=(wakeup_fd &&) = delete;
 
-    void create()
+    void create(std::error_code &ec)
     {
         close();
 #if defined(__linux__)
         m_fd = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-        if(m_fd < 0)
-            throw std::system_error(errno, std::generic_category(), "eventfd");
+        ec = m_fd < 0 ? std::error_code(errno, std::generic_category()) : std::error_code{};
 #elif defined(_WIN32)
-        try
-        {
-            create_wakeup_loopback_pair(m_recv, m_send);
-        }
-        catch(...)
-        {
+        create_wakeup_loopback_pair(m_recv, m_send, ec);
+        if(ec)
             close();
-            throw;
-        }
 #else
-        create_wakeup_pipe(m_pipe);
+        create_wakeup_pipe(m_pipe, ec);
 #endif
+    }
+
+    void create()
+    {
+        std::error_code ec;
+        create(ec);
+        if(ec)
+            throw std::system_error(ec, "mdnspp::detail::wakeup_fd::create");
     }
 
     void notify() noexcept

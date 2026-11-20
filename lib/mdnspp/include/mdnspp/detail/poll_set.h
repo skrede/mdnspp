@@ -25,6 +25,11 @@ public:
     bool wait(native_socket_t wake_fd, const socket_registry &sockets, int timeout_ms, std::error_code &ec)
     {
         m_fds.clear();
+        if(wake_fd == invalid_socket)
+        {
+            ec = std::make_error_code(std::errc::bad_file_descriptor);
+            return false;
+        }
         m_fds.push_back({wake_fd, POLLIN, 0});
         sockets.build_pollfds(m_fds);
         const bool polled = poll_sockets(m_fds.data(), static_cast<nfds_t>(m_fds.size()), timeout_ms) >= 0;

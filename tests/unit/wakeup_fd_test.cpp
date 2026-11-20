@@ -1,12 +1,19 @@
 #include "mdnspp/detail/wakeup_fd.h"
 
+#include "support/fd_limit.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <poll.h>
 #include <fcntl.h>
 
+#include <system_error>
+
 using mdnspp::detail::wakeup_fd;
+using mdnspp::detail::invalid_socket;
 using mdnspp::detail::native_socket_t;
+using mdnspp::test_support::fd_limit_guard;
+using mdnspp::test_support::skip_unless_lowered;
 
 namespace {
 
@@ -51,4 +58,21 @@ TEST_CASE("a recreated wakeup still signals readiness", "[wakeup_fd]")
 
     wakeup.drain();
     REQUIRE_FALSE(readable(wakeup.native()));
+}
+
+TEST_CASE("creating the wakeup under descriptor exhaustion reports the error and leaves no descriptor", "[wakeup_fd]")
+{
+    wakeup_fd wakeup;
+    std::error_code ec;
+    {
+        const fd_limit_guard guard{1};
+        skip_unless_lowered(guard);
+        wakeup.create(ec);
+    }
+    REQUIRE(ec == std::errc::too_many_files_open);
+    REQUIRE(wakeup.native() == invalid_socket);
+
+    wakeup.create(ec);
+    REQUIRE_FALSE(ec);
+    REQUIRE(wakeup.native() != invalid_socket);
 }

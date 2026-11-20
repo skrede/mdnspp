@@ -28,9 +28,18 @@ class default_timer;
 
 class default_context
 {
+    struct checked
+    {
+    };
+
 public:
     default_context()
-        : m_wsa{}
+        : default_context(checked{}, std::error_code{})
+    {
+    }
+
+    explicit default_context(std::error_code &ec)
+        : m_wsa{ec}
         , m_stopped{false}
         , m_wakeup{}
         , m_post_queue{[this] { m_wakeup.notify(); }}
@@ -40,7 +49,8 @@ public:
         , m_timers{}
         , m_receiver{m_sockets}
     {
-        m_wakeup.create();
+        if(!ec)
+            m_wakeup.create(ec);
     }
 
     default_context(const default_context &) = delete;
@@ -151,6 +161,13 @@ private:
     detail::executor_owner m_owner;
     std::vector<default_timer *> m_timers;
     detail::datagram_dispatcher m_receiver;
+
+    default_context(checked, std::error_code ec)
+        : default_context(ec)
+    {
+        if(ec)
+            throw std::system_error(ec, "mdnspp::default_context");
+    }
 
     bool wait(int timeout_ms, std::error_code &ec)
     {

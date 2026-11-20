@@ -153,6 +153,13 @@ executor's thread check applies only while a thread is inside `run` or
 `poll_one`, so a context may be run on a worker thread and its timers destroyed
 on another thread after the worker joins.
 
+`mdnspp::context ctx(ec)` reports a failure to create the context's wakeup
+descriptor (on Windows also a Winsock start-up failure) through `ec`, and clears
+`ec` on success; `mdnspp::context ctx` throws `std::system_error` carrying the
+same code. A context whose construction reported an error is not usable:
+`run(ec)` and `poll_one(ec)` report `std::errc::bad_file_descriptor`, and
+`run()` and `poll_one()` throw it as `std::system_error`.
+
 ```cpp
 #include <mdnspp/defaults.h>
 #include <mdnspp/records.h>

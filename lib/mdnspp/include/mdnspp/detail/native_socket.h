@@ -57,20 +57,31 @@ inline int poll_sockets(pollfd *fds, nfds_t nfds, int timeout_ms)
 
 class winsock_guard
 {
+    struct checked
+    {
+    };
+
 public:
     winsock_guard()
+        : winsock_guard(checked{}, std::error_code{})
     {
+    }
+
+    explicit winsock_guard(std::error_code &ec)
 #ifdef _WIN32
-        WSADATA data{};
-        if(const int rc = ::WSAStartup(MAKEWORD(2, 2), &data); rc != 0)
-            throw std::system_error(rc, std::system_category(), "WSAStartup failed");
+        : m_started{start(ec)}
+#endif
+    {
+#ifndef _WIN32
+        ec.clear();
 #endif
     }
 
     ~winsock_guard()
     {
 #ifdef _WIN32
-        ::WSACleanup();
+        if(m_started)
+            ::WSACleanup();
 #endif
     }
 
@@ -78,6 +89,28 @@ public:
     winsock_guard &operator=(const winsock_guard &) = delete;
     winsock_guard(winsock_guard &&) = delete;
     winsock_guard &operator=(winsock_guard &&) = delete;
+
+private:
+#ifdef _WIN32
+    bool m_started;
+#endif
+
+    winsock_guard(checked, std::error_code ec)
+        : winsock_guard(ec)
+    {
+        if(ec)
+            throw std::system_error(ec, "WSAStartup failed");
+    }
+
+#ifdef _WIN32
+    static bool start(std::error_code &ec)
+    {
+        WSADATA data{};
+        const int rc = ::WSAStartup(MAKEWORD(2, 2), &data);
+        ec = rc == 0 ? std::error_code{} : std::error_code(rc, std::system_category());
+        return rc == 0;
+    }
+#endif
 };
 
 }

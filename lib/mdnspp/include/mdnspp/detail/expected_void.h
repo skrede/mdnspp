@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DETAIL_EXPECTED_VOID_H
 
 #include "mdnspp/detail/unexpected.h"
+#include "mdnspp/detail/expected_swap.h"
 #include "mdnspp/detail/expected_reinit.h"
 #include "mdnspp/detail/expected_compare.h"
 #include "mdnspp/detail/bad_expected_access.h"
@@ -113,14 +114,14 @@ public:
 
     constexpr void emplace() noexcept { m_storage.template emplace<0>(); }
 
-    constexpr void swap(expected &other) noexcept(std::is_nothrow_swappable_v<storage_t>)
-        requires std::is_swappable_v<storage_t>
+    constexpr void swap(expected &other) noexcept(nothrow_swappable_alternatives_v<std::monostate, E>)
+        requires swappable_alternatives_v<std::monostate, E>
     {
-        m_storage.swap(other.m_storage);
+        swap_storage(m_storage, other.m_storage);
     }
 
     friend constexpr void swap(expected &x, expected &y) noexcept(noexcept(x.swap(y)))
-        requires std::is_swappable_v<storage_t>
+        requires swappable_alternatives_v<std::monostate, E>
     {
         x.swap(y);
     }

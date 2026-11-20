@@ -36,9 +36,6 @@ private:
     }
 };
 
-template <typename Family, typename T, typename E>
-using of_t = typename Family::template expected<T, E>;
-
 }
 
 TEMPLATE_LIST_TEST_CASE("a throwing unexpected assignment keeps the value", "[expected_surface]", expected_families)

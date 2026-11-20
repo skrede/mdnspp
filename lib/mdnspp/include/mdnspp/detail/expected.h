@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DETAIL_EXPECTED_H
 
 #include "mdnspp/detail/unexpected.h"
+#include "mdnspp/detail/expected_swap.h"
 #include "mdnspp/detail/expected_void.h"
 #include "mdnspp/detail/expected_reinit.h"
 #include "mdnspp/detail/expected_compare.h"
@@ -155,14 +156,14 @@ public:
         return this->storage().template emplace<0>(il, std::forward<Args>(args)...);
     }
 
-    constexpr void swap(expected &other) noexcept(std::is_nothrow_swappable_v<storage_t>)
-        requires std::is_swappable_v<storage_t>
+    constexpr void swap(expected &other) noexcept(nothrow_swappable_alternatives_v<T, E>)
+        requires swappable_alternatives_v<T, E>
     {
-        this->storage().swap(other.storage());
+        swap_storage(this->storage(), other.storage());
     }
 
     friend constexpr void swap(expected &x, expected &y) noexcept(noexcept(x.swap(y)))
-        requires std::is_swappable_v<storage_t>
+        requires swappable_alternatives_v<T, E>
     {
         x.swap(y);
     }

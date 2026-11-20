@@ -47,6 +47,9 @@ using expected_families = std::tuple<own_family, std_family>;
 using expected_families = std::tuple<own_family>;
 #endif
 
+template <typename Family, typename T, typename E>
+using of_t = typename Family::template expected<T, E>;
+
 template <typename Family, typename T>
 using result_t = typename Family::template expected<T, std::string>;
 

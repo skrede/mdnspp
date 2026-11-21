@@ -24,7 +24,8 @@ Unit tests cover:
 
 - DNS wire format encoding and decoding (tests/unit/dns_wire/:
   dns_wire_*_test; dns_test; tests/unit/parse/: parse_*_test)
-- DNS name serialization and round-trips (dns_name_test)
+- DNS name normalization, validation and comparison (tests/unit/dns_name/:
+  dns_name_*_test)
 - DNS-SD service type parsing (service_type_test)
 - Record and service description construction (records_test,
   service_info_test, service_info_make_test, mdns_util_test)
@@ -46,7 +47,7 @@ Unit tests cover:
 - Querier query construction and result delivery (tests/unit/querier/:
   querier_*_test; query_backoff_test)
 - Endpoint, sender address text and socket option handling (endpoint_test,
-  sockaddr_text_test, socket_options_test)
+  sockaddr_text_test, socket_options_test, socket_options_validation_test)
 - Interface enumeration and binding resolution (enumerate_interfaces_test,
   interface_resolve_test)
 - Receive-loop lifecycle, delivery, error propagation and stop behavior
@@ -122,7 +123,7 @@ ctest --test-dir build
 To run a specific test file:
 
 ```bash
-ctest --test-dir build -R dns_name_test
+ctest --test-dir build -R dns_name_validation_test
 ```
 
 ## Protocol integration tests (inproc)

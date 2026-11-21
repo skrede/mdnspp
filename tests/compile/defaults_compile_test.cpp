@@ -1,10 +1,6 @@
 // tests/defaults_compile_test.cpp
 // Compile-time validation that all four type aliases in defaults.h work without
 // template arguments, and that mdnspp::context names a valid class type.
-//
-// This test verifies ERG-02 (observer/querier/service_discovery/service_server aliases)
-// and ERG-03 (context alias) from the requirements.
-// Also verifies POLY-03 (backward compat) and SOCK-01 (socket_options constructors).
 
 #include <mdnspp/defaults.h>
 #include <mdnspp/service_info.h>
@@ -29,7 +25,7 @@ static_assert(std::is_class_v<mdnspp::context>,
 static_assert(std::is_class_v<mdnspp::service_monitor>,
               "mdnspp::service_monitor must be a class type (alias for basic_service_monitor<default_policy>)");
 
-// --- POLY-03: Existing constructors without socket_options still compile ---
+// --- Existing constructors without socket_options still compile ---
 
 static_assert(std::is_constructible_v<mdnspp::observer, mdnspp::default_context &>,
               "observer must remain constructible without options");
@@ -40,7 +36,7 @@ static_assert(std::is_constructible_v<mdnspp::service_discovery, mdnspp::default
 static_assert(std::is_constructible_v<mdnspp::service_server, mdnspp::default_context &, mdnspp::service_info>,
               "service_server must remain constructible without socket_options");
 
-// --- SOCK-01: New options struct constructors exist ---
+// --- New options struct constructors exist ---
 
 static_assert(std::is_constructible_v<mdnspp::observer, mdnspp::default_context &, mdnspp::observer_options>,
               "observer must be constructible with observer_options");

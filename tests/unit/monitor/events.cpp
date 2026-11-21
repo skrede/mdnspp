@@ -29,7 +29,7 @@ mdnspp::monitor_options update_options(update_log &log)
 
 }
 
-TEST_CASE("on_updated fires on TXT record change for live service", "[monitor][MON-04]")
+TEST_CASE("on_updated fires on TXT record change for live service", "[monitor]")
 {
     update_log updated{};
     monitor_fixture f{update_options(updated)};
@@ -43,7 +43,7 @@ TEST_CASE("on_updated fires on TXT record change for live service", "[monitor][M
     CHECK(updated.last_rtype == mdnspp::dns_type::txt);
 }
 
-TEST_CASE("on_updated fires when a new A record is added to live service", "[monitor][MON-04]")
+TEST_CASE("on_updated fires when a new A record is added to live service", "[monitor]")
 {
     update_log updated{};
     monitor_fixture f{update_options(updated)};
@@ -56,7 +56,7 @@ TEST_CASE("on_updated fires when a new A record is added to live service", "[mon
     CHECK(updated.last_event == mdnspp::update_event::added);
 }
 
-TEST_CASE("on_lost fires with timeout when SRV record expires", "[monitor][MON-04]")
+TEST_CASE("on_lost fires with timeout when SRV record expires", "[monitor]")
 {
     loss_log lost{};
     monitor_fixture f{loss_options(lost)};
@@ -68,7 +68,7 @@ TEST_CASE("on_lost fires with timeout when SRV record expires", "[monitor][MON-0
     check_single_loss(lost, "Expiring._http._tcp.local.", mdnspp::loss_reason::timeout);
 }
 
-TEST_CASE("on_lost fires with goodbye when SRV goodbye packet received", "[monitor][MON-04]")
+TEST_CASE("on_lost fires with goodbye when SRV goodbye packet received", "[monitor]")
 {
     loss_log lost{};
     monitor_fixture f{loss_options(lost)};

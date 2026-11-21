@@ -26,7 +26,7 @@ mdnspp::monitor_options log_found(found_log &log)
 
 }
 
-TEST_CASE("watch: posts to executor, no-op on second call", "[monitor][MON-03]")
+TEST_CASE("watch: posts to executor, no-op on second call", "[monitor]")
 {
     mock_executor ex;
     test_monitor mon{ex};
@@ -41,7 +41,7 @@ TEST_CASE("watch: posts to executor, no-op on second call", "[monitor][MON-03]")
     ex.drain_posted();
 }
 
-TEST_CASE("unwatch: fires on_lost(unwatched) for each live service", "[monitor][MON-03]")
+TEST_CASE("unwatch: fires on_lost(unwatched) for each live service", "[monitor]")
 {
     loss_log lost{};
     monitor_fixture f{loss_options(lost)};
@@ -54,7 +54,7 @@ TEST_CASE("unwatch: fires on_lost(unwatched) for each live service", "[monitor][
     check_single_loss(lost, "MyServer._http._tcp.local.", mdnspp::loss_reason::unwatched);
 }
 
-TEST_CASE("incremental resolution: PTR then SRV then A fires on_found", "[monitor][MON-04]")
+TEST_CASE("incremental resolution: PTR then SRV then A fires on_found", "[monitor]")
 {
     found_log found{};
     monitor_fixture f{log_found(found)};
@@ -71,7 +71,7 @@ TEST_CASE("incremental resolution: PTR then SRV then A fires on_found", "[monito
 }
 
 TEST_CASE("incremental resolution: SRV arrives before A -- on_found fires only after A",
-          "[monitor][MON-04]")
+          "[monitor]")
 {
     found_log found{};
     monitor_fixture f{log_found(found)};
@@ -89,7 +89,7 @@ TEST_CASE("incremental resolution: SRV arrives before A -- on_found fires only a
 }
 
 TEST_CASE("incremental resolution: on_found not fired twice for same instance",
-          "[monitor][MON-04]")
+          "[monitor]")
 {
     found_log found{};
     monitor_fixture f{log_found(found)};

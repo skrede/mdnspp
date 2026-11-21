@@ -32,7 +32,7 @@ static_assert(_MSVC_LANG >= 202002L, "cxx_std_20 was not propagated to the consu
 static_assert(__cplusplus >= 202002L, "cxx_std_20 was not propagated to the consumer");
 #endif
 
-// Validate ERG-02/BUILD-02: the type aliases in defaults.h name valid class types
+// Validate that the type aliases in defaults.h name valid class types
 // without requiring template arguments.
 static_assert(std::is_class_v<mdnspp::querier>);
 static_assert(std::is_class_v<mdnspp::observer>);

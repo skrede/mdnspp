@@ -58,7 +58,7 @@ void schedule_erase_sections(monitor_fixture &f)
 }
 
 TEST_CASE("ttl_refresh: refresh query sent at 80% threshold in ttl_refresh mode",
-          "[monitor][ttl_refresh][MON-05]")
+          "[monitor][ttl_refresh]")
 {
     // The 100 s initial interval keeps backoff queries out of the refresh window.
     monitor_fixture f{found_options(mdnspp::monitor_mode::ttl_refresh),
@@ -75,7 +75,7 @@ TEST_CASE("ttl_refresh: refresh query sent at 80% threshold in ttl_refresh mode"
 }
 
 TEST_CASE("per-watch scheduling: a TTL-refresh fire point does not trigger PTR queries",
-          "[monitor][scheduler][per-watch][MON-05]")
+          "[monitor][scheduler][per-watch]")
 {
     monitor_fixture f{found_options(mdnspp::monitor_mode::discover), slow_backoff_refresh()};
     f.watch_and_start({"_http._tcp.local", "_ftp._tcp.local"});
@@ -95,7 +95,7 @@ TEST_CASE("per-watch scheduling: a TTL-refresh fire point does not trigger PTR q
 }
 
 TEST_CASE("refresh schedules are pruned on exhaustion and SRV expiry",
-          "[monitor][scheduler][pruning][MON-05]")
+          "[monitor][scheduler][pruning]")
 {
     monitor_fixture f{found_options(mdnspp::monitor_mode::ttl_refresh), slow_backoff_refresh()};
     f.watch_and_start({"_http._tcp.local"});

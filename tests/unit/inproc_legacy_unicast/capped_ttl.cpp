@@ -1,14 +1,6 @@
-// TEST-14: Legacy unicast query from non-5353 port triggers unicast response
-//          with TTLs capped at mdns_options::legacy_unicast_ttl.
-//
 // RFC 6762 §6.7: Queries received from source ports other than 5353 are
 // "legacy unicast" queries. The responder must send a unicast reply directly
 // to the sender with all TTLs capped at legacy_unicast_ttl (default 10s).
-//
-// TEST-15 closure: TC-split reassembly is verified by the existing TEST-06
-// ("TC bit multi-packet accumulation" in inproc_rfc/tc_accumulation.cpp)
-// which proves that TC=1 first packet + continuation packet are accumulated
-// and processed as a single query with combined known-answer list.
 
 #include "helpers.h"
 
@@ -91,11 +83,6 @@ struct legacy_fixture
 };
 
 }
-
-// ---------------------------------------------------------------------------
-// TEST-14: Legacy unicast query from non-5353 port gets unicast response
-//          with TTLs capped at legacy_unicast_ttl
-// ---------------------------------------------------------------------------
 
 TEST_CASE("Legacy unicast query from non-5353 port gets unicast response with capped TTL",
           "[inproc][legacy-unicast]")

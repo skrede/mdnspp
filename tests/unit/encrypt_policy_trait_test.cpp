@@ -49,15 +49,12 @@ struct MockExtendedPolicy
 // Static assertions (compile-time tests)
 // ---------------------------------------------------------------------------
 
-// POLX-01: default_policy has no socket_options_type => resolves to socket_options
 static_assert(std::same_as<mdnspp::policy_socket_options_t<mdnspp::default_policy>, mdnspp::socket_options>,
     "policy_socket_options_t<default_policy> must resolve to socket_options");
 
-// POLX-02: MockExtendedPolicy defines socket_options_type derived from socket_options
 static_assert(std::same_as<mdnspp::policy_socket_options_t<MockExtendedPolicy>, extended_socket_options>,
     "policy_socket_options_t<MockExtendedPolicy> must resolve to extended_socket_options");
 
-// POLX-05: Existing policies still satisfy policy_like concept
 static_assert(mdnspp::policy_like<mdnspp::default_policy>,
     "default_policy must satisfy policy_like concept");
 
@@ -67,12 +64,10 @@ static_assert(mdnspp::policy_like<mdnspp::inproc_policy>,
 static_assert(mdnspp::policy_like<mdnspp::inproc_test_policy>,
     "inproc_test_policy must satisfy policy_like concept");
 
-// POLX-02 + policy_like concept: mock policy with socket_options_type passes Policy concept
 static_assert(mdnspp::policy_like<MockExtendedPolicy>,
     "MockExtendedPolicy with socket_options_type must still satisfy policy_like concept");
 
 #ifdef MDNSPP_ENABLE_ENCRYPT
-// POLX-04: basic_nic_group_options<encrypted_policy<default_policy>> factory return type
 static_assert(std::same_as<
     mdnspp::policy_socket_options_t<mdnspp::encrypt::encrypted_policy<mdnspp::default_policy>>,
     mdnspp::encrypt::encrypt_socket_options>,
@@ -99,7 +94,7 @@ TEST_CASE("policy_socket_options_t resolves correctly at runtime", "[policy][tra
 }
 
 #ifdef MDNSPP_ENABLE_ENCRYPT
-TEST_CASE("POLX-03/04: basic_nic_group_options<encrypted_policy<default_policy>> factory returns encrypt_socket_options",
+TEST_CASE("basic_nic_group_options<encrypted_policy<default_policy>> factory returns encrypt_socket_options",
           "[policy][trait][encrypt]")
 {
     using EncPolicy = mdnspp::encrypt::encrypted_policy<mdnspp::default_policy>;
@@ -115,11 +110,9 @@ TEST_CASE("POLX-03/04: basic_nic_group_options<encrypted_policy<default_policy>>
     mdnspp::network_interface dummy{};
     auto result = opts.socket_options_factory(dummy);
 
-    // POLX-04: factory return type is encrypt_socket_options, not just socket_options
     static_assert(std::same_as<decltype(result), mdnspp::encrypt::encrypt_socket_options>,
         "socket_options_factory must return encrypt_socket_options");
 
-    // POLX-03: the returned options carry encrypt-specific fields
     REQUIRE(result.encrypt.sender_id == 99);
 }
 #endif

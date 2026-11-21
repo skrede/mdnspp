@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <system_error>
 
-TEST_CASE("async_start wires recv_loop; stop tears it down", "[monitor][MON-06]")
+TEST_CASE("async_start wires recv_loop; stop tears it down", "[monitor]")
 {
     bool done_called{false};
     monitor_fixture f;
@@ -24,7 +24,7 @@ TEST_CASE("async_start wires recv_loop; stop tears it down", "[monitor][MON-06]"
     CHECK(done_called);
 }
 
-TEST_CASE("recv_loop: incoming packets are processed", "[monitor][MON-06]")
+TEST_CASE("recv_loop: incoming packets are processed", "[monitor]")
 {
     bool found_called{false};
     monitor_fixture f{flag_found(found_called)};
@@ -35,13 +35,13 @@ TEST_CASE("recv_loop: incoming packets are processed", "[monitor][MON-06]")
     CHECK(found_called);
 }
 
-TEST_CASE("services(): empty before any discovery", "[monitor][MON-05]")
+TEST_CASE("services(): empty before any discovery", "[monitor]")
 {
     monitor_fixture f;
     CHECK(f.mon.services().empty());
 }
 
-TEST_CASE("services(): returns live service after resolution", "[monitor][MON-05]")
+TEST_CASE("services(): returns live service after resolution", "[monitor]")
 {
     monitor_fixture f;
     f.watch_and_start({"_http._tcp.local"});
@@ -57,7 +57,7 @@ TEST_CASE("services(): returns live service after resolution", "[monitor][MON-05
 }
 
 TEST_CASE("services(): wire_ttl and ttl_remaining populated from SRV cache entry",
-          "[monitor][MON-05]")
+          "[monitor]")
 {
     monitor_fixture f{mdnspp::monitor_options{}, no_refresh_options()};
     f.watch_and_start({"_http._tcp.local"});
@@ -71,7 +71,7 @@ TEST_CASE("services(): wire_ttl and ttl_remaining populated from SRV cache entry
     CHECK(snap[0].ttl_remaining <= std::chrono::seconds(wire_ttl));
 }
 
-TEST_CASE("services(): snapshot is consistent after service loss", "[monitor][MON-05]")
+TEST_CASE("services(): snapshot is consistent after service loss", "[monitor]")
 {
     monitor_fixture f;
     f.watch_and_start({"_http._tcp.local"});

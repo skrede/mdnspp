@@ -61,7 +61,7 @@ tc_counts count_tc_queries(const std::vector<mdnspp::testing::sent_packet> &pack
 }
 
 TEST_CASE("query_service_type: sends PTR query immediately in any mode",
-          "[monitor][MON-03][MON-05]")
+          "[monitor]")
 {
     monitor_fixture f{mode_options(mdnspp::monitor_mode::observe), no_refresh_options()};
     f.start();
@@ -74,7 +74,7 @@ TEST_CASE("query_service_type: sends PTR query immediately in any mode",
 }
 
 TEST_CASE("query_service_instance: sends one multi-question SRV/TXT/A/AAAA query",
-          "[monitor][MON-03][MON-05]")
+          "[monitor]")
 {
     monitor_fixture f{mode_options(mdnspp::monitor_mode::observe), no_refresh_options()};
     f.start();

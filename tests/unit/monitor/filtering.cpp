@@ -23,7 +23,7 @@ std::vector<std::byte> answer_to_authority(std::vector<std::byte> pkt)
 
 }
 
-TEST_CASE("scoped filtering: PTR for non-watched type is silently dropped", "[monitor][MON-07]")
+TEST_CASE("scoped filtering: PTR for non-watched type is silently dropped", "[monitor]")
 {
     bool found_called{false};
     monitor_fixture f{flag_found(found_called)};
@@ -34,7 +34,7 @@ TEST_CASE("scoped filtering: PTR for non-watched type is silently dropped", "[mo
     CHECK_FALSE(found_called);
 }
 
-TEST_CASE("scoped filtering: PTR for watched type seeds resolution", "[monitor][MON-07]")
+TEST_CASE("scoped filtering: PTR for watched type seeds resolution", "[monitor]")
 {
     bool found_called{false};
     monitor_fixture f{flag_found(found_called)};
@@ -46,7 +46,7 @@ TEST_CASE("scoped filtering: PTR for watched type seeds resolution", "[monitor][
 }
 
 TEST_CASE("QR filtering: known-answer records in query packets are not consumed",
-          "[monitor][qr-flag][MON-07]")
+          "[monitor][qr-flag]")
 {
     bool found_called{false};
     monitor_fixture f{flag_found(found_called)};
@@ -60,7 +60,7 @@ TEST_CASE("QR filtering: known-answer records in query packets are not consumed"
 }
 
 TEST_CASE("QR filtering: Authority-section probe proposals are never cached",
-          "[monitor][qr-flag][MON-07]")
+          "[monitor][qr-flag]")
 {
     bool found_called{false};
     monitor_fixture f{flag_found(found_called)};

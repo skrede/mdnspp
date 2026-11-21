@@ -28,7 +28,7 @@ TEST_CASE("scheduler: arm_scheduler arms the scheduler timer after async_start",
 }
 
 TEST_CASE("scheduler: discover mode first query after randomized 20-120ms delay",
-          "[monitor][scheduler][MON-03]")
+          "[monitor][scheduler]")
 {
     monitor_fixture f{mode_options(mdnspp::monitor_mode::discover), one_second_interval()};
     f.watch_and_start({"_http._tcp.local"});
@@ -44,7 +44,7 @@ TEST_CASE("scheduler: discover mode first query after randomized 20-120ms delay"
 }
 
 TEST_CASE("scheduler: discover mode backoff doubles after each tick",
-          "[monitor][scheduler][MON-03]")
+          "[monitor][scheduler]")
 {
     mdnspp::mdns_options mdns_opts = one_second_interval();
     mdns_opts.max_interval = std::chrono::milliseconds{60000};

@@ -110,6 +110,8 @@ make_subdir_test(parse_dispatch_test        parse/dispatch.cpp)
 
 make_subdir_test(cache_basic_test           cache/basic.cpp)
 make_subdir_test(cache_flush_test           cache/flush.cpp)
+make_subdir_test(cache_flush_scope_test     cache/flush_scope.cpp)
+make_subdir_test(cache_options_test         cache/options.cpp)
 
 make_subdir_test(observer_delivery_test     observer/delivery.cpp)
 make_subdir_test(observer_lifecycle_test    observer/lifecycle.cpp)

@@ -1,5 +1,3 @@
-// tests/endpoint_test.cpp
-
 #include "mdnspp/endpoint.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -7,6 +5,43 @@
 #include <sstream>
 
 using mdnspp::endpoint;
+
+static void check_different_addresses_unequal()
+{
+    GIVEN("two endpoints with different addresses")
+    {
+        const endpoint a{"192.168.1.1", 80};
+        const endpoint b{"192.168.1.2", 80};
+
+        WHEN("compared with operator==")
+        {
+            THEN("they do not compare equal")
+            {
+                REQUIRE(a != b);
+            }
+        }
+    }
+}
+
+static void check_address_order(const endpoint &a, const endpoint &b)
+{
+    THEN("a < b")
+    {
+        REQUIRE(a < b);
+    }
+    THEN("b > a")
+    {
+        REQUIRE(b > a);
+    }
+    THEN("a <= b")
+    {
+        REQUIRE(a <= b);
+    }
+    THEN("b >= a")
+    {
+        REQUIRE(b >= a);
+    }
+}
 
 SCENARIO("endpoint equality comparison", "[endpoint][operator==]")
 {
@@ -24,19 +59,7 @@ SCENARIO("endpoint equality comparison", "[endpoint][operator==]")
         }
     }
 
-    GIVEN("two endpoints with different addresses")
-    {
-        const endpoint a{"192.168.1.1", 80};
-        const endpoint b{"192.168.1.2", 80};
-
-        WHEN("compared with operator==")
-        {
-            THEN("they do not compare equal")
-            {
-                REQUIRE(a != b);
-            }
-        }
-    }
+    check_different_addresses_unequal();
 }
 
 SCENARIO("endpoint ordering by address", "[endpoint][operator<=>]")
@@ -48,22 +71,7 @@ SCENARIO("endpoint ordering by address", "[endpoint][operator<=>]")
 
         WHEN("compared with relational operators")
         {
-            THEN("a < b")
-            {
-                REQUIRE(a < b);
-            }
-            THEN("b > a")
-            {
-                REQUIRE(b > a);
-            }
-            THEN("a <= b")
-            {
-                REQUIRE(a <= b);
-            }
-            THEN("b >= a")
-            {
-                REQUIRE(b >= a);
-            }
+            check_address_order(a, b);
         }
     }
 }

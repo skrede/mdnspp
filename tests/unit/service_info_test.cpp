@@ -1,5 +1,3 @@
-// tests/service_info_test.cpp
-
 #include "mdnspp/service_info.h"
 
 #include "mdnspp/detail/dns_wire.h"
@@ -17,7 +15,7 @@ using namespace mdnspp;
 using namespace mdnspp::testing;
 using namespace mdnspp::detail;
 
-TEST_CASE("service_info struct has all required fields", "[service_info]")
+static service_info filled_service_info()
 {
     service_info info;
     info.service_name = "MyService._http._tcp.local.";
@@ -29,6 +27,12 @@ TEST_CASE("service_info struct has all required fields", "[service_info]")
     info.address_ipv4 = "192.168.1.10";
     info.address_ipv6 = std::nullopt;
     info.txt_records = {service_txt{"path", "/api"}};
+    return info;
+}
+
+TEST_CASE("service_info struct has all required fields", "[service_info]")
+{
+    service_info info = filled_service_info();
 
     REQUIRE(info.service_name == "MyService._http._tcp.local.");
     REQUIRE(info.service_type == "_http._tcp.local.");
@@ -79,7 +83,7 @@ TEST_CASE("mock_socket::enqueue(packet) delivers endpoint{}", "[mock_socket][enq
     std::vector<std::byte> pkt = {std::byte{0x01}};
     sock.enqueue(pkt);
 
-    endpoint received_from{"nonzero", 9999}; // will be overwritten
+    endpoint received_from{"nonzero", 9999};
     sock.async_receive([&](std::error_code, const mdnspp::recv_metadata &meta, std::span<std::byte>)
     {
         received_from = meta.sender;

@@ -128,11 +128,7 @@ TEST_CASE("erase_expired fires on_expired callback", "[record_cache]")
 {
     clock_guard cg;
     std::vector<cache_entry> callback_entries;
-    record_cache<clock_type> cache(cache_options{
-        .on_expired = [&](std::vector<cache_entry> entries) {
-            callback_entries = std::move(entries);
-        },
-    });
+    record_cache<clock_type> cache(record_expired_into(callback_entries));
 
     cache.insert(make_a_record("myhost.local.", "192.168.1.50", 60), test_origin());
 
@@ -188,11 +184,7 @@ TEST_CASE("goodbye record removed after 1 second by erase_expired", "[record_cac
 {
     clock_guard cg;
     std::vector<cache_entry> callback_entries;
-    record_cache<clock_type> cache(cache_options{
-        .on_expired = [&](std::vector<cache_entry> entries) {
-            callback_entries = std::move(entries);
-        },
-    });
+    record_cache<clock_type> cache(record_expired_into(callback_entries));
 
     cache.insert(make_a_record("myhost.local.", "192.168.1.50", 0), test_origin());
 

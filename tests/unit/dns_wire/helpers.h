@@ -1,6 +1,8 @@
 #ifndef HPP_GUARD_MDNSPP_DNS_WIRE_HELPERS_H
 #define HPP_GUARD_MDNSPP_DNS_WIRE_HELPERS_H
 
+#include "packets.h"
+
 #include "mdnspp/detail/dns_wire.h"
 
 #include "mdnspp/records.h"

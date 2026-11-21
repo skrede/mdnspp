@@ -10,7 +10,6 @@
 #include "mdnspp/detail/dns_enums.h"
 
 #include <asio.hpp>
-
 #include <asio/as_tuple.hpp>
 #include <asio/deferred.hpp>
 #include <asio/detached.hpp>

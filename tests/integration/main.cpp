@@ -1,14 +1,11 @@
 #include <mdnspp/dns.h>
 #include <mdnspp/defaults.h>
 #include <mdnspp/endpoint.h>
-#include <mdnspp/basic_querier.h>
-#include <mdnspp/resolved_service.h>
-
-#include <mdnspp/default/default_policy.h>
-
-#include <mdnspp/inproc/inproc_policy.h>
-
 #include <mdnspp/testing/test_clock.h>
+#include <mdnspp/basic_querier.h>
+#include <mdnspp/inproc/inproc_policy.h>
+#include <mdnspp/default/default_policy.h>
+#include <mdnspp/resolved_service.h>
 
 #ifdef MDNSPP_HAS_ASIO
 #include <mdnspp/asio/asio_policy.h>

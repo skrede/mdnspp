@@ -4,9 +4,8 @@
 
 #include <mdnspp/defaults.h>
 #include <mdnspp/service_info.h>
-#include <mdnspp/socket_options.h>
-
 #include <mdnspp/default/default_policy.h>
+#include <mdnspp/socket_options.h>
 
 #include <chrono>
 #include <type_traits>

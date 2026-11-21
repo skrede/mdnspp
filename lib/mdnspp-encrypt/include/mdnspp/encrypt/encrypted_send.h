@@ -12,7 +12,6 @@
 
 namespace mdnspp::encrypt {
 
-// The key copy taken for sending is zeroed when it goes out of scope.
 inline std::error_code seal_outgoing(key_ring &keys, uint64_t &sequence,
                                      const encrypted_packet_header &header_template,
                                      std::span<const std::byte> plaintext, std::span<std::byte> out,

@@ -8,9 +8,9 @@
 
 ## What
 
-`ttl_refresh_thresholds` defines when the library proactively re-queries records that are approaching expiry (RFC 6762 §5.2). Each value is a fraction of the wire TTL elapsed since the record was inserted. When a cached record's age reaches `wire_ttl * threshold`, a refresh query is sent. The schedule is cancelled as soon as a fresh record arrives.
+`ttl_refresh_thresholds` defines when the library proactively re-queries records that are approaching expiry (RFC 6762 §5.2). Each value is a fraction of the wire TTL elapsed since the record was inserted. The service monitor keeps one schedule per tracked service instance, built from the wire TTL of its SRV record. When the record's age reaches `wire_ttl * threshold`, a query for the instance's SRV, TXT, A and AAAA records is sent. Every fresh SRV record replaces the schedule with a new one.
 
-Values must be in the open interval `(0, 1)` and should be strictly increasing. With the default `{0.80, 0.85, 0.90, 0.95}` and a wire TTL of 4500 seconds (75 minutes), the refresh queries fire at:
+Values must be in the open interval `(0, 1)` and should be strictly increasing. The list is not sorted: fire points are consumed in list order, so one that falls before its predecessor (an unsorted list, or jitter larger than the spacing) is sent at the same wakeup as that predecessor. With the default `{0.80, 0.85, 0.90, 0.95}` and a wire TTL of 4500 seconds (75 minutes), the refresh queries fire at:
 
 - 3600 s (60 min) — 80% elapsed
 - 3825 s (63.75 min) — 85% elapsed

@@ -4,8 +4,8 @@ When a service monitor performs continuous querying it must not flood the
 network with repeated queries at a fixed rate. RFC 6762 section 5.2 requires
 exponential backoff: the first re-query fires after 1 second, then 2 s, 4 s,
 8 s, and so on up to a 60-minute ceiling. Additionally, active records close to
-expiry trigger TTL refresh queries at 80%, 85%, 90%, and 95% of their remaining
-TTL, each offset by a small random jitter to desynchronize simultaneous queriers.
+expiry trigger TTL refresh queries once 80%, 85%, 90%, and 95% of their TTL has
+elapsed, each offset by a small random jitter to desynchronize simultaneous queriers.
 
 **RFC Reference:** RFC 6762 section 5.2
 
@@ -107,9 +107,12 @@ of each watch is additionally delayed by a random 20–120 ms interval.
 
 ### TTL refresh scheduling
 
-When a record is inserted into the cache, `make_refresh_schedule` computes a
-set of absolute time points from the record's wire TTL and the thresholds in
-`mdns_options::ttl_refresh_thresholds` (default: 0.80, 0.85, 0.90, 0.95).
+The monitor keeps one refresh schedule per tracked service instance, in the
+`discover` and `ttl_refresh` modes. Every SRV record with a positive TTL that
+arrives for the instance rebuilds it: `make_refresh_schedule` computes a set of
+absolute time points from the SRV record's wire TTL and the thresholds in
+`mdns_options::ttl_refresh_thresholds` (default: 0.80, 0.85, 0.90, 0.95). An
+empty threshold list builds no schedule.
 
 For each threshold `t`, the fire time is:
 
@@ -121,10 +124,16 @@ where `jitter` is uniform-random in `[0, wire_ttl * refresh_jitter_pct]`
 (default 2% of the wire TTL). Jitter desynchronizes simultaneous queriers that
 monitor the same record on the same network segment.
 
-When a fire time is reached, the monitor sends fresh queries for the record's
-name and type. If a fresh record arrives before all thresholds fire, the
-remaining refresh schedule is cancelled and a new schedule is computed from
-the updated insertion time.
+Fire points keep the order of the thresholds and are consumed in that order;
+the list is not sorted. A fire point that falls before its predecessor (an
+unsorted list, or jitter larger than the spacing of two thresholds) is sent at
+the same wakeup as that predecessor.
+
+When a fire time is reached, the monitor sends one query for the instance's
+SRV, TXT, A and AAAA records. If a fresh SRV record arrives before all
+thresholds fire, the remaining refresh schedule is replaced by a new one
+computed from the arrival time. A schedule whose fire points are all spent is
+dropped until the next SRV record arrives.
 
 ### Implementation references
 

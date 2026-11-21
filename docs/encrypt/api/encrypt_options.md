@@ -125,13 +125,13 @@ struct grace_period
 
 Defines the overlap window during key rotation. After `update_key()` is called, the previous key remains accepted for decrypting packets from peers that have not yet switched, until the grace period expires; peers must rotate within that window (see [Key Rotation](../key-rotation.md)). The grace period expires when either condition is met.
 
-If neither field is set, `update_key()` applies a duration bound of `encrypted_socket::default_grace_duration` (`std::chrono::seconds{30}`) so the previous key cannot remain accepted indefinitely. On expiry the previous key is zeroized.
+If neither field is set, `update_key()` applies a duration bound of `encrypted_socket::default_grace_duration` (`std::chrono::seconds{30}`) so the previous key cannot remain accepted indefinitely. Expiry is checked on the receive path, and the previous key is zeroized as soon as it is observed (see [Lazy Expiry](../key-rotation.md#lazy-expiry)).
 
 ### Fields
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `duration` | `std::optional<std::chrono::nanoseconds>` | Wall-clock time for which the previous key is accepted. `std::nullopt` disables time-based expiry. |
+| `duration` | `std::optional<std::chrono::nanoseconds>` | Time since `update_key()`, measured with `std::chrono::steady_clock`, for which the previous key is accepted. `std::nullopt` disables time-based expiry. |
 | `packet_count` | `std::optional<uint64_t>` | Number of packets accepted with the previous key (authenticated and not rejected as replays) before it is invalidated. `std::nullopt` disables count-based expiry. |
 
 ## See Also

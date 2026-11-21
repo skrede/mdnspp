@@ -26,7 +26,7 @@ enum class encrypt_error : uint32_t
 | Enumerator | Value | Description |
 |------------|-------|-------------|
 | `decrypt_failed` | `1` | AEAD decryption or authentication tag verification failed. The packet was either tampered with, corrupted, or encrypted with a different key. |
-| `replay_detected` | `2` | The packet's sequence number was already seen within the replay window for its (`sender_id`, session) pair, or lies below that window. Produced by `replay_window::check_and_record`. |
+| `replay_detected` | `2` | The packet's sequence number was already seen within the replay window for its (`sender_id`, session) pair, or lies below that window. Produced by [`replay_window::check_and_record`](replay_window.md#check_and_record). |
 | `invalid_header` | `4` | `aead_decrypt` was given a packet shorter than `encrypted_overhead` (68 bytes) or without the `0x4D43` magic. |
 | `unsupported_version` | `5` | `aead_decrypt` was given a packet whose version byte is not `0x02`. |
 | `buffer_too_small` | `7` | The caller-supplied output buffer cannot hold the result. Reported through `ec` by `encrypted_socket::send` when the plaintext exceeds `max_udp_payload - 68` bytes (8932), and by `aead_encrypt` / `aead_decrypt` when `out` is too small. |
@@ -44,7 +44,7 @@ std::error_code aead_decrypt(std::span<const std::byte, 32> key, std::span<const
                              std::span<std::byte> out, std::size_t &written);
 ```
 
-Both work on caller-provided buffers and do not allocate. `aead_encrypt` needs `out.size() >= plaintext.size() + 68`; `aead_decrypt` needs `out.size() >= packet.size() - 68`. `written` is the packet length (encrypt) or plaintext length (decrypt) on success and `0` on every failure. Both return `std::errc::not_supported` if libsodium cannot be initialized. `aead_decrypt` checks, in order: libsodium initialization (`std::errc::not_supported`), size (`invalid_header`), magic (`invalid_header`), version (`unsupported_version`), output capacity (`buffer_too_small`), then the tag (`decrypt_failed`).
+Both work on caller-provided buffers and do not allocate; their preconditions are listed in [aead](aead.md). `aead_encrypt` needs `out.size() >= plaintext.size() + 68`; `aead_decrypt` needs `out.size() >= packet.size() - 68`. `written` is the packet length (encrypt) or plaintext length (decrypt) on success and `0` on every failure. Both return `std::errc::not_supported` if libsodium cannot be initialized. `aead_decrypt` checks, in order: libsodium initialization (`std::errc::not_supported`), size (`invalid_header`), magic (`invalid_header`), version (`unsupported_version`), output capacity (`buffer_too_small`), then the tag (`decrypt_failed`).
 
 ## Free Functions
 

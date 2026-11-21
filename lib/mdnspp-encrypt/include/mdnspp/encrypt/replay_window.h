@@ -13,13 +13,8 @@
 
 namespace mdnspp::encrypt {
 
-// Anti-replay state per (sender_id, session_id) pair. A sender keeps at most
-// max_sessions_per_sender independent windows; an unseen session opens a fresh
-// window and, when the sender is full, replaces its least recently used one. No
-// window is ever reset by a packet, so a captured packet of a tracked session is
-// accepted at most once. A packet of a session that has been evicted (or that
-// this window never saw) is accepted once, which is the inherent residual of
-// keeping no clock or persistent state.
+// No window is ever reset by a packet, so a captured packet of a tracked session is accepted at most once; a packet
+// of an untracked session is accepted once, the residual of keeping no clock or persistent state.
 class replay_window
 {
     struct session_window
@@ -45,12 +40,6 @@ class replay_window
     };
 
 public:
-    // window_size selects the number of sequence-number slots tracked per
-    // session; a zero window_size, max_senders or max_sessions_per_sender is
-    // reported as std::errc::invalid_argument and then raised to 1. Memory per
-    // tracked session is ceil(window_size / 64) uint64_t words, so a sender costs
-    // at most max_sessions_per_sender * ceil(window_size / 64) * 8 bytes: 64 bytes
-    // at the defaults (64, 8), and 8 KiB per session at the maximum window of 65535.
     explicit replay_window(uint16_t window_size = 64, uint16_t max_senders = 256,
                            uint16_t max_sessions_per_sender = 8);
 
@@ -59,9 +48,7 @@ public:
     replay_window(const replay_window &) = delete;
     replay_window &operator=(const replay_window &) = delete;
 
-    // Check and record a sequence number for a sender's session. Returns
-    // std::nullopt on accept, or encrypt_error::replay_detected if the sequence
-    // was already seen or is too old. Call only for authenticated packets.
+    // Only for authenticated packets: a forged sequence number would advance the window.
     std::optional<encrypt_error> check_and_record(uint32_t sender_id, uint64_t session_id, uint64_t sequence);
 
     void reset();

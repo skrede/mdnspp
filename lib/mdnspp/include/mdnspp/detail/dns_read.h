@@ -15,11 +15,8 @@
 
 namespace mdnspp::detail {
 
-// Walks a DNS name at buf[offset], advancing offset past the name.
-// Compression pointers (top 2 bits = 0xC0) end the walk and are not followed.
-// Reserved label tags 01/10 (RFC 1035 §4.1.4) are rejected exactly like
-// read_dns_name (label_len > 63), so skip and read can never disagree on
-// record boundaries. Returns false if any read would go out of bounds.
+// A compression pointer ends the walk unfollowed. Reserved label tags 01/10 (RFC 1035 §4.1.4) are rejected as
+// read_dns_name rejects them (label_len > 63), so skip and read never disagree on record boundaries.
 inline bool skip_dns_name(std::span<const std::byte> buf, size_t &offset)
 {
     while(offset < buf.size())
@@ -46,9 +43,8 @@ inline bool skip_dns_name(std::span<const std::byte> buf, size_t &offset)
     return false;
 }
 
-// Follows the compression pointer at buf[offset]. RFC 9267: the target must be
-// strictly backward, which rules out self-reference and cycles by construction,
-// and at most 4 pointer hops are allowed per name.
+// RFC 9267: the target must be strictly backward, which rules out self-reference and cycles by construction, and
+// at most 4 pointer hops are allowed per name.
 inline bool follow_compression_pointer(std::span<const std::byte> buf, size_t &offset, int &hops)
 {
     constexpr int max_hops = 4;
@@ -70,10 +66,7 @@ inline bool follow_compression_pointer(std::span<const std::byte> buf, size_t &o
     return true;
 }
 
-// Validates the label at buf[offset] (at most 63 octets, within bounds) and the
-// 255-octet wire-length limit (RFC 1035 §3.1, measured on the wire form rather
-// than the longer escaped presentation form), then appends the escaped label
-// plus a dot to result and advances offset past the label.
+// The 255-octet limit (RFC 1035 §3.1) is measured on the wire form, not the longer escaped presentation form.
 inline bool append_wire_label(std::span<const std::byte> buf, size_t &offset, uint8_t label_len,
                               size_t &wire_len, std::string &result)
 {
@@ -101,26 +94,8 @@ inline bool append_wire_label(std::span<const std::byte> buf, size_t &offset, ui
     return true;
 }
 
-// Reads and decompresses a DNS name from the wire format at the given offset.
-//
-// Implements RFC 1035 §4.1.4 name decompression with RFC 9267 safety rules:
-//   - Backward-only compression pointers: ptr_target must be strictly less than
-//     the current offset; self-referential and forward pointers are rejected.
-//   - Maximum 4 pointer hops per name: prevents long chains even in the absence
-//     of cycles (which are impossible by the backward-only invariant).
-//   - Wire-encoded name must not exceed 255 bytes (RFC 1035 §3.1), measured
-//     on the unescaped label bytes.
-//   - Label bytes are transcribed with original case preserved (RFC 6762 §16:
-//     comparison, not transmission, is case-insensitive) and RFC 1035 §5.1
-//     escaping applied: '.' and '\' inside a label become "\." and "\\",
-//     non-printable bytes become "\DDD"; bytes >= 0x80 stay verbatim (UTF-8).
-//
-// The result string uses escaped dotted-label FQDN notation with a trailing
-// dot (e.g. "_http._tcp.local."). The root name (\x00) returns an empty
-// string. encode_dns_name parses this form back to identical wire bytes.
-//
-// Returns unexpected(mdns_error::parse_error) on any bounds violation,
-// pointer safety violation, or name-length overflow.
+// RFC 1035 §4.1.4 decompression under the RFC 9267 pointer rules. Label bytes keep their case (RFC 6762 §16:
+// comparison, not transmission, is case-insensitive); encode_dns_name turns the result back into identical wire bytes.
 inline detail::expected<std::string, mdns_error>
 read_dns_name(std::span<const std::byte> buf, size_t offset)
 {
@@ -147,15 +122,7 @@ read_dns_name(std::span<const std::byte> buf, size_t offset)
     return detail::unexpected(mdns_error::parse_error);
 }
 
-// Converts a presentation-format DNS name (RFC 1035 §5.1 escaping, e.g.
-// "Dr\. Smith._http._tcp.local.") to wire label format with original byte
-// case preserved. Escapes ("\.", "\\", "\DDD") are parsed; each unescaped
-// label is prefixed by its length byte and the name is terminated by the
-// \x00 root label. "" and "." encode the root name.
-//
-// Returns unexpected(mdns_error::invalid_name) on empty labels
-// ("a..b"), malformed escapes, labels over 63 octets or names over 255 wire
-// octets — callers must surface the failure rather than emit a partial name.
+// Byte case is preserved. An invalid name fails as a whole: callers surface the failure, never emit a partial name.
 inline detail::expected<std::vector<std::byte>, mdns_error>
 encode_dns_name(std::string_view name)
 {

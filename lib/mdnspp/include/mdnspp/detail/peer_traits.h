@@ -43,13 +43,8 @@ struct peer_traits<basic_observer, P>
     static constexpr bool provides_observe{true};
 };
 
-// Per-NIC monitor and observer options passed to basic_nic_group must not
-// carry callbacks: the group wires its own interface-stamped forwarding
-// lambdas into every per-NIC instance, and a user callback in the per-NIC
-// options would be silently displaced by them. Callback-bearing options are
-// therefore rejected at configure time with std::errc::invalid_argument.
-// Group-level callbacks live in basic_nic_group_options.
-
+// The group wires its own interface-stamped forwarding lambdas into every per-NIC instance, so a user callback in
+// per-NIC monitor or observer options would be silently displaced; such options are rejected instead.
 inline std::error_code validate_nic_group_peer_options(const monitor_options &opts) noexcept
 {
     if(opts.on_found || opts.on_updated || opts.on_lost || opts.on_error)

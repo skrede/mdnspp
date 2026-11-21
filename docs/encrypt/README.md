@@ -48,6 +48,8 @@ unprotected attack scenarios.
 | [Auth-Only Mode](auth-only-mode.md) | Deep-dive: integrity without confidentiality, flags bit, receive_mode control |
 | [Threat Model](threat-model.md) | Attack scenario verdicts: protected and unprotected scenarios with rationale |
 | [API Reference](api/) | API reference for `encrypted_socket`, `encrypt_options`, `secure_key`, and related types |
+| [aead](api/aead.md) | Low-level packet sealing and opening, `init_crypto`, `secure_zero`, and the packet header constants |
+| [replay_window](api/replay_window.md) | Per-session anti-replay windows of the receive path |
 
 ## Examples
 

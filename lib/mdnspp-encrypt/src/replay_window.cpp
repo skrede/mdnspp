@@ -4,8 +4,7 @@
 
 namespace {
 
-// Shift a multi-word bitmap left by `shift` bit positions (toward higher bit
-// indices). Bit i of word w corresponds to overall position w * 64 + i.
+// Bit i of word w is overall position w * 64 + i; a left shift moves bits toward higher positions.
 void shift_left(std::vector<uint64_t> &bitmap, uint64_t shift)
 {
     const std::size_t words = bitmap.size();

@@ -107,7 +107,7 @@ The observer, querier, service discovery and service monitor constructors valida
 mdnspp::mdns_options opts{.ttl_refresh_thresholds = {}};
 ```
 
-**Disable query backoff jitter (deterministic testing):** Set `refresh_jitter_pct` to zero:
+**Disable TTL refresh jitter (deterministic testing):** Set `refresh_jitter_pct` to zero:
 ```cpp
 mdnspp::mdns_options opts{.refresh_jitter_pct = 0.0};
 ```

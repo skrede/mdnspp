@@ -17,14 +17,8 @@
 
 namespace mdnspp::detail {
 
-// Appends a complete DNS resource record to buf.
-//   name  -- owner name (DNS wire format, pre-encoded)
-//   rtype -- DNS record type
-//   ttl   -- 32-bit TTL in seconds
-//   rdata -- the raw rdata bytes
-// Callers resolve name-encoding failures before this point (encode_dns_name
-// returns expected); the guard below only protects packet structure against
-// an empty owner encoding or rdata exceeding the uint16_t RDLENGTH limit.
+// Callers resolve name-encoding failures first; the guard only protects packet structure against an empty owner
+// name or rdata over the uint16_t RDLENGTH limit.
 inline void append_dns_rr(std::vector<std::byte> &buf,
                           const std::vector<std::byte> &name,
                           dns_type rtype,
@@ -42,12 +36,8 @@ inline void append_dns_rr(std::vector<std::byte> &buf,
     buf.insert(buf.end(), rdata.begin(), rdata.end());
 }
 
-// Encodes a vector of service_txt entries as RFC 6763 TXT rdata.
-// Each entry becomes a length-prefixed string of "key=value" or "key".
-// Entries exceeding 255 bytes are skipped (RFC 6763 §6.1: TXT string max 255).
-// When no encodable entries exist, returns a single zero byte: RFC 6763 §6.1
-// requires an empty TXT record to contain one zero-length string, never
-// RDLENGTH=0.
+// RFC 6763 §6.1: an entry over 255 bytes is skipped, and an empty TXT record is one zero-length string, never
+// RDLENGTH 0.
 inline std::vector<std::byte> encode_txt_records(const std::vector<mdnspp::service_txt> &entries)
 {
     std::vector<std::byte> result;
@@ -71,7 +61,6 @@ inline std::vector<std::byte> encode_txt_records(const std::vector<mdnspp::servi
     return result;
 }
 
-// The name whose nonexistent record types an NSEC record asserts.
 enum class nsec_owner : uint8_t
 {
     service_type,
@@ -105,12 +94,8 @@ inline void set_owner_type_bits(std::vector<uint8_t> &bitmap, nsec_owner owner, 
     }
 }
 
-// Builds an RFC 4034 section 4.1.2 window-block-0 type bitmap for NSEC records.
-// RFC 6762 section 6.1: the bitmap lists the types that DO exist at the owner
-// name. service_type owns PTR(12); service_name owns SRV(33), TXT(16) and the
-// NSEC(47) itself; hostname owns A(1)/AAAA(28) as configured in service_info.
-// Returns the complete window block: [window=0x00][bitmap_length][bitmap bytes...].
-// Trailing zero bytes are trimmed per RFC 4034 section 4.1.2.
+// RFC 4034 section 4.1.2 window block 0 with trailing zero bytes trimmed. RFC 6762 section 6.1: the bitmap lists the
+// types that do exist at the owner name.
 inline std::vector<std::byte> build_nsec_bitmap(nsec_owner owner, const mdnspp::service_info &info)
 {
     // Highest type bit needed is NSEC=47, which falls in byte index 5 (types 40-47).
@@ -121,7 +106,7 @@ inline std::vector<std::byte> build_nsec_bitmap(nsec_owner owner, const mdnspp::
         bitmap.pop_back();
 
     if(bitmap.empty())
-        return {}; // no types exist at this name — no valid NSEC can be built
+        return {};
 
     std::vector<std::byte> result;
     result.reserve(2 + bitmap.size());
@@ -133,10 +118,7 @@ inline std::vector<std::byte> build_nsec_bitmap(nsec_owner owner, const mdnspp::
     return result;
 }
 
-// Appends a complete NSEC resource record to buf.
-// NSEC rdata = next domain name (same as owner for mDNS, per RFC 6762 section 6.1)
-//            + type bitmap from build_nsec_bitmap for the owner.
-// No cache-flush bit for NSEC records. Skipped when no types exist at the owner.
+// RFC 6762 section 6.1: the next domain name is the owner name itself. Skipped when no types exist at the owner.
 inline void append_nsec_rr(std::vector<std::byte> &buf,
                            const std::vector<std::byte> &owner_name,
                            nsec_owner owner,

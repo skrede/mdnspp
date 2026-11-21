@@ -37,7 +37,7 @@ enum class conflict_type : uint8_t
     tiebreak_deferred,
 };
 
-[[nodiscard]] constexpr std::string_view to_string(dns_type t) noexcept
+constexpr std::string_view to_string(dns_type t) noexcept
 {
     switch(t)
     {
@@ -53,7 +53,7 @@ enum class conflict_type : uint8_t
     return "unknown";
 }
 
-[[nodiscard]] constexpr std::string_view to_string(dns_class c) noexcept
+constexpr std::string_view to_string(dns_class c) noexcept
 {
     switch(c)
     {
@@ -63,7 +63,7 @@ enum class conflict_type : uint8_t
     return "unknown";
 }
 
-[[nodiscard]] constexpr std::string_view to_string(response_mode m) noexcept
+constexpr std::string_view to_string(response_mode m) noexcept
 {
     switch(m)
     {
@@ -74,7 +74,7 @@ enum class conflict_type : uint8_t
     return "unknown";
 }
 
-[[nodiscard]] constexpr std::string_view to_string(conflict_type t) noexcept
+constexpr std::string_view to_string(conflict_type t) noexcept
 {
     switch(t)
     {

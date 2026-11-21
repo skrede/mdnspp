@@ -20,7 +20,6 @@
 
 namespace mdnspp::detail {
 
-// Builds instances from PTR, SRV, TXT and address records and reports on_found and on_updated.
 // refresh_cb receives every SRV with a positive TTL of a tracked instance; changed_cb follows every
 // change to a live instance.
 class monitor_resolver

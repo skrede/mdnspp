@@ -126,8 +126,10 @@ lifetime has elapsed since insertion, a refresh query is sent. The schedule
 covers the last 20% of the TTL window by default, giving four attempts before
 expiry.
 
-The schedule is rebuilt fresh on every record insertion or dedup-refresh, so
-a received record resets the refresh clock.
+The service monitor keeps one schedule per tracked service instance and
+rebuilds it on every SRV record with a positive TTL that arrives for the
+instance, so a received SRV record resets the refresh clock. Each fire point
+sends one query for the instance's SRV, TXT, A and AAAA records.
 
 Risk of changing: Fewer thresholds means fewer retries before expiry --
 acceptable on stable networks but risky on unreliable links. Earlier thresholds

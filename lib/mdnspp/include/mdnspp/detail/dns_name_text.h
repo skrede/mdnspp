@@ -13,14 +13,8 @@
 
 namespace mdnspp::detail {
 
-// RFC 1035 §5.1 presentation-format escape handling, shared by dns_name and
-// the wire codec (detail/dns_read.h).
-//
-// Canonical escaped form: within a label, '.' is written "\." and '\' is
-// written "\\"; bytes below 0x20 and the byte 0x7F are written "\DDD" (three
-// decimal digits). All other bytes — including UTF-8 sequences at and above
-// 0x80 — are written verbatim with their original case (RFC 6763 §4.1:
-// instance names are user-facing UTF-8 and must not be altered).
+// RFC 1035 §5.1 escapes: '.' and '\' within a label become "\." and "\\", bytes below 0x20 and 0x7F become "\DDD".
+// Bytes at and above 0x80 stay verbatim with their case (RFC 6763 §4.1: instance names are user-facing UTF-8).
 inline void append_escaped_label_byte(std::string &out, char c)
 {
     auto b = static_cast<uint8_t>(c);
@@ -68,9 +62,7 @@ struct label_accumulator
     }
 };
 
-// Decodes the escape at name[i] == '\\' ("\X" literal X, or "\DDD" with
-// exactly three decimal digits, at most 255), appends the byte to current and
-// advances i past it. Returns false on a dangling or malformed escape.
+// "\X" is a literal X and "\DDD" takes exactly three decimal digits, at most 255.
 inline bool decode_escape(std::string_view name, std::size_t &i, std::string &current)
 {
     if(i + 1 >= name.size())
@@ -109,13 +101,8 @@ inline bool consume_presentation_char(std::string_view name, std::size_t &i, lab
     return true;
 }
 
-// Splits a presentation-format name into its unescaped label byte strings.
-// Recognizes the RFC 1035 §5.1 escapes "\X" (literal X) and "\DDD" (byte
-// value, exactly three decimal digits, at most 255). Enforces the §2.3.4
-// limits on the unescaped bytes: 1-63 octets per label and 255 octets total
-// wire length (length prefixes plus root terminator). Empty labels ("a..b"),
-// dangling escapes and malformed "\DDD" escapes are errors. "" and "." both
-// denote the root name (zero labels).
+// RFC 1035 §2.3.4 limits on the unescaped bytes: 1-63 octets per label and 255 octets of wire length (length
+// prefixes plus root terminator). "" and "." both denote the root name (zero labels).
 inline expected<std::vector<std::string>, mdns_error>
 parse_presentation_labels(std::string_view name)
 {
@@ -138,8 +125,7 @@ parse_presentation_labels(std::string_view name)
     return std::move(acc.labels);
 }
 
-// Joins unescaped labels into the canonical escaped presentation form with a
-// trailing dot. The root name (zero labels) yields an empty string.
+// The root name (zero labels) yields an empty string, not ".".
 inline std::string make_canonical_presentation(const std::vector<std::string> &labels)
 {
     std::string out;

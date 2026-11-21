@@ -14,9 +14,6 @@
 
 namespace mdnspp::detail {
 
-// Parses one dotted-quad octet at p and appends it to result. For octets
-// 0..2 the next character must be '.', which p then moves past; for the last
-// octet (i == 3) the octet must end exactly at end.
 inline bool read_ipv4_octet(const char *&p, const char *end, int32_t i, std::vector<std::byte> &result)
 {
     if(p >= end)
@@ -39,8 +36,6 @@ inline bool read_ipv4_octet(const char *&p, const char *end, int32_t i, std::vec
     return ptr == end;
 }
 
-// Encodes an IPv4 address string "a.b.c.d" into 4 raw bytes.
-// Returns expected with mdns_error::invalid_ipv4_address on parse failure (never throws).
 inline detail::expected<std::vector<std::byte>, mdnspp::mdns_error>
 encode_ipv4(const std::string &addr)
 {
@@ -58,8 +53,6 @@ encode_ipv4(const std::string &addr)
     return result;
 }
 
-// Encodes an IPv6 address string into 16 raw bytes using inet_pton.
-// Returns expected with mdns_error::invalid_ipv6_address on parse failure.
 inline detail::expected<std::vector<std::byte>, mdnspp::mdns_error>
 encode_ipv6(const std::string &addr)
 {

@@ -11,10 +11,8 @@
 
 namespace mdnspp::detail {
 
-// Bounded backoff for consecutive transient receive failures (e.g. a
-// persistent ENOMEM/ENOBUFS condition): the first failure re-arms
-// immediately, each further consecutive failure delays the re-arm,
-// doubling from 10 ms up to a 500 ms cap.
+// Consecutive transient receive failures (a persistent ENOMEM or ENOBUFS): the first re-arms at once, each further one
+// delays the re-arm, doubling from 10 ms up to a 500 ms cap.
 inline constexpr std::chrono::milliseconds transient_backoff_initial{10};
 inline constexpr std::chrono::milliseconds transient_backoff_cap{500};
 
@@ -24,8 +22,7 @@ inline std::chrono::milliseconds transient_backoff_delay(uint32_t consecutive_fa
     return (std::min)(transient_backoff_initial * (uint32_t{1} << doublings), transient_backoff_cap);
 }
 
-// Errors that mean the socket can no longer deliver packets; everything
-// else (e.g. ECONNRESET from a stray ICMP, ENOBUFS) is transient.
+// Everything else (ECONNRESET from a stray ICMP, ENOBUFS) is transient.
 inline bool is_fatal_receive_error(std::error_code ec) noexcept
 {
     return ec == std::errc::operation_canceled || ec == std::errc::bad_file_descriptor;

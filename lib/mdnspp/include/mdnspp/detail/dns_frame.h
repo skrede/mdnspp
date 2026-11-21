@@ -35,7 +35,7 @@ struct dns_frame_header
     uint16_t nscount{0};
     uint16_t arcount{0};
 
-    [[nodiscard]] constexpr bool is_response() const noexcept
+    constexpr bool is_response() const noexcept
     {
         return (flags & 0x8000U) != 0;
     }

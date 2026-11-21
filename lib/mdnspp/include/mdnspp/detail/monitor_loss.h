@@ -20,8 +20,7 @@
 
 namespace mdnspp::detail {
 
-// Removes what expired from the cache or belongs to an unwatched type, and reports on_lost and
-// on_updated. forget_cb receives every instance whose SRV refresh schedule must go.
+// forget_cb receives every instance whose SRV refresh schedule must go.
 class monitor_loss
 {
 public:

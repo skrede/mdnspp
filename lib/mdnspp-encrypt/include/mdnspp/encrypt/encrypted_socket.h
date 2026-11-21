@@ -22,11 +22,6 @@
 
 namespace mdnspp::encrypt {
 
-// Thread-safety contract: send() is as thread-safe as the inner socket's send(), but concurrent send()
-// on one socket is not supported: the send buffer and the sequence counter are shared send-path state.
-// update_key() may be called from any thread, concurrently with send and receive; key material is copied
-// under an internal mutex, AEAD runs outside it. async_receive() and handler invocation follow the inner
-// socket's executor semantics; the replay window and receive buffer are confined to the receive path.
 template <socket_like InnerSocket>
 class encrypted_socket
 {
@@ -37,8 +32,6 @@ class encrypted_socket
 public:
     static constexpr std::chrono::seconds default_grace_duration{key_ring::default_grace_duration};
 
-    // The executor-only constructors satisfy policy_like. Such a socket has no usable key: send and
-    // update_key report std::errc::operation_not_permitted and async_receive never completes.
     template <typename Executor>
         requires (!std::is_same_v<std::remove_cvref_t<Executor>, encrypted_socket>)
     explicit encrypted_socket(Executor &&ex)
@@ -55,8 +48,6 @@ public:
     {
     }
 
-    // Throws std::system_error with std::errc::invalid_argument if opts.encrypt.validate() fails, or with
-    // std::errc::not_supported if libsodium cannot be initialized; both checks run before the key is copied.
     template <typename Executor>
         requires (!std::is_same_v<std::remove_cvref_t<Executor>, encrypted_socket>)
     explicit encrypted_socket(Executor &&ex, const encrypt_socket_options &opts)
@@ -66,8 +57,6 @@ public:
     {
     }
 
-    // Sets ec to std::errc::invalid_argument if opts.encrypt.validate() fails, or to std::errc::not_supported
-    // if libsodium cannot be initialized; the socket is then left without a usable key.
     template <typename Executor>
         requires (!std::is_same_v<std::remove_cvref_t<Executor>, encrypted_socket>)
     explicit encrypted_socket(Executor &&ex, const encrypt_socket_options &opts, std::error_code &ec)
@@ -86,7 +75,6 @@ public:
         m_inner.close();
     }
 
-    // Plaintext over max_udp_payload - encrypted_overhead is not sent: buffer_too_small (thrown here).
     void send(const endpoint &dest, std::span<const std::byte> plaintext)
     {
         std::error_code ec;
@@ -108,8 +96,6 @@ public:
         m_receiver.arm(std::move(handler));
     }
 
-    // The current key stays accepted for the previous epoch until the grace
-    // period expires; a gp setting neither bound gets default_grace_duration.
     void update_key(secure_key new_psk, grace_period gp)
     {
         std::error_code ec;

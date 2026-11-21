@@ -14,8 +14,6 @@
 
 namespace mdnspp::detail {
 
-/// Effectively-infinite silence timeout for peers without silence semantics
-/// (observer, monitor) -- the recv_loop runs until stop().
 inline constexpr std::chrono::milliseconds infinite_silence_timeout =
     std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::hours(24 * 365));
 
@@ -28,8 +26,7 @@ public:
     using socket_type = typename P::socket_type;
     using timer_type = typename P::timer_type;
 
-    // Returns true if the packet was relevant (resets silence timer),
-    // false to ignore (timer continues counting down).
+    // true marks the packet relevant and restarts the silence wait; false leaves the wait counting down.
     using packet_handler = move_only_function<bool(const recv_metadata &, std::span<std::byte>)>;
 
     // Invoked when the socket reports a fatal receive error; the loop stops re-arming.
@@ -64,7 +61,7 @@ public:
         stop();
     }
 
-    // Non-copyable, non-movable (owns async callbacks by address)
+    // Pending async callbacks capture this.
     recv_loop(const recv_loop &) = delete;
     recv_loop &operator=(const recv_loop &) = delete;
     recv_loop(recv_loop &&) = delete;
@@ -146,12 +143,8 @@ private:
             });
     }
 
-    // Re-purposes the shared timer for the transient backoff delay, then
-    // restores a still-owed silence wait for the remainder of its absolute
-    // deadline before re-arming the receive. m_silence_pending stays true
-    // across the implicit cancellation by expires_after: it means "a silence
-    // wait is owed", not "a wait is armed". No receive is armed during the
-    // backoff, so no packet can re-arm the silence wait underneath it.
+    // m_silence_pending means a silence wait is owed, not armed: it survives the cancellation by expires_after, and the
+    // owed wait resumes for the rest of its deadline. No receive is armed during the backoff to re-arm it underneath.
     void defer_rearm()
     {
         if(m_stopped.load(std::memory_order_acquire))

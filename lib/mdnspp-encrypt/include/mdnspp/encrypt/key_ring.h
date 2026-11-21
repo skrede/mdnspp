@@ -127,9 +127,7 @@ public:
         return send_key{key_copy(m_key), m_epoch};
     }
 
-    // An epoch one ahead is tried with the current key: a peer whose epoch
-    // counter runs one ahead under the same key (initial-epoch skew) is
-    // accepted. A mismatched key fails authentication.
+    // Epoch + 1 tolerates initial-epoch skew under the same key; a peer that rotated fails authentication.
     std::optional<receive_key> key_for_epoch(uint32_t epoch)
     {
         std::lock_guard lock(m_mutex);
@@ -158,8 +156,8 @@ private:
     uint32_t m_epoch;
     grace_state m_grace;
 
-    // Zeroizes the previous key as soon as the grace period has expired
-    // instead of retaining it until destruction. Caller holds m_mutex.
+    // Runs on every key lookup, so an expired previous key is zeroized at the next lookup, not at destruction.
+    // Caller holds m_mutex.
     void expire_grace_locked() noexcept
     {
         if(!m_has_prev_key || !m_grace.expired())

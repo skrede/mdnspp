@@ -101,7 +101,7 @@ been accepted with it.
 
 | Field | Type | Description |
 |---|---|---|
-| `duration` | `std::optional<std::chrono::nanoseconds>` | Expire after this wall-clock duration |
+| `duration` | `std::optional<std::chrono::nanoseconds>` | Expire after this duration, measured with `std::chrono::steady_clock` |
 | `packet_count` | `std::optional<uint64_t>` | Expire after this many old-epoch packets have been accepted (authenticated with the previous key and not rejected as replays) |
 
 ## Lazy Expiry

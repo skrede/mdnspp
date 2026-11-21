@@ -26,10 +26,8 @@ inline service_txt split_txt_entry(std::string_view entry_sv)
     return kv;
 }
 
-// Walks the length-prefixed strings of TXT rdata in [pos, end). A string that
-// overruns end stops the walk silently. RFC 6763 §6.4: a zero-length string
-// (including the canonical empty TXT record, a single 0x00 byte) is ignored,
-// as is a string starting with '=' (no key).
+// A string that overruns end stops the walk silently. RFC 6763 §6.4: zero-length strings (the canonical empty TXT
+// record is one) and strings starting with '=' (no key) are ignored.
 inline std::vector<service_txt> parse_txt_entries(std::span<const std::byte> buffer, size_t pos, size_t end)
 {
     std::vector<service_txt> entries;

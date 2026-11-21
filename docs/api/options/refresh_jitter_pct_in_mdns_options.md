@@ -14,7 +14,7 @@ With the default of `0.02` and a 4500-second record, up to 90 seconds of jitter 
 
 ## Why
 
-The default 2% is calibrated to provide meaningful desynchronisation without significantly shifting the query timing away from its threshold. For a 4500-second TTL the threshold times shift by at most 90 seconds in either direction — negligible against the 4500-second record lifetime.
+The default 2% is calibrated to provide meaningful desynchronization without significantly shifting the query timing away from its threshold. For a 4500-second TTL the threshold times shift later by at most 90 seconds — negligible against the 4500-second record lifetime.
 
 Reasons to adjust:
 

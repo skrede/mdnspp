@@ -58,8 +58,7 @@ struct tc_accumulator
         m_entries.emplace(source, entry{std::move(new_records), Clock::now() + tc_wait});
     }
 
-    // Earliest pending deadline, or nullopt when no sources are pending.
-    [[nodiscard]] std::optional<time_point> next_deadline() const
+    std::optional<time_point> next_deadline() const
     {
         std::optional<time_point> earliest;
         for(const auto &[source, e] : m_entries)
@@ -70,9 +69,7 @@ struct tc_accumulator
         return earliest;
     }
 
-    // Removes and returns the merged record sets of ALL sources whose deadline
-    // has passed at `now`.
-    [[nodiscard]] std::vector<std::pair<endpoint, std::vector<mdns_record_variant>>>
+    std::vector<std::pair<endpoint, std::vector<mdns_record_variant>>>
     take_expired(time_point now)
     {
         std::vector<std::pair<endpoint, std::vector<mdns_record_variant>>> expired;
@@ -93,11 +90,11 @@ struct tc_accumulator
 
     void clear() noexcept { m_entries.clear(); }
 
-    [[nodiscard]] bool empty() const noexcept { return m_entries.empty(); }
+    bool empty() const noexcept { return m_entries.empty(); }
 
-    [[nodiscard]] std::size_t size() const noexcept { return m_entries.size(); }
+    std::size_t size() const noexcept { return m_entries.size(); }
 
-    [[nodiscard]] bool has_pending(const endpoint &source) const
+    bool has_pending(const endpoint &source) const
     {
         return m_entries.contains(source);
     }

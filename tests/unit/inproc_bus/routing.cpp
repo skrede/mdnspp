@@ -10,13 +10,6 @@
 
 namespace {
 
-observer_options record_counter(std::size_t &count)
-{
-    observer_options opts;
-    opts.on_record = [&count](const endpoint &, const mdns_record_variant &) { ++count; };
-    return opts;
-}
-
 mdns_options short_backoff_opts()
 {
     mdns_options opts;

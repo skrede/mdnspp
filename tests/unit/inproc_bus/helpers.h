@@ -20,6 +20,7 @@
 #include <chrono>
 #include <string>
 #include <vector>
+#include <cstddef>
 #include <cstdint>
 #include <utility>
 #include <variant>
@@ -68,6 +69,13 @@ inline observer_options record_sink(std::vector<mdns_record_variant> &records)
 {
     observer_options opts;
     opts.on_record = [&records](const endpoint &, const mdns_record_variant &rec) { records.push_back(rec); };
+    return opts;
+}
+
+inline observer_options record_counter(std::size_t &count)
+{
+    observer_options opts;
+    opts.on_record = [&count](const endpoint &, const mdns_record_variant &) { ++count; };
     return opts;
 }
 

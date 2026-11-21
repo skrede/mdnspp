@@ -1,13 +1,13 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_WRITE_H
 #define HPP_GUARD_MDNSPP_DETAIL_DNS_WRITE_H
 
-#include "mdnspp/mdns_error.h"
-#include "mdnspp/service_info.h"
-
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/address_encode.h"
+
+#include "mdnspp/mdns_error.h"
+#include "mdnspp/service_info.h"
 
 #include <string>
 #include <vector>

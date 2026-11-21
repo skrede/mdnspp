@@ -1,8 +1,9 @@
 #ifndef HPP_GUARD_MDNSPP_ENCRYPT_ENCRYPT_SOCKET_OPTIONS_H
 #define HPP_GUARD_MDNSPP_ENCRYPT_ENCRYPT_SOCKET_OPTIONS_H
 
-#include "mdnspp/socket_options.h"
 #include "mdnspp/encrypt/encrypt_options.h"
+
+#include "mdnspp/socket_options.h"
 
 namespace mdnspp::encrypt {
 

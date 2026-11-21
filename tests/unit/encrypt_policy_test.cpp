@@ -2,7 +2,9 @@
 #include "mdnspp/encrypt/encrypt_socket_options.h"
 
 #include "mdnspp/testing/mock_policy.h"
+
 #include "mdnspp/default/default_policy.h"
+
 #include "mdnspp/inproc/inproc_policy.h"
 
 #ifdef MDNSPP_HAS_ASIO

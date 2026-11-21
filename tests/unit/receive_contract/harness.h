@@ -3,8 +3,8 @@
 
 #include "support/arm_ledger.h"
 
-#include "mdnspp/endpoint.h"
 #include "mdnspp/policy.h"
+#include "mdnspp/endpoint.h"
 
 #include "mdnspp/testing/mock_policy.h"
 

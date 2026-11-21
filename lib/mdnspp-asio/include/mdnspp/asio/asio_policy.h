@@ -1,12 +1,12 @@
 #ifndef HPP_GUARD_MDNSPP_ASIO_ASIO_POLICY_H
 #define HPP_GUARD_MDNSPP_ASIO_ASIO_POLICY_H
 
+#include "mdnspp/asio/asio_timer.h"
+#include "mdnspp/asio/asio_socket.h"
+
 #include "mdnspp/policy.h"
 
 #include "mdnspp/detail/compat.h"
-
-#include "mdnspp/asio/asio_socket.h"
-#include "mdnspp/asio/asio_timer.h"
 
 namespace mdnspp {
 

@@ -1,13 +1,14 @@
 #ifndef HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_SOCKET_H
 #define HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_SOCKET_H
 
+#include "mdnspp/default/default_context.h"
+
 #include "mdnspp/policy.h"
 #include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/native_sockaddr.h"
 #include "mdnspp/detail/native_socket_setup.h"
-#include "mdnspp/default/default_context.h"
 
 #include <span>
 #include <cstddef>

@@ -5,8 +5,8 @@
 #include <cstddef>
 #include <cstdlib>
 #include <utility>
-#include <iostream>
 #include <variant>
+#include <iostream>
 
 // Observe encrypted mDNS multicast traffic using default_policy.
 //

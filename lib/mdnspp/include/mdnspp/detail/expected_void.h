@@ -8,8 +8,8 @@
 #include "mdnspp/detail/bad_expected_access.h"
 #include "mdnspp/detail/expected_monadic_ops.h"
 
-#include <variant>
 #include <utility>
+#include <variant>
 #include <type_traits>
 #include <initializer_list>
 

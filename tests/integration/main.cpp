@@ -1,10 +1,13 @@
-#include <mdnspp/basic_querier.h>
-#include <mdnspp/defaults.h>
 #include <mdnspp/dns.h>
+#include <mdnspp/defaults.h>
 #include <mdnspp/endpoint.h>
+#include <mdnspp/basic_querier.h>
 #include <mdnspp/resolved_service.h>
+
 #include <mdnspp/default/default_policy.h>
+
 #include <mdnspp/inproc/inproc_policy.h>
+
 #include <mdnspp/testing/test_clock.h>
 
 #ifdef MDNSPP_HAS_ASIO
@@ -15,14 +18,14 @@
 #include <mdnspp/encrypt/aead.h>
 #endif
 
-#include <system_error>
-#include <type_traits>
-#include <algorithm>
+#include <span>
+#include <array>
+#include <chrono>
 #include <cstddef>
 #include <iostream>
-#include <chrono>
-#include <array>
-#include <span>
+#include <algorithm>
+#include <type_traits>
+#include <system_error>
 
 // Validate that the exported compile features propagate cxx_std_20 to a
 // consumer that does not set CMAKE_CXX_STANDARD itself.

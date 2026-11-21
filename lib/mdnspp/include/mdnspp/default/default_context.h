@@ -6,6 +6,7 @@
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
+
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/poll_set.h"
 #include "mdnspp/detail/wakeup_fd.h"

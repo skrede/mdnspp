@@ -1,12 +1,12 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_BASIC_MDNS_PEER_BASE_H
 #define HPP_GUARD_MDNSPP_DETAIL_BASIC_MDNS_PEER_BASE_H
 
+#include "mdnspp/detail/recv_loop.h"
+
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/mdns_options.h"
 #include "mdnspp/socket_options.h"
-
-#include "mdnspp/detail/recv_loop.h"
 
 #include <atomic>
 #include <chrono>

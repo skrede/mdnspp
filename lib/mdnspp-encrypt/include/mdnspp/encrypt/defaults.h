@@ -1,9 +1,9 @@
 #ifndef HPP_GUARD_MDNSPP_ENCRYPT_DEFAULTS_H
 #define HPP_GUARD_MDNSPP_ENCRYPT_DEFAULTS_H
 
-#include "mdnspp/defaults.h"
-
 #include "mdnspp/encrypt/encrypted_policy.h"
+
+#include "mdnspp/defaults.h"
 
 namespace mdnspp::encrypt {
 

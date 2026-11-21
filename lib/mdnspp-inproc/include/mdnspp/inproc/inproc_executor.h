@@ -1,15 +1,15 @@
 #ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_EXECUTOR_H
 #define HPP_GUARD_MDNSPP_INPROC_INPROC_EXECUTOR_H
 
-#include "mdnspp/detail/compat.h"
-
 #include "mdnspp/inproc/inproc_bus.h"
 
+#include "mdnspp/detail/compat.h"
+
 #include <deque>
-#include <vector>
 #include <chrono>
-#include <algorithm>
 #include <thread>
+#include <vector>
+#include <algorithm>
 
 namespace mdnspp::inproc {
 

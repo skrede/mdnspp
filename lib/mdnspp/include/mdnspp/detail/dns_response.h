@@ -2,8 +2,8 @@
 #define HPP_GUARD_MDNSPP_DETAIL_DNS_RESPONSE_H
 
 #include "mdnspp/detail/dns_read.h"
-#include "mdnspp/detail/dns_write.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_write.h"
 #include "mdnspp/detail/dns_service_records.h"
 
 #include "mdnspp/service_info.h"

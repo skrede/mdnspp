@@ -13,8 +13,8 @@
 
 #include "mdnspp/testing/mock_policy.h"
 
-#include <vector>
 #include <string>
+#include <vector>
 #include <cstddef>
 #include <variant>
 #include <optional>

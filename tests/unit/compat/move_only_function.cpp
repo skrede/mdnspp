@@ -1,10 +1,10 @@
 #include "mdnspp/detail/move_only_function.h"
 
-#include <catch2/catch_template_test_macros.hpp>
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_template_test_macros.hpp>
 
-#include <string>
 #include <memory>
+#include <string>
 #include <cstddef>
 #include <utility>
 

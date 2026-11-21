@@ -6,10 +6,11 @@
 // as it provides the out-of-line definitions of default_context::compute_next_timeout_ms
 // and default_context::fire_expired_timers that dereference default_timer*.
 
+#include "mdnspp/default/default_context.h"
+
 #include "mdnspp/policy.h"
 
 #include "mdnspp/detail/compat.h"
-#include "mdnspp/default/default_context.h"
 
 #include <chrono>
 #include <limits>

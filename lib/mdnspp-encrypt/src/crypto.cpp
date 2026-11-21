@@ -2,8 +2,8 @@
 
 #include <sodium.h>
 
-#include <mutex>
 #include <array>
+#include <mutex>
 #include <cstdint>
 
 namespace mdnspp::encrypt {

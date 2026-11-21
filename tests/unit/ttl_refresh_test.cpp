@@ -1,4 +1,5 @@
 #include "mdnspp/mdns_options.h"
+
 #include "mdnspp/detail/ttl_refresh.h"
 
 #include "mdnspp/testing/test_clock.h"
@@ -6,8 +7,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
-#include <optional>
 #include <random>
+#include <optional>
 
 using namespace mdnspp;
 using namespace mdnspp::detail;

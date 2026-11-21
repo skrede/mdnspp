@@ -1,9 +1,9 @@
 #include "mdnspp/detail/dns_read.h"
 
+#include <span>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {

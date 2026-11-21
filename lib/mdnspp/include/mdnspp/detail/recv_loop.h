@@ -1,10 +1,11 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_RECV_LOOP_H
 #define HPP_GUARD_MDNSPP_DETAIL_RECV_LOOP_H
 
-#include "mdnspp/policy.h"
-#include "mdnspp/mdns_options.h"
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/recv_filter.h"
+
+#include "mdnspp/policy.h"
+#include "mdnspp/mdns_options.h"
 
 #include <span>
 #include <atomic>

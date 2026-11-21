@@ -1,17 +1,17 @@
 #ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_POLICY_H
 #define HPP_GUARD_MDNSPP_INPROC_INPROC_POLICY_H
 
-#include "mdnspp/policy.h"
-
-#include "mdnspp/detail/compat.h"
-
-#include "mdnspp/testing/test_clock.h"
-
 #include "mdnspp/inproc/inproc_bus.h"
 #include "mdnspp/inproc/inproc_timer.h"
 #include "mdnspp/inproc/inproc_socket.h"
 #include "mdnspp/inproc/inproc_executor.h"
 #include "mdnspp/inproc/inproc_socket_options.h"
+
+#include "mdnspp/policy.h"
+
+#include "mdnspp/detail/compat.h"
+
+#include "mdnspp/testing/test_clock.h"
 
 #include <chrono>
 

@@ -4,8 +4,8 @@
 #include <array>
 #include <cstddef>
 #include <utility>
-#include <iostream>
 #include <variant>
+#include <iostream>
 
 // Demonstrate encrypted mDNS in auth-only mode.
 //

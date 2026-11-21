@@ -1,9 +1,9 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_NATIVE_SOCKADDR_H
 #define HPP_GUARD_MDNSPP_DETAIL_NATIVE_SOCKADDR_H
 
-#include "mdnspp/endpoint.h"
-
 #include "mdnspp/detail/native_socket.h"
+
+#include "mdnspp/endpoint.h"
 
 #include <array>
 #include <cstddef>

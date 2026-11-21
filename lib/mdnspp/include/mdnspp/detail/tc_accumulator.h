@@ -1,10 +1,10 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_TC_ACCUMULATOR_H
 #define HPP_GUARD_MDNSPP_DETAIL_TC_ACCUMULATOR_H
 
+#include "mdnspp/detail/hash_combine.h"
+
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
-
-#include "mdnspp/detail/hash_combine.h"
 
 #include <chrono>
 #include <vector>

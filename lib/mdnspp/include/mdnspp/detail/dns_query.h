@@ -3,8 +3,8 @@
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_read.h"
-#include "mdnspp/detail/dns_write.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_write.h"
 #include "mdnspp/detail/dns_record_encode.h"
 
 #include "mdnspp/records.h"

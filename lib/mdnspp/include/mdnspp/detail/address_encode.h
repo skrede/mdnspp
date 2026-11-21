@@ -1,10 +1,10 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_ADDRESS_ENCODE_H
 #define HPP_GUARD_MDNSPP_DETAIL_ADDRESS_ENCODE_H
 
-#include "mdnspp/mdns_error.h"
-
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/platform.h"
+
+#include "mdnspp/mdns_error.h"
 
 #include <string>
 #include <vector>

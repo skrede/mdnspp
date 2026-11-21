@@ -2,11 +2,11 @@
 
 #include <fuzzer/FuzzedDataProvider.h>
 
+#include <span>
+#include <string>
 #include <cassert>
 #include <cstddef>
 #include <cstdint>
-#include <span>
-#include <string>
 
 static void check_decoded(const std::string &decoded)
 {

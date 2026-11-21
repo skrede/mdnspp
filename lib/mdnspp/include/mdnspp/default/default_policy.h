@@ -5,12 +5,13 @@
 // Satisfies policy_like<P>: executor_type, socket_type, timer_type all present with
 // the required constructors (throwing and error_code overloads).
 
-#include "mdnspp/policy.h"
-#include "mdnspp/detail/compat.h"
-
 #include "mdnspp/default/default_timer.h"
 #include "mdnspp/default/default_socket.h"
 #include "mdnspp/default/default_context.h"
+
+#include "mdnspp/policy.h"
+
+#include "mdnspp/detail/compat.h"
 
 namespace mdnspp {
 

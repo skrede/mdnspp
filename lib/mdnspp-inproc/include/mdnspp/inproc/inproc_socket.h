@@ -1,24 +1,24 @@
 #ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_SOCKET_H
 #define HPP_GUARD_MDNSPP_INPROC_INPROC_SOCKET_H
 
-#include "mdnspp/endpoint.h"
-#include "mdnspp/policy.h"
-#include "mdnspp/socket_options.h"
-
-#include "mdnspp/detail/compat.h"
-
 #include "mdnspp/inproc/inproc_bus.h"
 #include "mdnspp/inproc/inproc_executor.h"
 #include "mdnspp/inproc/inproc_socket_options.h"
+
+#include "mdnspp/policy.h"
+#include "mdnspp/endpoint.h"
+#include "mdnspp/socket_options.h"
+
+#include "mdnspp/detail/compat.h"
 
 #include <span>
 #include <queue>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <optional>
 #include <system_error>
-#include <utility>
 
 namespace mdnspp::inproc {
 

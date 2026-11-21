@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_RECORDS_H
 
 #include "mdnspp/dns_name.h"
+
 #include "mdnspp/detail/dns_enums.h"
 
 #include <string>

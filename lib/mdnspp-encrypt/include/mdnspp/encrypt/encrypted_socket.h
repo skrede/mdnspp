@@ -1,7 +1,6 @@
 #ifndef HPP_GUARD_MDNSPP_ENCRYPT_ENCRYPTED_SOCKET_H
 #define HPP_GUARD_MDNSPP_ENCRYPT_ENCRYPTED_SOCKET_H
 
-#include "mdnspp/policy.h"
 #include "mdnspp/encrypt/key_ring.h"
 #include "mdnspp/encrypt/packet_header.h"
 #include "mdnspp/encrypt/encrypted_send.h"
@@ -9,6 +8,8 @@
 #include "mdnspp/encrypt/encrypted_receive.h"
 #include "mdnspp/encrypt/encrypted_receiver.h"
 #include "mdnspp/encrypt/encrypt_socket_options.h"
+
+#include "mdnspp/policy.h"
 
 #include <span>
 #include <chrono>

@@ -7,11 +7,11 @@
 
 #include <fuzzer/FuzzedDataProvider.h>
 
+#include <span>
+#include <vector>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <utility>
-#include <vector>
 
 namespace {
 

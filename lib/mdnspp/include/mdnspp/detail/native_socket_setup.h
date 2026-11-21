@@ -1,15 +1,15 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_NATIVE_SOCKET_SETUP_H
 #define HPP_GUARD_MDNSPP_DETAIL_NATIVE_SOCKET_SETUP_H
 
-#include "mdnspp/socket_options.h"
-
 #include "mdnspp/detail/native_socket.h"
 #include "mdnspp/detail/native_sockaddr.h"
+#include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/native_socket_opts.h"
+#include "mdnspp/detail/validate_multicast.h"
 #include "mdnspp/detail/native_multicast_v4.h"
 #include "mdnspp/detail/native_multicast_v6.h"
-#include "mdnspp/detail/interface_resolve.h"
-#include "mdnspp/detail/validate_multicast.h"
+
+#include "mdnspp/socket_options.h"
 
 #include <string>
 #include <cstdint>

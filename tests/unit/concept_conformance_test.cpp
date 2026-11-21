@@ -1,12 +1,13 @@
 // tests/concept_conformance_test.cpp
 
 #include "mdnspp/policy.h"
-#include "mdnspp/socket_options.h"
-#include "mdnspp/testing/mock_policy.h"
-#include "mdnspp/basic_observer.h"
-#include "mdnspp/observer_options.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/basic_observer.h"
+#include "mdnspp/socket_options.h"
+#include "mdnspp/observer_options.h"
+
+#include "mdnspp/testing/mock_policy.h"
 
 static_assert(mdnspp::policy_like<mdnspp::testing::mock_policy>, "mock_policy must satisfy Policy — check executor_type, socket_type, timer_type");
 static_assert(mdnspp::socket_like<mdnspp::testing::mock_socket>, "mock_socket must satisfy socket_like — check async_receive/send/close signatures");

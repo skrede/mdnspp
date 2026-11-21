@@ -8,9 +8,9 @@
 
 #include "mdnspp/inproc/inproc_policy.h"
 
-#include "mdnspp/nic_group_options.h"
 #include "mdnspp/basic_nic_monitor.h"
 #include "mdnspp/network_interface.h"
+#include "mdnspp/nic_group_options.h"
 
 #include <catch2/catch_test_macros.hpp>
 

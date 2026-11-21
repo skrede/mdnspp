@@ -1,8 +1,8 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_QUERY_TC_H
 #define HPP_GUARD_MDNSPP_DETAIL_DNS_QUERY_TC_H
 
-#include "mdnspp/detail/dns_query.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_query.h"
 #include "mdnspp/detail/dns_record_encode.h"
 
 #include "mdnspp/records.h"

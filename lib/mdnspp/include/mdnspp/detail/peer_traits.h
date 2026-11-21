@@ -2,9 +2,9 @@
 #define HPP_GUARD_MDNSPP_DETAIL_PEER_TRAITS_H
 
 #include "mdnspp/policy.h"
-#include "mdnspp/nic_group_options.h"
-#include "mdnspp/observer_options.h"
 #include "mdnspp/monitor_options.h"
+#include "mdnspp/observer_options.h"
+#include "mdnspp/nic_group_options.h"
 
 #include <system_error>
 

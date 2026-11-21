@@ -2,8 +2,8 @@
 #define HPP_GUARD_MDNSPP_ENCRYPT_AEAD_HELPERS_H
 
 #include "mdnspp/encrypt/aead.h"
-#include "mdnspp/encrypt/encrypt_error.h"
 #include "mdnspp/encrypt/secure_key.h"
+#include "mdnspp/encrypt/encrypt_error.h"
 #include "mdnspp/encrypt/packet_header.h"
 #include "mdnspp/encrypt/encrypt_options.h"
 

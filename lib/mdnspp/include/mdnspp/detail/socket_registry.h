@@ -1,10 +1,10 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_SOCKET_REGISTRY_H
 #define HPP_GUARD_MDNSPP_DETAIL_SOCKET_REGISTRY_H
 
-#include "mdnspp/policy.h"
-
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/native_socket.h"
+
+#include "mdnspp/policy.h"
 
 #include <span>
 #include <vector>

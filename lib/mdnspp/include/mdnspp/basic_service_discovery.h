@@ -5,8 +5,8 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_type.h"
 #include "mdnspp/query_options.h"
-#include "mdnspp/socket_options.h"
 #include "mdnspp/callback_types.h"
+#include "mdnspp/socket_options.h"
 #include "mdnspp/resolved_service.h"
 
 #include "mdnspp/detail/compat.h"

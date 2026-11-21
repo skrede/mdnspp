@@ -1,11 +1,12 @@
 #ifndef HPP_GUARD_MDNSPP_ENCRYPT_ENCRYPTED_RECEIVER_H
 #define HPP_GUARD_MDNSPP_ENCRYPT_ENCRYPTED_RECEIVER_H
 
-#include "mdnspp/policy.h"
 #include "mdnspp/encrypt/key_ring.h"
 #include "mdnspp/encrypt/replay_window.h"
 #include "mdnspp/encrypt/encrypt_options.h"
 #include "mdnspp/encrypt/encrypted_receive.h"
+
+#include "mdnspp/policy.h"
 
 #include <span>
 #include <vector>

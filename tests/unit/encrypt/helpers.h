@@ -9,10 +9,10 @@
 
 #include "mdnspp/testing/mock_policy.h"
 
+#include <span>
 #include <array>
 #include <chrono>
 #include <memory>
-#include <span>
 #include <vector>
 #include <cstddef>
 #include <cstdint>

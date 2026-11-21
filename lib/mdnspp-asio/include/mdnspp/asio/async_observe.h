@@ -1,9 +1,9 @@
 #ifndef HPP_GUARD_MDNSPP_ASIO_ASYNC_OBSERVE_H
 #define HPP_GUARD_MDNSPP_ASIO_ASYNC_OBSERVE_H
 
-#include "mdnspp/basic_observer.h"
-
 #include "mdnspp/asio/asio_completion.h"
+
+#include "mdnspp/basic_observer.h"
 
 namespace mdnspp {
 

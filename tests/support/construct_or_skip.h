@@ -3,8 +3,8 @@
 
 #include "support/skip_or_fail.h"
 
-#include <exception>
 #include <string>
+#include <exception>
 #include <string_view>
 
 namespace mdnspp::test_support {

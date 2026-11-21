@@ -3,12 +3,14 @@
 
 #include "support/sync_wait.h"
 #include "support/construct_or_skip.h"
+
 #include "mdnspp/asio.h"
 #include "mdnspp/service_info.h"
 
 #include "mdnspp/detail/dns_enums.h"
 
 #include <asio.hpp>
+
 #include <asio/as_tuple.hpp>
 #include <asio/deferred.hpp>
 #include <asio/detached.hpp>
@@ -27,9 +29,9 @@
 #include <chrono>
 #include <future>
 #include <memory>
-#include <optional>
 #include <string>
 #include <thread>
+#include <optional>
 
 using namespace std::chrono_literals;
 using mdnspp::test_support::construct_or_skip;

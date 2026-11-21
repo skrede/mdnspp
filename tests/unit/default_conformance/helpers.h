@@ -2,14 +2,15 @@
 #define HPP_GUARD_MDNSPP_DEFAULT_CONFORMANCE_HELPERS_H
 
 #include "support/construct_or_skip.h"
+
 #include "mdnspp/default/default_policy.h"
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
-#include <cstdint>
 #include <string>
 #include <thread>
+#include <cstdint>
 
 #ifndef _WIN32
 #  include <arpa/inet.h>

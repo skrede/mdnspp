@@ -7,8 +7,8 @@
 
 #include "mdnspp/detail/dns_wire.h"
 
-#include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/testing/test_clock.h"
+#include "mdnspp/testing/mock_policy.h"
 
 #include <string>
 #include <vector>

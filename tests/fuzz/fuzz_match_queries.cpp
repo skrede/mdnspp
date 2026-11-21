@@ -4,9 +4,9 @@
 #include "mdnspp/detail/server_query_match.h"
 #include "mdnspp/detail/server_response_aggregation.h"
 
+#include <span>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 
 namespace {
 

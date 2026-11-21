@@ -2,8 +2,8 @@
 #define HPP_GUARD_MDNSPP_DETAIL_DNS_RECORD_ENCODE_H
 
 #include "mdnspp/detail/dns_read.h"
-#include "mdnspp/detail/dns_write.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_write.h"
 
 #include "mdnspp/records.h"
 

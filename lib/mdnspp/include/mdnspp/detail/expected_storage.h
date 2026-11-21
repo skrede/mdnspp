@@ -4,9 +4,9 @@
 #include "mdnspp/detail/bad_expected_access.h"
 
 #include <memory>
-#include <variant>
-#include <utility>
 #include <cstddef>
+#include <utility>
+#include <variant>
 
 namespace mdnspp::detail {
 

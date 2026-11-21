@@ -1,12 +1,12 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_SERVICE_NAMES_H
 #define HPP_GUARD_MDNSPP_DETAIL_SERVICE_NAMES_H
 
+#include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/mdns_util.h"
+
 #include "mdnspp/dns_name.h"
 #include "mdnspp/mdns_error.h"
 #include "mdnspp/service_type.h"
-
-#include "mdnspp/detail/compat.h"
-#include "mdnspp/detail/mdns_util.h"
 
 #include <string>
 #include <utility>

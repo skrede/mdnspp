@@ -1,10 +1,10 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_NATIVE_MULTICAST_V4_H
 #define HPP_GUARD_MDNSPP_DETAIL_NATIVE_MULTICAST_V4_H
 
-#include "mdnspp/socket_options.h"
-
 #include "mdnspp/detail/native_socket.h"
 #include "mdnspp/detail/native_socket_opts.h"
+
+#include "mdnspp/socket_options.h"
 
 #include <string>
 #include <cstdint>

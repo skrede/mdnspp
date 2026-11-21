@@ -1,9 +1,9 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_EXPECTED_REINIT_H
 #define HPP_GUARD_MDNSPP_DETAIL_EXPECTED_REINIT_H
 
+#include <cstddef>
 #include <utility>
 #include <variant>
-#include <cstddef>
 #include <type_traits>
 
 namespace mdnspp::detail {

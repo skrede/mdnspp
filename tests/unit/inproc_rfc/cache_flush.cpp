@@ -5,6 +5,7 @@
 #include "mdnspp/detail/dns_response.h"
 
 #include <catch2/catch_test_macros.hpp>
+
 #include <catch2/generators/catch_generators.hpp>
 
 #include <vector>

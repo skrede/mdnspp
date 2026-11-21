@@ -6,13 +6,13 @@
 
 #include <fuzzer/FuzzedDataProvider.h>
 
+#include <span>
 #include <chrono>
+#include <string>
+#include <vector>
 #include <cstddef>
 #include <cstdint>
-#include <span>
-#include <string>
 #include <utility>
-#include <vector>
 
 namespace {
 

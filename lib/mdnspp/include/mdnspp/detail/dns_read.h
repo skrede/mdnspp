@@ -1,17 +1,17 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_READ_H
 #define HPP_GUARD_MDNSPP_DETAIL_DNS_READ_H
 
-#include "mdnspp/dns_name.h"
-#include "mdnspp/mdns_error.h"
-
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/byte_order.h"
 
-#include <cstddef>
-#include <cstdint>
+#include "mdnspp/dns_name.h"
+#include "mdnspp/mdns_error.h"
+
 #include <span>
 #include <string>
 #include <vector>
+#include <cstddef>
+#include <cstdint>
 
 namespace mdnspp::detail {
 

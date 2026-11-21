@@ -6,17 +6,18 @@
 #include "mdnspp/inproc/inproc_executor.h"
 #include "mdnspp/inproc/inproc_socket_options.h"
 
+#include "mdnspp/mdns_options.h"
 #include "mdnspp/service_info.h"
+#include "mdnspp/basic_querier.h"
 #include "mdnspp/cache_options.h"
 #include "mdnspp/query_options.h"
-#include "mdnspp/mdns_options.h"
+#include "mdnspp/basic_observer.h"
 #include "mdnspp/monitor_options.h"
 #include "mdnspp/service_options.h"
 #include "mdnspp/observer_options.h"
-#include "mdnspp/basic_querier.h"
-#include "mdnspp/basic_observer.h"
 #include "mdnspp/basic_service_server.h"
 #include "mdnspp/basic_service_monitor.h"
+
 #include "mdnspp/testing/test_clock.h"
 
 #include <chrono>

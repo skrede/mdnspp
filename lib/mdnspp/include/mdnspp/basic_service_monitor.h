@@ -7,8 +7,8 @@
 #include "mdnspp/mdns_options.h"
 #include "mdnspp/record_cache.h"
 #include "mdnspp/cache_options.h"
-#include "mdnspp/socket_options.h"
 #include "mdnspp/callback_types.h"
+#include "mdnspp/socket_options.h"
 #include "mdnspp/monitor_options.h"
 #include "mdnspp/resolved_service.h"
 

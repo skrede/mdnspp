@@ -1,9 +1,9 @@
 #ifndef HPP_GUARD_MDNSPP_ASIO_ASYNC_DISCOVER_H
 #define HPP_GUARD_MDNSPP_ASIO_ASYNC_DISCOVER_H
 
-#include "mdnspp/basic_service_discovery.h"
-
 #include "mdnspp/asio/asio_completion.h"
+
+#include "mdnspp/basic_service_discovery.h"
 
 namespace mdnspp {
 

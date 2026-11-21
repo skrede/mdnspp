@@ -5,8 +5,8 @@
 #include "mdnspp/detail/native_socket.h"
 #include "mdnspp/detail/socket_registry.h"
 
-#include <vector>
 #include <cerrno>
+#include <vector>
 #include <cstddef>
 #include <cstdint>
 #include <system_error>

@@ -1,14 +1,14 @@
 #include "mdnspp/service_info.h"
 
-#include "mdnspp/detail/dns_query.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_query.h"
 #include "mdnspp/detail/server_probe_announce.h"
 
+#include <span>
+#include <vector>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 #include <utility>
-#include <vector>
 
 namespace {
 

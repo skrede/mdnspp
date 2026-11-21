@@ -1,10 +1,10 @@
 #ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_BUS_H
 #define HPP_GUARD_MDNSPP_INPROC_INPROC_BUS_H
 
+#include "mdnspp/inproc/inproc_socket_options.h"
+
 #include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
-
-#include "mdnspp/inproc/inproc_socket_options.h"
 
 #include <span>
 #include <deque>

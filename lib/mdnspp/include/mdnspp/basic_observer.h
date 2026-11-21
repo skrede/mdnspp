@@ -3,9 +3,9 @@
 
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
-#include "mdnspp/observer_options.h"
-#include "mdnspp/socket_options.h"
 #include "mdnspp/callback_types.h"
+#include "mdnspp/socket_options.h"
+#include "mdnspp/observer_options.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"

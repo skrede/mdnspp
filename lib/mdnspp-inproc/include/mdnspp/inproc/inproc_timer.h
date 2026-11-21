@@ -1,8 +1,9 @@
 #ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_TIMER_H
 #define HPP_GUARD_MDNSPP_INPROC_INPROC_TIMER_H
 
-#include "mdnspp/detail/compat.h"
 #include "mdnspp/inproc/inproc_executor.h"
+
+#include "mdnspp/detail/compat.h"
 
 #include <chrono>
 #include <system_error>

@@ -1,9 +1,9 @@
 #ifndef HPP_GUARD_MDNSPP_ASIO_ASYNC_START_H
 #define HPP_GUARD_MDNSPP_ASIO_ASYNC_START_H
 
-#include "mdnspp/basic_service_server.h"
-
 #include "mdnspp/asio/asio_completion.h"
+
+#include "mdnspp/basic_service_server.h"
 
 #include <atomic>
 #include <memory>

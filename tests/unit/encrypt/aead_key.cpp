@@ -2,8 +2,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <utility>
 #include <cstddef>
+#include <utility>
 #include <system_error>
 
 namespace {

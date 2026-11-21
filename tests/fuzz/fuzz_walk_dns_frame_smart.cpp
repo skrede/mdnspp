@@ -1,13 +1,14 @@
 #include "mdnspp/endpoint.h"
+
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/dns_frame.h"
 
 #include <fuzzer/FuzzedDataProvider.h>
 
-#include <cstddef>
-#include <cstdint>
 #include <span>
 #include <vector>
+#include <cstddef>
+#include <cstdint>
 
 namespace {
 

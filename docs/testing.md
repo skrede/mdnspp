@@ -138,8 +138,23 @@ ctest --test-dir build -R dns_name_validation_test
 
 These tests exercise multi-party mDNS scenarios end-to-end using the
 deterministic in-process bus. All network I/O stays in-process. `inproc_harness`
-provides a shared `inproc_bus<test_clock>` and `inproc_executor<test_clock>` so
-tests can advance simulated time with `h.advance(ms)` instead of sleeping.
+(`<mdnspp/inproc/inproc_harness.h>`) provides a shared `inproc_bus<test_clock>`
+and `inproc_executor<test_clock>` so tests can advance simulated time with
+`h.advance(ms)` instead of sleeping:
+
+- The constructor resets `test_clock`.
+- `advance(d)` advances `test_clock` by `d`, then drains the executor to
+  quiescence (no posted work, no expired timer, no pending packet).
+- `make_server`, `make_monitor`, `make_querier` and `make_observer` construct the
+  `basic_*` peer on `inproc_test_policy` with the shared executor, forwarding the
+  given options.
+- `advance_to_live(server, opts)` advances `opts.probe_initial_delay_max` (so the
+  first probe fires whatever the random initial delay), three
+  `opts.probe_interval` steps (probes 2 and 3 and the conflict window after
+  probe 3), and `opts.announce_count - 1` `opts.announce_interval` steps; with the
+  default `service_options` that is 2000 ms. Pass the server's `service_options`
+  when they are not the defaults. The probe steps assume three probes and do
+  not follow `opts.probe_count`.
 
 Beyond the ten core scenarios below, dedicated suites cover legacy unicast
 responses (`inproc_legacy_unicast/`, using

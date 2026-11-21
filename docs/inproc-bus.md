@@ -7,7 +7,7 @@ within the same process.
 
 This guide covers production use of `inproc_policy` (steady_clock, real-time
 execution with `run()`). For test-clock usage inside Catch2 tests, see
-`inproc_harness` in `lib/mdnspp-inproc/include/mdnspp/inproc/inproc_harness.h`.
+`inproc_harness` in [Test Landscape](testing.md#protocol-integration-tests-inproc).
 
 ## Architecture
 
@@ -63,11 +63,14 @@ than 5353 (RFC 6762 §6.7).
 
 ## Executor model
 
-`inproc_executor` drives all activity with a three-priority loop:
+`inproc_executor` drives all activity with a three-priority loop. Each
+`step()` does one unit of work, taken from the first of these sources that has
+any:
 
-1. Posted callbacks (`post()` queue) — processed first.
-2. Expired timers — checked against `Clock::now()`.
-3. Packet delivery — one packet dequeued per `step()` call.
+1. Posted callbacks (`post()` queue) — one callback, in posting order.
+2. Expired timers — the first registered timer whose expiry has passed against
+   `Clock::now()` fires.
+3. Packet delivery — one packet dequeued from the bus.
 
 `step()` returns `true` if any work was done. `drain()` calls `step()` until
 the system reaches quiescence (no posted work, no expired timers, no pending

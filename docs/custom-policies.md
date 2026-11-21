@@ -65,15 +65,6 @@ usage examples and the `post()` threading model.
 #### The policy_like concept
 
 ```cpp
-// policy_like<P>: the unified policy concept.
-// A policy bundles an executor type with a socket type and timer type,
-// both constructible from the executor (matching ASIO convention).
-//
-// Semantic requirements (not expressible in the concept):
-//   - P::post(ex, fn) must be callable from any thread; the peers use it to
-//     marshal stop()/update_* requests onto the executor.
-//   - Work posted via P::post runs on the executor, serialized with socket
-//     receive handlers and timer wait handlers.
 template <typename P>
 concept policy_like = requires
     {
@@ -95,24 +86,24 @@ concept policy_like = requires
     };
 ```
 
-All four socket constructor forms are required to support both throwing and
-non-throwing construction, with and without explicit socket options. The
-socket-options constraints use `policy_socket_options_t<P>`: when the policy
-declares a `socket_options_type` derived from `socket_options`, that type is
-required; otherwise the base `socket_options` is.
+A policy bundles an executor type with a socket type and a timer type, both
+constructible from the executor (the Asio convention). All four socket
+constructor forms are required to support both throwing and non-throwing
+construction, with and without explicit socket options. The socket-options
+constraints use `policy_socket_options_t<P>`: when the policy declares a
+`socket_options_type` derived from `socket_options`, that type is required;
+otherwise the base `socket_options` is.
+
+Two requirements cannot be expressed in the concept:
+
+- `P::post(ex, fn)` must be callable from any thread; the peers use it to
+  marshal `stop()` and `update_*` requests onto the executor.
+- Work posted through `P::post` runs on the executor, serialized with the socket
+  receive handlers and the timer wait handlers.
 
 #### socket_like concept
 
 ```cpp
-// socket_like<S>: satisfied by any type that provides the mDNS socket interface.
-// The receive handler is invoked with the error code first (asio convention);
-// on error the metadata is empty and the data span is empty.
-//
-// Semantic requirements (not expressible in the concept):
-//   - Receive handlers fire on the policy executor; the library never locks
-//     around handler invocation and relies on executor serialization.
-//   - close() releases the pending receive handler; after close() no handler
-//     may fire.
 template <typename S>
 concept socket_like = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
 {
@@ -123,14 +114,31 @@ concept socket_like = requires(S &s, const endpoint &ep, std::span<const std::by
 };
 ```
 
-`async_receive` delivers packets by calling `handler(ec, metadata, data)` for
-each received datagram, error code first. On success `ec` is falsy,
-`metadata` is a `recv_metadata` containing the sender endpoint, the optional
-IP TTL, and the receiving interface index, and `data` spans the payload. On
-error `ec` carries the failure, the metadata is empty, and the data span is
-empty. The socket is expected to re-arm itself internally (i.e., it keeps
-listening until `close()` is called), and after `close()` no handler may
-fire.
+`async_receive` delivers one datagram by calling `handler(ec, metadata, data)`,
+error code first (the Asio convention). On success `ec` is falsy, `metadata` is a
+`recv_metadata` containing the sender endpoint, the optional IP TTL, and the
+receiving interface index, and `data` spans the payload. On error `ec` carries
+the failure, the metadata is empty, and the data span is empty.
+
+Receive is one-shot. The concept cannot express this contract, which every
+socket must honor:
+
+- One `async_receive` yields at most one completion. The pending handler is
+  cleared before it runs, so the handler may call `async_receive` again; the
+  socket is disarmed after a completion until it is re-armed. The library's
+  receive loop re-arms after every packet and after a transient error (with a
+  backoff from the second consecutive one); the socket does not re-arm itself.
+- After `close()` no handler fires, success or error, including completions the
+  OS or the executor had already queued. A handler passed to `async_receive`
+  after `close()` never fires.
+- The data span and the metadata are valid only during the handler call.
+- A buffering backend may complete inline from `async_receive` when a datagram
+  is already queued (the in-process socket does), so callers tolerate that
+  recursion.
+- Receive handlers fire on the policy executor; the library never locks around
+  handler invocation and relies on executor serialization.
+- `close()` and `async_receive()` are confined to the executor; no cross-thread
+  `close()` guarantee is made.
 
 The library calls only the `std::error_code&` overload of `send` and reports its
 failures through the peers' `on_error` handlers. The default, asio and encrypted
@@ -140,27 +148,23 @@ sockets implement the other overload as a thin wrapper that calls it and throws
 #### timer_like concept
 
 ```cpp
-// timer_like<T>: satisfied by any type that provides the mDNS timer interface.
-//
-// Semantic requirements (not expressible in the concept):
-//   - cancel() completes every pending async_wait with an error code equal to
-//     operation_aborted/operation_canceled; every stop() path waits on this.
-//   - expires_after() on a timer with a pending wait also cancels that wait.
-//   - Wait handlers fire on the policy executor.
 template <typename T>
 concept timer_like = requires(T &t, std::chrono::milliseconds dur, move_only_function<void(std::error_code)> handler)
 {
-    t.expires_after(dur); // no return constraint — asio::steady_timer returns std::size_t
+    t.expires_after(dur);
     { t.async_wait(std::move(handler)) } -> std::same_as<void>;
     { t.cancel() } -> std::same_as<void>;
 };
 ```
 
 `expires_after` sets the timer deadline (no return constraint; ASIO timers
-return `std::size_t`) and cancels a pending wait. `async_wait` calls
-`handler` when the timer fires or is cancelled. `cancel` completes every
-pending wait with `operation_aborted` / `operation_canceled` — every
-`stop()` path in the library waits on this guarantee.
+return `std::size_t`) and ends a pending wait without a success completion:
+the asio and in-process timers complete it with `operation_aborted` /
+`operation_canceled`, while `default_timer` and `mock_timer` drop the handler
+without calling it. The library handles both. `async_wait` calls `handler`
+when the timer fires or is cancelled. `cancel` completes every pending wait
+with `operation_aborted` / `operation_canceled` — every `stop()` path in the
+library waits on this guarantee. Wait handlers fire on the policy executor.
 
 ---
 
@@ -205,11 +209,11 @@ struct MySocket
 };
 ```
 
-Inside `async_receive`, schedule your custom I/O loop to call
-`handler({}, metadata, data)` for each incoming packet and re-arm
-automatically. Fatal receive failures are reported by invoking the handler
-with the error code and empty metadata/data; after `close()` no handler may
-fire.
+Inside `async_receive`, store the handler and have your I/O loop call
+`handler({}, metadata, data)` once, for the next incoming packet; the library
+calls `async_receive` again for the packet after it. Receive failures are
+reported by invoking the handler with the error code and empty metadata/data;
+after `close()` no handler may fire.
 
 **Step 3: Implement MyTimer**
 

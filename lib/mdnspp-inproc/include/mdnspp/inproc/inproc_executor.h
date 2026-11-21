@@ -39,7 +39,6 @@ public:
 
     bool step()
     {
-        // Priority 1: posted callbacks
         if(!m_posted.empty())
         {
             auto fn = std::move(m_posted.front());
@@ -48,7 +47,6 @@ public:
             return true;
         }
 
-        // Priority 2: expired timers
         const auto now = Clock::now();
         for(auto *t : m_timers)
         {
@@ -56,7 +54,6 @@ public:
                 return true;
         }
 
-        // Priority 3: packet delivery
         if(m_bus.deliver_one())
             return true;
 

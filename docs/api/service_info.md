@@ -32,7 +32,7 @@ struct service_info
     std::vector<std::string> subtypes;
     bool auto_address{false};
 
-    [[nodiscard]] static expected<service_info, mdns_error>
+    static expected<service_info, mdns_error>
     make(std::string_view instance, std::string_view service_type,
          uint16_t port, service_make_options opts = {});
 };
@@ -59,7 +59,7 @@ struct service_info
 ## make()
 
 ```cpp
-[[nodiscard]] static expected<service_info, mdns_error>
+static expected<service_info, mdns_error>
 make(std::string_view instance, std::string_view service_type,
      uint16_t port, service_make_options opts = {});
 ```

@@ -44,6 +44,8 @@ Guides and API reference for the mdnspp C++20 mDNS/DNS-SD library.
 ### Core Types
 
 - [resolved_service](api/resolved_service.md) -- Aggregated service result from discovery or monitoring
+- [records](api/records.md) -- Parsed record structs, mdns_record_variant, record_type(), service_txt
+- [dns_name](api/dns_name.md) -- Canonical DNS name: escaping, validation, case-insensitive comparison
 
 ### Observers and Queriers
 

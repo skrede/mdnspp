@@ -136,7 +136,14 @@ prototyping.
 - Include: `#include <mdnspp/defaults.h>`
 - CMake target: `mdnspp::mdnspp`
 - Type aliases: `mdnspp::observer`, `mdnspp::querier`,
-  `mdnspp::service_discovery`, `mdnspp::service_server`
+  `mdnspp::service_discovery`, `mdnspp::service_server`,
+  `mdnspp::service_monitor`, `mdnspp::nic_monitor`, `mdnspp::nic_group<Peers...>`,
+  `mdnspp::dynamic_nic_group`, `mdnspp::nic_group_options` (each the `basic_*`
+  template on `default_policy`) and `mdnspp::context` (`default_context`)
+- Including `<mdnspp/defaults.h>` pulls in `default_policy` and its platform and
+  system socket headers. A translation unit that must stay free of them, such as
+  one written for `asio_policy` or a custom policy, includes the `basic_*.h`
+  headers directly.
 - Executor: `mdnspp::context` (wraps native sockets and a poll loop)
 
 > **Important:** `ctx.run()` blocks until `ctx.stop()` is called. Without a

@@ -25,7 +25,6 @@ namespace mdnspp {
 class asio_socket
 {
 public:
-    /// Executor of the underlying socket (asio convention).
     using executor_type = asio::ip::udp::socket::executor_type;
 
     using receive_handler = move_only_function<void(std::error_code, const mdnspp::recv_metadata &, std::span<std::byte>)>;

@@ -75,7 +75,7 @@ public:
         return true;
     }
 
-    [[nodiscard]] bool has_pending_packets() const noexcept
+    bool has_pending_packets() const noexcept
     {
         return !m_queue.empty();
     }

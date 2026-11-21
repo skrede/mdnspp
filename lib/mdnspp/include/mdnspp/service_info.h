@@ -17,22 +17,6 @@
 
 namespace mdnspp {
 
-// service_make_options — optional parameters for service_info::make().
-//
-//   hostname            — target hostname; a single label or a name ending in
-//                         ".local" (trailing dot optional); the ".local."
-//                         suffix is appended when missing. Unset: the OS
-//                         hostname (::gethostname), stripped of any domain
-//                         part, with ".local." appended.
-//   priority, weight    — SRV priority and weight (RFC 2782 semantics).
-//   address_ipv4/ipv6   — explicit addresses; each field left unset is
-//                         auto-detected at async_start (see
-//                         service_info::auto_address).
-//   advertise_addresses — false: no A/AAAA records are announced; both
-//                         address fields are left unset and auto-detection is
-//                         disabled.
-//   txt_records         — RFC 6763 TXT key/value pairs.
-//   subtypes            — DNS-SD subtype labels (RFC 6763 §7.1).
 struct service_make_options
 {
     std::optional<std::string> hostname{};
@@ -45,27 +29,6 @@ struct service_make_options
     std::vector<std::string> subtypes{};
 };
 
-// service_info — public vocabulary type describing an mDNS service to announce.
-//
-// Passed to service_server<P> to specify what the server will respond to
-// and what data it will include in DNS responses (RFC 6762 / RFC 6763).
-//
-// Field naming follows RFC 6763 terminology:
-//   service_name  — fully-qualified service instance name, e.g. "MyApp._http._tcp.local."
-//   service_type  — service type (PTR owner), e.g. "_http._tcp.local."
-//   hostname      — target hostname for SRV/A/AAAA records, e.g. "myhost.local."
-//   port          — TCP/UDP port the service listens on
-//   priority      — SRV priority (lower = more preferred)
-//   weight        — SRV weight (for load balancing among equal-priority targets)
-//   address_ipv4  — optional IPv4 address string, e.g. "192.168.1.10"
-//   address_ipv6  — optional IPv6 address string, e.g. "fe80::1"
-//   txt_records   — RFC 6763 TXT key/value pairs (key-only entries have no value)
-//   subtypes      — DNS-SD subtype labels, e.g. {"_printer"}
-//   auto_address  — set by make(): the server fills the unset address fields
-//                   at async_start (and on update_service_info) with addresses
-//                   of the announcing interface (RFC 6762 §6.2). Aggregate
-//                   initialization leaves it false, so an aggregate-built
-//                   service_info keeps the omit-when-unset semantics.
 struct service_info
 {
     dns_name service_name; // e.g. "MyApp._http._tcp.local."
@@ -76,27 +39,11 @@ struct service_info
     uint16_t weight{0};
     std::optional<std::string> address_ipv4; // e.g. "192.168.1.10"
     std::optional<std::string> address_ipv6; // e.g. "fe80::1"
-    std::vector<service_txt> txt_records;    // RFC 6763 key/value or key-only entries
-    std::vector<std::string> subtypes;      // e.g. {"_printer"} for subtype enumeration
-    bool auto_address{false};               // set by make(); see the struct comment
+    std::vector<service_txt> txt_records;
+    std::vector<std::string> subtypes;
+    bool auto_address{false};
 
-    // Builds a validated service_info from an unescaped instance label and a
-    // service type.
-    //
-    //   instance     — unescaped UTF-8 instance label; '.' and '\' are escaped
-    //                  per RFC 1035 §5.1 ("Dr. Smith" stays one label).
-    //   service_type — "_http._tcp" or "_http._tcp.local."; ".local." is
-    //                  appended when the input carries no domain (trailing dot
-    //                  optional in all forms).
-    //   port         — the port the service listens on; 0 is rejected with
-    //                  mdns_error::invalid_argument.
-    //
-    // Errors: mdns_error::invalid_name for a structurally invalid service
-    // type (parse_service_type_checked), an instance label or hostname that
-    // fails dns_name::parse() (empty label, label over 63 octets, name over
-    // 255 octets), or an unusable OS hostname; mdns_error::invalid_argument
-    // for port == 0.
-    [[nodiscard]] static expected<service_info, mdns_error>
+    static expected<service_info, mdns_error>
     make(std::string_view instance, std::string_view service_type,
          uint16_t port, service_make_options opts = {});
 };

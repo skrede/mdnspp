@@ -1,10 +1,6 @@
 #ifndef HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_POLICY_H
 #define HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_POLICY_H
 
-// default_policy — traits struct bundling default_context + default_socket + default_timer.
-// Satisfies policy_like<P>: executor_type, socket_type, timer_type all present with
-// the required constructors (throwing and error_code overloads).
-
 #include "mdnspp/default/default_timer.h"
 #include "mdnspp/default/default_socket.h"
 #include "mdnspp/default/default_context.h"

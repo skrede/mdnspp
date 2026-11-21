@@ -44,12 +44,12 @@ struct socket_options
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `interface_address` | `std::string` | `""` (empty) | Address of the NIC to bind, in the family of `multicast_group.address` (see below). Empty string means `INADDR_ANY` (all interfaces). |
+| `interface_address` | `std::string` | `""` (empty) | Address of the NIC to bind, in the family of `multicast_group.address` (see below). With all three binding fields unset or empty the socket binds to all interfaces (`INADDR_ANY` / `in6addr_any`). |
 | `interface_name` | `std::optional<std::string>` | `std::nullopt` | OS interface name of the NIC to bind (e.g. `"eth0"`, `"en0"`). Resolved at socket open via `enumerate_interfaces()`. |
 | `interface_index` | `std::optional<uint32_t>` | `std::nullopt` | OS interface index of the NIC to bind. Resolved at socket open via `enumerate_interfaces()`. |
 | `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. Change this to isolate mDNS traffic to a custom namespace. |
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets are looped back to the sending host. Enabled by default so that services and clients on the same machine can communicate. |
-| `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | Multicast time-to-live. When `socket_options` is used, defaults to 255 per RFC 6762 Section 11. `std::nullopt` leaves the OS default. |
+| `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | Multicast TTL (IPv4) or hop limit (IPv6) of sent packets. `std::nullopt`: the native and Asio sockets send with 255, as RFC 6762 Section 11 requires, not with the OS default. |
 
 ### Interface selection precedence and address family
 
@@ -207,8 +207,8 @@ mdnspp::socket_options opts{.interface_address = it->ipv4_address};
 
 ### Setting TTL for RFC 6762 compliance
 
-RFC 6762 Section 11 requires a multicast TTL of 255 for mDNS. When
-`socket_options` is used, the library defaults to 255. You can also set it
+RFC 6762 Section 11 requires a multicast TTL of 255 for mDNS. With
+`multicast_ttl` unset, the library sends with 255. You can also set it
 explicitly:
 
 ```cpp

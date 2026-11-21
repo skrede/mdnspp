@@ -155,7 +155,6 @@ inline void configure(asio::ip::udp::socket &socket, const socket_options &opts,
     const asio::ip::address group = asio::ip::make_address(opts.multicast_group.address, ec);
     if(ec)
         return;
-    // precedence index > name > address; an unknown index or name fails with invalid_argument
     const std::string iface_address = resolve_socket_interface_address(opts, group.is_v6(), ec);
     if(!ec)
         open_and_join(socket, opts, group, iface_address, ec);

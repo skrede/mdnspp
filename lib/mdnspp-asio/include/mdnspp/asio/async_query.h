@@ -29,14 +29,6 @@ struct query_initiation : peer_initiation<basic_querier<P>>
 
 }
 
-/// Issue a one-shot mDNS query for (`name`, `qtype`) on `q`.
-///
-/// Completion signature: void(std::error_code, std::vector<mdns_record_variant>).
-/// Completes with std::error_code{} and the accumulated records at the
-/// silence timeout, or with std::errc::operation_canceled and the partial
-/// results when q.stop() ends the query early. Honors the completion
-/// handler's associated cancellation slot: a requested cancellation calls
-/// q.stop().
 template <policy_like P,
     asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>
     CompletionToken>

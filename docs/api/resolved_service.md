@@ -26,7 +26,7 @@ struct resolved_service {
 
 | Field | Type | Source Record | Description |
 |-------|------|---------------|-------------|
-| `instance_name` | `dns_name` | PTR | Fully-qualified service instance name (e.g. `"myapp._http._tcp.local."`). `dns_name` is a strong type that enforces lowercase FQDN with trailing dot; use `.str()` to obtain a `std::string`. |
+| `instance_name` | `dns_name` | PTR | Fully-qualified service instance name (e.g. `"myapp._http._tcp.local."`). [`dns_name`](dns_name.md) holds the escaped FQDN with a trailing dot in its original case and compares ASCII case-insensitively; use `.str()` to obtain a `std::string`. |
 | `hostname` | `dns_name` | SRV | Target hostname (e.g. `"myhost.local."`). |
 | `port` | `uint16_t` | SRV | TCP/UDP port the service listens on |
 | `txt_entries` | `std::vector<service_txt>` | TXT | Key/value metadata pairs |

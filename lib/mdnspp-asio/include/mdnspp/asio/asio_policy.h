@@ -10,12 +10,6 @@
 
 namespace mdnspp {
 
-// asio_policy: production policy backed by asio::io_context.
-//
-// executor_type is asio::io_context & — a reference type used only as a
-// constructor argument forwarded to asio_socket and asio_timer. Neither type
-// stores the reference; they store the executor internally (matching ASIO
-// convention: asio::ip::tcp::socket takes io_context & but stores executor).
 struct asio_policy
 {
     using executor_type = asio::io_context&;

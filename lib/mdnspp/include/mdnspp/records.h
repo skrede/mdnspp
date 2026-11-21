@@ -66,7 +66,7 @@ struct record_a
     uint32_t length{0};
     std::string sender_address;
     bool cache_flush{false};
-    std::string address_string; // "192.168.1.1" — no sockaddr_in
+    std::string address_string; // "192.168.1.1"
 
     bool operator==(const record_a &) const = default;
 };
@@ -81,7 +81,7 @@ struct record_aaaa
     uint32_t length{0};
     std::string sender_address;
     bool cache_flush{false};
-    std::string address_string; // "fe80::1" — no sockaddr_in6
+    std::string address_string; // "fe80::1"
 
     bool operator==(const record_aaaa &) const = default;
 };
@@ -109,8 +109,7 @@ using mdns_record_variant = std::variant<
     record_txt
 >;
 
-/// dns_type tag of the alternative currently held by the variant.
-[[nodiscard]] inline dns_type record_type(const mdns_record_variant &rec)
+inline dns_type record_type(const mdns_record_variant &rec)
 {
     return std::visit([](const auto &r) { return std::remove_cvref_t<decltype(r)>::rtype; }, rec);
 }

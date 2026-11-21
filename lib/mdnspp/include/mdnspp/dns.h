@@ -1,10 +1,6 @@
 #ifndef HPP_GUARD_MDNSPP_DNS_H
 #define HPP_GUARD_MDNSPP_DNS_H
 
-// dns.h — Public include for DNS vocabulary types.
-// Re-exports dns_type, dns_class, and to_string overloads from detail/dns_enums.h,
-// and adds stream operators for ergonomic use in logging and diagnostics.
-
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_enums.h"
 

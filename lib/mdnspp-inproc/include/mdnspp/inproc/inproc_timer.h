@@ -76,8 +76,8 @@ public:
         return true;
     }
 
-    [[nodiscard]] bool has_pending() const noexcept { return m_handler != nullptr; }
-    [[nodiscard]] typename Clock::time_point expiry() const noexcept { return m_expiry; }
+    bool has_pending() const noexcept { return m_handler != nullptr; }
+    typename Clock::time_point expiry() const noexcept { return m_expiry; }
 
 private:
     inproc_executor<Clock> *m_exec;

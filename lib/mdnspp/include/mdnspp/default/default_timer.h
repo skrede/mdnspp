@@ -1,10 +1,8 @@
 #ifndef HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_TIMER_H
 #define HPP_GUARD_MDNSPP_DEFAULT_DEFAULT_TIMER_H
 
-// default_timer — deadline-based timer satisfying timer_like, backed by default_context.
-// Include this header (not default_context.h directly) to get the full implementation,
-// as it provides the out-of-line definitions of default_context::compute_next_timeout_ms
-// and default_context::fire_expired_timers that dereference default_timer*.
+// Holds the out-of-line definitions of default_context::compute_next_timeout_ms and fire_expired_timers, which
+// dereference default_timer; include this header rather than default_context.h alone.
 
 #include "mdnspp/default/default_context.h"
 
@@ -45,23 +43,20 @@ public:
     default_timer(default_timer &&) = delete;
     default_timer &operator=(default_timer &&) = delete;
 
-    /// Set (or reset) the deadline. Silently drops any pending handler WITHOUT
-    /// calling it — matching mock_timer semantics required by recv_loop.
+    // Drops a pending handler without calling it, as mock_timer does; the asio and inproc timers complete it with
+    // operation_canceled instead.
     void expires_after(std::chrono::milliseconds dur)
     {
-        m_pending_handler = nullptr; // DROP — do not call
+        m_pending_handler = nullptr;
         m_deadline = std::chrono::steady_clock::now() + dur;
         m_ctx.register_timer(this);
     }
 
-    /// Register the completion handler. Fired by default_context when the deadline passes.
     void async_wait(detail::move_only_function<void(std::error_code)> handler)
     {
         m_pending_handler = std::move(handler);
     }
 
-    /// Cancel the pending handler, firing it with operation_canceled.
-    /// No-op if no handler is pending.
     void cancel()
     {
         if(m_pending_handler)
@@ -72,11 +67,6 @@ public:
         m_ctx.deregister_timer(this);
     }
 
-    // -----------------------------------------------------------------------
-    // Internal interface — called by default_context
-    // -----------------------------------------------------------------------
-
-    /// Fire the pending handler with success if the deadline has passed.
     void fire_if_expired()
     {
         if(m_pending_handler && std::chrono::steady_clock::now() >= m_deadline)

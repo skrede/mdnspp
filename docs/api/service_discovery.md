@@ -215,7 +215,7 @@ const timer_type&  delay_timer() const noexcept;
 ```cpp
 struct service_type_info
 {
-    std::string service_type; // full: "_http._tcp.local"
+    std::string service_type; // "_http._tcp.local", without a trailing dot
     std::string type_name;    // "_http"
     std::string protocol;     // "_tcp"
     std::string domain;       // "local"
@@ -230,7 +230,7 @@ Defined in `<mdnspp/service_type.h>` (in namespace `mdnspp`), included transitiv
 service_type_info parse_service_type(std::string_view name);
 ```
 
-Free function in namespace `mdnspp`. Decomposes a DNS-SD service type name (e.g. `"_http._tcp.local."`) into its constituent parts: type name, protocol, and domain. Strips trailing dots before parsing.
+Free function in namespace `mdnspp`. Decomposes a DNS-SD service type name (e.g. `"_http._tcp.local."`) into its constituent parts: type name, protocol, and domain. Strips one trailing dot before parsing; `service_type` holds the name without it. Lenient: missing labels yield empty fields, and a name without a dot fills only `service_type`. Use `parse_service_type_checked` when the input must be a structurally complete service type.
 
 ```cpp
 auto info = mdnspp::parse_service_type("_http._tcp.local.");

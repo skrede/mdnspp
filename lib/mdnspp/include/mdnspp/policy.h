@@ -26,8 +26,6 @@ struct always_false : std::false_type
 {
 };
 
-// Resolves the socket options type of a policy: P::socket_options_type when P
-// declares one derived from socket_options, plain socket_options otherwise.
 template <typename P>
 struct policy_socket_options
 {
@@ -50,8 +48,6 @@ inline constexpr std::size_t max_udp_payload = 9000;
 template <typename P>
 using policy_socket_options_t = typename detail::policy_socket_options<P>::type;
 
-/// Metadata carried with each received packet.
-/// Passed to the socket handler and forwarded through recv_loop to packet handlers.
 struct recv_metadata
 {
     endpoint sender;
@@ -59,24 +55,8 @@ struct recv_metadata
     uint32_t recv_ifindex{0};
 };
 
-// socket_like<S>: satisfied by any type that provides the mDNS socket interface.
-// The receive handler is invoked with the error code first (asio convention);
-// on error the metadata is empty and the data span is empty.
-//
-// One-shot receive contract (not expressible in the concept):
-//   - One async_receive yields at most one completion. The slot is cleared
-//     before the handler runs, so the handler may call async_receive again;
-//     the socket is disarmed after a completion until it is re-armed.
-//   - After close() no handler fires, success or error, including completions
-//     the OS or the executor had already queued. A handler registered by
-//     async_receive after close() never fires.
-//   - The data span and the metadata are valid only during the handler call.
-//   - Buffering backends may complete inline from async_receive when a
-//     datagram is already queued, so callers tolerate that recursion.
-//   - Receive handlers fire on the policy executor; the library never locks
-//     around handler invocation and relies on executor serialization.
-//   - close() and async_receive() are executor-confined; no cross-thread
-//     close guarantee is made.
+// Receive is one-shot, which the concept cannot express: each async_receive yields at most one completion, and no
+// handler fires after close().
 template <typename S>
 concept socket_like = requires(S &s, const endpoint &ep, std::span<const std::byte> send_data, std::error_code &ec, move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
 {
@@ -86,30 +66,19 @@ concept socket_like = requires(S &s, const endpoint &ep, std::span<const std::by
     { s.close() } -> std::same_as<void>;
 };
 
-// timer_like<T>: satisfied by any type that provides the mDNS timer interface.
-//
-// Semantic requirements (not expressible in the concept):
-//   - cancel() completes every pending async_wait with an error code equal to
-//     operation_aborted/operation_canceled; every stop() path waits on this.
-//   - expires_after() on a timer with a pending wait also cancels that wait.
-//   - Wait handlers fire on the policy executor.
+// Not expressible in the concept: cancel() completes every pending wait with an error, and every stop() path
+// waits on that completion.
 template <typename T>
 concept timer_like = requires(T &t, std::chrono::milliseconds dur, move_only_function<void(std::error_code)> handler)
 {
-    t.expires_after(dur); // no return constraint — asio::steady_timer returns std::size_t
+    // No return constraint: asio::steady_timer returns std::size_t.
+    t.expires_after(dur);
     { t.async_wait(std::move(handler)) } -> std::same_as<void>;
     { t.cancel() } -> std::same_as<void>;
 };
 
-// policy_like<P>: the unified policy concept.
-// A policy bundles an executor type with a socket type and timer type,
-// both constructible from the executor (matching ASIO convention).
-//
-// Semantic requirements (not expressible in the concept):
-//   - P::post(ex, fn) must be callable from any thread; the peers use it to
-//     marshal stop()/update_* requests onto the executor.
-//   - Work posted via P::post runs on the executor, serialized with socket
-//     receive handlers and timer wait handlers.
+// Not expressible in the concept: P::post must be callable from any thread, and the work it posts runs on the
+// executor, serialized with the socket and timer handlers.
 template <typename P>
 concept policy_like = requires
     {

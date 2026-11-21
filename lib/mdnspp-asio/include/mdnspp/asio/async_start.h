@@ -45,17 +45,8 @@ struct run_state
         mdnspp::dispatch_completion(std::move(handler), std::move(work), ec);
     }
 
-    // Derived from basic_service_server: on the one-shot misuse
-    // paths (double start: operation_in_progress; start after
-    // stop(): invalid_argument) async_start posts on_ready and
-    // returns without storing the handlers, so on_done can never
-    // fire -- the token must complete here. abort_startup also
-    // delivers invalid_argument through on_ready (unencodable
-    // name) but follows it with on_done; the completed flag lets
-    // this on_ready win and drops the subsequent on_done. All
-    // other on_ready outcomes ({}: live, operation_canceled:
-    // stop() before live, mdns_error::probe_conflict) are
-    // followed by on_done, which completes the token.
+    // On the misuse paths (double start, start after stop()) on_done never fires, so the token completes here. An
+    // unencodable name also reports invalid_argument here; the completed flag then drops the on_done that follows.
     void ready(std::error_code ec)
     {
         if(ec == std::errc::operation_in_progress

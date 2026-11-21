@@ -49,14 +49,6 @@ struct browse_initiation : peer_initiation<basic_service_discovery<P>>
 
 }
 
-/// Issue a one-shot PTR discovery for `service_type` on `sd`.
-///
-/// Completion signature: void(std::error_code, std::vector<mdns_record_variant>).
-/// Completes with std::error_code{} and the accumulated records at the
-/// silence timeout, or with std::errc::operation_canceled and the partial
-/// results when sd.stop() ends the discovery early. Honors the completion
-/// handler's associated cancellation slot: a requested cancellation calls
-/// sd.stop().
 template <policy_like P, asio::completion_token_for<void(std::error_code, std::vector<mdns_record_variant>)>CompletionToken>
 auto async_discover(basic_service_discovery<P> &sd, std::string_view service_type,
                     CompletionToken &&token, response_mode mode = response_mode::multicast)
@@ -67,15 +59,6 @@ auto async_discover(basic_service_discovery<P> &sd, std::string_view service_typ
         detail::discover_initiation<P>{{sd}}, token, std::string(service_type), mode);
 }
 
-/// Issue a one-shot browse (PTR + SRV/TXT/A/AAAA aggregation) for
-/// `service_type` on `sd`.
-///
-/// Completion signature: void(std::error_code, std::vector<resolved_service>).
-/// Completes with std::error_code{} and the aggregated services at the
-/// silence timeout, or with std::errc::operation_canceled and the partial
-/// aggregation when sd.stop() ends the browse early. Honors the completion
-/// handler's associated cancellation slot: a requested cancellation calls
-/// sd.stop().
 template <policy_like P, asio::completion_token_for<void(std::error_code, std::vector<resolved_service>)>CompletionToken>
 auto async_browse(basic_service_discovery<P> &sd, std::string_view service_type,
                   CompletionToken &&token, response_mode mode = response_mode::multicast)

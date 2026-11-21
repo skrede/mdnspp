@@ -123,9 +123,9 @@ ctest --test-dir build -R dns_name_test
 
 ## Protocol integration tests (inproc)
 
-**Location:** `tests/unit/inproc_bus_*.cpp` and `tests/unit/inproc_rfc/`
-(compiled with the unit test suite; targets `inproc_bus_*_test` and
-`inproc_rfc_*_test`)
+**Location:** `tests/unit/inproc_bus_*.cpp`, `tests/unit/inproc_rfc/` and
+`tests/unit/inproc_legacy_unicast/` (compiled with the unit test suite; targets
+`inproc_bus_*_test`, `inproc_rfc_*_test` and `inproc_legacy_unicast_*_test`)
 **Framework:** Catch2
 **Policy:** `inproc_test_policy` (test_clock via `inproc_harness`)
 
@@ -135,7 +135,7 @@ provides a shared `inproc_bus<test_clock>` and `inproc_executor<test_clock>` so
 tests can advance simulated time with `h.advance(ms)` instead of sleeping.
 
 Beyond the ten core scenarios below, dedicated suites cover legacy unicast
-responses (`inproc_bus_legacy_unicast_test.cpp`, using
+responses (`inproc_legacy_unicast/`, using
 `inproc_socket_options::port_override` to simulate a non-5353 source port),
 per-record-type TTLs (`inproc_bus_per_type_ttl_test.cpp`), receive-side TTL
 enforcement (`inproc_bus_recv_ttl_test.cpp`), TC continuation delays

@@ -77,7 +77,7 @@ struct nic_monitor_options {
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `poll_interval` | `std::chrono::milliseconds` | 5 s | Interval between interface enumeration polls when no native backend is active. |
+| `poll_interval` | `std::chrono::milliseconds` | 5 s | Interval between interface enumeration polls when no native backend is active. A change is seen at the next poll, so polling detects changes up to one `poll_interval` late. |
 | `enumerator` | `move_only_function<std::vector<network_interface>(std::error_code &)>` | `{}` (use `enumerate_interfaces()`) | Optional replacement for `enumerate_interfaces()`. When set, the native backends are bypassed and the monitor polls this callable every `poll_interval`. Intended for tests and for supplying a curated interface universe. |
 
 On Linux, macOS, and Windows the native backend is used and `poll_interval` polling is

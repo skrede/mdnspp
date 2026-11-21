@@ -110,8 +110,8 @@ One-shot operations (`querier`, `service_discovery`) hold no record cache
 when their single query is built, so their queries carry an empty Answer
 section — they never suppress any responder.
 
-The maximum number of known-answer records included per query is
-configurable via `mdns_options::max_known_answers` (default: 0, unlimited).
+The known-answer list is not capped: `mdns_options::max_known_answers` is not
+read by the library.
 
 ### Relationship to duplicate answer suppression
 
@@ -130,7 +130,7 @@ See [duplicate-suppression.md](duplicate-suppression.md) for section 7.4.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `suppress_known_answers` | `bool` | `true` | Enable server-side known-answer suppression. |
-| `max_known_answers` | `std::size_t` | `0` (unlimited) | Maximum known-answer records per outgoing query. |
+| `max_known_answers` | `std::size_t` | `0` | Not read by the library; the known-answer list is not capped. |
 
 `suppress_known_answers` is part of `service_options`; `max_known_answers` is
 part of `mdns_options`. See the respective API pages for the full struct reference.
@@ -138,6 +138,6 @@ part of `mdns_options`. See the respective API pages for the full struct referen
 ## See Also
 
 - [service_options](../api/service_options.md)
-- [mdns-options](../mdns-options.md) — `max_known_answers` tunable
+- [mdns-options](../mdns-options.md) — `max_query_payload` and the other query tunables
 - [Traffic Reduction](traffic-reduction.md) — other mechanisms that reduce network load
 - [Duplicate Answer Suppression](duplicate-suppression.md) — section 7.4 complement

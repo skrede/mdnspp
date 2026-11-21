@@ -44,7 +44,7 @@ are implemented and which remain pending.
 | 6 | TXT record key-value pairs | `[x]` | [txt-records.md](txt-records.md) |
 | 7.1 | Subtype queries | `[x]` | [dns-sd.md](dns-sd.md) |
 | 9 | Service type enumeration | `[x]` | [dns-sd.md](dns-sd.md) |
-| — | Configurable per-record TTL | `[x]` | [mdns_options](../api/mdns_options.md)::record_ttl; [service_options](../api/service_options.md) per-type TTLs (ptr_ttl, srv_ttl, txt_ttl, a_ttl, aaaa_ttl) |
+| — | Configurable per-record TTL | `[x]` | [service_options](../api/service_options.md) per-type TTLs (ptr_ttl, srv_ttl, txt_ttl, a_ttl, aaaa_ttl) |
 
 ## See Also
 

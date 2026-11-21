@@ -10,6 +10,8 @@
 
 `response_delay_min` sets the lower bound of the random delay inserted before a multicast response is sent (RFC 6762 §6). When a response is scheduled, a delay uniformly drawn from `[response_delay_min, response_delay_max]` is added to avoid simultaneous replies from multiple responders receiving the same query. No response is sent immediately upon query receipt — the RFC mandates a randomised wait.
 
+The same range has a second use (RFC 6762 §5.2): the querier and service discovery wait a delay drawn from it before sending their multicast (QM) query, and the service monitor waits one before the first PTR query of each watched type; the backoff starts after that query.
+
 ## Why
 
 The 20 ms default is the RFC minimum and provides a meaningful spread even on fast links. Reasons to adjust:

@@ -144,19 +144,20 @@ uses a mutex-guarded `shared_ptr` swap internally.
 
 ### Query scheduling
 
-In `discover` mode the monitor sends an initial PTR query for each watched
-type immediately, then re-queries on an exponentially increasing schedule per
-RFC 6762 section 5.2:
+In `discover` mode the first PTR query for each watched type waits a random
+delay drawn from [`mdns_options::response_delay_min`, `response_delay_max`]
+(20 to 120 ms by default). The monitor then re-queries on an exponentially
+increasing schedule per RFC 6762 section 5.2:
 
 - First re-query at `mdns_options::initial_interval` (default 1 s)
 - Each subsequent interval doubles (multiplier 2.0) until capped at
   `mdns_options::max_interval` (default 1 hour)
 
 In `discover` and `ttl_refresh` modes, each newly-resolved service's SRV
-record TTL is tracked. Refresh queries (SRV + A + AAAA) are sent at 80%,
-85%, 90%, and 95% of the wire TTL to prevent expiry. Thresholds and jitter
-are controlled by `mdns_options::ttl_refresh_thresholds` and
-`mdns_options::refresh_jitter_pct`.
+record TTL is tracked. Refresh queries are sent at 80%, 85%, 90%, and 95% of
+the wire TTL to prevent expiry; each one asks for SRV, TXT, A and AAAA in a
+single message. Thresholds and jitter are controlled by
+`mdns_options::ttl_refresh_thresholds` and `mdns_options::refresh_jitter_pct`.
 
 See [mDNS Options](mdns-options.md) for tuning details.
 
@@ -167,9 +168,9 @@ Two methods bypass backoff entirely and send queries immediately:
 `query_service_type(service_type)` sends a PTR query for the given type.
 Available in all modes; in `discover` mode it supplements automatic queries.
 
-`query_service_instance(instance_name)` sends SRV + A + AAAA queries for a
-specific instance. Useful when you know the instance name but want fresher
-records before the next scheduled refresh.
+`query_service_instance(instance_name)` sends one query for a specific
+instance asking for SRV, TXT, A and AAAA in one message. Useful when you know
+the instance name but want fresher records before the next scheduled refresh.
 
 Both are thread-safe (post to executor thread).
 

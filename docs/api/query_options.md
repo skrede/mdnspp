@@ -42,13 +42,14 @@ struct query_options
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `on_record` | `record_callback` | `{}` (none) | Called once per parsed DNS record with the sender endpoint and record variant. |
+| `on_record` | `record_callback` | `{}` (none) | Called once per parsed DNS record of each relevant response, one that carries at least one record named after the query (the queried name, or the service type for service discovery), with the sender endpoint and record variant. Records of other responses are not reported. |
 | `on_error` | `error_handler` | `{}` (none) | Called on fire-and-forget send failures and fatal receive errors with the error code and a context string (e.g. `"query send"`, `"receive"`). |
 | `silence_timeout` | `std::chrono::milliseconds` | `3000` (3 seconds) | How long to wait after the last relevant packet before completing. Must be positive: the peer constructors validate the options and reject a non-positive timeout with `std::errc::invalid_argument`. |
 
 ### on_record
 
-Called each time a DNS record is parsed from an incoming mDNS response. The
+Called each time a DNS record is parsed from a relevant mDNS response (see the
+table above). The
 callback receives the sender endpoint (address and port) and the record
 variant. Use this for streaming output &mdash; printing or processing records as
 they arrive rather than waiting for the final result set.

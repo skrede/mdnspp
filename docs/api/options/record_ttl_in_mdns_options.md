@@ -4,29 +4,19 @@
 |-----------|-------|
 | **Type** | `std::chrono::seconds` |
 | **Default** | `4500` s (75 minutes) |
-| **One-liner** | Default TTL for outgoing DNS resource records |
+| **One-liner** | Validated by the service server but not applied to outgoing records |
 
 ## What
 
-`record_ttl` sets the Time-to-Live placed in the DNS wire format of all outgoing resource records (RFC 6762 §10). Receivers cache these records for their TTL duration. The TTL is also the basis for the `ttl_refresh_thresholds` schedule: refresh queries fire at fractions of this value.
+`record_ttl` is named after the TTL of outgoing resource records (RFC 6762 §10), but no outgoing record uses it. The service server takes every TTL it sends from the per-type fields of `service_options`: `ptr_ttl`, `srv_ttl`, `txt_ttl`, `a_ttl`, `aaaa_ttl`, and `fallback_record_ttl` for NSEC, meta-query PTR and subtype PTR records (see [service_options](../service_options.md)). Refresh queries are scheduled from the wire TTL of each received record, not from this field.
 
-`record_ttl` is applied to all outgoing records unless overridden by a per-type TTL in `service_options` (`service_options::ptr_ttl`, `srv_ttl`, `txt_ttl`, `a_ttl`, `aaaa_ttl`). When a per-type override is set in `service_options`, that value takes precedence for that record type; `record_ttl` acts as the fallback for types without a specific override.
-
-The RFC default is 4500 seconds (75 minutes) for records that do not contain a host name.
+The service server constructors still validate it: a non-positive `record_ttl` fails construction with `std::errc::invalid_argument`. The other peers ignore it.
 
 ## Why
 
-The default of 4500 seconds reflects the RFC recommendation for stable, long-lived services. Reasons to reduce it:
-
-- **Ephemeral services** — a service that may disappear within minutes (e.g., a short-lived development server) should use a lower TTL (e.g., 120–300 seconds) so peers evict the record quickly after the service disappears, rather than holding a stale entry for over an hour.
-- **Fast-changing infrastructure** — in a dynamic deployment where IP addresses or ports change frequently, a lower TTL shortens the window during which stale records are cached.
-
-Reasons to increase it:
-
-- **Ultra-stable infrastructure** — for services that never change and where minimising query traffic matters more than freshness, a higher TTL (e.g., 7200 seconds) reduces refresh query frequency.
+There is no reason to change it. To change the TTLs a server sends, set the per-type fields of `service_options`.
 
 ## Danger
 
-Reducing this shortens the period during which resolvers cache the record, increasing query traffic. A TTL of 30 seconds means every receiver re-queries within 30 seconds of last seeing the record, dramatically raising steady-state mDNS traffic on busy networks.
-
-Increasing it delays propagation of address changes. If a service moves to a new IP and the old TTL is 7200 seconds, peers that missed the goodbye packet will attempt connections to the old address for up to two hours before their cache expires.
+- Changing `record_ttl` does not change any TTL on the wire; a configuration that relies on it keeps the per-type defaults (4500 s for PTR and TXT, 120 s for SRV, A and AAAA).
+- A zero or negative value makes the service server constructors fail.

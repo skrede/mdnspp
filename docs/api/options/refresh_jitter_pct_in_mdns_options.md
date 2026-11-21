@@ -25,4 +25,4 @@ Reasons to adjust:
 
 Setting to `0.0` disables jitter entirely. On a network with many simultaneous queriers watching the same records — common in fleet scenarios where all nodes monitor the same service type — removing jitter causes every node to fire refresh queries at the exact same time. This can produce a synchronized query burst at each TTL threshold, potentially saturating the multicast channel and causing cascading response floods.
 
-Values above `0.1` (10%) push fire points far enough past their threshold that records may expire before a response is received if the network is slow to respond. For a record with `record_ttl = 4500s` and a threshold of `0.95`, jitter of 10% adds up to 450 seconds — potentially pushing the query past the TTL boundary.
+Values above `0.1` (10%) push fire points far enough past their threshold that records may expire before a response is received if the network is slow to respond. For a record with a 4500 s wire TTL and a threshold of `0.95`, jitter of 10% adds up to 450 seconds — potentially pushing the query past the TTL boundary.

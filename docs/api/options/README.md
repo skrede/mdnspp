@@ -35,8 +35,8 @@ Five options account for most real-world configuration; everything else in this 
 | [refresh_jitter_pct](refresh_jitter_pct_in_mdns_options.md) | Maximum jitter applied to refresh query fire points |
 | [tc_wait_min](tc_wait_min_in_mdns_options.md) | Minimum wait for accumulating TC continuation packets |
 | [tc_wait_max](tc_wait_max_in_mdns_options.md) | Maximum wait for accumulating TC continuation packets |
-| [max_known_answers](max_known_answers_in_mdns_options.md) | Maximum known-answer records in outgoing queries |
-| [record_ttl](record_ttl_in_mdns_options.md) | Default TTL for outgoing DNS resource records |
+| [max_known_answers](max_known_answers_in_mdns_options.md) | Not read by the library; known-answer lists are not capped |
+| [record_ttl](record_ttl_in_mdns_options.md) | Validated by the service server, not applied to outgoing records |
 | [response_delay_min](response_delay_min_in_mdns_options.md) | Minimum random delay before sending a multicast response |
 | [response_delay_max](response_delay_max_in_mdns_options.md) | Maximum random delay before sending a multicast response |
 | [legacy_unicast_ttl](legacy_unicast_ttl_in_mdns_options.md) | TTL cap for records sent in legacy unicast responses |
@@ -72,7 +72,7 @@ Five options account for most real-world configuration; everything else in this 
 | [txt_ttl](txt_ttl_in_service_options.md) | TTL for TXT records in outgoing responses |
 | [a_ttl](a_ttl_in_service_options.md) | TTL for A (IPv4 address) records in outgoing responses |
 | [aaaa_ttl](aaaa_ttl_in_service_options.md) | TTL for AAAA (IPv6 address) records in outgoing responses |
-| [fallback_record_ttl](fallback_record_ttl_in_service_options.md) | Fallback TTL for NSEC and meta-query PTR records |
+| [fallback_record_ttl](fallback_record_ttl_in_service_options.md) | Fallback TTL for NSEC, meta-query PTR and subtype PTR records |
 | [probe_authority_ttl](probe_authority_ttl_in_service_options.md) | TTL for records in probe authority sections (tiebreaking) |
 | [probe_defer_delay](probe_defer_delay_in_service_options.md) | Delay before re-probing after losing a simultaneous-probe tiebreak |
 

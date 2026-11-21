@@ -13,6 +13,7 @@
 
 - NSEC (Next Secure) records used in negative responses
 - PTR records sent in response to meta-queries (`_services._dns-sd._udp.local.`)
+- subtype PTR records sent in response to subtype queries
 
 RFC 6762 §10 recommends 4500 seconds for records that do not contain a host name. The default matches the RFC.
 

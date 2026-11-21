@@ -193,16 +193,13 @@ resulting in unnecessary re-announcements. Increasing `tc_wait_max` beyond
 | | |
 |---|---|
 | **Type** | `std::size_t` |
-| **Default** | 0 (unlimited) |
+| **Default** | 0 |
 | **RFC section** | 6762 §7.1 |
 
-When non-zero, limits the number of known-answer records included in outgoing
-multi-question queries to this many records (highest remaining TTL first). Zero
-means include all qualifying records.
-
-Risk of changing: Setting a low cap may cause responders to re-announce records
-the querier already holds, increasing traffic. Only useful to limit packet size
-on networks with unusually small MTUs.
+Not read by the library. The service monitor's PTR queries, the only queries
+that carry known answers, include every qualifying record whatever this field
+holds; a list too large for `max_query_payload` is split into TC continuation
+packets.
 
 ---
 

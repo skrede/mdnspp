@@ -99,7 +99,7 @@ Idempotent. Cancels all timers and the receive loop. Fires `on_done` with `std::
 void watch(std::string_view service_type);
 ```
 
-Registers interest in a service type (e.g., `"_http._tcp.local."`). In `discover` mode the monitor immediately begins issuing PTR queries for this type with exponential backoff. Re-watching a previously unwatched type starts fresh: backoff resets and `on_found` fires again on rediscovery.
+Registers interest in a service type (e.g., `"_http._tcp.local."`). In `discover` mode the monitor issues PTR queries for this type with exponential backoff, beginning after the random first-query delay described below. Re-watching a previously unwatched type starts fresh: backoff resets and `on_found` fires again on rediscovery.
 
 The first PTR query of a watch waits a random delay in [`mdns_options::response_delay_min`, `response_delay_max`] (20--120 ms by default, RFC 6762 §5.2). The delay is measured from `async_start()` for a watch whose posted registration ran before it, otherwise from the moment the registration runs.
 

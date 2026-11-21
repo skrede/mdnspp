@@ -7,12 +7,21 @@
 #include "mdnspp/socket_options.h"
 #include "mdnspp/monitor_options.h"
 
+#include <catch2/catch_test_macros.hpp>
+
 #include <chrono>
+#include <string>
 #include <vector>
 #include <cstddef>
 #include <utility>
 #include <string_view>
 #include <initializer_list>
+
+struct loss_log
+{
+    std::vector<std::string> names;
+    std::vector<mdnspp::loss_reason> reasons;
+};
 
 inline mdnspp::monitor_options mode_options(mdnspp::monitor_mode mode)
 {
@@ -28,10 +37,37 @@ inline mdnspp::mdns_options no_refresh_options()
     return opts;
 }
 
+inline mdnspp::monitor_options flag_found(bool &found)
+{
+    mdnspp::monitor_options opts;
+    opts.on_found = [&found](const mdnspp::resolved_service &) { found = true; };
+    return opts;
+}
+
+inline mdnspp::monitor_options loss_options(loss_log &log)
+{
+    mdnspp::monitor_options opts;
+    opts.on_found = [](const mdnspp::resolved_service &) {};
+    opts.on_lost = [&log](const mdnspp::resolved_service &svc, mdnspp::loss_reason reason)
+    {
+        log.names.push_back(svc.instance_name.str());
+        log.reasons.push_back(reason);
+    };
+    return opts;
+}
+
+inline void check_single_loss(const loss_log &log, std::string_view name, mdnspp::loss_reason reason)
+{
+    REQUIRE(log.names.size() == 1);
+    CHECK(log.names[0] == name);
+    REQUIRE(log.reasons.size() == 1);
+    CHECK(log.reasons[0] == reason);
+}
+
 struct monitor_fixture
 {
     // The clock is reset after construction because the monitor first reads it on watch or start.
-    monitor_fixture(mdnspp::monitor_options opts, mdnspp::mdns_options mdns_opts)
+    explicit monitor_fixture(mdnspp::monitor_options opts = {}, mdnspp::mdns_options mdns_opts = {})
         : ex{}
         , mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts)}
     {
@@ -78,6 +114,13 @@ struct monitor_fixture
     {
         test_clock::advance(delay);
         fire();
+    }
+
+    void tick_expired_after(std::chrono::milliseconds delay)
+    {
+        test_clock::advance(delay);
+        mon.tick_expired_for_test();
+        ex.drain_posted();
     }
 
     mock_executor ex;

@@ -55,6 +55,7 @@ make_subdir_test(dns_wire_known_answer_test dns_wire/known_answer.cpp)
 
 make_subdir_test(monitor_lifecycle_test     monitor/lifecycle.cpp)
 make_subdir_test(monitor_resolution_test    monitor/resolution.cpp)
+make_subdir_test(monitor_filtering_test     monitor/filtering.cpp)
 make_subdir_test(monitor_events_test        monitor/events.cpp)
 make_subdir_test(monitor_scheduler_test     monitor/scheduler.cpp)
 make_subdir_test(monitor_refresh_test       monitor/refresh.cpp)

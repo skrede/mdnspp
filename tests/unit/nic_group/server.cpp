@@ -15,21 +15,11 @@
 
 namespace {
 
-// The servers share one bus and one hostname. RFC 6762 section 8.1 treats any response carrying a probed name as a
-// conflict, so a 0 ms first-probe delay drawn by only one server would announce into the other's probing window and
-// abort it. Pinning the delay keeps every server in lock step.
-server_peer_options lockstep_server(std::string name)
-{
-    server_peer_options opts{.info = make_service(std::move(name))};
-    opts.service.probe_initial_delay_max = 0ms;
-    return opts;
-}
-
 std::vector<server_peer_options> server_opts(std::vector<std::string> names)
 {
     std::vector<server_peer_options> opts;
     for(auto &name : names)
-        opts.push_back(lockstep_server(std::move(name)));
+        opts.push_back(server_peer_options{.info = make_service(std::move(name))});
     return opts;
 }
 

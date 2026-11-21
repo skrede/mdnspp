@@ -135,6 +135,8 @@ Calling `start()` on a running group is a no-op (instances are not duplicated). 
 `watch()` calls made before `start()` are accumulated and applied to every
 `basic_service_monitor` instance created.
 
+**Thread-safety:** May be called from any thread.
+
 #### stop
 
 ```cpp
@@ -143,6 +145,8 @@ void stop();
 
 Stops all per-interface peer instances and the internal NIC monitor. Idempotent.
 The destructor calls `stop()` automatically for RAII safety.
+
+**Thread-safety:** May be called from any thread.
 
 #### services
 
@@ -155,7 +159,9 @@ Returns a snapshot of all currently-known services across all monitored interfac
 Only available when `basic_service_monitor` is in the `Peers` pack.
 
 Behavior is controlled by `nic_group_options::dedup`:
-- `dedup_mode::merged` (default): one entry per `instance_name`.
+- `dedup_mode::merged` (default): one entry per `instance_name`. Names are compared
+  ASCII case-insensitively (RFC 6762 section 16), so case variants of one instance seen on
+  different interfaces merge into one entry; the last-seen entry wins for `source_interface`.
 - `dedup_mode::per_interface`: all services from all interfaces.
 
 **Thread-safety:** May be called from any thread.

@@ -36,6 +36,15 @@ private:
     }
 };
 
+// Trivial assignment for std::expected is LWG 4026, a post-C++23 defect fix that libc++ does not implement yet.
+template <typename Family>
+inline constexpr bool assignment_propagates_triviality =
+#if defined(_LIBCPP_VERSION)
+    std::is_same_v<Family, own_family>;
+#else
+    true;
+#endif
+
 }
 
 TEMPLATE_LIST_TEST_CASE("a throwing unexpected assignment keeps the value", "[expected_surface]", expected_families)
@@ -91,8 +100,11 @@ TEMPLATE_LIST_TEST_CASE("assignment is constrained and stays trivial where both 
     CHECK_FALSE(std::is_move_assignable_v<of_t<TestType, fragile, fragile>>);
     CHECK(std::is_copy_assignable_v<of_t<TestType, int, fragile>>);
     CHECK(std::is_nothrow_move_assignable_v<of_t<TestType, int, int>>);
-    CHECK(std::is_trivially_copy_assignable_v<of_t<TestType, int, int>>);
-    CHECK(std::is_trivially_move_assignable_v<of_t<TestType, void, int>>);
+    if constexpr(assignment_propagates_triviality<TestType>)
+    {
+        CHECK(std::is_trivially_copy_assignable_v<of_t<TestType, int, int>>);
+        CHECK(std::is_trivially_move_assignable_v<of_t<TestType, void, int>>);
+    }
 }
 
 #endif

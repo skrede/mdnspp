@@ -271,6 +271,20 @@ two additional configurations on Clang:
   `stop()` / `update_service_info` races meaningfully. The allocation-counting
   encrypt_no_alloc_test is not built in this configuration.
 
+## Standard library
+
+The Linux jobs build against libstdc++; the macOS job builds against libc++
+(AppleClang). On Linux, the suite can also run against libc++ with clang and
+`-stdlib=libc++`. A system Catch2 is built against libstdc++ and cannot link
+into a libc++ test binary, so this configuration enables
+`MDNSPP_CMAKE_FETCH_DEPS`, which builds Catch2, asio and libsodium from the
+sources pinned in the CMake files:
+
+    CC=clang CXX=clang++ cmake -S . -B build-libcxx -DCMAKE_BUILD_TYPE=Debug \
+      -DCMAKE_CXX_FLAGS="-stdlib=libc++" -DMDNSPP_BUILD_TESTS=ON \
+      -DMDNSPP_BUILD_EXAMPLES=ON -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+      -DMDNSPP_ENABLE_ENCRYPT=ON -DMDNSPP_CMAKE_FETCH_DEPS=ON
+
 ## See also
 
 - [inproc-bus.md](inproc-bus.md) — inproc_policy production guide (steady_clock, `run()`)

@@ -29,11 +29,13 @@ Unit tests cover:
 - Record and service description construction (records_test,
   service_info_test, service_info_make_test, mdns_util_test)
 - State machine correctness: probe/announce/live/stopped lifecycle, query
-  matching and response construction (server_probe_announce_test,
-  server_query_match_test; tests/unit/server/: server_*_test)
+  matching and response construction (server_probe_announce_test;
+  tests/unit/server_detail/: server_query_match_test,
+  server_question_section_test; tests/unit/server/: server_*_test)
 - Cache operations: TTL expiry, refresh, goodbye processing (tests/unit/cache/:
   cache_*_test; ttl_refresh_test)
-- Known-answer suppression logic (server_known_answer_test)
+- Known-answer suppression and record ownership (tests/unit/server_detail/:
+  server_known_answer_test, server_record_match_test)
 - TC accumulation across multi-packet responses (tc_accumulator_test)
 - Query deduplication and response aggregation (server_response_aggregation_test,
   duplicate_answer_suppression_test)

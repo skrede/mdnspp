@@ -6,6 +6,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <string>
 #include <vector>
 #include <utility>
 #include <system_error>
@@ -48,7 +49,7 @@ TEST_CASE("nic_group rejects callback-bearing per-NIC observer options", "[nic_g
     }
 }
 
-TEST_CASE("nic_group start is a no-op while running and restarts after stop", "[nic_group]")
+TEST_CASE("nic_group start is a no-op while running and stop is idempotent", "[nic_group]")
 {
     group_fixture f;
     found_list found;
@@ -62,10 +63,29 @@ TEST_CASE("nic_group start is a no-op while running and restarts after stop", "[
     REQUIRE(found.size() == 2); // one event per NIC, not four
     grp.stop();
     grp.stop(); // idempotent
+}
+
+TEST_CASE("nic_group restart starts with fresh caches and a monitor on every NIC", "[nic_group]")
+{
+    group_fixture f;
+    found_list found;
+    monitor_group grp{f.executor, f.recording_grp_opts(found), one_monitor()};
+    f.start_watching(grp);
+    {
+        announced_service first{f};
+        REQUIRE(sorted_interfaces(found) == std::vector<std::string>{"nic1", "nic2"});
+        grp.stop();
+    }
 
     found.clear();
     grp.start();
     f.executor.drain();
     REQUIRE(grp.services().empty());
+
+    announced_service svc{f};
+    REQUIRE(sorted_interfaces(found) == std::vector<std::string>{"nic1", "nic2"});
+    const std::vector<resolved_service> services = grp.services();
+    REQUIRE(services.size() == 1);
+    REQUIRE(services[0].instance_name.str() == "svc._test._tcp.local.");
     grp.stop();
 }

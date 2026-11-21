@@ -46,6 +46,25 @@ inline void skip_unless_lowered(const fd_limit_guard &guard)
         SKIP("the descriptor limit could not be lowered");
 }
 
+#if defined(__SANITIZE_ADDRESS__)
+inline constexpr bool address_sanitized = true;
+#elif defined(__has_feature)
+#  if __has_feature(address_sanitizer)
+inline constexpr bool address_sanitized = true;
+#  else
+inline constexpr bool address_sanitized = false;
+#  endif
+#else
+inline constexpr bool address_sanitized = false;
+#endif
+
+// The lowered limit also makes the sanitizer's own pipe() fail, which ends the process in the middle of the case.
+inline void skip_under_address_sanitizer()
+{
+    if constexpr(address_sanitized)
+        SKIP("AddressSanitizer needs spare descriptors for its own pipe() under the lowered limit");
+}
+
 }
 
 #endif

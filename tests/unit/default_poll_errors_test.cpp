@@ -22,6 +22,7 @@ using mdnspp::test_support::udp_socket;
 using mdnspp::test_support::bind_loopback;
 using mdnspp::test_support::fd_limit_guard;
 using mdnspp::test_support::skip_unless_lowered;
+using mdnspp::test_support::skip_under_address_sanitizer;
 
 namespace {
 
@@ -116,6 +117,7 @@ TEST_CASE("a pending socket error completes the armed handler", "[default_contex
 
 TEST_CASE("a failing poll is reported by both overloads of run and poll_one", "[default_context]")
 {
+    skip_under_address_sanitizer();
     mdnspp::default_context ctx;
     udp_socket sock;
     completion done{};

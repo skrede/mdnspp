@@ -39,11 +39,13 @@ Unit tests cover:
 - Known-answer suppression and record ownership (tests/unit/server_detail/:
   server_known_answer_test, server_record_match_test)
 - TC accumulation across multi-packet responses (tc_accumulator_test)
-- Query deduplication and response aggregation (server_response_aggregation_test,
-  duplicate_answer_suppression_test)
+- Query deduplication and response aggregation (tests/unit/server_detail/:
+  server_response_aggregation_test, server_answer_plan_test,
+  server_answer_response_test; duplicate_answer_suppression_test)
 - Service monitor and discovery aggregation (tests/unit/monitor/:
   monitor_*_test; tests/unit/discovery/: discovery_*_test;
-  service_aggregation_test)
+  tests/unit/service_aggregation/: service_aggregation_test,
+  service_aggregation_correlation_test)
 - Observer raw packet delivery (tests/unit/observer/: observer_*_test)
 - Querier query construction and result delivery (tests/unit/querier/:
   querier_*_test; query_backoff_test)

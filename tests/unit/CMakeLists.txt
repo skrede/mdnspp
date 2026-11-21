@@ -104,6 +104,8 @@ make_subdir_test(querier_lifecycle_test     querier/lifecycle.cpp)
 make_subdir_test(querier_suppression_test   querier/suppression.cpp)
 
 make_subdir_test(parse_records_test         parse/records.cpp)
+make_subdir_test(parse_names_test           parse/names.cpp)
+make_subdir_test(parse_txt_test             parse/txt.cpp)
 make_subdir_test(parse_dispatch_test        parse/dispatch.cpp)
 
 make_subdir_test(cache_basic_test           cache/basic.cpp)
@@ -111,6 +113,7 @@ make_subdir_test(cache_flush_test           cache/flush.cpp)
 
 make_subdir_test(observer_delivery_test     observer/delivery.cpp)
 make_subdir_test(observer_lifecycle_test    observer/lifecycle.cpp)
+make_subdir_test(observer_construction_test observer/construction.cpp)
 
 make_inproc_test(inproc_conformance_test)
 make_inproc_test(inproc_conformance_bus_test)

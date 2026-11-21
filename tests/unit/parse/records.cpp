@@ -1,24 +1,12 @@
 #include "helpers.h"
 
-// ---------------------------------------------------------------------------
-// parse::a
-// ---------------------------------------------------------------------------
-
 SCENARIO("parse::a parses a valid A record", "[parse][a]")
 {
     GIVEN("an owner name followed by a 4-byte IPv4 address representing 192.168.1.1")
     {
-        auto buf = bytes({0x04, 'h', 'o', 's', 't', 0x00, // owner "host."
-                          0xC0, 0xA8, 0x01, 0x01});
-
-        record_metadata meta;
-        meta.sender        = {"0.0.0.0", 0};
-        meta.ttl           = 120;
-        meta.rclass        = dns_class::in;
-        meta.rtype         = dns_type::a; // A
-        meta.name_offset   = 0;
-        meta.record_offset = 6;
-        meta.record_length = 4;
+        auto buf = host_a_record(0xC0, 0xA8, 0x01, 0x01);
+        record_metadata meta{.sender = {"0.0.0.0", 0}, .ttl = 120, .rclass = dns_class::in, .rtype = dns_type::a,
+                             .name_offset = 0, .record_offset = 6, .record_length = 4};
 
         WHEN("parse::a is called")
         {
@@ -42,13 +30,8 @@ SCENARIO("parse::a parses loopback address 127.0.0.1", "[parse][a]")
 {
     GIVEN("an owner name followed by a 4-byte buffer representing 127.0.0.1")
     {
-        auto buf = bytes({0x04, 'h', 'o', 's', 't', 0x00,
-                          0x7F, 0x00, 0x00, 0x01});
-
-        record_metadata meta;
-        meta.rtype         = dns_type::a;
-        meta.record_offset = 6;
-        meta.record_length = 4;
+        auto buf = host_a_record(0x7F, 0x00, 0x00, 0x01);
+        auto meta = record_meta(dns_type::a, 6, 4);
 
         WHEN("parse::a is called")
         {
@@ -69,11 +52,7 @@ SCENARIO("parse::a returns error on truncated input", "[parse][a][malformed]")
     GIVEN("a buffer shorter than record_length (2 bytes for a 4-byte record)")
     {
         auto buf = bytes({0xC0, 0xA8});
-
-        record_metadata meta;
-        meta.record_offset = 0;
-        meta.record_length = 4;
-        meta.rtype         = dns_type::a;
+        auto meta = record_meta(dns_type::a, 0, 4);
 
         WHEN("parse::a is called")
         {
@@ -93,11 +72,7 @@ SCENARIO("parse::a returns error when record_length is not 4", "[parse][a][malfo
     GIVEN("a buffer with record_length=5 (invalid for A record)")
     {
         auto buf = bytes({0xC0, 0xA8, 0x01, 0x01, 0x00});
-
-        record_metadata meta;
-        meta.record_offset = 0;
-        meta.record_length = 5;
-        meta.rtype         = dns_type::a;
+        auto meta = record_meta(dns_type::a, 0, 5);
 
         WHEN("parse::a is called")
         {
@@ -112,26 +87,12 @@ SCENARIO("parse::a returns error when record_length is not 4", "[parse][a][malfo
     }
 }
 
-// ---------------------------------------------------------------------------
-// parse::aaaa
-// ---------------------------------------------------------------------------
-
 SCENARIO("parse::aaaa parses a valid AAAA record", "[parse][aaaa]")
 {
     GIVEN("a 16-byte IPv6 address buffer representing ::1")
     {
-        // ::1 in network byte order = 15 zeroes + 0x01
-        auto buf = bytes({
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x01
-        });
-
-        record_metadata meta;
-        meta.rtype         = dns_type::aaaa; // AAAA
-        meta.record_offset = 0;
-        meta.record_length = 16;
+        auto buf = ipv6_loopback();
+        auto meta = record_meta(dns_type::aaaa, 0, 16);
 
         WHEN("parse::aaaa is called")
         {
@@ -152,15 +113,9 @@ SCENARIO("parse::aaaa returns error on truncated input", "[parse][aaaa][malforme
 {
     GIVEN("a buffer of only 8 bytes for a 16-byte AAAA record")
     {
-        auto buf = bytes({
-            0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00, 0x00, 0x00
-        });
-
-        record_metadata meta;
-        meta.record_offset = 0;
-        meta.record_length = 16;
-        meta.rtype         = dns_type::aaaa;
+        auto buf = bytes({0x00, 0x00, 0x00, 0x00,
+                          0x00, 0x00, 0x00, 0x00});
+        auto meta = record_meta(dns_type::aaaa, 0, 16);
 
         WHEN("parse::aaaa is called")
         {
@@ -180,11 +135,7 @@ SCENARIO("parse::aaaa returns error when record_length is not 16", "[parse][aaaa
     GIVEN("a buffer with record_length=4 (wrong for AAAA)")
     {
         auto buf = bytes({0x00, 0x00, 0x00, 0x01});
-
-        record_metadata meta;
-        meta.record_offset = 0;
-        meta.record_length = 4;
-        meta.rtype         = dns_type::aaaa;
+        auto meta = record_meta(dns_type::aaaa, 0, 4);
 
         WHEN("parse::aaaa is called")
         {
@@ -194,342 +145,6 @@ SCENARIO("parse::aaaa returns error when record_length is not 16", "[parse][aaaa
             {
                 REQUIRE_FALSE(result.has_value());
                 REQUIRE(result.error() == mdns_error::parse_error);
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// parse::ptr
-// ---------------------------------------------------------------------------
-
-SCENARIO("parse::ptr parses a valid PTR record", "[parse][ptr]")
-{
-    GIVEN("a DNS wire buffer with a PTR record pointing to _http._tcp.local.")
-    {
-        // DNS labels: 5 "_http" 4 "_tcp" 5 "local" 0
-        // We put the PTR target at the start of the buffer (record_offset = 0)
-        // and use name_offset = 0 so name extraction also reads from the start.
-        auto buf = bytes({
-            0x05, '_','h','t','t','p',
-            0x04, '_','t','c','p',
-            0x05, 'l','o','c','a','l',
-            0x00
-        });
-
-        record_metadata meta;
-        meta.rtype         = dns_type::ptr; // PTR
-        meta.name_offset   = 0;
-        meta.record_offset = 0;
-        meta.record_length = static_cast<size_t>(buf.size());
-
-        WHEN("parse::ptr is called")
-        {
-            auto result = parse::ptr(std::span<const std::byte>(buf), meta);
-
-            THEN("it returns record_ptr with non-empty ptr_name")
-            {
-                REQUIRE(result.has_value());
-                auto &r = std::get<record_ptr>(*result);
-                REQUIRE_FALSE(r.ptr_name.empty());
-                // The PTR name should contain "_http._tcp.local."
-                REQUIRE(r.ptr_name.find("_http") != dns_name::npos);
-            }
-        }
-    }
-}
-
-SCENARIO("parse::ptr returns error on truncated input", "[parse][ptr][malformed]")
-{
-    GIVEN("a buffer shorter than record_length")
-    {
-        auto buf = bytes({0x05, '_','h','t','t','p'});  // only 6 bytes
-
-        record_metadata meta;
-        meta.rtype         = dns_type::ptr;
-        meta.record_offset = 0;
-        meta.record_length = 20; // claims 20 bytes but buffer has only 6
-
-        WHEN("parse::ptr is called")
-        {
-            auto result = parse::ptr(std::span<const std::byte>(buf), meta);
-
-            THEN("it returns parse_error")
-            {
-                REQUIRE_FALSE(result.has_value());
-                REQUIRE(result.error() == mdns_error::parse_error);
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// parse::srv
-// ---------------------------------------------------------------------------
-
-SCENARIO("parse::srv parses a valid SRV record", "[parse][srv]")
-{
-    GIVEN("a DNS wire buffer with a SRV record (port 8080, priority 0, weight 0)")
-    {
-        // SRV format: priority(2) + weight(2) + port(2) + target-name
-        // port 8080 = 0x1F90
-        // target: "host.local." as DNS labels
-        auto buf = bytes({
-            0x00, 0x00,  // priority = 0
-            0x00, 0x00,  // weight = 0
-            0x1F, 0x90,  // port = 8080
-            0x04, 'h','o','s','t',
-            0x05, 'l','o','c','a','l',
-            0x00
-        });
-
-        record_metadata meta;
-        meta.rtype         = dns_type::srv; // SRV
-        meta.name_offset   = 0;
-        meta.record_offset = 0;
-        meta.record_length = static_cast<size_t>(buf.size());
-
-        WHEN("parse::srv is called")
-        {
-            auto result = parse::srv(std::span<const std::byte>(buf), meta);
-
-            THEN("it returns record_srv with correct port, priority, weight and srv_name")
-            {
-                REQUIRE(result.has_value());
-                auto &r = std::get<record_srv>(*result);
-                REQUIRE(r.port == 8080);
-                REQUIRE(r.priority == 0);
-                REQUIRE(r.weight == 0);
-                REQUIRE_FALSE(r.srv_name.empty());
-                REQUIRE(r.srv_name.find("host") != dns_name::npos);
-            }
-        }
-    }
-}
-
-SCENARIO("parse::srv returns error on truncated input", "[parse][srv][malformed]")
-{
-    GIVEN("a buffer with insufficient bytes for the claimed record_length")
-    {
-        auto buf = bytes({0x00, 0x00, 0x1F}); // only 3 bytes
-
-        record_metadata meta;
-        meta.rtype         = dns_type::srv;
-        meta.record_offset = 0;
-        meta.record_length = 20;
-
-        WHEN("parse::srv is called")
-        {
-            auto result = parse::srv(std::span<const std::byte>(buf), meta);
-
-            THEN("it returns parse_error")
-            {
-                REQUIRE_FALSE(result.has_value());
-                REQUIRE(result.error() == mdns_error::parse_error);
-            }
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// parse::txt
-// ---------------------------------------------------------------------------
-
-SCENARIO("parse::txt collects all key-value pairs from TXT wire format", "[parse][txt]")
-{
-    GIVEN("a TXT record with two entries: 'key=val' and 'flag'")
-    {
-        // DNS TXT format: [len][data] repeated; len = length of the string
-        // "key=val" = 7 bytes, "flag" = 4 bytes (key-only, no '=')
-        auto buf = bytes({
-            0x04, 'h','o','s','t', 0x00,         // owner "host."
-            0x07, 'k','e','y','=','v','a','l',   // "key=val" (length=7)
-            0x04, 'f','l','a','g'                // "flag" (length=4, key-only)
-        });
-
-        record_metadata meta;
-        meta.rtype         = dns_type::txt; // TXT
-        meta.name_offset   = 0;
-        meta.record_offset = 6;
-        meta.record_length = static_cast<size_t>(buf.size()) - 6;
-
-        WHEN("parse::txt is called")
-        {
-            auto result = parse::txt(std::span<const std::byte>(buf), meta);
-
-            THEN("entries vector has two items with correct key/value")
-            {
-                REQUIRE(result.has_value());
-                auto &r = std::get<record_txt>(*result);
-                REQUIRE(r.entries.size() == 2);
-                REQUIRE(r.entries[0].key == "key");
-                REQUIRE(r.entries[0].value.has_value());
-                REQUIRE(*r.entries[0].value == "val");
-                REQUIRE(r.entries[1].key == "flag");
-                REQUIRE_FALSE(r.entries[1].value.has_value());
-            }
-        }
-    }
-}
-
-SCENARIO("parse::txt handles empty TXT record gracefully", "[parse][txt]")
-{
-    GIVEN("a TXT record with zero length (empty)")
-    {
-        auto buf = bytes({0x04, 'h', 'o', 's', 't', 0x00});
-
-        record_metadata meta;
-        meta.rtype         = dns_type::txt;
-        meta.record_offset = 6;
-        meta.record_length = 0;
-
-        WHEN("parse::txt is called")
-        {
-            auto result = parse::txt(std::span<const std::byte>(buf), meta);
-
-            THEN("it returns record_txt with empty entries (not an error)")
-            {
-                REQUIRE(result.has_value());
-                auto &r = std::get<record_txt>(*result);
-                REQUIRE(r.entries.empty());
-            }
-        }
-    }
-}
-
-SCENARIO("parse::txt ignores zero-length TXT strings", "[parse][txt]")
-{
-    GIVEN("the canonical empty TXT record: a single zero-length string (RFC 6763 section 6.1)")
-    {
-        auto buf = bytes({
-            0x04, 'h', 'o', 's', 't', 0x00, // owner "host."
-            0x00                            // zero-length string
-        });
-
-        record_metadata meta;
-        meta.rtype         = dns_type::txt;
-        meta.record_offset = 6;
-        meta.record_length = 1;
-
-        WHEN("parse::txt is called")
-        {
-            auto result = parse::txt(std::span<const std::byte>(buf), meta);
-
-            THEN("no phantom entry is produced (RFC 6763 section 6.4)")
-            {
-                REQUIRE(result.has_value());
-                auto &r = std::get<record_txt>(*result);
-                REQUIRE(r.entries.empty());
-            }
-        }
-    }
-
-    GIVEN("a zero-length string between two valid entries")
-    {
-        auto buf = bytes({
-            0x04, 'h', 'o', 's', 't', 0x00, // owner "host."
-            0x03, 'a', '=', '1',            // "a=1"
-            0x00,                           // zero-length string
-            0x03, 'b', '=', '2'             // "b=2"
-        });
-
-        record_metadata meta;
-        meta.rtype         = dns_type::txt;
-        meta.record_offset = 6;
-        meta.record_length = static_cast<size_t>(buf.size()) - 6;
-
-        WHEN("parse::txt is called")
-        {
-            auto result = parse::txt(std::span<const std::byte>(buf), meta);
-
-            THEN("only the two non-empty entries are collected")
-            {
-                REQUIRE(result.has_value());
-                auto &r = std::get<record_txt>(*result);
-                REQUIRE(r.entries.size() == 2);
-                REQUIRE(r.entries[0].key == "a");
-                REQUIRE(r.entries[0].value == "1");
-                REQUIRE(r.entries[1].key == "b");
-                REQUIRE(r.entries[1].value == "2");
-            }
-        }
-    }
-}
-
-SCENARIO("parse::txt returns error on truncated input", "[parse][txt][malformed]")
-{
-    GIVEN("a buffer shorter than record_length")
-    {
-        auto buf = bytes({0x07, 'k','e','y'}); // only 4 bytes, claims 12
-
-        record_metadata meta;
-        meta.rtype         = dns_type::txt;
-        meta.record_offset = 0;
-        meta.record_length = 12;
-
-        WHEN("parse::txt is called")
-        {
-            auto result = parse::txt(std::span<const std::byte>(buf), meta);
-
-            THEN("it returns parse_error")
-            {
-                REQUIRE_FALSE(result.has_value());
-                REQUIRE(result.error() == mdns_error::parse_error);
-            }
-        }
-    }
-}
-
-SCENARIO("parse rejects records with a malformed owner name", "[parse][owner][malformed]")
-{
-    GIVEN("an A record whose owner name has an oversized label")
-    {
-        // Label length 0x7F exceeds the RFC 1035 63-octet limit
-        auto buf = bytes({0x7F, 'x', 0x00,
-                          0xC0, 0xA8, 0x01, 0x01});
-
-        record_metadata meta;
-        meta.rtype         = dns_type::a;
-        meta.name_offset   = 0;
-        meta.record_offset = 3;
-        meta.record_length = 4;
-
-        WHEN("parse::a is called")
-        {
-            auto result = parse::a(std::span<const std::byte>(buf), meta);
-
-            THEN("the record is rejected instead of receiving an empty owner name")
-            {
-                REQUIRE_FALSE(result.has_value());
-                REQUIRE(result.error() == mdns_error::parse_error);
-            }
-        }
-    }
-}
-
-SCENARIO("parse::ptr bounds rdata name reads to the record extent", "[parse][ptr][bounds]")
-{
-    GIVEN("a PTR record whose rdata name runs past record_length into trailing bytes")
-    {
-        // Owner "a." then rdata: label "bc" with NO terminating zero inside the
-        // record -- the terminator lies beyond record_offset + record_length.
-        auto buf = bytes({0x01, 'a', 0x00,    // owner
-                          0x02, 'b', 'c',     // rdata: label, unterminated
-                          0x00});             // terminator OUTSIDE the record
-
-        record_metadata meta;
-        meta.rtype         = dns_type::ptr;
-        meta.name_offset   = 0;
-        meta.record_offset = 3;
-        meta.record_length = 3; // excludes the trailing terminator
-
-        WHEN("parse::ptr is called")
-        {
-            auto result = parse::ptr(std::span<const std::byte>(buf), meta);
-
-            THEN("the read is bounded and the record rejected")
-            {
-                REQUIRE_FALSE(result.has_value());
             }
         }
     }

@@ -21,7 +21,8 @@ class datagram_dispatcher
 {
 public:
     explicit datagram_dispatcher(socket_registry &sockets)
-        : m_recv_meta(reserved_metadata())
+        : m_generation{0}
+        , m_recv_meta(reserved_metadata())
         , m_sockets{sockets}
         , m_ready{}
         , m_recv_buf{}
@@ -31,12 +32,16 @@ public:
     bool dispatch(const poll_set &poll)
     {
         poll.ready_sockets(m_ready);
-        for(const ready_socket &ready : m_ready)
-            deliver(ready);
-        return !m_ready.empty();
+        const bool any_ready = !m_ready.empty();
+        const uint64_t generation = ++m_generation;
+        // A handler that polls re-entrantly refills m_ready and services it, so this walk must not continue.
+        for(std::size_t i = 0; m_generation == generation && i < m_ready.size(); ++i)
+            deliver(m_ready[i]);
+        return any_ready;
     }
 
 private:
+    uint64_t m_generation;
     recv_metadata m_recv_meta;
     socket_registry &m_sockets;
     std::vector<ready_socket> m_ready;

@@ -6,7 +6,7 @@ TEST_CASE_METHOD(observer_fixture, "async_observe with callback fires when stop(
     bool handler_fired = false;
     obs->async_observe([&handler_fired](std::error_code) { handler_fired = true; });
 
-    run_and_stop_after(50ms);
+    run_then_stop();
 
     REQUIRE(handler_fired);
 }
@@ -17,7 +17,7 @@ TEST_CASE_METHOD(observer_fixture, "async_observe completion handler dispatched 
     bool handler_fired = false;
     obs->async_observe([&handler_fired](std::error_code) { handler_fired = true; });
 
-    run_and_stop_after(50ms);
+    run_then_stop();
 
     REQUIRE(handler_fired);
 }

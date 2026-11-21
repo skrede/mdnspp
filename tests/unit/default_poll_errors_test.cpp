@@ -1,11 +1,9 @@
 #include "mdnspp/default/default_timer.h"
 
 #include "support/fd_limit.h"
+#include "support/native_udp.h"
 
 #include <catch2/catch_test_macros.hpp>
-
-#include <fcntl.h>
-#include <unistd.h>
 
 #include <netinet/in.h>
 
@@ -19,6 +17,9 @@
 
 using namespace std::chrono_literals;
 using mdnspp::detail::native_socket_t;
+using mdnspp::test_support::loopback;
+using mdnspp::test_support::udp_socket;
+using mdnspp::test_support::bind_loopback;
 using mdnspp::test_support::fd_limit_guard;
 using mdnspp::test_support::skip_unless_lowered;
 
@@ -28,39 +29,6 @@ struct completion
 {
     int32_t calls;
     std::error_code ec;
-};
-
-class udp_socket
-{
-public:
-    udp_socket()
-        : m_fd{::socket(AF_INET, SOCK_DGRAM, 0)}
-    {
-        ::fcntl(m_fd, F_SETFL, ::fcntl(m_fd, F_GETFL) | O_NONBLOCK);
-    }
-
-    ~udp_socket()
-    {
-        if(m_fd >= 0)
-            ::close(m_fd);
-    }
-
-    udp_socket(const udp_socket &) = delete;
-    udp_socket &operator=(const udp_socket &) = delete;
-
-    native_socket_t fd() const
-    {
-        return m_fd;
-    }
-
-    void close_behind_registry()
-    {
-        ::close(m_fd);
-        m_fd = -1;
-    }
-
-private:
-    native_socket_t m_fd;
 };
 
 void arm(mdnspp::default_context &ctx, native_socket_t fd, completion &done)
@@ -94,23 +62,10 @@ TEST_CASE("a descriptor closed behind the registry completes its handler once wi
 
 namespace {
 
-sockaddr_in loopback(uint16_t port)
-{
-    sockaddr_in addr{};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    return addr;
-}
-
 uint16_t unused_port()
 {
-    udp_socket probe;
-    sockaddr_in addr = loopback(0);
-    socklen_t len = sizeof(addr);
-    ::bind(probe.fd(), reinterpret_cast<sockaddr *>(&addr), len);
-    ::getsockname(probe.fd(), reinterpret_cast<sockaddr *>(&addr), &len);
-    return ntohs(addr.sin_port);
+    const udp_socket probe;
+    return bind_loopback(probe.fd());
 }
 
 // Linux poll() fails with EINVAL once nfds exceeds the soft RLIMIT_NOFILE (poll(2)).

@@ -121,13 +121,15 @@ struct observer_fixture
         });
     }
 
-    void run_and_stop_after(std::chrono::milliseconds delay)
+    void run_then_stop()
     {
         std::thread io_thread([this] { io.run(); });
-        std::this_thread::sleep_for(delay);
+        const bool synced = mdnspp::test_support::round_trip([this](auto marker) { asio::post(io, std::move(marker)); },
+                                                             5s);
         obs->stop();
         io_thread.join();
         obs.reset();
+        REQUIRE(synced);
     }
 };
 

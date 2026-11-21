@@ -90,7 +90,7 @@ Completion semantics:
 - `on_ready` fires once with the startup outcome: `std::error_code{}` when the server reaches the live state; `mdns_error::probe_conflict` when conflict resolution fails permanently (the `on_conflict` callback returned `std::nullopt` or was not set); `std::errc::invalid_argument` when the service names cannot be encoded; `std::errc::operation_canceled` when `stop()` is called before the server is live.
 - `on_done` ALWAYS fires with `std::error_code{}` after teardown completes — both on `stop()` and on the permanent-probe-failure path. A program waiting for `on_done` therefore never hangs after a conflict dead-end.
 
-`async_start` is one-shot: a second call completes `on_ready` with `std::errc::operation_in_progress`; a call after `stop()` completes `on_ready` with `std::errc::invalid_argument`. The misuse completion is posted to the executor, never invoked inline on the caller thread. The running sequence is unaffected.
+`async_start` is one-shot: a second call completes `on_ready` with `std::errc::operation_in_progress`; a call after `stop()` completes `on_ready` with `std::errc::invalid_argument`. Misuse is detected through atomic flags only, so a misusing call is safe from any thread. The misuse completion is posted to the executor, never invoked inline on the caller thread. The running sequence is unaffected.
 
 ### stop
 
@@ -144,22 +144,36 @@ mdnspp::service_options opts{
 };
 ```
 
-The handler receives the error code and a context string identifying the failure site (e.g. `"probe send"`, `"goodbye send"`). Without a handler, send errors are silently ignored.
+The handler receives the error code and a context string identifying the failure site. Without a handler, send errors are silently ignored.
+
+| Context | Failure |
+|---------|---------|
+| `"probe send"` | sending a probe query |
+| `"announcement send"` | sending an announcement, meta-query announcement or subtype announcement |
+| `"response send"` | sending a multicast or QU unicast answer |
+| `"meta-query response send"`, `"subtype response send"` | answering a service type enumeration or subtype query |
+| `"legacy unicast response"` | answering a legacy unicast query (RFC 6762 section 6.7) |
+| `"goodbye send"` | sending the goodbye on `stop()` |
+| `"receive"` | the receive loop |
+| `"interface enumeration"` | enumerating interfaces to resolve `auto_address` fields; the addresses stay unresolved |
+| `"invalid IPv4 address: <address>"`, `"invalid IPv6 address: <address>"` | an address in `service_info` that cannot be encoded (`mdns_error::invalid_ipv4_address` / `invalid_ipv6_address`); checked before every announcement |
 
 ### Accessors
 
 ```cpp
 const socket_type& socket()     const noexcept;
       socket_type& socket()           noexcept;
-const timer_type&  timer()      const noexcept;  // response delay timer
-      timer_type&  timer()            noexcept;
-const timer_type&  tc_timer()   const noexcept;  // TC accumulation timer
-      timer_type&  tc_timer()         noexcept;
-const timer_type&  recv_timer() const noexcept;  // receive loop timer
-      timer_type&  recv_timer()       noexcept;
+const timer_type&  timer()       const noexcept;  // probe and announce schedule
+      timer_type&  timer()             noexcept;
+const timer_type&  delay_timer() const noexcept;  // delayed multicast responses
+      timer_type&  delay_timer()       noexcept;
+const timer_type&  tc_timer()    const noexcept;  // TC accumulation timer
+      timer_type&  tc_timer()          noexcept;
+const timer_type&  recv_timer()  const noexcept;  // receive loop timer
+      timer_type&  recv_timer()        noexcept;
 ```
 
-The server uses three timers: `timer()` for the RFC 6762 random response delay (20--120 ms for multicast) and the probe/announce schedule, `tc_timer()` for truncated-query known-answer accumulation, and `recv_timer()` for the internal receive loop.
+The server uses four timers: `timer()` for the probe and announce schedule (initial probe delay, probe and announce intervals, update announcements, the deferred re-probe), `delay_timer()` for the RFC 6762 section 6 random delay of multicast responses (20--120 ms), `tc_timer()` for truncated-query known-answer accumulation, and `recv_timer()` for the internal receive loop.
 
 ## Lifecycle
 

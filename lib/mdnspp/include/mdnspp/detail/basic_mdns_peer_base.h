@@ -16,12 +16,7 @@
 
 namespace mdnspp::detail {
 
-/// Validates the protocol tunables shared by all peers.
-///
-/// Returns std::errc::invalid_argument when a field combination would produce
-/// undefined behaviour (uniform_int_distribution with min > max) or violate
-/// RFC 6762 scheduling invariants (shrinking backoff, thresholds outside (0,1)).
-[[nodiscard]] inline std::error_code validate_mdns_options(const mdns_options &opts) noexcept
+inline std::error_code validate_mdns_options(const mdns_options &opts) noexcept
 {
     const auto invalid = std::make_error_code(std::errc::invalid_argument);
 
@@ -48,8 +43,6 @@ namespace mdnspp::detail {
     return {};
 }
 
-/// Throws std::system_error(ec) when ec is set -- throwing-constructor companion
-/// to the ec-reporting validation path.
 inline void throw_on_error(std::error_code ec)
 {
     if(ec)
@@ -113,8 +106,6 @@ protected:
         });
     }
 
-    /// Posts fn to the executor guarded by the alive sentinel -- used to
-    /// complete misuse (double-start) handlers without invoking them inline.
     template <typename F>
     void post_guarded(F &&fn)
     {
@@ -124,6 +115,26 @@ protected:
             if(!guard.lock()) return;
             f();
         });
+    }
+
+    std::error_code start_misuse(bool running) const noexcept
+    {
+        if(running)
+            return std::make_error_code(std::errc::operation_in_progress);
+        if(m_stopped.load(std::memory_order_acquire))
+            return std::make_error_code(std::errc::invalid_argument);
+        return {};
+    }
+
+    // Leaves the loop unstarted: the server starts it only after its first probe is scheduled.
+    void make_receive_loop(std::chrono::milliseconds silence_timeout,
+                           typename recv_loop<P>::packet_handler on_packet,
+                           move_only_function<void()> on_silence,
+                           typename recv_loop<P>::error_handler on_error)
+    {
+        m_loop = std::make_unique<recv_loop<P>>(m_socket, m_timer, silence_timeout, std::move(on_packet),
+                                                std::move(on_silence), m_mdns_opts.receive_ttl_minimum,
+                                                m_mdns_opts.unknown_ttl_policy, std::move(on_error));
     }
 
     const endpoint &multicast_endpoint() const noexcept { return m_multicast_ep; }

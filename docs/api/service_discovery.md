@@ -153,6 +153,10 @@ sd.async_discover_subtype("_http._tcp.local.", "_printer",
 ctx.run();
 ```
 
+### Completion
+
+When the silence timeout elapses, the receive loop and the pending first-query delay are stopped and the handler completes once with a default-constructed (success) `std::error_code`.
+
 ### stop
 
 ```cpp
@@ -163,7 +167,7 @@ Idempotent; posts teardown to the executor. The pending completion handler fires
 
 ### Error reporting
 
-Fire-and-forget send failures and fatal receive errors are reported through the `query_options::on_error` field (`error_handler`, `void(std::error_code, std::string_view)`). The context string identifies the failure site (e.g. `"query send"`, `"receive"`). Without a handler, these errors are silently ignored.
+Fire-and-forget send failures and fatal receive errors are reported through the `query_options::on_error` field (`error_handler`, `void(std::error_code, std::string_view)`). The context string identifies the failure site (`"query send"`, `"enumerate send"`, `"receive"`). Without a handler, these errors are silently ignored.
 
 ### results
 
@@ -171,7 +175,9 @@ Fire-and-forget send failures and fatal receive errors are reported through the 
 const std::vector<mdns_record_variant>& results() const noexcept;
 ```
 
-Returns accumulated raw records. Populated during either `async_discover` or `async_browse`.
+Returns accumulated raw records. Populated during either `async_discover` or `async_browse`. The buffer remains valid after completion; the completion handler receives a copy.
+
+Thread safety: the buffer is mutated on the executor thread while the operation is in flight. Read it only after completion or from the executor thread.
 
 ### services
 
@@ -179,7 +185,7 @@ Returns accumulated raw records. Populated during either `async_discover` or `as
 const std::vector<resolved_service>& services() const noexcept;
 ```
 
-Returns aggregated resolved services produced by `async_browse`. Empty until browse completes (either via silence timeout or `stop()`).
+Returns aggregated resolved services produced by `async_browse`. Empty until browse completes (either via silence timeout or `stop()`). Same thread-safety contract as `results()`.
 
 ### Accessors
 
@@ -188,7 +194,11 @@ const socket_type& socket() const noexcept;
       socket_type& socket()       noexcept;
 const timer_type&  timer()  const noexcept;
       timer_type&  timer()        noexcept;
+const timer_type&  delay_timer() const noexcept;
+      timer_type&  delay_timer()       noexcept;
 ```
+
+`timer()` drives the silence timeout of the receive loop; `delay_timer()` holds the random 20--120 ms delay before a multicast (QM) query is sent (RFC 6762 section 5.2).
 
 ## async_discover vs async_browse
 

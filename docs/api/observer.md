@@ -88,7 +88,7 @@ Completion semantics:
 void stop();
 ```
 
-Idempotent and callable from any thread (including from within the `record_callback`). Posts the teardown to the executor; the pending `on_done` fires with `std::errc::operation_canceled`. The destructor calls `stop()` automatically and completes a still-pending handler rather than dropping it.
+Idempotent and callable from any thread (including from within the `record_callback`). Posts the teardown to the executor; the pending `on_done` fires with `std::errc::operation_canceled`. The destructor calls `stop()` automatically and completes a still-pending handler rather than dropping it. `stop()` only flags the stop and posts the teardown, so it is safe inside a callback; destroying the observer from inside its own callbacks is not.
 
 ### Error reporting
 

@@ -86,6 +86,18 @@ mdnspp::querier q{ctx, query_opts, sock_opts, mdns_opts};
 mdnspp::observer obs{ctx, observer_opts, sock_opts, mdns_opts};
 ```
 
+## Validation
+
+The observer, querier, service discovery and service monitor constructors validate `mdns_options`: the throwing forms throw `std::system_error` and the non-throwing forms set `ec` to `std::errc::invalid_argument` when
+
+- `response_delay_min` is negative or greater than `response_delay_max`;
+- `tc_wait_min` is negative or greater than `tc_wait_max`;
+- `initial_interval` is not positive, or `max_interval` is less than `initial_interval`;
+- `backoff_multiplier` is less than `1.0`;
+- `refresh_jitter_pct` is negative;
+- `ka_suppression_fraction` or `tc_suppression_fraction` lies outside the open interval (0, 1);
+- any entry of `ttl_refresh_thresholds` lies outside the open interval (0, 1).
+
 ## Common Tuning Scenarios
 
 **Dense, fast-changing network (e.g. robotics middleware):** Reduce `max_interval` to seconds or minutes, but be aware this increases steady-state query traffic proportionally.

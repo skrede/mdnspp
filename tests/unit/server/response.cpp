@@ -1,6 +1,37 @@
-#include "helpers.h"
+#include "fixture.h"
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <vector>
+#include <cstddef>
+
+namespace {
+
+void ptr_response_sections(const std::vector<std::byte> &pkt)
+{
+    THEN("the DNS header has flags=0x8400 (response, authoritative)")
+    {
+        REQUIRE(pkt.size() >= 12);
+        REQUIRE(read_u16_be(pkt, 2) == 0x8400);
+    }
+
+    THEN("ancount >= 1 and arcount >= 1 (answer + additional)")
+    {
+        REQUIRE(pkt.size() >= 12);
+        REQUIRE(read_u16_be(pkt, 6) >= 1);
+        REQUIRE(read_u16_be(pkt, 10) >= 1);
+    }
+
+    THEN("walk_dns_frame parses a PTR record with the correct ptr_name")
+    {
+        REQUIRE(contains_record_where<record_ptr>(pkt, [](const record_ptr &ptr)
+        {
+            return ptr.ptr_name.find("MyService") != dns_name::npos;
+        }));
+    }
+}
+
+}
 
 SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response][PTR]")
 {
@@ -17,37 +48,7 @@ SCENARIO("build_dns_response produces valid PTR response", "[build_dns_response]
                 REQUIRE_FALSE(pkt.empty());
             }
 
-            THEN("the DNS header has flags=0x8400 (response, authoritative)")
-            {
-                REQUIRE(pkt.size() >= 12);
-                uint16_t flags = read_u16_be(pkt, 2);
-                REQUIRE(flags == 0x8400);
-            }
-
-            THEN("ancount >= 1 and arcount >= 1 (answer + additional)")
-            {
-                REQUIRE(pkt.size() >= 12);
-                uint16_t ancount = read_u16_be(pkt, 6);
-                uint16_t arcount = read_u16_be(pkt, 10);
-                REQUIRE(ancount >= 1);
-                REQUIRE(arcount >= 1);
-            }
-
-            THEN("walk_dns_frame parses a PTR record with the correct ptr_name")
-            {
-                auto records = parse_response(pkt);
-                bool found_ptr = false;
-                for(const auto &rv : records)
-                {
-                    if(std::holds_alternative<record_ptr>(rv))
-                    {
-                        const auto &ptr = std::get<record_ptr>(rv);
-                        if(ptr.ptr_name.find("MyService") != dns_name::npos)
-                            found_ptr = true;
-                    }
-                }
-                REQUIRE(found_ptr);
-            }
+            ptr_response_sections(pkt);
         }
     }
 }
@@ -64,18 +65,9 @@ SCENARIO("build_dns_response PTR response includes additional SRV and A records"
 
             THEN("walk_dns_frame yields PTR, SRV, and A records in the packet")
             {
-                auto records = parse_response(pkt);
-
-                bool has_ptr = false, has_srv = false, has_a = false;
-                for(const auto &rv : records)
-                {
-                    if(std::holds_alternative<record_ptr>(rv)) has_ptr = true;
-                    if(std::holds_alternative<record_srv>(rv)) has_srv = true;
-                    if(std::holds_alternative<record_a>(rv)) has_a = true;
-                }
-                REQUIRE(has_ptr);
-                REQUIRE(has_srv);
-                REQUIRE(has_a);
+                REQUIRE(contains_record<record_ptr>(pkt));
+                REQUIRE(contains_record<record_srv>(pkt));
+                REQUIRE(contains_record<record_a>(pkt));
             }
         }
     }
@@ -93,18 +85,10 @@ SCENARIO("build_dns_response produces valid A response", "[build_dns_response][A
 
             THEN("walk_dns_frame parses a record_a with address_string \"192.168.1.10\"")
             {
-                auto records = parse_response(pkt);
-                bool found = false;
-                for(const auto &rv : records)
+                REQUIRE(contains_record_where<record_a>(pkt, [](const record_a &a)
                 {
-                    if(std::holds_alternative<record_a>(rv))
-                    {
-                        const auto &a = std::get<record_a>(rv);
-                        if(a.address_string == "192.168.1.10")
-                            found = true;
-                    }
-                }
-                REQUIRE(found);
+                    return a.address_string == "192.168.1.10";
+                }));
             }
         }
     }
@@ -141,18 +125,7 @@ SCENARIO("build_dns_response produces valid SRV response", "[build_dns_response]
 
             THEN("walk_dns_frame parses a record_srv with port 8080")
             {
-                auto records = parse_response(pkt);
-                bool found = false;
-                for(const auto &rv : records)
-                {
-                    if(std::holds_alternative<record_srv>(rv))
-                    {
-                        const auto &srv = std::get<record_srv>(rv);
-                        if(srv.port == 8080)
-                            found = true;
-                    }
-                }
-                REQUIRE(found);
+                REQUIRE(contains_record_where<record_srv>(pkt, [](const record_srv &srv) { return srv.port == 8080; }));
             }
         }
     }
@@ -166,7 +139,7 @@ SCENARIO("build_dns_response returns empty for unknown qtype", "[build_dns_respo
 
         WHEN("build_dns_response is called with qtype=255 (ANY -- not in required set)")
         {
-            // qtype=255 is ANY, handled separately; test an actually unknown type
+            // ANY is handled separately, so the case uses a type no record builder knows.
             auto pkt = build_dns_response(info, static_cast<dns_type>(999), service_options{});
 
             THEN("the returned vector is empty")
@@ -194,18 +167,10 @@ SCENARIO("build_dns_response produces valid TXT response", "[build_dns_response]
 
             THEN("walk_dns_frame parses a record_txt with at least one entry")
             {
-                auto records = parse_response(pkt);
-                bool found = false;
-                for(const auto &rv : records)
+                REQUIRE(contains_record_where<record_txt>(pkt, [](const record_txt &txt)
                 {
-                    if(std::holds_alternative<record_txt>(rv))
-                    {
-                        const auto &txt = std::get<record_txt>(rv);
-                        if(!txt.entries.empty())
-                            found = true;
-                    }
-                }
-                REQUIRE(found);
+                    return !txt.entries.empty();
+                }));
             }
         }
     }

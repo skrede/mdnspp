@@ -80,6 +80,17 @@ bool contains_record(const std::vector<std::byte> &packet)
     return false;
 }
 
+template <typename Record, typename Pred>
+bool contains_record_where(const std::vector<std::byte> &packet, Pred &&pred)
+{
+    for(const auto &rv : parse_response(packet))
+    {
+        if(const auto *record = std::get_if<Record>(&rv); record && pred(*record))
+            return true;
+    }
+    return false;
+}
+
 struct server_fixture
 {
     explicit server_fixture(service_info info = make_test_info(), service_options opts = {}, mdns_options mopts = {})

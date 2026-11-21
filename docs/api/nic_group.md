@@ -239,6 +239,7 @@ Begins NIC change detection. Tries the platform-native backend first; falls back
 timer-based polling if unavailable. A custom `nic_monitor_options::enumerator` forces
 the polling path. On Linux the netlink socket is drained by a 100 ms timer, so change
 detection has a latency floor of 100 ms.
+May be called from any thread.
 
 #### stop
 
@@ -246,7 +247,8 @@ detection has a latency floor of 100 ms.
 void stop();
 ```
 
-Stops monitoring. Idempotent. Cancels timers and platform-native handles.
+Stops monitoring. Idempotent. Cancels timers and platform-native handles. Callbacks already
+posted to the executor but not yet run are dropped. May be called from any thread.
 
 #### current
 

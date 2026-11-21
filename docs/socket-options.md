@@ -250,6 +250,12 @@ Changing the group lets you create isolated namespaces &mdash; for example, a te
 environment that does not interfere with production mDNS traffic on the same
 segment.
 
+The address must be an IPv4 multicast address (`224.0.0.0/4`) or an IPv6
+multicast address (`ff00::/8`). Any other address, including an empty or
+malformed one, fails construction of the native and Asio sockets with
+`std::errc::invalid_argument` (the throwing constructors throw
+`std::system_error`).
+
 ### Recommended address ranges
 
 **IPv4 &mdash; isolated namespaces**

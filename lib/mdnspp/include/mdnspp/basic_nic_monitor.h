@@ -2,48 +2,32 @@
 #define HPP_GUARD_MDNSPP_BASIC_NIC_MONITOR_H
 
 #include "mdnspp/policy.h"
-#include "mdnspp/nic_group_options.h"
 #include "mdnspp/network_interface.h"
+#include "mdnspp/nic_group_options.h"
 
 #include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/nic_diff.h"
+#include "mdnspp/detail/locked_snapshot.h"
 
-// Native socket types are required for the Linux AF_NETLINK member declarations.
-// default_context.h defines detail::native_socket_t and detail::invalid_socket.
+// The Linux netlink members need detail::native_socket_t and detail::invalid_socket.
 #ifdef __linux__
 #include "mdnspp/default/default_context.h"
 #endif
 
-#include <mutex>
 #include <atomic>
 #include <memory>
 #include <vector>
-#include <algorithm>
 #include <system_error>
 
 namespace mdnspp {
 
-// basic_nic_monitor<P> — policy-templated NIC change detector.
-//
-// Detects network interface additions and removals via platform-native APIs
-// where available (Linux: AF_NETLINK, macOS: nw_path_monitor,
-// Windows: NotifyIpInterfaceChange). Falls back to timer-based polling on
-// unsupported platforms.
-//
-// Lifecycle:
-//   1. Construct with (ex, opts)
-//   2. on_added(cb) / on_removed(cb) — register change callbacks
-//   3. start() — begin monitoring
-//   4. stop()  — idempotent; cancels all timers and native handles
-//
-// Thread safety:
-//   on_added(), on_removed(), current(), start(), stop() may be called from
-//   any thread. Callback registration is marshalled through P::post() and
-//   takes effect once the executor processes it; callbacks are likewise
-//   delivered on the policy executor via P::post().
-
 template <policy_like P>
 class basic_nic_monitor
 {
+#ifdef _WIN32
+    struct thunk;
+#endif
+
 public:
     using executor_type = typename P::executor_type;
     using timer_type    = typename P::timer_type;
@@ -53,9 +37,6 @@ public:
     basic_nic_monitor(basic_nic_monitor &&) = delete;
     basic_nic_monitor &operator=(basic_nic_monitor &&) = delete;
 
-    /// Construct and take an initial interface snapshot.
-    /// @param ex    Executor to deliver callbacks on.
-    /// @param opts  Monitoring options (poll interval for fallback).
     explicit basic_nic_monitor(executor_type ex, nic_monitor_options opts = {})
         : m_executor(ex)
         , m_timer(ex)
@@ -64,11 +45,7 @@ public:
         std::error_code ec;
         auto initial = enumerate(ec);
         if(!ec)
-        {
-            std::lock_guard lock(m_snapshot_mutex);
-            m_snapshot = std::make_shared<const std::vector<network_interface>>(
-                std::move(initial));
-        }
+            m_snapshot.publish(std::move(initial));
     }
 
     ~basic_nic_monitor()
@@ -76,8 +53,6 @@ public:
         stop();
     }
 
-    /// Register a callback fired (on the executor) when a NIC is added or changes.
-    /// Registration is posted to the executor; it takes effect once processed.
     void on_added(move_only_function<void(const network_interface &)> cb)
     {
         auto weak = std::weak_ptr<bool>(m_alive);
@@ -88,8 +63,6 @@ public:
         });
     }
 
-    /// Register a callback fired (on the executor) when a NIC is removed or changes.
-    /// Registration is posted to the executor; it takes effect once processed.
     void on_removed(move_only_function<void(const network_interface &)> cb)
     {
         auto weak = std::weak_ptr<bool>(m_alive);
@@ -100,8 +73,6 @@ public:
         });
     }
 
-    /// Begin monitoring. Tries platform-native backend; falls back to polling.
-    /// A custom nic_monitor_options::enumerator forces the polling path.
     void start()
     {
         m_stopped.store(false, std::memory_order_release);
@@ -110,7 +81,6 @@ public:
             schedule_poll();
     }
 
-    /// Stop monitoring. Idempotent.
     void stop()
     {
         if(m_stopped.exchange(true, std::memory_order_acq_rel))
@@ -119,121 +89,66 @@ public:
         m_timer.cancel();
         stop_native_backend();
 
-        // Reset alive sentinel — invalidates any pending posted callbacks.
+        // Expires the weak_ptrs held by callbacks already posted.
         m_alive.reset();
         m_alive = std::make_shared<bool>(true);
     }
 
-    /// Return a snapshot of the current interface list.
-    /// Thread-safe: lock is held only long enough to copy the shared_ptr.
     std::vector<network_interface> current() const
     {
-        std::shared_ptr<const std::vector<network_interface>> snap;
-        {
-            std::lock_guard lock(m_snapshot_mutex);
-            snap = m_snapshot;
-        }
-        return snap ? *snap : std::vector<network_interface>{};
+        return m_snapshot.copy();
     }
 
 private:
-    // -------------------------------------------------------------------------
-    // Diff and callback delivery
-    // -------------------------------------------------------------------------
+    std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
+    executor_type m_executor;
+    timer_type m_timer;
+    std::atomic<bool> m_stopped{true};
+    nic_monitor_options m_opts;
 
-    /// Compare old snapshot against new_list. Fire m_on_removed then m_on_added
-    /// for each change. For a changed interface (same index, different state),
-    /// fire remove+add in sequence (treat as remove/re-add).
+    move_only_function<void(const network_interface &)> m_on_added;
+    move_only_function<void(const network_interface &)> m_on_removed;
+
+    detail::locked_snapshot<network_interface> m_snapshot;
+
+#ifdef __linux__
+    detail::native_socket_t m_nl_fd{detail::invalid_socket};
+    timer_type m_nl_timer{m_executor};
+#endif
+#ifdef __APPLE__
+    void *m_path_monitor{nullptr}; // nw_path_monitor_t, opaque until the backend unit
+#endif
+#ifdef _WIN32
+    void *m_change_handle{nullptr}; // HANDLE, opaque until the backend unit
+    std::weak_ptr<bool> m_weak_for_callback;
+#endif
+
     void apply_diff(std::vector<network_interface> new_list)
     {
-        std::shared_ptr<const std::vector<network_interface>> old_snap;
-        {
-            std::lock_guard lock(m_snapshot_mutex);
-            old_snap = m_snapshot;
-        }
-
-        const auto *old_ptr = old_snap ? old_snap.get() : nullptr;
-
-        auto find_by_index = [](const std::vector<network_interface> &vec,
-                                uint32_t idx) -> const network_interface *
-        {
-            auto it = std::find_if(vec.begin(), vec.end(),
-                [idx](const network_interface &i) { return i.index == idx; });
-            return it != vec.end() ? &*it : nullptr;
-        };
-
         auto weak = std::weak_ptr<bool>(m_alive);
-
-        if(old_ptr)
+        if(auto previous = m_snapshot.get())
         {
-            // Detect removals and changes
-            for(const auto &old_iface : *old_ptr)
-            {
-                const auto *new_iface = find_by_index(new_list, old_iface.index);
-                if(!new_iface)
-                {
-                    // Removed
-                    if(m_on_removed)
-                    {
-                        P::post(m_executor, [this, weak, iface = old_iface]
-                        {
-                            if(weak.expired()) return;
-                            m_on_removed(iface);
-                        });
-                    }
-                }
-                else if(new_iface->is_up != old_iface.is_up ||
-                        new_iface->ipv4_address != old_iface.ipv4_address ||
-                        new_iface->ipv6_address != old_iface.ipv6_address)
-                {
-                    // Changed: remove then add
-                    if(m_on_removed)
-                    {
-                        P::post(m_executor, [this, weak, iface = old_iface]
-                        {
-                            if(weak.expired()) return;
-                            m_on_removed(iface);
-                        });
-                    }
-                    if(m_on_added)
-                    {
-                        P::post(m_executor, [this, weak, iface = *new_iface]
-                        {
-                            if(weak.expired()) return;
-                            m_on_added(iface);
-                        });
-                    }
-                }
-            }
-
-            // Detect additions
-            for(const auto &new_iface : new_list)
-            {
-                if(!find_by_index(*old_ptr, new_iface.index))
-                {
-                    if(m_on_added)
-                    {
-                        P::post(m_executor, [this, weak, iface = new_iface]
-                        {
-                            if(weak.expired()) return;
-                            m_on_added(iface);
-                        });
-                    }
-                }
-            }
+            for(auto &change : detail::diff_nics(*previous, new_list))
+                post_change(std::move(change), weak);
         }
-
-        // Update COW snapshot
-        {
-            std::lock_guard lock(m_snapshot_mutex);
-            m_snapshot = std::make_shared<const std::vector<network_interface>>(
-                std::move(new_list));
-        }
+        m_snapshot.publish(std::move(new_list));
     }
 
-    // -------------------------------------------------------------------------
-    // Polling fallback
-    // -------------------------------------------------------------------------
+    void post_change(detail::nic_change change, const std::weak_ptr<bool> &weak)
+    {
+        if(!callback_for(change.kind))
+            return;
+        P::post(m_executor, [this, weak, change = std::move(change)]
+        {
+            if(weak.expired()) return;
+            callback_for(change.kind)(change.iface);
+        });
+    }
+
+    move_only_function<void(const network_interface &)> &callback_for(detail::nic_change_kind kind)
+    {
+        return kind == detail::nic_change_kind::removed ? m_on_removed : m_on_added;
+    }
 
     void schedule_poll()
     {
@@ -253,8 +168,6 @@ private:
         });
     }
 
-    /// Enumerate interfaces through the configured enumerator, falling back to
-    /// the platform enumerate_interfaces().
     std::vector<network_interface> enumerate(std::error_code &ec)
     {
         if(m_opts.enumerator)
@@ -262,51 +175,17 @@ private:
         return enumerate_interfaces(ec);
     }
 
-    // -------------------------------------------------------------------------
-    // Platform backend — implemented in detail/nic_monitor_backends.h
-    // -------------------------------------------------------------------------
-
-    /// Attempt to start the platform-native backend.
-    /// Returns true on success (polling fallback not needed),
-    /// false to fall through to the polling fallback.
     bool start_native_backend();
 
-    /// Release platform-native resources acquired by start_native_backend().
     void stop_native_backend();
 
-    // -------------------------------------------------------------------------
-    // Data members
-    // -------------------------------------------------------------------------
-
-    std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
-    executor_type m_executor;
-    timer_type m_timer;
-    std::atomic<bool> m_stopped{true};
-    nic_monitor_options m_opts;
-
-    move_only_function<void(const network_interface &)> m_on_added;
-    move_only_function<void(const network_interface &)> m_on_removed;
-
-    mutable std::mutex m_snapshot_mutex;
-    std::shared_ptr<const std::vector<network_interface>> m_snapshot;
-
-    // Platform-specific backend state — defined under #ifdef in backends header.
 #ifdef __linux__
-    detail::native_socket_t m_nl_fd{detail::invalid_socket};
-    timer_type m_nl_timer{m_executor};
-#endif
-#ifdef __APPLE__
-    void *m_path_monitor{nullptr}; // nw_path_monitor_t — opaque until backends header
-#endif
-#ifdef _WIN32
-    void *m_change_handle{nullptr}; // HANDLE — opaque until backends header
-    std::weak_ptr<bool> m_weak_for_callback;
+    void arm_netlink_poll();
 #endif
 };
 
 }
 
-// Platform-specific backend implementations
 #include "mdnspp/detail/nic_monitor_backends.h"
 
 #endif

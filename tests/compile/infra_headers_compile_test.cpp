@@ -70,6 +70,7 @@
 #include "mdnspp/detail/nic_group_peers.h"
 #include "mdnspp/detail/nic_group_slots.h"
 #include "mdnspp/detail/server_dispatch.h"
+#include "mdnspp/detail/server_tiebreak.h"
 #include "mdnspp/detail/server_validate.h"
 #include "mdnspp/detail/sibling_records.h"
 #include "mdnspp/detail/discovery_engine.h"

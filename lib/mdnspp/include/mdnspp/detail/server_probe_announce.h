@@ -1,18 +1,12 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_SERVER_PROBE_ANNOUNCE_H
 #define HPP_GUARD_MDNSPP_DETAIL_SERVER_PROBE_ANNOUNCE_H
 
-#include "mdnspp/detail/dns_read.h"
-#include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/server_tiebreak.h"
 
-#include <span>
 #include <deque>
 #include <chrono>
-#include <vector>
-#include <compare>
 #include <cstddef>
 #include <cstdint>
-#include <utility>
-#include <algorithm>
 
 namespace mdnspp::detail {
 
@@ -72,123 +66,8 @@ inline void begin_announcing(probe_announce_state &s)
     s.announce_count = 0;
 }
 
-// One record of a proposed record set in DNS uncompressed form, ordered by
-// class, then type, then raw rdata bytes (RFC 6762 §8.2.1).
-struct tiebreak_record
-{
-    uint16_t rclass{1};
-    uint16_t rtype{0};
-    std::vector<std::byte> rdata;
-
-    friend auto operator<=>(const tiebreak_record &, const tiebreak_record &) = default;
-};
-
-// Extracts the Authority-section records of a probe query in uncompressed
-// form. Name-containing rdata (SRV target, PTR target) is decompressed and
-// re-encoded so the comparison operates on canonical uncompressed bytes
-// (RFC 6762 §8.2.1). The cache-flush bit is cleared from the class.
-inline std::vector<tiebreak_record> extract_authority_records(std::span<const std::byte> data)
-{
-    if(data.size() < 12)
-        return {};
-
-    uint16_t qdcount = read_u16_be(data.data() + 4);
-    uint16_t ancount = read_u16_be(data.data() + 6);
-    uint16_t nscount = read_u16_be(data.data() + 8);
-
-    if(nscount == 0)
-        return {};
-
-    std::size_t offset = 12;
-
-    for(uint16_t i = 0; i < qdcount; ++i)
-    {
-        if(!skip_dns_name(data, offset)) return {};
-        if(offset + 4 > data.size()) return {};
-        offset += 4;
-    }
-
-    for(uint16_t i = 0; i < ancount; ++i)
-    {
-        if(!skip_dns_name(data, offset)) return {};
-        if(offset + 10 > data.size()) return {};
-        offset += 8;
-        uint16_t rdlen = read_u16_be(data.data() + offset);
-        offset += 2;
-        if(offset + rdlen > data.size()) return {};
-        offset += rdlen;
-    }
-
-    std::vector<tiebreak_record> records;
-    records.reserve(nscount);
-
-    for(uint16_t i = 0; i < nscount; ++i)
-    {
-        if(!skip_dns_name(data, offset)) return {};
-        if(offset + 10 > data.size()) return {};
-        uint16_t rtype = read_u16_be(data.data() + offset);
-        uint16_t rclass = static_cast<uint16_t>(read_u16_be(data.data() + offset + 2) & 0x7FFFu);
-        offset += 8;
-        uint16_t rdlen = read_u16_be(data.data() + offset);
-        offset += 2;
-        if(offset + rdlen > data.size()) return {};
-
-        std::vector<std::byte> rdata;
-        if(rtype == to_underlying(dns_type::srv) && rdlen >= 6)
-        {
-            rdata.assign(data.data() + offset, data.data() + offset + 6);
-            auto target = read_dns_name(data, offset + 6);
-            if(!target.has_value()) return {};
-            auto encoded = encode_dns_name(*target);
-            if(!encoded.has_value()) return {};
-            rdata.insert(rdata.end(), encoded->begin(), encoded->end());
-        }
-        else if(rtype == to_underlying(dns_type::ptr))
-        {
-            auto target = read_dns_name(data, offset);
-            if(!target.has_value()) return {};
-            auto encoded = encode_dns_name(*target);
-            if(!encoded.has_value()) return {};
-            rdata = std::move(*encoded);
-        }
-        else
-        {
-            rdata.assign(data.data() + offset, data.data() + offset + rdlen);
-        }
-
-        records.push_back(tiebreak_record{rclass, rtype, std::move(rdata)});
-        offset += rdlen;
-    }
-
-    return records;
-}
-
-// RFC 6762 §8.2.1 simultaneous-probe tiebreak over full record sets: both
-// sets are sorted (class, type, rdata) and compared pairwise; if one set is a
-// prefix of the other, the set with records remaining wins. Returns < 0 when
-// ours loses, 0 on an exact tie (identical data — NOT a conflict), > 0 when
-// ours wins.
-inline int32_t compare_record_sets(std::vector<tiebreak_record> ours,
-                                   std::vector<tiebreak_record> theirs)
-{
-    std::sort(ours.begin(), ours.end());
-    std::sort(theirs.begin(), theirs.end());
-
-    auto count = (std::min)(ours.size(), theirs.size());
-    for(std::size_t i = 0; i < count; ++i)
-    {
-        auto cmp = ours[i] <=> theirs[i];
-        if(cmp < 0) return -1;
-        if(cmp > 0) return 1;
-    }
-    if(ours.size() < theirs.size()) return -1;
-    if(ours.size() > theirs.size()) return 1;
-    return 0;
-}
-
-// RFC 6762 §8.1 probe rate limiting: on 15 or more conflicts within a
-// ten-second window, every subsequent probe attempt must wait at least five
-// seconds. The throttle stays engaged until the window drains of conflicts.
+// RFC 6762 §8.1: on 15 or more conflicts within ten seconds every further probe waits at least five seconds.
+// The throttle stays engaged until the window holds no conflict.
 template <typename Clock = std::chrono::steady_clock>
 class probe_rate_limiter
 {
@@ -199,6 +78,12 @@ public:
     static constexpr std::chrono::seconds conflict_window{10};
     static constexpr std::chrono::seconds probe_delay{5};
 
+    probe_rate_limiter()
+        : m_conflicts()
+        , m_engaged(false)
+    {
+    }
+
     void record_conflict()
     {
         auto now = Clock::now();
@@ -206,7 +91,7 @@ public:
         prune(now);
     }
 
-    [[nodiscard]] bool throttled()
+    bool throttled()
     {
         prune(Clock::now());
         if(m_conflicts.size() >= conflict_threshold)
@@ -230,7 +115,7 @@ private:
     }
 
     std::deque<time_point> m_conflicts;
-    bool m_engaged{false};
+    bool m_engaged;
 };
 
 }

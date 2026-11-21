@@ -11,11 +11,13 @@ a server with `service_options{}` and the server probes, announces twice at
 one-second intervals, sends goodbye on stop, suppresses known answers, and
 responds to meta-queries.
 
-Options are validated at server construction: invalid combinations (zero
-`probe_count`, non-positive intervals or TTLs, empty or invalid service
-names) fail with `std::errc::invalid_argument` -- thrown as
+Options are validated at server construction: zero `probe_count` or
+`announce_count`, non-positive intervals or TTLs, negative
+`probe_initial_delay_max` or `probe_defer_delay`, and empty or invalid service
+names fail with `std::errc::invalid_argument` -- thrown as
 `std::system_error` from the throwing constructor, or reported through the
-`std::error_code` overload.
+`std::error_code` overload. The full list, including the `mdns_options` fields
+the server checks, is in [service_server](service_server.md#throwing).
 
 **Header:**
 

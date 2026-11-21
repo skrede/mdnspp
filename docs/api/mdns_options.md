@@ -98,6 +98,8 @@ The observer, querier, service discovery and service monitor constructors valida
 - `ka_suppression_fraction` or `tc_suppression_fraction` lies outside the open interval (0, 1);
 - any entry of `ttl_refresh_thresholds` lies outside the open interval (0, 1).
 
+The service server constructors check a different set of fields, listed in [service_server](service_server.md#throwing).
+
 ## Common Tuning Scenarios
 
 **Dense, fast-changing network (e.g. robotics middleware):** Reduce `max_interval` to seconds or minutes, but be aware this increases steady-state query traffic proportionally.

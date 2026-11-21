@@ -25,7 +25,7 @@ public:
         : m_inner(inner)
         , m_keys(keys)
         , m_receive_cb()
-        , m_replay(opts.replay_window_size, opts.max_senders, opts.max_sessions_per_sender)
+        , m_replay(make_replay(opts))
         , m_rules(rules_of(opts))
         , m_recv_buf(detail::max_udp_payload)
         , m_closed(false)
@@ -61,6 +61,14 @@ private:
     bool m_closed;
     bool m_arming;
     bool m_rearm_requested;
+
+    // Not propagated: the socket reports these limits through encrypt_options::validate(),
+    // and a receiver built from rejected options is never armed.
+    static replay_window make_replay(const encrypt_options &opts)
+    {
+        std::error_code ignored;
+        return replay_window(opts.replay_window_size, opts.max_senders, opts.max_sessions_per_sender, ignored);
+    }
 
     // Iterative so an inner socket that completes inline cannot grow the
     // stack however many consecutive packets are rejected.

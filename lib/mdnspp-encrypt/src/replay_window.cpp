@@ -31,6 +31,11 @@ void shift_left(std::vector<uint64_t> &bitmap, uint64_t shift)
     }
 }
 
+uint16_t at_least_one(uint16_t limit)
+{
+    return limit == 0 ? uint16_t{1} : limit;
+}
+
 }
 
 namespace mdnspp::encrypt {
@@ -74,11 +79,27 @@ std::optional<encrypt_error> replay_window::session_window::admit(uint64_t seque
 }
 
 replay_window::replay_window(uint16_t window_size, uint16_t max_senders, uint16_t max_sessions_per_sender)
-    : m_window_size(window_size == 0 ? uint16_t{1} : window_size)
-    , m_max_senders(max_senders)
-    , m_max_sessions(max_sessions_per_sender == 0 ? uint16_t{1} : max_sessions_per_sender)
+    : replay_window(checked{}, window_size, max_senders, max_sessions_per_sender, std::error_code{})
+{
+}
+
+replay_window::replay_window(uint16_t window_size, uint16_t max_senders, uint16_t max_sessions_per_sender,
+                             std::error_code &ec)
+    : m_window_size(at_least_one(window_size))
+    , m_max_senders(at_least_one(max_senders))
+    , m_max_sessions(at_least_one(max_sessions_per_sender))
     , m_words((static_cast<std::size_t>(m_window_size) + 63) / 64)
 {
+    const bool zero_limit = window_size == 0 || max_senders == 0 || max_sessions_per_sender == 0;
+    ec = zero_limit ? std::make_error_code(std::errc::invalid_argument) : std::error_code{};
+}
+
+replay_window::replay_window(checked, uint16_t window_size, uint16_t max_senders, uint16_t max_sessions_per_sender,
+                             std::error_code ec)
+    : replay_window(window_size, max_senders, max_sessions_per_sender, ec)
+{
+    if(ec)
+        throw std::system_error(ec, "mdnspp::encrypt::replay_window");
 }
 
 std::optional<encrypt_error> replay_window::check_and_record(uint32_t sender_id, uint64_t session_id,
@@ -110,7 +131,7 @@ replay_window::sender_state &replay_window::sender_for(uint32_t sender_id)
         return it->second;
     }
 
-    if(m_max_senders > 0 && m_senders.size() >= static_cast<std::size_t>(m_max_senders))
+    if(m_senders.size() >= static_cast<std::size_t>(m_max_senders))
     {
         m_senders.erase(m_lru.front());
         m_lru.pop_front();

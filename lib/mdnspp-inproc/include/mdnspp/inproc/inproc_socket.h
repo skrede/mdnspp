@@ -91,9 +91,13 @@ public:
 
     void send(const endpoint &dest, std::span<const std::byte> data, std::error_code &ec)
     {
+        if(!m_bus)
+        {
+            ec = std::make_error_code(std::errc::bad_file_descriptor);
+            return;
+        }
         ec.clear();
-        if(m_bus)
-            m_bus->enqueue(m_ep, dest, data);
+        m_bus->enqueue(m_ep, dest, data);
     }
 
     void close() noexcept

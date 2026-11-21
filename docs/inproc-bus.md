@@ -36,6 +36,9 @@ internal identifiers used to distinguish sockets on the bus.
 
 **Packet delivery.** `inproc_socket::send()` enqueues onto the bus queue rather
 than delivering inline. This avoids re-entrancy in multi-party scenarios.
+After `close()`, the error_code overload of `send()` reports
+`std::errc::bad_file_descriptor` and the throwing overload throws
+`std::system_error` with that code, matching the native socket.
 `inproc_executor::step()` calls `deliver_one()` which dequeues one packet and
 dispatches it:
 

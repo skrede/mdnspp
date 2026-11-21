@@ -22,6 +22,19 @@ namespace {
 const std::byte payload[] = {std::byte{0x01}, std::byte{0x02}};
 const endpoint dest{"224.0.0.251", 5353};
 
+std::error_code send_exception(inproc_socket<> &sock)
+{
+    try
+    {
+        sock.send(dest, std::span<const std::byte>{payload});
+    }
+    catch(const std::system_error &e)
+    {
+        return e.code();
+    }
+    return {};
+}
+
 }
 
 TEST_CASE("the error_code constructors clear a stale error", "[inproc_socket][error_code]")
@@ -54,4 +67,27 @@ TEST_CASE("the throwing send queues the datagram", "[inproc_socket][error_code]"
     inproc_socket<> sock{ex};
     REQUIRE_NOTHROW(sock.send(dest, std::span<const std::byte>{payload}));
     REQUIRE(bus.has_pending_packets());
+}
+
+TEST_CASE("the error_code send on a closed socket reports bad_file_descriptor and queues nothing",
+    "[inproc_socket][error_code]")
+{
+    inproc_bus<> bus;
+    inproc_executor<> ex{bus};
+    inproc_socket<> sock{ex};
+    sock.close();
+    std::error_code ec = std::make_error_code(std::errc::io_error);
+    sock.send(dest, std::span<const std::byte>{payload}, ec);
+    REQUIRE(ec == std::errc::bad_file_descriptor);
+    REQUIRE_FALSE(bus.has_pending_packets());
+}
+
+TEST_CASE("the throwing send on a closed socket throws bad_file_descriptor", "[inproc_socket][error_code]")
+{
+    inproc_bus<> bus;
+    inproc_executor<> ex{bus};
+    inproc_socket<> sock{ex};
+    sock.close();
+    REQUIRE(send_exception(sock) == std::errc::bad_file_descriptor);
+    REQUIRE_FALSE(bus.has_pending_packets());
 }

@@ -8,6 +8,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <system_error>
 #include <unordered_map>
 
 namespace mdnspp::encrypt {
@@ -39,14 +40,21 @@ class replay_window
         std::list<uint32_t>::iterator lru_pos;
     };
 
+    struct checked
+    {
+    };
+
 public:
     // window_size selects the number of sequence-number slots tracked per
-    // session; a value of 0 is invalid and is clamped to 1. Memory per tracked
-    // session is ceil(window_size / 64) uint64_t words, so a sender costs at most
-    // max_sessions_per_sender * ceil(window_size / 64) * 8 bytes: 64 bytes at the
-    // defaults (64, 8), and 8 KiB per session at the maximum window of 65535.
+    // session; a zero window_size, max_senders or max_sessions_per_sender is
+    // reported as std::errc::invalid_argument and then raised to 1. Memory per
+    // tracked session is ceil(window_size / 64) uint64_t words, so a sender costs
+    // at most max_sessions_per_sender * ceil(window_size / 64) * 8 bytes: 64 bytes
+    // at the defaults (64, 8), and 8 KiB per session at the maximum window of 65535.
     explicit replay_window(uint16_t window_size = 64, uint16_t max_senders = 256,
                            uint16_t max_sessions_per_sender = 8);
+
+    replay_window(uint16_t window_size, uint16_t max_senders, uint16_t max_sessions_per_sender, std::error_code &ec);
 
     replay_window(const replay_window &) = delete;
     replay_window &operator=(const replay_window &) = delete;
@@ -65,6 +73,9 @@ private:
     std::size_t m_words;
     std::unordered_map<uint32_t, sender_state> m_senders;
     std::list<uint32_t> m_lru;  // front = oldest, back = most recent
+
+    replay_window(checked, uint16_t window_size, uint16_t max_senders, uint16_t max_sessions_per_sender,
+                  std::error_code ec);
 
     sender_state &sender_for(uint32_t sender_id);
     void open_session(std::vector<session_window> &sessions, uint64_t session_id, uint64_t sequence);

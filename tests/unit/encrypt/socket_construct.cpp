@@ -101,6 +101,17 @@ TEST_CASE("replay_window_size == 0 sets invalid_argument in the error_code const
     CHECK(construct_error(opts) == std::make_error_code(std::errc::invalid_argument));
 }
 
+TEST_CASE("a zero sender or session limit sets invalid_argument in the error_code constructor",
+    "[encrypted_socket][validate]")
+{
+    auto senders = make_test_opts();
+    senders.encrypt.max_senders = 0;
+    auto sessions = make_test_opts();
+    sessions.encrypt.max_sessions_per_sender = 0;
+    CHECK(construct_error(senders) == std::make_error_code(std::errc::invalid_argument));
+    CHECK(construct_error(sessions) == std::make_error_code(std::errc::invalid_argument));
+}
+
 TEST_CASE("throwing constructor throws std::system_error on an all-zero PSK", "[encrypted_socket][validate]")
 {
     mdnspp::testing::mock_executor ex;

@@ -12,6 +12,7 @@
 
 #include "mdnspp/detail/peer_traits.h"
 #include "mdnspp/detail/nic_group_slots.h"
+#include "mdnspp/detail/sibling_records.h"
 #include "mdnspp/detail/nic_group_builder.h"
 
 #include <mutex>
@@ -43,7 +44,8 @@ public:
         , m_grp_opts(std::move(grp_opts))
         , m_monitor(ex, std::move(m_grp_opts.monitor_opts))
         , m_stopped(true)
-        , m_builder(ex, m_grp_opts, std::move(peer_opts)...)
+        , m_siblings(std::make_shared<detail::sibling_records>())
+        , m_builder(ex, m_grp_opts, m_siblings, std::move(peer_opts)...)
     {
     }
 
@@ -118,6 +120,7 @@ private:
     basic_nic_group_options<P> m_grp_opts;
     basic_nic_monitor<P> m_monitor;
     std::atomic<bool> m_stopped;
+    std::shared_ptr<detail::sibling_records> m_siblings;
     detail::nic_group_builder<P, Peers...> m_builder;
     detail::nic_group_slots<P, Peers...> m_slots;
     std::unordered_set<std::string> m_watch_set;

@@ -4,6 +4,7 @@
 #include "mdnspp/detail/peer_traits.h"
 #include "mdnspp/detail/nic_group_peers.h"
 #include "mdnspp/detail/nic_group_slots.h"
+#include "mdnspp/detail/sibling_records.h"
 #include "mdnspp/detail/nic_group_server_callbacks.h"
 
 #include "mdnspp/policy.h"
@@ -37,9 +38,9 @@ public:
     using socket_options_type = policy_socket_options_t<P>;
     using instance_tuple = typename nic_group_slots<P, Peers...>::instance_tuple;
 
-    nic_group_builder(executor_type ex, basic_nic_group_options<P> &grp_opts,
+    nic_group_builder(executor_type ex, basic_nic_group_options<P> &grp_opts, std::shared_ptr<sibling_records> siblings,
                       std::vector<typename peer_traits<Peers, P>::options_type>... peer_opts)
-        : m_factory(ex, grp_opts)
+        : m_factory(ex, grp_opts, std::move(siblings))
         , m_peer_opts(std::move(peer_opts)...)
     {
         prepare_peer_options(std::make_index_sequence<sizeof...(Peers)>{});
@@ -108,7 +109,7 @@ private:
     {
         const auto &opts = std::get<I>(m_peer_opts)[element];
         if constexpr(is_server_at<I>)
-            return m_factory.make(opts, m_server_callbacks[I][element], nic, sock_opts);
+            return m_factory.make(opts, m_server_callbacks[I][element], element, nic, sock_opts);
         else
             return m_factory.make(opts, nic, sock_opts);
     }

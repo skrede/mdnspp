@@ -71,6 +71,7 @@
 #include "mdnspp/detail/nic_group_slots.h"
 #include "mdnspp/detail/server_dispatch.h"
 #include "mdnspp/detail/server_validate.h"
+#include "mdnspp/detail/sibling_records.h"
 #include "mdnspp/detail/discovery_engine.h"
 #include "mdnspp/detail/monitor_receiver.h"
 #include "mdnspp/detail/monitor_resolver.h"

@@ -15,8 +15,11 @@
 #include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/server_engine.h"
+#include "mdnspp/detail/sibling_records.h"
 
+#include <memory>
 #include <cassert>
+#include <cstddef>
 #include <utility>
 #include <system_error>
 
@@ -56,7 +59,16 @@ public:
                                   service_options opts = {},
                                   policy_socket_options_t<P> sock_opts = {},
                                   mdns_options mdns_opts = {})
-        : base(ex, std::move(info), std::move(opts), std::move(sock_opts), std::move(mdns_opts))
+        : basic_service_server(ex, std::move(info), std::move(opts), std::move(sock_opts), std::move(mdns_opts),
+                               nullptr, 0)
+    {
+    }
+
+    basic_service_server(executor_type ex, service_info info, service_options opts,
+                         policy_socket_options_t<P> sock_opts, mdns_options mdns_opts,
+                         std::shared_ptr<detail::sibling_records> siblings, std::size_t element)
+        : base(ex, std::move(info), std::move(opts), std::move(sock_opts), std::move(mdns_opts), std::move(siblings),
+               element)
     {
     }
 

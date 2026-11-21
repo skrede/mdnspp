@@ -3,11 +3,13 @@
 
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/peer_traits.h"
+#include "mdnspp/detail/sibling_records.h"
 #include "mdnspp/detail/nic_group_server_callbacks.h"
 
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/mdns_options.h"
 #include "mdnspp/basic_observer.h"
 #include "mdnspp/callback_types.h"
 #include "mdnspp/monitor_options.h"
@@ -21,6 +23,7 @@
 
 #include <memory>
 #include <string>
+#include <cstddef>
 #include <utility>
 #include <string_view>
 #include <system_error>
@@ -46,9 +49,10 @@ public:
     using executor_type = typename P::executor_type;
     using socket_options_type = policy_socket_options_t<P>;
 
-    nic_peer_factory(executor_type ex, basic_nic_group_options<P> &grp_opts)
+    nic_peer_factory(executor_type ex, basic_nic_group_options<P> &grp_opts, std::shared_ptr<sibling_records> siblings)
         : m_executor(ex)
         , m_grp_opts(grp_opts)
+        , m_siblings(std::move(siblings))
     {
     }
 
@@ -65,13 +69,15 @@ public:
 
     std::unique_ptr<basic_service_server<P>> make(const server_peer_options &opts,
                                                   const std::shared_ptr<shared_server_callbacks> &cbs,
-                                                  const network_interface &nic, const socket_options_type &sock_opts)
+                                                  std::size_t element, const network_interface &nic,
+                                                  const socket_options_type &sock_opts)
     {
         service_options cloned = clone_service_options(opts.service);
         forward_shared_callbacks(cloned, cbs);
         if(!cbs->on_error && m_grp_opts.on_error)
             cloned.on_error = stamped_error(nic);
-        return std::make_unique<basic_service_server<P>>(m_executor, opts.info, std::move(cloned), sock_opts);
+        return std::make_unique<basic_service_server<P>>(m_executor, opts.info, std::move(cloned), sock_opts,
+                                                         mdns_options{}, m_siblings, element);
     }
 
     std::unique_ptr<basic_observer<P>> make(const observer_options &, const network_interface &nic,
@@ -91,6 +97,7 @@ public:
 private:
     executor_type m_executor;
     basic_nic_group_options<P> &m_grp_opts;
+    std::shared_ptr<sibling_records> m_siblings;
 
     error_handler stamped_error(const network_interface &nic)
     {

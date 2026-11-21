@@ -6,6 +6,7 @@
 #include "mdnspp/detail/server_context.h"
 #include "mdnspp/detail/server_dispatch.h"
 #include "mdnspp/detail/server_validate.h"
+#include "mdnspp/detail/sibling_records.h"
 #include "mdnspp/detail/server_announcer.h"
 #include "mdnspp/detail/server_multicast.h"
 #include "mdnspp/detail/server_responder.h"
@@ -23,6 +24,7 @@
 
 #include <span>
 #include <atomic>
+#include <memory>
 #include <cstddef>
 #include <utility>
 #include <system_error>
@@ -38,10 +40,11 @@ protected:
     using completion_handler = server_completion_handler;
 
     server_engine(typename base::executor_type ex, service_info info, service_options opts,
-                  policy_socket_options_t<P> sock_opts, mdns_options mdns_opts)
+                  policy_socket_options_t<P> sock_opts, mdns_options mdns_opts,
+                  std::shared_ptr<sibling_records> siblings, std::size_t element)
         : base(ex, sock_opts, std::move(mdns_opts))
         , m_ctx(ex, std::move(info), std::move(opts), extract_interface_binding(sock_opts), this->m_socket,
-                this->m_multicast_ep, this->m_mdns_opts, this->m_stopped)
+                this->m_multicast_ep, this->m_mdns_opts, this->m_stopped, std::move(siblings), element)
         , m_multicast(m_ctx)
         , m_responder(m_ctx, m_multicast)
         , m_tc(m_ctx, m_multicast)
@@ -60,7 +63,7 @@ protected:
                   policy_socket_options_t<P> sock_opts, mdns_options mdns_opts, std::error_code &ec)
         : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_ctx(ex, std::move(info), std::move(opts), extract_interface_binding(sock_opts), this->m_socket,
-                this->m_multicast_ep, this->m_mdns_opts, this->m_stopped)
+                this->m_multicast_ep, this->m_mdns_opts, this->m_stopped, nullptr, 0)
         , m_multicast(m_ctx)
         , m_responder(m_ctx, m_multicast)
         , m_tc(m_ctx, m_multicast)
@@ -125,6 +128,7 @@ protected:
             m_prober.start_probing();
             return;
         }
+        m_ctx.siblings.publish(m_ctx.info);
         m_announcer.announce_update();
     }
 
@@ -158,6 +162,7 @@ private:
     void teardown()
     {
         m_ctx.pa_state.state = server_state::stopped;
+        m_ctx.siblings.withdraw();
         m_multicast.drop_pending();
         m_ctx.response_timer.cancel();
         m_ctx.delay_timer.cancel();

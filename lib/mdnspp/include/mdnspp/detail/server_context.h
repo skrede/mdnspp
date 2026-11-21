@@ -4,6 +4,7 @@
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/dns_frame.h"
 #include "mdnspp/detail/address_encode.h"
+#include "mdnspp/detail/sibling_records.h"
 #include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/server_probe_announce.h"
 
@@ -18,6 +19,7 @@
 
 #include <span>
 #include <atomic>
+#include <memory>
 #include <random>
 #include <string>
 #include <vector>
@@ -50,7 +52,8 @@ public:
 
     server_context(executor_type ex, service_info service, service_options options, interface_binding bound_to,
                    socket_type &socket, const endpoint &multicast, const mdns_options &mdns,
-                   const std::atomic<bool> &stopped_flag)
+                   const std::atomic<bool> &stopped_flag, std::shared_ptr<sibling_records> registry,
+                   std::size_t element)
         : response_timer(ex)
         , delay_timer(ex)
         , tc_timer(ex)
@@ -59,6 +62,7 @@ public:
         , rng(std::random_device{}())
         , binding(std::move(bound_to))
         , pa_state()
+        , siblings(std::move(registry), element)
         , mdns_opts(mdns)
         , m_socket(socket)
         , m_multicast(multicast)
@@ -124,6 +128,7 @@ public:
     std::mt19937 rng;
     interface_binding binding;
     probe_announce_state pa_state;
+    sibling_membership siblings;
     const mdns_options &mdns_opts;
 
 private:

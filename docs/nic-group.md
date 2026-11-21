@@ -88,6 +88,18 @@ per-NIC server instance invokes the same shared callable. The callable runs on t
 executor; if that executor is driven from multiple threads, it may be invoked concurrently
 from different per-NIC instances.
 
+Per-NIC servers built by one group recognize each other's records (RFC 6762 section 14).
+When two interfaces of the host sit on one link, each per-NIC server hears the others'
+probes, probe answers and announcements; these are not conflicts, as the host that "sees
+its own Ethernet address records arrive on its wireless interface" knows them for its own.
+Address records (A/AAAA) are shared by every server of the group, so services that share a
+hostname, or per-NIC servers that each advertise their own interface address
+(`service_info::make`), go live side by side. SRV and TXT records are shared only by the
+servers built from the same `server_peer_options` element, so two elements that claim one
+instance name with different data still conflict and `on_conflict` fires. A standalone
+`basic_service_server` is unaffected: it does not recognize the records of another server,
+even one on the same host with the same hostname.
+
 ### Announce and monitor pattern
 
 Announce a service and discover others simultaneously on all interfaces:

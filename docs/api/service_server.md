@@ -57,6 +57,17 @@ Constructs the server from an executor and a [`service_info`](#service_info) des
 
 Options are validated at construction: empty or invalid service names, zero `probe_count` or `announce_count`, non-positive intervals or TTLs, and inconsistent delay/fraction ranges fail with `std::errc::invalid_argument`, thrown as `std::system_error`. Socket construction failure also throws.
 
+### Throwing, for the servers of a NIC group
+
+```cpp
+basic_service_server(executor_type ex, service_info info,
+                     service_options opts, policy_socket_options_t<P> sock_opts,
+                     mdns_options mdns_opts,
+                     std::shared_ptr<detail::sibling_records> siblings, std::size_t element);
+```
+
+Same as the throwing constructor. [`basic_nic_group`](nic_group.md) uses it for its per-NIC servers: each passes the group's shared registry and the index of the `server_peer_options` element it was built from, so the servers of one group recognize each other's records instead of reporting them as conflicts (RFC 6762 section 14; see [NIC group](../nic-group.md)). A received record is skipped by the probing and live conflict checks only when another member currently publishes it: address records of any member, SRV and TXT records only of a member with the same `element`. A null `siblings` makes a standalone server, which is what the first constructor builds. The registry is internal; applications use the first constructor.
+
 ### Non-throwing
 
 ```cpp

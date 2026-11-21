@@ -49,6 +49,7 @@ public:
     void start_probing()
     {
         begin_probing(m_ctx.pa_state);
+        m_ctx.siblings.publish(m_ctx.info);
         m_multicast.reset();
         m_ctx.response_timer.expires_after(first_probe_delay());
         m_ctx.response_timer.async_wait([this](std::error_code ec)
@@ -61,7 +62,7 @@ public:
 
     void on_probing_packet(std::span<const std::byte> data)
     {
-        switch(classify_probing_packet(data, m_ctx.info))
+        switch(classify_probing_packet(data, m_ctx.info, m_ctx.siblings))
         {
         case probe_verdict::conflict:
             handle_conflict(conflict_type::name_conflict);
@@ -78,7 +79,7 @@ public:
     // Returns whether the records held a conflict, which has then been handled.
     bool screen(const std::vector<mdns_record_variant> &records)
     {
-        if(!live_conflict(records, m_ctx.info))
+        if(!live_conflict(records, m_ctx.info, m_ctx.siblings))
             return false;
         handle_conflict(conflict_type::name_conflict);
         return true;

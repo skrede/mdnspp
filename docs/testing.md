@@ -65,8 +65,8 @@ Unit tests cover:
   post_queue_seam_test, post_stress_test)
 - Multi-NIC orchestration: group instance lifecycle, dynamic builder, and
   interface monitoring (tests/unit/nic_group/: nic_group_server_test,
-  nic_group_monitor_test, nic_group_options_test, nic_group_dynamic_test;
-  nic_monitor_test)
+  nic_group_monitor_test, nic_group_options_test, nic_group_dynamic_test,
+  nic_group_siblings_test; nic_monitor_test)
 - Multicast capability validation (validate_multicast_test)
 - Encrypt component (tests/unit/encrypt/): AEAD encrypt/decrypt and tamper
   detection (encrypt_aead_*_test), replay window, per-sender and per-session

@@ -57,6 +57,8 @@ make_subdir_test(monitor_lifecycle_test     monitor/lifecycle.cpp)
 make_subdir_test(monitor_resolution_test    monitor/resolution.cpp)
 make_subdir_test(monitor_events_test        monitor/events.cpp)
 make_subdir_test(monitor_scheduler_test     monitor/scheduler.cpp)
+make_subdir_test(monitor_refresh_test       monitor/refresh.cpp)
+make_subdir_test(monitor_queries_test       monitor/queries.cpp)
 make_subdir_test(monitor_snapshot_test      monitor/snapshot.cpp)
 
 make_subdir_test(discovery_discover_test    discovery/discover.cpp)

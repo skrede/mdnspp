@@ -2,7 +2,7 @@
 
 Sends a single mDNS query for a given name and record type, then collects matching responses until a silence timeout expires. Results are delivered both per-record (via the optional `record_callback`) and in aggregate (via the `completion_handler`).
 
-For multicast (QM) queries, the querier implements a 20--120 ms random delay before sending (RFC 6762 section 5.2) and duplicate question suppression (RFC 6762 section 7.3) during the delay window. Unicast (QU) queries are sent immediately with no delay.
+For multicast (QM) queries, the querier implements a random delay before sending, drawn from `[response_delay_min, response_delay_max]` of [`mdns_options`](mdns_options.md) (20--120 ms by default; RFC 6762 section 5.2), and duplicate question suppression (RFC 6762 section 7.3) during the delay window. Unicast (QU) queries are sent immediately with no delay.
 
 ## Header and Alias
 
@@ -78,7 +78,7 @@ void async_query(std::string_view name, dns_type qtype, completion_handler on_do
                  response_mode mode = response_mode::multicast);
 ```
 
-Sends a DNS query for `name` with record type `qtype` to the mDNS multicast group (`224.0.0.251:5353`), then listens for responses. Only records carried in response packets (QR=1) are collected. When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 section 5.4) is set in the outgoing query, requesting a direct unicast response.
+Sends a DNS query for `name` with record type `qtype` to the mDNS multicast group (`224.0.0.251:5353`), then listens for responses. Only records carried in response packets (QR=1) are collected: records in query packets are known-answer lists or probe proposals, not answers (RFC 6762 sections 7.1 and 8.2). When `mode` is `response_mode::unicast`, the QU bit (RFC 6762 section 5.4) is set in the outgoing query, requesting a direct unicast response.
 
 Completion semantics:
 
@@ -94,8 +94,8 @@ Completion semantics:
 For multicast (QM) queries, the query is not sent immediately. Instead:
 
 1. The receive loop starts first to listen for traffic.
-2. A random delay of 20--120 ms is chosen (RFC 6762 section 5.2).
-3. During the delay window, incoming QM queries with a matching name and type are checked for duplicate question suppression (RFC 6762 section 7.3).
+2. A random delay in `[response_delay_min, response_delay_max]` (20--120 ms by default) is chosen (RFC 6762 section 5.2).
+3. During the delay window, until the query is sent, incoming queries are checked for duplicate question suppression (RFC 6762 section 7.3): a query carrying a QM question with the same name and type is a duplicate only when its Answer section is empty. Section 7.3 permits suppression only when the other query's known answers are all held locally, and the querier holds none, so a query with known answers never suppresses.
 4. If a duplicate is detected, the outgoing query is suppressed entirely &mdash; another host has already asked the same question.
 5. If no duplicate is seen, the query is sent after the delay expires.
 
@@ -132,7 +132,7 @@ const timer_type&  delay_timer() const noexcept;
       timer_type&  delay_timer()       noexcept;
 ```
 
-The querier uses two timers: `timer()` for the silence timeout on the receive loop, and `delay_timer()` for the 20--120 ms QM delay before sending.
+The querier uses two timers: `timer()` for the silence timeout on the receive loop, and `delay_timer()` for the random QM delay before sending (`response_delay_min` to `response_delay_max`, 20--120 ms by default).
 
 ## Supporting Types
 

@@ -29,7 +29,13 @@ make_fuzz_target(fuzz_tc_accumulate)
 make_fuzz_target(fuzz_extract_authority)
 make_fuzz_target(fuzz_parse_known_answers)
 
-add_executable(generate_corpus generate_corpus.cpp)
+add_executable(generate_corpus
+    corpus/main.cpp
+    corpus/name_seeds.cpp
+    corpus/frame_seeds.cpp
+    corpus/query_seeds.cpp
+    corpus/record_seeds.cpp
+)
 target_link_libraries(generate_corpus PRIVATE mdnspp)
 target_compile_options(generate_corpus PRIVATE ${MDNSPP_WARNING_FLAGS})
 

@@ -220,7 +220,7 @@ Fourteen harnesses are provided:
 high byte first, so a corpus entry replays identically with every compiler;
 fuzz_input_test covers that decoder in the unit suite.
 
-Seeds are generated at build time by `generate_corpus.cpp` into
+Seeds are generated at build time by `generate_corpus` (sources in `tests/fuzz/corpus/`) into
 `${CMAKE_BINARY_DIR}/fuzz_corpus/<category>/`. The `fuzz_corpus` ALL custom
 target regenerates seeds at every build. Category names (e.g., `walk_frame`,
 `roundtrip`, `dns_name`) group seeds by function, not by harness binary name.

@@ -65,9 +65,9 @@
 //   provisioned with the new key and encrypt_options::initial_epoch set to
 //   the group's current epoch.
 
-int main()
+static std::array<std::byte, 32> initial_key()
 {
-    std::array<std::byte, 32> initial_key{
+    return std::array<std::byte, 32>{
         std::byte{0x01}, std::byte{0x02}, std::byte{0x03}, std::byte{0x04},
         std::byte{0x05}, std::byte{0x06}, std::byte{0x07}, std::byte{0x08},
         std::byte{0x09}, std::byte{0x0A}, std::byte{0x0B}, std::byte{0x0C},
@@ -77,31 +77,89 @@ int main()
         std::byte{0x19}, std::byte{0x1A}, std::byte{0x1B}, std::byte{0x1C},
         std::byte{0x1D}, std::byte{0x1E}, std::byte{0x1F}, std::byte{0x20},
     };
+}
 
+static std::array<std::byte, 32> rotated_key()
+{
+    return std::array<std::byte, 32>{
+        std::byte{0xA1}, std::byte{0xA2}, std::byte{0xA3}, std::byte{0xA4},
+        std::byte{0xA5}, std::byte{0xA6}, std::byte{0xA7}, std::byte{0xA8},
+        std::byte{0xA9}, std::byte{0xAA}, std::byte{0xAB}, std::byte{0xAC},
+        std::byte{0xAD}, std::byte{0xAE}, std::byte{0xAF}, std::byte{0xB0},
+        std::byte{0xB1}, std::byte{0xB2}, std::byte{0xB3}, std::byte{0xB4},
+        std::byte{0xB5}, std::byte{0xB6}, std::byte{0xB7}, std::byte{0xB8},
+        std::byte{0xB9}, std::byte{0xBA}, std::byte{0xBB}, std::byte{0xBC},
+        std::byte{0xBD}, std::byte{0xBE}, std::byte{0xBF}, std::byte{0xC0},
+    };
+}
+
+static mdnspp::encrypt::encrypt_socket_options make_socket_options()
+{
+    std::array<std::byte, 32> key = initial_key();
     mdnspp::encrypt::encrypt_socket_options sock_opts{
         .encrypt = {
-            .psk       = mdnspp::encrypt::secure_key{initial_key},
+            .psk       = mdnspp::encrypt::secure_key{key},
             .sender_id = 0x00000001,
         },
     };
     // secure_key copies the key material; wipe the stack source buffer.
-    mdnspp::encrypt::secure_zero(initial_key.data(), initial_key.size());
+    mdnspp::encrypt::secure_zero(key.data(), key.size());
+    return sock_opts;
+}
+
+static mdnspp::observer_options make_observer_options()
+{
+    return mdnspp::observer_options{
+        .on_record = [](const mdnspp::endpoint &sender,
+                        const mdnspp::mdns_record_variant &rec)
+        {
+            std::visit([&sender](const auto &r) {
+                std::cout << sender << " -> " << r << std::endl;
+            }, rec);
+        }
+    };
+}
+
+static void rotate_key(mdnspp::encrypt::encrypted_observer &obs)
+{
+    std::array<std::byte, 32> new_raw_key = rotated_key();
+
+    // update_key() is called on the encrypted_socket, accessible via socket().
+    // socket() returns the encrypted_socket<InnerSocket> for encrypted_policy.
+    // Calling it from this thread while the executor thread decrypts is
+    // permitted: key state is guarded by an internal mutex.
+    // The grace period of 30 seconds keeps accepting old-epoch packets from
+    // peers that have not yet rotated during the transition window.
+    obs.socket().update_key(
+        mdnspp::encrypt::secure_key{new_raw_key},
+        mdnspp::encrypt::grace_period{
+            .duration     = std::chrono::seconds{30},
+            .packet_count = 1000,
+        }
+    );
+    // secure_key copies the key material; wipe the stack source buffer.
+    mdnspp::encrypt::secure_zero(new_raw_key.data(), new_raw_key.size());
+
+    std::cout << "key rotated -- epoch incremented, grace period: 30 s or 1000 packets" << std::endl;
+}
+
+static void rotate_then_stop(mdnspp::encrypt::encrypted_observer &obs, mdnspp::context &ctx)
+{
+    std::this_thread::sleep_for(std::chrono::seconds{5});
+    rotate_key(obs);
+
+    // After 35 seconds the grace period has expired on this peer. Any packets
+    // still arriving with the old epoch are rejected from this point on.
+    std::this_thread::sleep_for(std::chrono::seconds{35});
+    ctx.stop();
+}
+
+int main()
+{
+    mdnspp::encrypt::encrypt_socket_options sock_opts = make_socket_options();
 
     mdnspp::context ctx;
-
-    mdnspp::encrypt::encrypted_observer obs{
-        ctx,
-        mdnspp::observer_options{
-            .on_record = [](const mdnspp::endpoint &sender,
-                            const mdnspp::mdns_record_variant &rec)
-            {
-                std::visit([&sender](const auto &r) {
-                    std::cout << sender << " -> " << r << std::endl;
-                }, rec);
-            }
-        },
-        std::move(sock_opts),
-    };
+    mdnspp::encrypt::encrypted_observer obs{ctx, make_observer_options(), std::move(sock_opts)};
 
     obs.async_observe([&ctx](std::error_code ec)
     {
@@ -114,44 +172,7 @@ int main()
     // In a real application, the rotation would be triggered by an application-
     // level signal (e.g., a scheduled rotation, an admin command, or a shared
     // rotation notification received over a side-channel).
-    std::thread rotation_thread{[&obs, &ctx]
-    {
-        std::this_thread::sleep_for(std::chrono::seconds{5});
-
-        std::array<std::byte, 32> new_raw_key{
-            std::byte{0xA1}, std::byte{0xA2}, std::byte{0xA3}, std::byte{0xA4},
-            std::byte{0xA5}, std::byte{0xA6}, std::byte{0xA7}, std::byte{0xA8},
-            std::byte{0xA9}, std::byte{0xAA}, std::byte{0xAB}, std::byte{0xAC},
-            std::byte{0xAD}, std::byte{0xAE}, std::byte{0xAF}, std::byte{0xB0},
-            std::byte{0xB1}, std::byte{0xB2}, std::byte{0xB3}, std::byte{0xB4},
-            std::byte{0xB5}, std::byte{0xB6}, std::byte{0xB7}, std::byte{0xB8},
-            std::byte{0xB9}, std::byte{0xBA}, std::byte{0xBB}, std::byte{0xBC},
-            std::byte{0xBD}, std::byte{0xBE}, std::byte{0xBF}, std::byte{0xC0},
-        };
-
-        // update_key() is called on the encrypted_socket, accessible via socket().
-        // socket() returns the encrypted_socket<InnerSocket> for encrypted_policy.
-        // Calling it from this thread while the executor thread decrypts is
-        // permitted: key state is guarded by an internal mutex.
-        // The grace period of 30 seconds keeps accepting old-epoch packets from
-        // peers that have not yet rotated during the transition window.
-        obs.socket().update_key(
-            mdnspp::encrypt::secure_key{new_raw_key},
-            mdnspp::encrypt::grace_period{
-                .duration     = std::chrono::seconds{30},
-                .packet_count = 1000,
-            }
-        );
-        // secure_key copies the key material; wipe the stack source buffer.
-        mdnspp::encrypt::secure_zero(new_raw_key.data(), new_raw_key.size());
-
-        std::cout << "key rotated -- epoch incremented, grace period: 30 s or 1000 packets" << std::endl;
-
-        // After 35 seconds the grace period has expired on this peer. Any packets
-        // still arriving with the old epoch are rejected from this point on.
-        std::this_thread::sleep_for(std::chrono::seconds{35});
-        ctx.stop();
-    }};
+    std::thread rotation_thread{[&obs, &ctx] { rotate_then_stop(obs, ctx); }};
 
     ctx.run();
     rotation_thread.join();

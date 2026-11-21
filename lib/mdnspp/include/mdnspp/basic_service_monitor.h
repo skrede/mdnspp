@@ -14,61 +14,22 @@
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
-#include "mdnspp/detail/dns_enums.h"
-#include "mdnspp/detail/dns_query.h"
-#include "mdnspp/detail/recv_loop.h"
-#include "mdnspp/detail/ttl_refresh.h"
-#include "mdnspp/detail/query_backoff.h"
-#include "mdnspp/detail/basic_mdns_peer_base.h"
+#include "mdnspp/detail/monitor_engine.h"
 
-#include <span>
-#include <array>
-#include <mutex>
 #include <chrono>
-#include <memory>
-#include <random>
 #include <string>
 #include <vector>
-#include <cstdint>
-#include <ranges>
+#include <cstddef>
 #include <utility>
-#include <algorithm>
 #include <string_view>
 #include <system_error>
-#include <unordered_map>
-#include <unordered_set>
 
 namespace mdnspp {
 
-// basic_service_monitor<P, Clock> -- continuous, TTL-aware mDNS service tracker
-//
-// Policy-based class template parameterized on:
-//   P     -- policy_like: provides executor_type, socket_type, timer_type
-//   Clock -- Clock type (default: std::chrono::steady_clock). Substitute
-//            mdnspp::testing::test_clock in unit tests for deterministic TTL control.
-//
-// Lifecycle:
-//   1. Construct with (ex, opts, sock_opts, mdns_opts) or non-throwing overload
-//   2. watch(service_type) -- register interest in a service type
-//   3. async_start(on_done) -- begin receiving and querying
-//   4. stop() -- idempotent; cancels all timers and receives
-//   5. ~basic_service_monitor() -- calls stop() for RAII safety
-//
-// Thread safety:
-//   watch(), unwatch(), query_service_type(), query_service_instance(), and
-//   services() may be called from any thread. All mutations are posted to the
-//   executor thread via P::post() using a weak_ptr guard.
-//
-// Completion semantics:
-//   async_start()'s on_done fires with error_code{} (success) when stop() is
-//   called -- stopping IS the monitor's natural completion. A second
-//   async_start() completes on_done with std::errc::operation_in_progress;
-//   starting after stop() completes with std::errc::invalid_argument.
-
 template <policy_like P, typename Clock = std::chrono::steady_clock>
-class basic_service_monitor : detail::basic_mdns_peer_base<P>
+class basic_service_monitor : detail::monitor_engine<P, Clock>
 {
-    using base = detail::basic_mdns_peer_base<P>;
+    using base = detail::monitor_engine<P, Clock>;
 
 public:
     using typename base::executor_type;
@@ -76,60 +37,28 @@ public:
     using typename base::timer_type;
     using base::socket;
 
-    // Non-copyable, non-movable
     basic_service_monitor(const basic_service_monitor &) = delete;
     basic_service_monitor &operator=(const basic_service_monitor &) = delete;
     basic_service_monitor(basic_service_monitor &&) = delete;
     basic_service_monitor &operator=(basic_service_monitor &&) = delete;
 
-    /// Throwing constructor.
-    ///
-    /// @param ex         Executor to use for async operations.
-    /// @param opts       Monitor options (callbacks, mode). Move-only.
-    /// @param sock_opts  Socket configuration (multicast group, interface, etc.).
-    /// @param mdns_opts  Protocol tunables (backoff, TTL refresh, TC wait).
-    /// @param copts      Cache options (goodbye_grace, on_expired callback).
     explicit basic_service_monitor(executor_type ex,
                                    monitor_options opts = {},
                                    policy_socket_options_t<P> sock_opts = {},
                                    mdns_options mdns_opts = {},
                                    cache_options copts = {})
-        : base(ex, std::move(sock_opts), std::move(mdns_opts))
-        , m_rng(std::random_device{}())
-        , m_opts(std::move(opts))
-        , m_cache_opts(std::move(copts))
-        , m_cache(make_cache_options())
-        , m_scheduler_timer(ex)
+        : base(ex, std::move(opts), std::move(sock_opts), std::move(mdns_opts), std::move(copts))
     {
-        detail::throw_on_error(validate());
     }
 
-    /// Non-throwing constructor.
-    ///
-    /// On socket construction failure @p ec is set and the object is left in a
-    /// safe but unusable state. Check @p ec before calling async_start().
-    ///
-    /// @param ex         Executor to use for async operations.
-    /// @param opts       Monitor options (callbacks, mode). Move-only.
-    /// @param sock_opts  Socket configuration.
-    /// @param mdns_opts  Protocol tunables.
-    /// @param copts      Cache options (goodbye_grace, on_expired callback).
-    /// @param ec         Receives the error code on failure, cleared on success.
     basic_service_monitor(executor_type ex,
                           monitor_options opts,
                           policy_socket_options_t<P> sock_opts,
                           mdns_options mdns_opts,
                           cache_options copts,
                           std::error_code &ec)
-        : base(ex, std::move(sock_opts), std::move(mdns_opts), ec)
-        , m_rng(std::random_device{}())
-        , m_opts(std::move(opts))
-        , m_cache_opts(std::move(copts))
-        , m_cache(make_cache_options())
-        , m_scheduler_timer(ex)
+        : base(ex, std::move(opts), std::move(sock_opts), std::move(mdns_opts), std::move(copts), ec)
     {
-        if(!ec)
-            ec = validate();
     }
 
     ~basic_service_monitor()
@@ -138,25 +67,13 @@ public:
         stop();
         // The posted stop() teardown is dropped by the expired alive guard;
         // complete a still-pending handler instead of silently dropping it.
-        if(auto cb = std::exchange(m_on_done, {}); cb)
+        if(auto cb = std::exchange(this->m_on_done, {}); cb)
             cb(std::make_error_code(std::errc::operation_canceled));
     }
 
-    // -------------------------------------------------------------------------
-    // Public interface
-    // -------------------------------------------------------------------------
-
-    /// Begin receiving mDNS multicast traffic and, depending on the configured
-    /// @c monitor_mode, issuing discovery queries for watched service types.
-    ///
-    /// @p on_done fires once when stop() is called. May be @c nullptr.
-    ///
-    /// A second async_start() (or async_start() after stop()) completes
-    /// @p on_done with operation_in_progress / invalid_argument without
-    /// touching the running monitor.
     void async_start(monitor_completion_handler on_done = {})
     {
-        if(auto misuse = check_start_misuse())
+        if(auto misuse = this->start_misuse(static_cast<bool>(this->m_loop)))
         {
             if(on_done)
                 this->post_guarded([h = std::move(on_done), misuse]() mutable
@@ -165,1089 +82,73 @@ public:
                 });
             return;
         }
-        m_on_done = std::move(on_done);
-
-        // Re-seed the first-query deadlines so the RFC 6762 section 5.2 initial
-        // 20-120 ms delay is measured from start, not from watch().
-        auto now = Clock::now();
-        for(auto &[svc_type, ws] : m_watches)
-        {
-            if(ws.backoff.first)
-                ws.next_query_at = now + initial_query_delay();
-        }
-
-        // The monitor has no silence semantics -- it runs until stop().
-        this->m_loop = std::make_unique<detail::recv_loop<P>>(
-            this->m_socket,
-            this->m_timer,
-            detail::infinite_silence_timeout,
-            [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
-            {
-                return handle_packet(meta.sender, data);
-            },
-            [] { /* silence handler -- no-op for monitor */ },
-            this->m_mdns_opts.receive_ttl_minimum,
-            this->m_mdns_opts.unknown_ttl_policy,
-            [this](std::error_code ec)
-            {
-                if(m_opts.on_error)
-                    m_opts.on_error(ec, "receive");
-            });
-
-        this->m_loop->start();
-        arm_scheduler();
+        this->m_on_done = std::move(on_done);
+        this->start();
     }
 
-    /// Stop the monitor. Idempotent. Posts teardown to the executor thread.
     void stop()
     {
         base::stop([this]()
         {
-            m_scheduler_timer.cancel();
-            for(auto &[id, chain] : m_tc_chains)
-                chain.timer.cancel();
-            m_tc_chains.clear();
-            if(this->m_loop)
-                this->m_loop->stop();
-            if(m_on_done)
-            {
-                auto cb = std::exchange(m_on_done, {});
-                cb(std::error_code{});
-            }
+            this->teardown();
         });
     }
 
-    /// Register interest in a service type (e.g., "_http._tcp.local").
-    ///
-    /// Thread-safe: posts the registration to the executor thread. Safe to call
-    /// before async_start() -- the posted work queues until the executor runs.
-    ///
-    /// Re-watching a previously unwatched type starts fresh: backoff resets and
-    /// on_found fires again on rediscovery.
     void watch(std::string_view service_type)
     {
-        auto guard = std::weak_ptr<bool>(this->m_alive);
-        P::post(this->m_executor, [this, guard, svc = std::string(service_type)]() mutable
+        this->post_guarded([this, svc = std::string(service_type)]() mutable
         {
-            if(!guard.lock()) return;
-            do_watch(std::move(svc));
+            this->do_watch(std::move(svc));
         });
     }
 
-    /// Deregister interest in a service type.
-    ///
-    /// Fires on_lost(service, loss_reason::unwatched) for every currently-tracked
-    /// service of this type, then purges their cache entries and backoff state.
-    ///
-    /// Thread-safe: posts to executor thread.
     void unwatch(std::string_view service_type)
     {
-        auto guard = std::weak_ptr<bool>(this->m_alive);
-        P::post(this->m_executor, [this, guard, svc = std::string(service_type)]() mutable
+        this->post_guarded([this, svc = std::string(service_type)]() mutable
         {
-            if(!guard.lock()) return;
-            do_unwatch(std::move(svc));
+            this->do_unwatch(std::move(svc));
         });
     }
 
-    /// Return a snapshot of all currently-resolved services.
-    ///
-    /// Thread-safe via a mutex-guarded shared_ptr copy (the lock is held only
-    /// long enough to copy the pointer). Always returns a consistent, immutable
-    /// vector. Empty before any services are discovered.
-    [[nodiscard]] std::vector<resolved_service> services() const
+    std::vector<resolved_service> services() const
     {
-        std::shared_ptr<const std::vector<resolved_service>> snap;
-        {
-            std::lock_guard lock(m_snapshot_mutex);
-            snap = m_services_snapshot;
-        }
-        if(snap)
-            return *snap;
-        return {};
+        return this->m_receiver.services();
     }
 
-    /// Send an immediate PTR query for a service type, bypassing backoff.
-    ///
-    /// Available in all @c monitor_mode values. In @c discover mode this
-    /// supplements the automatic schedule; in @c observe mode it is the only
-    /// way to trigger a query.
-    ///
-    /// Thread-safe: posts to executor thread.
     void query_service_type(std::string_view service_type)
     {
-        auto guard = std::weak_ptr<bool>(this->m_alive);
-        P::post(this->m_executor, [this, guard, svc = std::string(service_type)]() mutable
+        this->post_guarded([this, svc = std::string(service_type)]()
         {
-            if(!guard.lock()) return;
-            send_ptr_query(svc);
+            this->m_querier.send_ptr_query(svc);
         });
     }
 
-    /// Send one immediate multi-question SRV/TXT/A/AAAA query for a specific
-    /// service instance (RFC 6762 §5 question aggregation).
-    ///
-    /// Thread-safe: posts to executor thread.
     void query_service_instance(std::string_view instance_name)
     {
-        auto guard = std::weak_ptr<bool>(this->m_alive);
-        P::post(this->m_executor, [this, guard, inst = std::string(instance_name)]() mutable
+        this->post_guarded([this, inst = std::string(instance_name)]()
         {
-            if(!guard.lock()) return;
-            send_instance_queries(inst);
+            this->m_querier.send_instance_queries(inst);
         });
     }
 
-    /// Trigger an expiry check -- intended for use in tests with a controlled Clock.
-    ///
-    /// In production, the scheduler timer calls erase_expired() periodically.
-    /// This method provides an explicit hook for deterministic TTL tests using
-    /// test_clock::advance() + tick_expired_for_test().
     void tick_expired_for_test()
     {
-        auto expired = m_cache.erase_expired();
-        // handle_expired is called by the cache's on_expired callback,
-        // which fires inside erase_expired() -- nothing more needed here.
-        (void)expired;
+        this->m_cache.erase_expired();
     }
 
-    /// Test-support accessor for the dedicated scheduler timer.
-    ///
-    /// Allows unit tests to fire or inspect the scheduler timer without
-    /// exposing it through the public API.
-    timer_type &scheduler_timer_for_test() noexcept { return m_scheduler_timer; }
+    timer_type &scheduler_timer_for_test() noexcept { return this->m_querier.timer(); }
 
-    /// Test-support accessor for the number of active TTL-refresh schedules.
-    std::size_t refresh_schedule_count_for_test() const noexcept { return m_refresh_schedules.size(); }
+    std::size_t refresh_schedule_count_for_test() const noexcept
+    {
+        return this->m_querier.schedule().refresh_count();
+    }
 
-    /// Test-support accessor for the number of in-flight TC continuation chains.
-    std::size_t tc_chain_count_for_test() const noexcept { return m_tc_chains.size(); }
+    std::size_t tc_chain_count_for_test() const noexcept { return this->m_querier.chains().size(); }
 
-    /// Test-support driver: fires every in-flight TC continuation timer once.
-    /// Only instantiable with policies whose timer exposes fire() (mock_policy).
     void fire_tc_chains_for_test()
     {
-        std::vector<uint64_t> ids;
-        ids.reserve(m_tc_chains.size());
-        for(auto &[id, chain] : m_tc_chains)
-            ids.push_back(id);
-        for(uint64_t id : ids)
-        {
-            if(auto it = m_tc_chains.find(id); it != m_tc_chains.end())
-                it->second.timer.fire();
-        }
+        this->m_querier.chains().fire_for_test();
     }
-
-private:
-    // -------------------------------------------------------------------------
-    // Private constructor helpers
-    // -------------------------------------------------------------------------
-
-    /// Builds the cache_options for the constructor initializer list.
-    /// Moves from m_cache_opts (preserving user-supplied goodbye_grace and
-    /// any other fields), then wires in the on_expired callback.
-    /// Called exactly once during construction; m_cache_opts is left in
-    /// a valid but unspecified state after this call (goodbye_grace remains
-    /// readable for validate()).
-    ///
-    /// An invalid goodbye_grace is clamped here so the record_cache member can
-    /// always be constructed; validate() reports the error to the caller.
-    cache_options make_cache_options()
-    {
-        cache_options copts = std::move(m_cache_opts);
-        if(copts.goodbye_grace.count() <= 0)
-            copts.goodbye_grace = std::chrono::seconds(1);
-        copts.on_expired = [this](std::vector<cache_entry> expired)
-        {
-            handle_expired(std::move(expired));
-        };
-        return copts;
-    }
-
-    /// Validates the protocol tunables and cache options supplied at
-    /// construction. Returns std::errc::invalid_argument on failure.
-    [[nodiscard]] std::error_code validate() const noexcept
-    {
-        if(m_cache_opts.goodbye_grace.count() <= 0)
-            return std::make_error_code(std::errc::invalid_argument);
-        return detail::validate_mdns_options(this->m_mdns_opts);
-    }
-
-    /// Detects async_start misuse: a second start or reuse after stop().
-    [[nodiscard]] std::error_code check_start_misuse() const noexcept
-    {
-        if(this->m_loop)
-            return std::make_error_code(std::errc::operation_in_progress);
-        if(this->m_stopped.load(std::memory_order_acquire))
-            return std::make_error_code(std::errc::invalid_argument);
-        return {};
-    }
-
-    /// Random first-query delay in [response_delay_min, response_delay_max]
-    /// (RFC 6762 section 5.2: 20-120 ms by default).
-    [[nodiscard]] std::chrono::milliseconds initial_query_delay()
-    {
-        std::uniform_int_distribution<int32_t> dist(
-            static_cast<int32_t>(this->m_mdns_opts.response_delay_min.count()),
-            static_cast<int32_t>(this->m_mdns_opts.response_delay_max.count()));
-        return std::chrono::milliseconds(dist(m_rng));
-    }
-
-    // -------------------------------------------------------------------------
-    // Internal structs
-    // -------------------------------------------------------------------------
-
-    /// Incremental resolution state for a service instance whose full record set
-    /// has not yet been received. Keyed by instance name in @c m_partial.
-    struct incomplete_instance
-    {
-        dns_name service_type;
-        bool has_srv{false};
-        bool has_address{false};
-        resolved_service partial;
-    };
-
-    /// One in-flight TC continuation chain (RFC 6762 section 7.2): the
-    /// remaining query packets of a known-answer list that exceeded the
-    /// payload limit, plus the timer pacing them. Each chain owns its timer
-    /// so chains started by different watched types in the same scheduler
-    /// tick cannot cancel each other's continuation packets. Keyed by a
-    /// monotonically increasing id in @c m_tc_chains.
-    struct tc_chain
-    {
-        tc_chain(executor_type ex, std::vector<std::vector<std::byte>> pkts,
-                 std::size_t i, std::chrono::milliseconds d)
-            : timer(ex)
-            , packets(std::move(pkts))
-            , idx(i)
-            , delay(d)
-        {
-        }
-
-        timer_type timer;
-        std::vector<std::vector<std::byte>> packets;
-        std::size_t idx;
-        std::chrono::milliseconds delay;
-    };
-
-    /// Per watched service-type state: independent backoff schedule and query
-    /// deadline. Keyed by service type in @c m_watches.
-    ///
-    /// @c next_query_at is the absolute deadline of this watch's next PTR
-    /// query. The shared scheduler timer fires at the minimum deadline across
-    /// all watches; only watches whose own deadline has passed send a query
-    /// (RFC 6762 section 5.2 -- per-name backoff, minimum one second between
-    /// queries for the same name).
-    struct watched_type_state
-    {
-        detail::query_backoff_state backoff;
-        typename Clock::time_point next_query_at{};
-    };
-
-    // -------------------------------------------------------------------------
-    // Private methods -- packet processing pipeline
-    // -------------------------------------------------------------------------
-
-    /// Entry point for all incoming mDNS packets from the recv_loop.
-    /// Returns true if the packet contained at least one relevant record
-    /// (used by recv_loop to reset the silence timer, though the monitor
-    /// always uses an infinite silence timeout).
-    ///
-    /// Only response packets (QR=1) are consumed: records in query packets are
-    /// known-answer lists of other queriers (RFC 6762 section 7.1) or
-    /// Authority-section probe proposals, which MUST NOT be cached
-    /// (section 8.2). Authority-section records of responses are likewise
-    /// ignored -- mDNS responses carry answers in the Answer and Additional
-    /// sections only.
-    bool handle_packet(const endpoint &sender, std::span<std::byte> data)
-    {
-        bool relevant{false};
-        detail::walk_dns_frame(data, sender,
-            [&](mdns_record_variant rec, const detail::dns_frame_header &header,
-                detail::dns_section section)
-        {
-            if(!header.is_response() || section == detail::dns_section::authority)
-                return;
-            if(!is_relevant(rec))
-                return;
-            relevant = true;
-            m_cache.insert(rec, sender);
-            process_record(std::move(rec));
-        });
-        return relevant;
-    }
-
-    /// Returns true if this record should be processed, false to silently drop.
-    ///
-    /// Filtering rules per MON-07:
-    ///   PTR    -- accepted only if name is in m_watches
-    ///   SRV    -- accepted if name is in m_partial or m_live_services
-    ///   TXT    -- accepted if name is in m_partial or m_live_services
-    ///   A/AAAA -- accepted if name is in m_known_hostnames
-    bool is_relevant(const mdns_record_variant &rec) const
-    {
-        return std::visit([this](const auto &r) -> bool
-        {
-            using T = std::remove_cvref_t<decltype(r)>;
-
-            if constexpr (std::is_same_v<T, record_ptr>)
-                return m_watches.contains(r.name);
-            else if constexpr (std::is_same_v<T, record_srv> || std::is_same_v<T, record_txt>)
-                return m_partial.contains(r.name) || m_live_services.contains(r.name);
-            else if constexpr (std::is_same_v<T, record_a> || std::is_same_v<T, record_aaaa>)
-                return m_known_hostnames.contains(r.name);
-            else
-                return false;
-        }, rec);
-    }
-
-    /// Dispatch to per-record-type processing logic.
-    void process_record(mdns_record_variant rec)
-    {
-        std::visit([this](auto &&r)
-        {
-            using T = std::remove_cvref_t<decltype(r)>;
-
-            if constexpr (std::is_same_v<T, record_ptr>)
-                process_ptr(std::forward<decltype(r)>(r));
-            else if constexpr (std::is_same_v<T, record_srv>)
-                process_srv(std::forward<decltype(r)>(r));
-            else if constexpr (std::is_same_v<T, record_a>)
-                process_a(std::forward<decltype(r)>(r));
-            else if constexpr (std::is_same_v<T, record_aaaa>)
-                process_aaaa(std::forward<decltype(r)>(r));
-            else if constexpr (std::is_same_v<T, record_txt>)
-                process_txt(std::forward<decltype(r)>(r));
-        }, std::move(rec));
-    }
-
-    /// PTR record: seed an incomplete_instance in m_partial if not already
-    /// partial or live. The PTR.ptr_name becomes the instance name.
-    void process_ptr(const record_ptr &r)
-    {
-        const dns_name &inst = r.ptr_name;
-
-        if(m_partial.contains(inst) || m_live_services.contains(inst))
-            return; // already tracking or live -- no re-seed
-
-        auto &partial = m_partial[inst];
-        partial.service_type          = r.name;  // e.g. "_http._tcp.local"
-        partial.partial.instance_name = inst;
-        m_instance_type[inst]         = r.name;
-    }
-
-    /// SRV record: update partial with hostname+port; add hostname to
-    /// m_known_hostnames so subsequent A/AAAA records are accepted.
-    void process_srv(const record_srv &r)
-    {
-        // Track goodbye: TTL=0 marks this instance for goodbye reporting
-        if(r.ttl == 0)
-            m_goodbye_instances.insert(r.name);
-
-        if(auto it = m_partial.find(r.name); it != m_partial.end())
-        {
-            it->second.has_srv             = true;
-            it->second.partial.hostname    = r.srv_name;
-            it->second.partial.port        = r.port;
-            m_known_hostnames.insert(r.srv_name);
-            // Build SRV refresh schedule now that we have the wire TTL
-            if(r.ttl > 0)
-                rebuild_refresh_schedule({r.name, dns_type::srv}, r.ttl);
-            check_resolved(r.name);
-        }
-        else if(auto lit = m_live_services.find(r.name); lit != m_live_services.end())
-        {
-            // SRV TTL refresh for an already-live service: rebuild schedule and update
-            if(r.ttl > 0)
-                rebuild_refresh_schedule({r.name, dns_type::srv}, r.ttl);
-
-            bool changed = (lit->second.hostname != r.srv_name || lit->second.port != r.port);
-            if(changed)
-            {
-                lit->second.hostname = r.srv_name;
-                lit->second.port     = r.port;
-                m_known_hostnames.insert(r.srv_name);
-                if(m_opts.on_updated)
-                    m_opts.on_updated(lit->second, update_event::added, dns_type::srv);
-                update_snapshot();
-            }
-        }
-    }
-
-    void process_a(const record_a &r)
-    {
-        process_address_record(r, dns_type::a,
-            [](resolved_service &svc) -> std::vector<std::string> & { return svc.ipv4_addresses; });
-    }
-
-    void process_aaaa(const record_aaaa &r)
-    {
-        process_address_record(r, dns_type::aaaa,
-            [](resolved_service &svc) -> std::vector<std::string> & { return svc.ipv6_addresses; });
-    }
-
-    /// Shared implementation for A and AAAA record processing.
-    /// AddrGetter: resolved_service& -> std::vector<std::string>&
-    template <typename Record, typename AddrGetter>
-    void process_address_record(const Record &r, dns_type dtype, AddrGetter get_addrs)
-    {
-        bool any_updated{false};
-
-        for(auto &[inst_name, inc] : m_partial)
-        {
-            if(inc.partial.hostname == r.name)
-            {
-                auto &addrs = get_addrs(inc.partial);
-                if(std::ranges::find(addrs, r.address_string) == addrs.end())
-                {
-                    addrs.push_back(r.address_string);
-                    inc.has_address = true;
-                    any_updated     = true;
-                }
-            }
-        }
-
-        if(any_updated)
-        {
-            std::vector<dns_name> to_check;
-            for(auto &[inst_name, inc] : m_partial)
-            {
-                if(inc.partial.hostname == r.name && inc.has_srv && inc.has_address)
-                    to_check.push_back(inst_name);
-            }
-            for(const auto &inst_name : to_check)
-                check_resolved(inst_name);
-        }
-
-        for(auto &[inst_name, svc] : m_live_services)
-        {
-            if(svc.hostname == r.name)
-            {
-                auto &addrs = get_addrs(svc);
-                if(std::ranges::find(addrs, r.address_string) == addrs.end())
-                {
-                    addrs.push_back(r.address_string);
-                    if(m_opts.on_updated)
-                        m_opts.on_updated(svc, update_event::added, dtype);
-                    update_snapshot();
-                }
-            }
-        }
-    }
-
-    /// TXT record: update TXT entries in partial/live service.
-    void process_txt(const record_txt &r)
-    {
-        // Update partial if present
-        if(auto it = m_partial.find(r.name); it != m_partial.end())
-        {
-            merge_txt(it->second.partial.txt_entries, r.entries);
-            return;
-        }
-
-        // Update live service
-        if(auto it = m_live_services.find(r.name); it != m_live_services.end())
-        {
-            bool changed = merge_txt(it->second.txt_entries, r.entries);
-            if(changed)
-            {
-                if(m_opts.on_updated)
-                    m_opts.on_updated(it->second, update_event::added, dns_type::txt);
-                update_snapshot();
-            }
-        }
-    }
-
-    /// Merges src TXT entries into dst (last value wins per key).
-    /// Returns true if any entry was added or changed.
-    static bool merge_txt(std::vector<service_txt> &dst, const std::vector<service_txt> &src)
-    {
-        bool changed{false};
-        for(const auto &e : src)
-        {
-            auto it = std::ranges::find_if(dst,
-                [&](const service_txt &x) { return x.key == e.key; });
-            if(it == dst.end())
-            {
-                dst.push_back(e);
-                changed = true;
-            }
-            else if(it->value != e.value)
-            {
-                it->value = e.value;
-                changed   = true;
-            }
-        }
-        return changed;
-    }
-
-    /// If the named partial instance has both has_srv and has_address, promote
-    /// it to m_live_services and fire on_found.
-    void check_resolved(const dns_name &inst_name)
-    {
-        auto it = m_partial.find(inst_name);
-        if(it == m_partial.end())
-            return;
-
-        if(!it->second.has_srv || !it->second.has_address)
-            return;
-
-        // Promote to live
-        resolved_service svc = std::move(it->second.partial);
-        m_partial.erase(it);
-
-        m_live_services.emplace(inst_name, svc);
-
-        if(m_opts.on_found)
-            m_opts.on_found(svc);
-
-        update_snapshot();
-    }
-
-    /// Called by the cache's on_expired callback when TTL-expired entries are evicted.
-    void handle_expired(std::vector<cache_entry> expired)
-    {
-        for(const auto &entry : expired)
-        {
-            std::visit([this](const auto &r)
-            {
-                using T = std::remove_cvref_t<decltype(r)>;
-
-                if constexpr (std::is_same_v<T, record_srv>)
-                    handle_expired_srv(r);
-                else if constexpr (std::is_same_v<T, record_a>)
-                    handle_expired_address(r, dns_type::a,
-                        [](resolved_service &s) -> std::vector<std::string> & { return s.ipv4_addresses; });
-                else if constexpr (std::is_same_v<T, record_aaaa>)
-                    handle_expired_address(r, dns_type::aaaa,
-                        [](resolved_service &s) -> std::vector<std::string> & { return s.ipv6_addresses; });
-                else if constexpr (std::is_same_v<T, record_txt>)
-                    handle_expired_txt(r);
-                // PTR expiry -- silently ignored (SRV expiry is the loss trigger)
-            }, entry.record);
-        }
-    }
-
-    void handle_expired_srv(const record_srv &r)
-    {
-        // The anchor record is gone -- its refresh schedule must go with it
-        // (m_refresh_schedules would otherwise grow without bound).
-        m_refresh_schedules.erase({r.name, dns_type::srv});
-
-        auto it = m_live_services.find(r.name);
-        if(it == m_live_services.end())
-        {
-            m_partial.erase(r.name);
-            m_goodbye_instances.erase(r.name);
-            return;
-        }
-
-        resolved_service last_known = it->second;
-        m_live_services.erase(it);
-        m_partial.erase(r.name);
-
-        loss_reason reason = m_goodbye_instances.erase(r.name) > 0
-            ? loss_reason::goodbye
-            : loss_reason::timeout;
-
-        if(m_opts.on_lost)
-            m_opts.on_lost(last_known, reason);
-
-        update_snapshot();
-    }
-
-    template <typename Record, typename AddrGetter>
-    void handle_expired_address(const Record &r, dns_type dtype, AddrGetter get_addrs)
-    {
-        for(auto &[inst_name, svc] : m_live_services)
-        {
-            if(svc.hostname != r.name)
-                continue;
-            auto &addrs = get_addrs(svc);
-            auto it = std::ranges::find(addrs, r.address_string);
-            if(it != addrs.end())
-            {
-                addrs.erase(it);
-                if(m_opts.on_updated)
-                    m_opts.on_updated(svc, update_event::removed, dtype);
-                update_snapshot();
-            }
-        }
-    }
-
-    void handle_expired_txt(const record_txt &r)
-    {
-        auto lit = m_live_services.find(r.name);
-        if(lit == m_live_services.end())
-            return;
-
-        bool changed{false};
-        for(const auto &e : r.entries)
-        {
-            auto eit = std::ranges::find_if(lit->second.txt_entries,
-                [&](const service_txt &x) { return x.key == e.key; });
-            if(eit != lit->second.txt_entries.end())
-            {
-                lit->second.txt_entries.erase(eit);
-                changed = true;
-            }
-        }
-        if(changed)
-        {
-            if(m_opts.on_updated)
-                m_opts.on_updated(lit->second, update_event::removed, dns_type::txt);
-            update_snapshot();
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Private methods -- watch/unwatch
-    // -------------------------------------------------------------------------
-
-    void do_watch(std::string svc_type)
-    {
-        auto [it, inserted] = m_watches.try_emplace(dns_name(std::move(svc_type)));
-
-        // First query after a randomized 20-120 ms delay (RFC 6762 section 5.2);
-        // async_start() re-seeds this for watches registered before start.
-        if(inserted)
-            it->second.next_query_at = Clock::now() + initial_query_delay();
-
-        // If the monitor is already running, re-arm the scheduler so the new
-        // watch type receives its first query at its own deadline.
-        if(this->m_loop)
-            arm_scheduler();
-    }
-
-    void do_unwatch(std::string svc_type)
-    {
-        dns_name normalized_type(std::move(svc_type));
-
-        if(!m_watches.contains(normalized_type))
-            return;
-
-        // Fire on_lost(unwatched) for every live service of this type
-        std::vector<dns_name> to_remove;
-        for(const auto &[inst_name, svc] : m_live_services)
-        {
-            if(auto tit = m_instance_type.find(inst_name); tit != m_instance_type.end())
-            {
-                if(tit->second == normalized_type)
-                    to_remove.push_back(inst_name);
-            }
-        }
-
-        for(const auto &inst_name : to_remove)
-        {
-            if(auto it = m_live_services.find(inst_name); it != m_live_services.end())
-            {
-                if(m_opts.on_lost)
-                    m_opts.on_lost(it->second, loss_reason::unwatched);
-                m_live_services.erase(it);
-            }
-        }
-
-        // Remove partial instances of this type
-        std::vector<dns_name> partial_to_remove;
-        for(auto &[inst_name, inc] : m_partial)
-        {
-            if(inc.service_type == normalized_type)
-                partial_to_remove.push_back(inst_name);
-        }
-        for(const auto &inst_name : partial_to_remove)
-            m_partial.erase(inst_name);
-
-        // Remove instance type tracking entries and their known hostnames.
-        // Hostnames may be shared across service types (same host, different services),
-        // so only remove a hostname if no remaining live or partial instance uses it.
-        std::vector<dns_name> type_to_remove;
-        for(auto &[inst_name, svc_t] : m_instance_type)
-        {
-            if(svc_t == normalized_type)
-                type_to_remove.push_back(inst_name);
-        }
-        for(const auto &inst_name : type_to_remove)
-        {
-            m_instance_type.erase(inst_name);
-            // Goodbye state and refresh schedules are per instance -- erase
-            // only the unwatched type's instances, not those of other types.
-            m_goodbye_instances.erase(inst_name);
-            m_refresh_schedules.erase({inst_name, dns_type::srv});
-        }
-
-        // Rebuild m_known_hostnames from remaining live/partial instances
-        m_known_hostnames.clear();
-        for(const auto &[name, svc] : m_live_services)
-        {
-            if(!svc.hostname.empty())
-                m_known_hostnames.insert(svc.hostname);
-        }
-        for(const auto &[name, inc] : m_partial)
-        {
-            if(!inc.partial.hostname.empty())
-                m_known_hostnames.insert(inc.partial.hostname);
-        }
-
-        m_watches.erase(normalized_type);
-        update_snapshot();
-    }
-
-    // -------------------------------------------------------------------------
-    // Private methods -- scheduler
-    // -------------------------------------------------------------------------
-
-    /// Compute the earliest upcoming deadline and arm the scheduler timer.
-    ///
-    /// The wakeup is the minimum of:
-    ///   - The per-watch next_query_at deadlines (discover mode)
-    ///   - The next TTL-refresh fire_point across all active refresh schedules
-    ///     (discover + ttl_refresh modes)
-    ///   - now + 1 s as a periodic expiry-sweep floor (all modes)
-    ///
-    /// Called from async_start(), do_watch() (if already started), and
-    /// on_scheduler_tick() to keep the scheduling loop alive.
-    void arm_scheduler()
-    {
-        using namespace std::chrono;
-        auto now = Clock::now();
-
-        // Default wakeup: periodic expiry sweep every 1s (observe mode / fallback)
-        auto next = now + seconds{1};
-        bool has_scheduled_event = false;
-
-        if(m_opts.mode == monitor_mode::discover)
-        {
-            for(auto &[svc_type, ws] : m_watches)
-            {
-                if(!has_scheduled_event || ws.next_query_at < next)
-                {
-                    next = ws.next_query_at;
-                    has_scheduled_event = true;
-                }
-            }
-        }
-
-        // TTL refresh schedules: discover + ttl_refresh modes
-        if(m_opts.mode == monitor_mode::discover || m_opts.mode == monitor_mode::ttl_refresh)
-        {
-            for(auto &[key, sched] : m_refresh_schedules)
-            {
-                if(sched.next_idx < sched.fire_at.size())
-                {
-                    auto tp = sched.fire_at[sched.next_idx];
-                    if(!has_scheduled_event || tp < next)
-                    {
-                        next = tp;
-                        has_scheduled_event = true;
-                    }
-                }
-            }
-        }
-
-        // Fall back to 1s expiry sweep if no backoff/refresh events are scheduled
-        // (observe mode, or discover/ttl_refresh with no watches or exhausted schedules)
-        if(!has_scheduled_event)
-            next = now + seconds{1};
-
-        auto delay = duration_cast<milliseconds>(next - now);
-        if(delay.count() < 0)
-            delay = milliseconds{0};
-
-        m_scheduler_timer.expires_after(delay);
-
-        auto guard = std::weak_ptr<bool>(this->m_alive);
-        m_scheduler_timer.async_wait([this, guard](std::error_code ec)
-        {
-            if(ec || !guard.lock())
-                return;
-            on_scheduler_tick();
-        });
-    }
-
-    /// Scheduler tick handler: drives cache expiry, backoff queries, and TTL
-    /// refresh queries, then re-arms the timer.
-    ///
-    /// The shared timer fires at the minimum deadline across all watches and
-    /// refresh schedules; each watch sends a query only when its OWN deadline
-    /// has passed, so an unrelated TTL-refresh fire point or a second watched
-    /// type cannot trigger premature queries (RFC 6762 section 5.2 minimum
-    /// one-second interval and doubling per name).
-    void on_scheduler_tick()
-    {
-        if(this->m_stopped.load(std::memory_order_acquire))
-            return;
-
-        // Drive loss detection on every tick (all modes)
-        m_cache.erase_expired();
-
-        auto now = Clock::now();
-
-        // Backoff queries -- discover mode only; fire only watches that are due
-        if(m_opts.mode == monitor_mode::discover)
-        {
-            for(auto &[svc_type, ws] : m_watches)
-            {
-                if(ws.next_query_at > now)
-                    continue;
-                // advance_backoff returns initial_interval on the first call
-                // (clearing the first flag) and the doubled, max-clamped
-                // interval on subsequent calls -- the gap until the next query.
-                auto interval = detail::advance_backoff(ws.backoff, this->m_mdns_opts);
-                ws.next_query_at = now + interval;
-                send_ptr_query(svc_type);
-            }
-        }
-
-        // TTL refresh queries -- discover + ttl_refresh modes
-        if(m_opts.mode == monitor_mode::discover || m_opts.mode == monitor_mode::ttl_refresh)
-        {
-            for(auto it = m_refresh_schedules.begin(); it != m_refresh_schedules.end(); )
-            {
-                auto &[key, sched] = *it;
-                while(sched.next_idx < sched.fire_at.size()
-                      && sched.fire_at[sched.next_idx] <= now)
-                {
-                    send_instance_queries(key.name.str());
-                    ++sched.next_idx;
-                }
-
-                // Prune exhausted schedules -- a fresh record rebuilds them
-                if(sched.next_idx >= sched.fire_at.size())
-                    it = m_refresh_schedules.erase(it);
-                else
-                    ++it;
-            }
-        }
-
-        // Re-arm for the next tick
-        arm_scheduler();
-    }
-
-    /// Build or rebuild the TTL refresh schedule for the record identified by
-    /// @p key using @p wire_ttl and the current insertion time from the clock.
-    ///
-    /// Called whenever a new or refreshed record is inserted for a live or
-    /// partial instance in discover or ttl_refresh mode.
-    void rebuild_refresh_schedule(const detail::record_name_type &key, uint32_t wire_ttl)
-    {
-        if(m_opts.mode != monitor_mode::discover && m_opts.mode != monitor_mode::ttl_refresh)
-            return;
-
-        if(this->m_mdns_opts.ttl_refresh_thresholds.empty())
-            return;
-
-        auto inserted_at = Clock::now();
-        m_refresh_schedules[key] = detail::make_refresh_schedule<Clock>(
-            wire_ttl, this->m_mdns_opts, inserted_at, m_rng);
-
-        // Wake the scheduler at the new fire point -- a long backoff deadline
-        // must not sleep past it.
-        if(this->m_loop)
-            arm_scheduler();
-    }
-
-    // -------------------------------------------------------------------------
-    // Private methods -- query sending
-    // -------------------------------------------------------------------------
-
-    void send_ptr_query(std::string_view svc_type)
-    {
-        // Collect known PTR answers from the cache (RFC 6762 section 7.1).
-        // Only include records whose remaining TTL exceeds the suppression
-        // threshold to avoid advertising stale records.
-        std::vector<mdns_record_variant> known_answers;
-        {
-            auto entries = m_cache.find(dns_name(svc_type), dns_type::ptr);
-            double fraction = this->m_mdns_opts.ka_suppression_fraction;
-            for(const auto &e : entries)
-            {
-                auto threshold = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                    std::chrono::duration<double>(e.wire_ttl * fraction));
-                if(e.ttl_remaining > threshold)
-                    known_answers.push_back(e.record);
-            }
-        }
-
-        // Build one or more query packets, splitting across TC continuations
-        // when the known-answer list exceeds the configured payload limit.
-        auto packets = detail::build_dns_query_tc(
-            svc_type, dns_type::ptr, known_answers,
-            this->m_mdns_opts.max_query_payload);
-
-        if(!packets.empty())
-            send_tc_packets(std::move(packets), 0);
-    }
-
-    void send_tc_packets(std::vector<std::vector<std::byte>> packets, std::size_t idx)
-    {
-        if(idx >= packets.size() || this->m_stopped.load(std::memory_order_acquire))
-            return;
-
-        send_tc_packet(packets[idx]);
-
-        if(idx + 1 >= packets.size())
-            return;
-
-        auto delay = std::chrono::duration_cast<std::chrono::milliseconds>(
-            this->m_mdns_opts.tc_continuation_delay);
-        if(delay.count() <= 0)
-        {
-            send_tc_packets(std::move(packets), idx + 1);
-            return;
-        }
-
-        uint64_t id = m_next_tc_chain++;
-        m_tc_chains.try_emplace(id, this->m_executor, std::move(packets), idx + 1, delay);
-        arm_tc_chain(id);
-    }
-
-    void arm_tc_chain(uint64_t id)
-    {
-        auto &chain = m_tc_chains.find(id)->second;
-        chain.timer.expires_after(chain.delay);
-        chain.timer.async_wait([this, id](std::error_code ec)
-        {
-            // ec is checked first and alone: on cancellation (stop teardown
-            // or destruction) the chain entry may already be gone.
-            if(ec)
-                return;
-            if(this->m_stopped.load(std::memory_order_acquire))
-                return;
-            continue_tc_chain(id);
-        });
-    }
-
-    void continue_tc_chain(uint64_t id)
-    {
-        auto it = m_tc_chains.find(id);
-        if(it == m_tc_chains.end())
-            return;
-        auto &chain = it->second;
-        send_tc_packet(chain.packets[chain.idx]);
-        if(++chain.idx < chain.packets.size())
-            arm_tc_chain(id);
-        else
-            m_tc_chains.erase(it);
-    }
-
-    void send_tc_packet(const std::vector<std::byte> &packet)
-    {
-        std::error_code ec;
-        this->m_socket.send(this->multicast_endpoint(),
-                            std::span<const std::byte>(packet), ec);
-        if(ec && m_opts.on_error)
-            m_opts.on_error(ec, "query send");
-    }
-
-    /// Send one aggregated SRV + TXT + A + AAAA query for a service instance.
-    ///
-    /// Per RFC 6762 §5.2, refreshing a service instance requires querying the
-    /// SRV record (authoritative), the TXT record (which would otherwise
-    /// silently expire), and both address record types to cover dual-stack
-    /// hosts. §5 recommends aggregating multiple questions into a single
-    /// multi-question message rather than separate packets.
-    void send_instance_queries(std::string_view inst_name)
-    {
-        auto encoded_name = detail::encode_dns_name(inst_name);
-        if(!encoded_name.has_value())
-            return;
-        const auto &encoded = *encoded_name;
-
-        static constexpr std::array<dns_type, 4> qtypes{dns_type::srv, dns_type::txt,
-                                                        dns_type::a, dns_type::aaaa};
-
-        std::vector<std::byte> packet;
-        packet.reserve(12 + (encoded.size() + 4) * qtypes.size());
-
-        detail::push_u16_be(packet, 0x0000); // id = 0
-        detail::push_u16_be(packet, 0x0000); // flags = standard query
-        detail::push_u16_be(packet, static_cast<uint16_t>(qtypes.size())); // qdcount
-        detail::push_u16_be(packet, 0x0000); // ancount
-        detail::push_u16_be(packet, 0x0000); // nscount
-        detail::push_u16_be(packet, 0x0000); // arcount
-
-        for(dns_type qtype : qtypes)
-        {
-            packet.insert(packet.end(), encoded.begin(), encoded.end());
-            detail::push_u16_be(packet, detail::to_underlying(qtype));
-            detail::push_u16_be(packet, 0x0001); // QCLASS = IN
-        }
-
-        std::error_code ec;
-        this->m_socket.send(this->multicast_endpoint(),
-                            std::span<const std::byte>(packet), ec);
-        if(ec && m_opts.on_error)
-            m_opts.on_error(ec, "instance query send");
-    }
-
-    // -------------------------------------------------------------------------
-    // Private methods -- snapshot management
-    // -------------------------------------------------------------------------
-
-    void update_snapshot()
-    {
-        std::vector<resolved_service> snap;
-        snap.reserve(m_live_services.size());
-        for(const auto &[name, svc] : m_live_services)
-        {
-            resolved_service entry = svc;
-
-            // Populate TTL fields from the SRV cache entry (MON-05).
-            // If the SRV record has already expired (race between erase_expired and
-            // update_snapshot), we keep the zeroed defaults from the live entry.
-            auto srv_entries = m_cache.find(name, dns_type::srv);
-            if(!srv_entries.empty())
-            {
-                entry.wire_ttl      = srv_entries.front().wire_ttl;
-                entry.ttl_remaining = srv_entries.front().ttl_remaining;
-            }
-
-            snap.push_back(std::move(entry));
-        }
-
-        {
-            std::lock_guard lock(m_snapshot_mutex);
-            m_services_snapshot = std::make_shared<const std::vector<resolved_service>>(std::move(snap));
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // Data members
-    // -------------------------------------------------------------------------
-
-    // ---- Fundamental / simple types ----
-    uint64_t m_next_tc_chain{0};
-    std::mt19937 m_rng;
-
-    // ---- Options and callbacks ----
-    monitor_options m_opts;
-    monitor_completion_handler m_on_done;
-
-    // ---- Cache (m_cache_opts MUST precede m_cache for initialization order) ----
-    cache_options m_cache_opts;
-    record_cache<Clock> m_cache;
-
-    // ---- Timers ----
-    timer_type m_scheduler_timer;
-
-    // ---- Synchronization ----
-    mutable std::mutex m_snapshot_mutex;
-
-    // ---- Maps (ascending by value-type complexity) ----
-    std::unordered_map<uint64_t, tc_chain> m_tc_chains;
-    std::unordered_map<dns_name, dns_name> m_instance_type;
-    std::unordered_map<dns_name, watched_type_state> m_watches;
-    std::unordered_map<dns_name, incomplete_instance> m_partial;
-    std::unordered_map<dns_name, resolved_service> m_live_services;
-    std::unordered_map<detail::record_name_type, detail::ttl_refresh_schedule<Clock>,
-                       detail::record_name_type_hash> m_refresh_schedules;
-
-    // ---- Sets ----
-    std::unordered_set<dns_name> m_known_hostnames;
-    std::unordered_set<dns_name> m_goodbye_instances;
-
-    // ---- Smart pointers ----
-    std::shared_ptr<const std::vector<resolved_service>> m_services_snapshot;
 };
 
 }

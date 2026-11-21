@@ -47,6 +47,8 @@ explicit basic_service_monitor(executor_type ex,
 
 Constructs the monitor from an executor. The optional [`monitor_options`](monitor_options.md) supplies discovery callbacks, the error handler, and the monitoring mode. The optional `sock_opts` controls network interface selection and multicast group (see [Socket Options](../socket-options.md)); its type is `policy_socket_options_t<P>` — plain `socket_options` for the default and asio policies. The optional [`mdns_options`](mdns_options.md) controls query backoff timing, TTL refresh thresholds, and TC accumulation windows. The optional [`cache_options`](cache_options.md) controls the goodbye grace period and cache expiry callbacks. Throws `std::system_error` on socket construction failure or invalid options (`std::errc::invalid_argument`).
 
+Options are invalid when `copts.goodbye_grace` is not positive or `mdns_opts` fails [validation](mdns_options.md#validation). The monitor installs its own `cache_options::on_expired` handler (expiry drives loss detection), so an `on_expired` supplied in `copts` is not called; `on_cache_flush` and `goodbye_grace` are kept.
+
 **Note:** `monitor_options` is move-only. Use `std::move` when passing a named variable.
 
 ### Non-throwing
@@ -60,7 +62,7 @@ basic_service_monitor(executor_type ex,
                       std::error_code &ec);
 ```
 
-Same as the throwing constructor, but sets `ec` instead of throwing on failure (both for socket construction and for invalid options). All parameters must be provided explicitly (no defaults). Check `ec` before calling `async_start()`.
+Same as the throwing constructor, but sets `ec` instead of throwing on failure (both for socket construction and for invalid options). All parameters must be provided explicitly (no defaults). `ec` is cleared on success. After a socket construction failure the object is safe to destroy but unusable; check `ec` before calling `async_start()`.
 
 `basic_service_monitor` is non-copyable and non-movable (receive-loop and timer handlers capture `this`).
 
@@ -98,6 +100,8 @@ void watch(std::string_view service_type);
 ```
 
 Registers interest in a service type (e.g., `"_http._tcp.local."`). In `discover` mode the monitor immediately begins issuing PTR queries for this type with exponential backoff. Re-watching a previously unwatched type starts fresh: backoff resets and `on_found` fires again on rediscovery.
+
+The first PTR query of a watch waits a random delay in [`mdns_options::response_delay_min`, `response_delay_max`] (20--120 ms by default, RFC 6762 §5.2). The delay is measured from `async_start()` for a watch whose posted registration ran before it, otherwise from the moment the registration runs.
 
 **Thread-safety:** May be called from any thread. Posts the registration to the executor thread via a weak-pointer guard. Safe to call before `async_start()`.
 
@@ -151,9 +155,28 @@ Sends one immediate multi-question query carrying SRV, TXT, A, and AAAA question
 
 **Thread-safety:** May be called from any thread. Posts to the executor thread.
 
+### Accessors
+
+```cpp
+const socket_type& socket() const noexcept;
+      socket_type& socket()       noexcept;
+```
+
+### Test support
+
+```cpp
+void        tick_expired_for_test();
+timer_type& scheduler_timer_for_test() noexcept;
+std::size_t refresh_schedule_count_for_test() const noexcept;
+std::size_t tc_chain_count_for_test() const noexcept;
+void        fire_tc_chains_for_test();
+```
+
+Hooks for deterministic unit tests (with `mdnspp::testing::test_clock` and `mock_policy`); call them from the executor thread. `tick_expired_for_test()` evicts expired cache entries now, which fires the same loss and update callbacks as the periodic sweep. `scheduler_timer_for_test()` is the timer that drives the query schedule and the expiry sweep. `refresh_schedule_count_for_test()` is the number of instances with a pending TTL-refresh schedule; `tc_chain_count_for_test()` the number of in-flight known-answer continuation chains (RFC 6762 §7.2). `fire_tc_chains_for_test()` fires every in-flight continuation timer once and is only instantiable with a timer that exposes `fire()`.
+
 ### Error reporting
 
-Fire-and-forget send failures and fatal receive errors are reported through the `monitor_options::on_error` field (`error_handler`, `void(std::error_code, std::string_view)`). The context string identifies the failure site (e.g. `"query send"`, `"receive"`). Without a handler, these errors are silently ignored.
+Fire-and-forget send failures and fatal receive errors are reported through the `monitor_options::on_error` field (`error_handler`, `void(std::error_code, std::string_view)`). The context string identifies the failure site: `"receive"` (receive loop), `"query send"` (a PTR query or one of its known-answer continuation packets) or `"instance query send"` (the SRV/TXT/A/AAAA instance query, also used for TTL refresh). Without a handler, these errors are silently ignored.
 
 ## Lifecycle
 

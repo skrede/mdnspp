@@ -57,7 +57,7 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex, const encrypt_socket_options &opts);
 ```
 
-Constructs the inner socket from `ex` and the base `socket_options` portion of `opts`. Validates `opts.encrypt` before copying the PSK: if `validate()` fails (`sender_id == 0`, all-zero PSK, `replay_window_size == 0`, or `max_sessions_per_sender == 0`), throws `std::system_error` with `std::errc::invalid_argument` and the key is never copied. If libsodium cannot be initialized, throws `std::system_error` with `std::errc::not_supported`. Validation is active in all build configurations, including release builds. On success, copies the PSK, sets the starting epoch from `initial_epoch`, and draws a random nonzero session ID for this socket, and configures the replay window, cleartext, and auth-only behavior. This is the primary constructor for production use.
+Constructs the inner socket from `ex` and the base `socket_options` portion of `opts`. Validates `opts.encrypt` before copying the PSK: if `validate()` fails (`sender_id == 0`, all-zero PSK, `replay_window_size == 0`, `max_senders == 0`, or `max_sessions_per_sender == 0`), throws `std::system_error` with `std::errc::invalid_argument` and the key is never copied. If libsodium cannot be initialized, throws `std::system_error` with `std::errc::not_supported`. Validation is active in all build configurations, including release builds. On success, copies the PSK, sets the starting epoch from `initial_epoch`, and draws a random nonzero session ID for this socket, and configures the replay window, cleartext, and auth-only behavior. This is the primary constructor for production use.
 
 ### Non-throwing, with options
 

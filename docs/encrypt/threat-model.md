@@ -213,7 +213,7 @@ discards its window, which is the source of the accepted-once residual
 described under Replay Attacks.
 
 `max_senders` (default 256) limits the number of per-sender state entries held
-in memory; 0 disables the limit. When a new sender is seen and the table is
+in memory; 0 fails validation. When a new sender is seen and the table is
 full, the least recently used sender is evicted together with its sessions. An
 attacker who has recorded packets from more than `max_senders` distinct senders
 can replay them to force eviction, and a peer holding the PSK can forge

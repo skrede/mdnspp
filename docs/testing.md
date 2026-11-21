@@ -25,6 +25,7 @@ Unit tests cover:
 - DNS wire format encoding and decoding (tests/unit/dns_wire/:
   dns_wire_*_test; dns_test; tests/unit/parse/: parse_*_test)
 - DNS name serialization and round-trips (dns_name_test)
+- DNS-SD service type parsing (service_type_test)
 - Record and service description construction (records_test,
   service_info_test, service_info_make_test, mdns_util_test)
 - State machine correctness: probe/announce/live/stopped lifecycle, query

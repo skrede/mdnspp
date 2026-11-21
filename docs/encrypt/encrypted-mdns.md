@@ -70,7 +70,7 @@ mdnspp::encrypt::encrypt_options enc_opts{
 | `accept_cleartext` | `bool` | `false` | Forward unencrypted packets to the application (unauthenticated downgrade path; see [Threat Model](threat-model.md)) |
 | `auth_only` | `bool` | `false` | Send auth-only (plaintext + tag) packets instead of encrypted |
 | `replay_window_size` | `uint16_t` | `64` | Anti-replay window width in sequence-number slots; 0 is rejected at socket construction |
-| `max_senders` | `uint16_t` | `256` | Maximum tracked senders (LRU eviction when exceeded; 0 disables the limit) |
+| `max_senders` | `uint16_t` | `256` | Maximum tracked senders (LRU eviction when exceeded); 0 is rejected at socket construction |
 | `detection` | `cleartext_detection` | `magic_byte` | Strategy for identifying non-encrypted incoming packets |
 | `recv_mode` | `receive_mode` | `accept_both` | Which packet types the receiver accepts |
 | `max_sessions_per_sender` | `uint16_t` | `8` | Replay windows kept per sender, one per sender session (LRU eviction when exceeded); 0 is rejected at socket construction |

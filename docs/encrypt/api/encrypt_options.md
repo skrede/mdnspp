@@ -44,7 +44,7 @@ struct encrypt_options
 | `accept_cleartext` | `bool` | `false` | When `true`, packets classified as cleartext by `detection` (see `cleartext_detection` for the exact rule) are forwarded to the receive handler instead of being silently dropped. Accepted cleartext is entirely unauthenticated -- see the [Threat Model](../threat-model.md). A legitimate cleartext packet of 44 bytes or more whose DNS transaction ID is `0x4D43` starts with the magic bytes and is dropped even with `accept_cleartext` set; shorter packets with that ID are delivered only with `cleartext_detection::attempt_decrypt`. |
 | `auth_only` | `bool` | `false` | When `true`, outgoing packets carry the plaintext payload in the clear, covered together with the header by the AEAD tag -- no encryption is applied (the `flag_encrypted` bit is cleared). Integrity is still verified by the AEAD tag. |
 | `replay_window_size` | `uint16_t` | `64` | Number of sequence numbers tracked per sender session in the replay protection window. The full `uint16_t` range is supported (the bitmap is sized to the window, 8 bytes per 64 slots per session); `0` fails `validate()`. |
-| `max_senders` | `uint16_t` | `256` | Maximum number of distinct `sender_id` values tracked in the replay window. When a new sender is seen beyond this limit, the least recently used sender is evicted with all its sessions. `0` disables the limit (the table grows without bound). |
+| `max_senders` | `uint16_t` | `256` | Maximum number of distinct `sender_id` values tracked in the replay window. When a new sender is seen beyond this limit, the least recently used sender is evicted with all its sessions. `0` fails `validate()`. |
 | `detection` | `cleartext_detection` | `magic_byte` | Strategy used to distinguish encrypted packets from cleartext on receive. See `cleartext_detection`. |
 | `recv_mode` | `receive_mode` | `accept_both` | Filters accepted packets by encryption mode. See `receive_mode`. |
 | `max_sessions_per_sender` | `uint16_t` | `8` | Independent replay windows kept per sender, one per sender session (a sender opens a new session each time a socket is constructed, e.g. on restart). When a sender exceeds this, its least recently used session is evicted. `0` fails `validate()`. See [Replay window memory](#replay-window-memory). |
@@ -69,7 +69,7 @@ A packet of a session that is not tracked (never seen, evicted by the session or
 std::error_code validate() const noexcept;
 ```
 
-Returns `std::errc::invalid_argument` if `sender_id` is zero, the PSK is all-zero, `replay_window_size` is zero, or `max_sessions_per_sender` is zero; a default-constructed (falsy) `std::error_code` otherwise. Enforced in all build configurations by the `encrypted_socket` constructors that accept `encrypt_socket_options`: the throwing constructor throws `std::system_error`, the `std::error_code` constructor sets `ec`; in both cases validation runs before the key is copied.
+Returns `std::errc::invalid_argument` if `sender_id` is zero, the PSK is all-zero, `replay_window_size` is zero, `max_senders` is zero, or `max_sessions_per_sender` is zero; a default-constructed (falsy) `std::error_code` otherwise. Enforced in all build configurations by the `encrypted_socket` constructors that accept `encrypt_socket_options`: the throwing constructor throws `std::system_error`, the `std::error_code` constructor sets `ec`; in both cases validation runs before the key is copied.
 
 ---
 

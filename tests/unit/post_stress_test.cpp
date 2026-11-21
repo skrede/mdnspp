@@ -28,9 +28,9 @@ constexpr uint32_t iterations = 200000;
 void spin_for(uint32_t iteration)
 {
     const uint32_t count = (iteration * 2654435761u) % 20000;
-    for(volatile uint32_t k = 0; k < count; k = k + 1)
-    {
-    }
+    volatile uint32_t sink = 0;
+    for(uint32_t k = 0; k < count; ++k)
+        sink = sink + k;
 }
 
 class posting_loop

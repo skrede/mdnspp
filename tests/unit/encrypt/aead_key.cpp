@@ -88,3 +88,12 @@ TEST_CASE("encrypt_options validate rejects zero replay_window_size", "[encrypt_
     opts.replay_window_size = 0;
     REQUIRE(opts.validate() == invalid_argument());
 }
+
+TEST_CASE("encrypt_options validate rejects zero max_senders", "[encrypt_options][validate]")
+{
+    auto opts = valid_options();
+    opts.max_senders = 0;
+    REQUIRE(opts.validate() == invalid_argument());
+    opts.max_senders = 1;
+    REQUIRE_FALSE(opts.validate());
+}

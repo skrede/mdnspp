@@ -14,10 +14,8 @@ const std::error_category &encrypt_error_category() noexcept
             {
             case encrypt_error::decrypt_failed: return "decryption or authentication failed";
             case encrypt_error::replay_detected: return "replayed sequence number";
-            case encrypt_error::unknown_sender: return "unknown sender ID";
             case encrypt_error::invalid_header: return "invalid packet header";
             case encrypt_error::unsupported_version: return "unsupported protocol version";
-            case encrypt_error::sender_evicted: return "sender evicted from replay window";
             case encrypt_error::buffer_too_small: return "output buffer too small";
             }
             return "unknown encrypt error";

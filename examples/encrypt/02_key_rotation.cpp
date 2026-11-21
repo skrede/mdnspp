@@ -10,8 +10,11 @@
 
 // Demonstrate encrypted mDNS key rotation.
 //
-// Key rotation replaces the active PSK on a live encrypted_socket without
-// dropping packets from peers that have not yet completed the rotation.
+// Key rotation replaces the active PSK on a live encrypted_socket. Rotation
+// needs coordinated timing: a peer that has rotated accepts old-epoch traffic
+// from peers that have not rotated yet, but only for its grace period, and a
+// peer that has not rotated does not hold the new key and drops new-epoch
+// traffic until its own update_key() call.
 //
 // Epoch semantics:
 //   Each encrypted_socket tracks a 32-bit epoch counter, starting at
@@ -22,8 +25,7 @@
 // Thread safety:
 //   update_key() may be called from any thread, concurrently with the receive
 //   path; the socket's key, epoch, and grace-period state are guarded by an
-//   internal mutex. This example rotates from a separate thread, which is
-//   covered by that contract.
+//   internal mutex.
 //
 // Dual-key overlap:
 //   Immediately after update_key(), the socket holds two keys:
@@ -40,7 +42,9 @@
 //   30 seconds (encrypted_socket::default_grace_duration). When both are set,
 //   the grace period ends when either condition is first satisfied.
 //     .duration     -- expire after this wall-clock duration
-//     .packet_count -- expire after this many old-epoch packets are received
+//     .packet_count -- expire after this many old-epoch packets have been
+//                      accepted (authenticated with the previous key and not
+//                      rejected as replays)
 //
 // Lazy expiry:
 //   The grace period is checked inline on each received packet. There is no
@@ -48,14 +52,11 @@
 //   zeroized immediately.
 //
 // Peer coordination:
-//   All peers must call update_key() with the same new key. A practical
-//   strategy: broadcast a rotation signal (e.g., a service TXT attribute),
-//   then all peers load the new key and call update_key() within the grace
-//   window. The grace period must be long enough to ensure that no peer is
-//   still using the old key after it expires on the receiver side. Until a
-//   peer rotates it cannot decrypt new-epoch traffic (it does not yet hold
-//   the new key); rotated peers keep accepting its old-epoch traffic for the
-//   duration of their grace window.
+//   All peers must call update_key() with the same new key within the grace
+//   window of the earliest rotator. There is no staged next-key API and no
+//   negotiation: distribute the new key out of band and schedule a rotation
+//   time that all peers act on within a nominated window, shorter than the
+//   grace period.
 //
 // After grace expires:
 //   Packets from the previous epoch are rejected. Any peer that has not

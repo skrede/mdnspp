@@ -43,15 +43,16 @@ struct encrypt_options
     uint16_t max_sessions_per_sender{8};
 
     // Returns std::errc::invalid_argument if sender_id is zero, the PSK is
-    // all-zero, or replay_window_size or max_sessions_per_sender is zero; a
-    // default-constructed std::error_code otherwise. Enforced (in all build
-    // configurations) by the encrypted_socket constructors that take
+    // all-zero, or replay_window_size, max_senders or max_sessions_per_sender
+    // is zero; a default-constructed std::error_code otherwise. Enforced (in
+    // all build configurations) by the encrypted_socket constructors that take
     // encrypt_socket_options.
     std::error_code validate() const noexcept
     {
         const bool zero_key = std::ranges::all_of(psk.bytes(),
             [](std::byte b) { return b == std::byte{0}; });
-        if(sender_id == 0 || replay_window_size == 0 || max_sessions_per_sender == 0 || zero_key)
+        const bool zero_limit = replay_window_size == 0 || max_senders == 0 || max_sessions_per_sender == 0;
+        if(sender_id == 0 || zero_limit || zero_key)
             return std::make_error_code(std::errc::invalid_argument);
         return {};
     }

@@ -11,10 +11,8 @@ enum class encrypt_error : uint32_t
 {
     decrypt_failed      = 1,
     replay_detected     = 2,
-    unknown_sender      = 3,
     invalid_header      = 4,
     unsupported_version = 5,
-    sender_evicted      = 6,
     buffer_too_small    = 7,
 };
 

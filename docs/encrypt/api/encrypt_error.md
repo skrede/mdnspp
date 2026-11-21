@@ -15,10 +15,8 @@ enum class encrypt_error : uint32_t
 {
     decrypt_failed      = 1,
     replay_detected     = 2,
-    unknown_sender      = 3,
     invalid_header      = 4,
     unsupported_version = 5,
-    sender_evicted      = 6,
     buffer_too_small    = 7,
 };
 ```
@@ -29,10 +27,8 @@ enum class encrypt_error : uint32_t
 |------------|-------|-------------|
 | `decrypt_failed` | `1` | AEAD decryption or authentication tag verification failed. The packet was either tampered with, corrupted, or encrypted with a different key. |
 | `replay_detected` | `2` | The packet's sequence number was already seen within the replay window for its (`sender_id`, session) pair, or lies below that window. Produced by `replay_window::check_and_record`. |
-| `unknown_sender` | `3` | Reserved. No code path in the library currently produces it. |
 | `invalid_header` | `4` | `aead_decrypt` was given a packet shorter than `encrypted_overhead` (68 bytes) or without the `0x4D43` magic. |
 | `unsupported_version` | `5` | `aead_decrypt` was given a packet whose version byte is not `0x02`. |
-| `sender_evicted` | `6` | Reserved. No code path in the library currently produces it; sender eviction is silent. |
 | `buffer_too_small` | `7` | The caller-supplied output buffer cannot hold the result. Reported through `ec` by `encrypted_socket::send` when the plaintext exceeds `max_udp_payload - 68` bytes (8932), and by `aead_encrypt` / `aead_decrypt` when `out` is too small. |
 
 ## Where Codes Surface

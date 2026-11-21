@@ -73,6 +73,8 @@ make_subdir_test(discovery_browse_test      discovery/browse.cpp)
 make_subdir_test(discovery_lifecycle_test   discovery/lifecycle.cpp)
 
 make_subdir_test(querier_basic_test         querier/basic.cpp)
+make_subdir_test(querier_construction_test  querier/construction.cpp)
+make_subdir_test(querier_lifecycle_test     querier/lifecycle.cpp)
 make_subdir_test(querier_suppression_test   querier/suppression.cpp)
 
 make_subdir_test(parse_records_test         parse/records.cpp)

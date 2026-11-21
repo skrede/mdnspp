@@ -3,6 +3,7 @@
 
 #include "helpers.h"
 
+#include "mdnspp/mdns_options.h"
 #include "mdnspp/callback_types.h"
 
 #include <catch2/catch_test_macros.hpp>
@@ -18,11 +19,13 @@ struct completion
 {
     completion()
         : fired{false}
+        , calls{0}
         , ec{}
     {
     }
 
     bool fired;
+    uint32_t calls;
     std::error_code ec;
 };
 
@@ -31,6 +34,7 @@ inline server_completion_handler record_into(completion &c)
     return [&c](std::error_code ec)
     {
         c.fired = true;
+        ++c.calls;
         c.ec = ec;
     };
 }
@@ -78,11 +82,11 @@ bool contains_record(const std::vector<std::byte> &packet)
 
 struct server_fixture
 {
-    explicit server_fixture(service_info info = make_test_info(), service_options opts = {})
+    explicit server_fixture(service_info info = make_test_info(), service_options opts = {}, mdns_options mopts = {})
         : done{}
         , ready{}
         , ex{}
-        , server{ex, std::move(info), std::move(opts)}
+        , server{ex, std::move(info), std::move(opts), {}, std::move(mopts)}
     {
     }
 

@@ -70,7 +70,9 @@ make_subdir_test(monitor_snapshot_test      monitor/snapshot.cpp)
 
 make_subdir_test(discovery_discover_test    discovery/discover.cpp)
 make_subdir_test(discovery_browse_test      discovery/browse.cpp)
+make_subdir_test(discovery_enumerate_test   discovery/enumerate.cpp)
 make_subdir_test(discovery_lifecycle_test   discovery/lifecycle.cpp)
+make_subdir_test(discovery_operations_test  discovery/operations.cpp)
 
 make_subdir_test(querier_basic_test         querier/basic.cpp)
 make_subdir_test(querier_construction_test  querier/construction.cpp)

@@ -54,10 +54,11 @@ Unit tests cover:
 - The receive contract every socket honors: one completion per arm, ordering,
   and close semantics (tests/unit/receive_contract/: receive_contract_*_test)
 - Default event loop: socket registry, timer dispatch, poll errors, re-entrant
-  polling from a receive handler, wakeup descriptor, construction failures and
-  cross-thread posting (socket_registry_test, default_timer_test,
-  default_timer_dispatch_test, default_poll_errors_test,
-  default_reentrant_poll_test, wakeup_fd_test, default_context_construct_test,
+  polling from a receive handler and the handler's data across nested polls,
+  wakeup descriptor, construction failures and cross-thread posting
+  (socket_registry_test, default_timer_test, default_timer_dispatch_test,
+  default_poll_errors_test, default_reentrant_poll_test,
+  default_nested_receive_test, wakeup_fd_test, default_context_construct_test,
   post_queue_seam_test, post_stress_test)
 - Multi-NIC orchestration: group instance lifecycle, dynamic builder, and
   interface monitoring (tests/unit/nic_group/: nic_group_server_test,
@@ -99,8 +100,9 @@ Unit tests cover:
 - Fuzz harness input decoding (fuzz_input_test)
 
 Some targets depend on the platform or build options:
-default_poll_errors_test, default_reentrant_poll_test, wakeup_fd_test,
-default_context_construct_test, recv_ancillary_bounds_test and
+default_poll_errors_test, default_reentrant_poll_test,
+default_nested_receive_test, wakeup_fd_test, default_context_construct_test,
+recv_ancillary_bounds_test and
 default_conformance_receive_metadata_test are not built on Windows; the
 `asio_*` targets and receive_contract_asio_test require
 `MDNSPP_ENABLE_ASIO_POLICY=ON`; the encrypt targets other than

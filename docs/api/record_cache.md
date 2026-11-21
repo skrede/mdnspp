@@ -58,7 +58,7 @@ Inserts or updates a record in the cache.
 ### find
 
 ```cpp
-auto find(dns_name name, dns_type type) const -> std::vector<cache_entry>;
+std::vector<cache_entry> find(dns_name name, dns_type type) const;
 ```
 
 Returns all cached entries matching the given name and DNS type. Returns an empty vector if no matching records are cached.
@@ -75,7 +75,7 @@ Returns all cached entries matching the given name and DNS type. Returns an empt
 ### snapshot
 
 ```cpp
-auto snapshot() const -> std::vector<cache_entry>;
+std::vector<cache_entry> snapshot() const;
 ```
 
 Returns a snapshot of all currently-cached records. Each [`cache_entry`](cache_entry.md) has `ttl_remaining` computed at the moment of the call.
@@ -87,7 +87,7 @@ Does not evict expired entries. Records whose `ttl_remaining` is negative or zer
 ### erase_expired
 
 ```cpp
-auto erase_expired() -> std::vector<cache_entry>;
+std::vector<cache_entry> erase_expired();
 ```
 
 Removes all expired records from the cache and returns them. An entry is expired when:

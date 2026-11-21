@@ -6,129 +6,29 @@
 #include "mdnspp/cache_entry.h"
 #include "mdnspp/cache_options.h"
 
-#include "mdnspp/detail/compat.h"
-#include "mdnspp/detail/dns_enums.h"
-#include "mdnspp/detail/hash_combine.h"
+#include "mdnspp/detail/record_identity.h"
+#include "mdnspp/detail/record_cache_slot.h"
 
 #include <mutex>
 #include <chrono>
-#include <string>
 #include <vector>
 #include <cstdint>
 #include <utility>
-#include <optional>
-#include <functional>
-#include <string_view>
-#include <type_traits>
 #include <shared_mutex>
 #include <system_error>
 #include <unordered_map>
 
 namespace mdnspp {
-namespace detail {
-
-struct record_name_type
-{
-    dns_name name;
-    dns_type type{dns_type::none};
-
-    bool operator==(const record_name_type &) const = default;
-};
-
-struct record_name_type_hash
-{
-    std::size_t operator()(const record_name_type &k) const noexcept
-    {
-        auto h1 = std::hash<dns_name>{}(k.name);
-        auto h2 = std::hash<uint16_t>{}(detail::to_underlying(k.type));
-        return hash_combine(h1, h2);
-    }
-};
-
-inline auto extract_name_type(const mdns_record_variant &rec) -> record_name_type
-{
-    return std::visit([](const auto &r) -> record_name_type {
-        return {r.name, std::remove_cvref_t<decltype(r)>::rtype};
-    }, rec);
-}
-
-inline auto extract_class(const mdns_record_variant &rec) -> dns_class
-{
-    return std::visit([](const auto &r) { return r.rclass; }, rec);
-}
-
-inline auto extract_ttl(const mdns_record_variant &rec) -> uint32_t
-{
-    return std::visit([](const auto &r) { return r.ttl; }, rec);
-}
-
-inline auto extract_cache_flush(const mdns_record_variant &rec) -> bool
-{
-    return std::visit([](const auto &r) { return r.cache_flush; }, rec);
-}
-
-inline bool rdata_equal(const mdns_record_variant &a, const mdns_record_variant &b)
-{
-    if (a.index() != b.index())
-        return false;
-
-    return std::visit([](const auto &lhs, const auto &rhs) -> bool {
-        using lhs_t = std::remove_cvref_t<decltype(lhs)>;
-        using rhs_t = std::remove_cvref_t<decltype(rhs)>;
-
-        if constexpr (std::is_same_v<lhs_t, rhs_t>)
-        {
-            if constexpr (std::is_same_v<lhs_t, record_a> || std::is_same_v<lhs_t, record_aaaa>)
-                return lhs.address_string == rhs.address_string;
-            else if constexpr (std::is_same_v<lhs_t, record_ptr>)
-                return lhs.ptr_name == rhs.ptr_name;
-            else if constexpr (std::is_same_v<lhs_t, record_srv>)
-                return lhs.port == rhs.port &&
-                       lhs.weight == rhs.weight &&
-                       lhs.priority == rhs.priority &&
-                       lhs.srv_name == rhs.srv_name;
-            else
-                return lhs.entries == rhs.entries;
-        }
-        else
-        {
-            return false;
-        }
-    }, a, b);
-}
-
-inline bool record_identity_equal(const mdns_record_variant &a, const mdns_record_variant &b)
-{
-    auto ka = extract_name_type(a);
-    auto kb = extract_name_type(b);
-    return ka == kb &&
-           extract_class(a) == extract_class(b) &&
-           rdata_equal(a, b);
-}
-
-}
 
 template <typename Clock = std::chrono::steady_clock>
 class record_cache
 {
     using time_point = typename Clock::time_point;
-
-    struct internal_entry
-    {
-        mdns_record_variant record;
-        endpoint origin;
-        bool cache_flush{false};
-        uint32_t wire_ttl{0};
-        time_point inserted_at{};
-        std::optional<time_point> flush_deadline{};
-    };
-
+    using internal_entry = detail::record_cache_slot<time_point>;
     using key_type = detail::record_name_type;
     using map_type = std::unordered_multimap<key_type, internal_entry, detail::record_name_type_hash>;
 
 public:
-    /// Throwing constructor. Throws std::system_error(std::errc::invalid_argument)
-    /// when opts.goodbye_grace is not positive.
     explicit record_cache(cache_options opts = {})
         : m_options(std::move(opts))
     {
@@ -136,9 +36,6 @@ public:
             throw std::system_error(ec);
     }
 
-    /// Non-throwing constructor -- ec is set to std::errc::invalid_argument on
-    /// invalid options and goodbye_grace is clamped to one second so the cache
-    /// remains safe to use.
     record_cache(cache_options opts, std::error_code &ec)
         : m_options(std::move(opts))
     {
@@ -158,32 +55,13 @@ public:
     {
         auto key = detail::extract_name_type(rec);
         auto flush = detail::extract_cache_flush(rec);
-        auto ttl = detail::extract_ttl(rec);
-
-        // RFC 6762 section 10.1: goodbye record (TTL=0) retained for goodbye_grace seconds
-        uint32_t effective_ttl = (ttl == 0) ? static_cast<uint32_t>(m_options.goodbye_grace.count()) : ttl;
+        auto effective_ttl = retained_ttl(detail::extract_ttl(rec));
 
         std::unique_lock lock(m_mutex);
 
         auto flush_origin = origin;
 
-        auto [it, end] = m_entries.equal_range(key);
-        bool found = false;
-        for (; it != end; ++it)
-        {
-            if (detail::record_identity_equal(it->second.record, rec))
-            {
-                it->second.inserted_at = Clock::now();
-                it->second.wire_ttl = effective_ttl;
-                it->second.cache_flush = flush;
-                it->second.origin = std::move(origin);
-                it->second.flush_deadline.reset();
-                found = true;
-                break;
-            }
-        }
-
-        if (!found)
+        if (!refresh_match(key, rec, origin, flush, effective_ttl))
         {
             m_entries.emplace(key, internal_entry{
                 .record = std::move(rec),
@@ -199,7 +77,7 @@ public:
             apply_cache_flush(key, flush_origin, lock);
     }
 
-    [[nodiscard]] auto find(dns_name name, dns_type type) const -> std::vector<cache_entry>
+    std::vector<cache_entry> find(dns_name name, dns_type type) const
     {
         std::shared_lock lock(m_mutex);
 
@@ -209,12 +87,12 @@ public:
         auto key = key_type{std::move(name), type};
         auto [it, end] = m_entries.equal_range(key);
         for (; it != end; ++it)
-            result.push_back(to_cache_entry(it->second, now));
+            result.push_back(detail::to_cache_entry(it->second, now));
 
         return result;
     }
 
-    [[nodiscard]] auto snapshot() const -> std::vector<cache_entry>
+    std::vector<cache_entry> snapshot() const
     {
         std::shared_lock lock(m_mutex);
 
@@ -223,30 +101,16 @@ public:
         result.reserve(m_entries.size());
 
         for (const auto &[key, entry] : m_entries)
-            result.push_back(to_cache_entry(entry, now));
+            result.push_back(detail::to_cache_entry(entry, now));
 
         return result;
     }
 
-    auto erase_expired() -> std::vector<cache_entry>
+    std::vector<cache_entry> erase_expired()
     {
         std::unique_lock lock(m_mutex);
 
-        auto now = Clock::now();
-        std::vector<cache_entry> expired;
-
-        for (auto it = m_entries.begin(); it != m_entries.end(); )
-        {
-            if (is_expired(it->second, now))
-            {
-                expired.push_back(to_cache_entry(it->second, now));
-                it = m_entries.erase(it);
-            }
-            else
-            {
-                ++it;
-            }
-        }
+        auto expired = take_expired(Clock::now());
 
         lock.unlock();
 
@@ -260,79 +124,71 @@ public:
     }
 
 private:
-    [[nodiscard]] std::error_code validate() const noexcept
+    cache_options m_options;
+    map_type m_entries;
+    mutable std::shared_mutex m_mutex;
+
+    std::error_code validate() const noexcept
     {
         if(m_options.goodbye_grace.count() <= 0)
             return std::make_error_code(std::errc::invalid_argument);
         return {};
     }
 
-    void apply_cache_flush(const key_type &key, const endpoint &origin,
-                           std::unique_lock<std::shared_mutex> &lock)
+    // RFC 6762 section 10.1: a goodbye record (TTL 0) is retained for goodbye_grace.
+    uint32_t retained_ttl(uint32_t ttl) const
     {
-        auto now = Clock::now();
-        auto deadline = now + m_options.goodbye_grace;
+        return (ttl == 0) ? static_cast<uint32_t>(m_options.goodbye_grace.count()) : ttl;
+    }
 
-        // RFC 6762 section 10.2: only records received more than one second ago
-        // are marked for deletion -- younger records are exempt so that bursts
-        // from multiple interfaces or co-located responders are not flushed.
-        auto exemption_cutoff = now - std::chrono::seconds(1);
-
-        std::vector<cache_entry> affected;
-        cache_entry authoritative;
-
+    bool refresh_match(const key_type &key, const mdns_record_variant &rec, endpoint &origin, bool flush,
+                       uint32_t effective_ttl)
+    {
         auto [it, end] = m_entries.equal_range(key);
         for (; it != end; ++it)
         {
-            auto &entry = it->second;
-            if (entry.origin == origin)
+            if (detail::record_identity_equal(it->second.record, rec))
             {
-                if (entry.cache_flush)
-                    authoritative = to_cache_entry(entry, now);
-            }
-            else if (entry.inserted_at <= exemption_cutoff)
-            {
-                if (!entry.flush_deadline || *entry.flush_deadline > deadline)
-                    entry.flush_deadline = deadline;
-
-                affected.push_back(to_cache_entry(entry, now));
+                it->second.inserted_at = Clock::now();
+                it->second.wire_ttl = effective_ttl;
+                it->second.cache_flush = flush;
+                it->second.origin = std::move(origin);
+                it->second.flush_deadline.reset();
+                return true;
             }
         }
-
-        if (!affected.empty() && m_options.on_cache_flush)
-        {
-            lock.unlock();
-            m_options.on_cache_flush(authoritative, std::move(affected));
-            lock.lock();
-        }
-    }
-
-    static bool is_expired(const internal_entry &e, time_point now)
-    {
-        if (now >= e.inserted_at + std::chrono::seconds(e.wire_ttl))
-            return true;
-        if (e.flush_deadline && now >= *e.flush_deadline)
-            return true;
         return false;
     }
 
-    static auto to_cache_entry(const internal_entry &e, time_point now) -> cache_entry
+    std::vector<cache_entry> take_expired(time_point now)
     {
-        auto deadline = e.inserted_at + std::chrono::seconds(e.wire_ttl);
-        auto remaining = std::chrono::duration_cast<std::chrono::nanoseconds>(deadline - now);
-
-        return cache_entry{
-            .record = e.record,
-            .origin = e.origin,
-            .cache_flush = e.cache_flush,
-            .wire_ttl = e.wire_ttl,
-            .ttl_remaining = remaining,
-        };
+        std::vector<cache_entry> expired;
+        for (auto it = m_entries.begin(); it != m_entries.end(); )
+        {
+            if (detail::is_expired(it->second, now))
+            {
+                expired.push_back(detail::to_cache_entry(it->second, now));
+                it = m_entries.erase(it);
+            }
+            else
+            {
+                ++it;
+            }
+        }
+        return expired;
     }
 
-    cache_options m_options;
-    map_type m_entries;
-    mutable std::shared_mutex m_mutex;
+    void apply_cache_flush(const key_type &key, const endpoint &origin, std::unique_lock<std::shared_mutex> &lock)
+    {
+        auto range = m_entries.equal_range(key);
+        auto marks = detail::mark_cache_flush(range, origin, Clock::now(), m_options.goodbye_grace);
+        if (!marks.affected.empty() && m_options.on_cache_flush)
+        {
+            lock.unlock();
+            m_options.on_cache_flush(marks.authoritative, std::move(marks.affected));
+            lock.lock();
+        }
+    }
 };
 
 }

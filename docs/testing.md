@@ -127,9 +127,10 @@ ctest --test-dir build -R dns_name_test
 
 ## Protocol integration tests (inproc)
 
-**Location:** `tests/unit/inproc_bus_*.cpp`, `tests/unit/inproc_rfc/` and
-`tests/unit/inproc_legacy_unicast/` (compiled with the unit test suite; targets
-`inproc_bus_*_test`, `inproc_rfc_*_test` and `inproc_legacy_unicast_*_test`)
+**Location:** `tests/unit/inproc_bus/`, `tests/unit/inproc_bus_*.cpp`,
+`tests/unit/inproc_rfc/` and `tests/unit/inproc_legacy_unicast/` (compiled with
+the unit test suite; targets `inproc_bus_*_test`, `inproc_rfc_*_test` and
+`inproc_legacy_unicast_*_test`)
 **Framework:** Catch2
 **Policy:** `inproc_test_policy` (test_clock via `inproc_harness`)
 
@@ -144,22 +145,22 @@ responses (`inproc_legacy_unicast/`, using
 per-record-type TTLs (`inproc_bus_per_type_ttl_test.cpp`), receive-side TTL
 enforcement (`inproc_bus_recv_ttl_test.cpp`), TC continuation delays
 (`inproc_bus_tc_delay_test.cpp`), and automatic address resolution from the
-bound interface (`inproc_bus_auto_address_test.cpp`).
+bound interface (`inproc_bus/auto_address.cpp`).
 
 The ten core scenarios:
 
 | ID | Scenario | Files |
 |----|----------|-------|
-| TEST-01 | Probe conflict resolution — two servers with the same name | `inproc_bus_discovery_test.cpp` |
-| TEST-02 | Discovery lifecycle — server announces, monitor finds, server stops, monitor loses | `inproc_bus_discovery_test.cpp` |
+| TEST-01 | Probe conflict resolution — two servers with the same name | `inproc_bus/discovery_conflict.cpp` |
+| TEST-02 | Discovery lifecycle — server announces, monitor finds, server stops, monitor loses | `inproc_bus/discovery.cpp` |
 | TEST-03 | Known-answer suppression — querier suppresses records already in query | `inproc_rfc/known_answer.cpp` |
 | TEST-04 | Duplicate answer suppression across queriers | `inproc_rfc/duplicate_answer.cpp` |
-| TEST-05 | Observer captures all traffic — probes, announces, queries, responses | `inproc_bus_routing_test.cpp` |
+| TEST-05 | Observer captures all traffic — probes, announces, queries, responses | `inproc_bus/routing.cpp` |
 | TEST-06 | TC bit multi-packet accumulation end-to-end | `inproc_rfc/tc_accumulation.cpp` |
 | TEST-07 | Cache-flush propagation across monitors | `inproc_rfc/cache_flush.cpp` |
-| TEST-08 | Query backoff convergence — exponential backoff on repeated queries | `inproc_bus_routing_test.cpp` |
-| TEST-09 | Multiple service types — type-specific monitors see only their type | `inproc_bus_routing_test.cpp` |
-| TEST-10 | Goodbye with delayed expiry — `on_lost` does not fire before grace period | `inproc_bus_discovery_test.cpp` |
+| TEST-08 | Query backoff convergence — exponential backoff on repeated queries | `inproc_bus/routing_backoff.cpp` |
+| TEST-09 | Multiple service types — type-specific monitors see only their type | `inproc_bus/routing.cpp` |
+| TEST-10 | Goodbye with delayed expiry — `on_lost` does not fire before grace period | `inproc_bus/discovery.cpp` |
 
 These tests run as part of the standard unit test suite and require no
 additional build flags.

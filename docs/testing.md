@@ -65,7 +65,7 @@ Unit tests cover:
   post_queue_seam_test, post_stress_test)
 - Multi-NIC orchestration: group instance lifecycle, dynamic builder, and
   interface monitoring (tests/unit/nic_group/: nic_group_server_test,
-  nic_group_monitor_test, nic_group_options_test; nic_group_dynamic_test,
+  nic_group_monitor_test, nic_group_options_test, nic_group_dynamic_test;
   nic_monitor_test)
 - Multicast capability validation (validate_multicast_test)
 - Encrypt component (tests/unit/encrypt/): AEAD encrypt/decrypt and tamper
@@ -82,6 +82,8 @@ Unit tests cover:
   built under `-fsanitize=thread`)
 - policy_like concept conformance for all built-in policies
   (concept_conformance_test, inproc_conformance_test, asio_conformance_test;
+  in-process bus multicast, unicast and loopback-disabled delivery:
+  inproc_conformance_bus_test;
   tests/unit/default_conformance/: default_conformance_construct_test,
   default_conformance_send_receive_test, default_conformance_lifecycle_test,
   default_conformance_receive_metadata_test,

@@ -69,34 +69,8 @@ public:
         auto pkt = std::move(m_queue.front());
         m_queue.pop_front();
 
-        bool delivered = false;
-
-        for(auto &entry : m_sockets)
-        {
-            if(pkt.to == entry.assigned_ep)
-            {
-                // Unicast: deliver only to matching socket
-                entry.sock->deliver(pkt.from, std::span<const std::byte>(pkt.data));
-                delivered = true;
-                break;
-            }
-        }
-
-        if(!delivered)
-        {
-            // Multicast: deliver to all sockets in matching group
-            for(auto &entry : m_sockets)
-            {
-                if(pkt.to != entry.group)
-                    continue;
-
-                // Skip sender if loopback is disabled
-                if(!entry.loopback && entry.assigned_ep == pkt.from)
-                    continue;
-
-                entry.sock->deliver(pkt.from, std::span<const std::byte>(pkt.data));
-            }
-        }
+        if(!deliver_unicast(pkt))
+            deliver_multicast(pkt);
 
         return true;
     }
@@ -126,6 +100,31 @@ private:
     std::deque<queued_packet> m_queue;
     uint16_t m_port{5353};
     uint8_t  m_next_ip{1};
+
+    bool deliver_unicast(const queued_packet &pkt)
+    {
+        for(auto &entry : m_sockets)
+        {
+            if(pkt.to == entry.assigned_ep)
+            {
+                entry.sock->deliver(pkt.from, std::span<const std::byte>(pkt.data));
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void deliver_multicast(const queued_packet &pkt)
+    {
+        for(auto &entry : m_sockets)
+        {
+            if(pkt.to != entry.group)
+                continue;
+            if(!entry.loopback && entry.assigned_ep == pkt.from)
+                continue;
+            entry.sock->deliver(pkt.from, std::span<const std::byte>(pkt.data));
+        }
+    }
 };
 
 }

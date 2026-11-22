@@ -103,14 +103,19 @@ inline std::unique_ptr<std::byte[]> fetch_adapter_addresses(std::error_code &ec)
 inline std::string adapter_name(PIP_ADAPTER_ADDRESSES adapter)
 {
     int name_len = WideCharToMultiByte(CP_UTF8, 0, adapter->FriendlyName, -1, nullptr, 0, nullptr, nullptr);
+    if(name_len <= 0)
+        return {};
     std::string iface_name(static_cast<std::size_t>(name_len - 1), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, adapter->FriendlyName, -1, iface_name.data(), name_len, nullptr, nullptr);
+    if(WideCharToMultiByte(CP_UTF8, 0, adapter->FriendlyName, -1, iface_name.data(), name_len, nullptr, nullptr) == 0)
+        return {};
     return iface_name;
 }
 
 inline void add_adapter(interface_map &by_name, PIP_ADAPTER_ADDRESSES adapter)
 {
     std::string iface_name = adapter_name(adapter);
+    if(iface_name.empty())
+        return;
     auto &iface = by_name[iface_name];
     iface.name = iface_name;
     iface.index = static_cast<uint32_t>(adapter->IfIndex);

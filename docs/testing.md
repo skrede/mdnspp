@@ -73,7 +73,10 @@ Unit tests cover:
 - Multi-NIC orchestration: group instance lifecycle, dynamic builder, and
   interface monitoring (tests/unit/nic_group/: nic_group_server_test,
   nic_group_monitor_test, nic_group_options_test, nic_group_dynamic_test,
-  nic_group_siblings_test; nic_monitor_test)
+  nic_group_siblings_test; nic_monitor_test), a failed first enumeration
+  followed by a good one (nic_monitor_baseline_test), and the Linux netlink
+  drain over a scripted receive call, ending at the first ENOBUFS
+  (nic_monitor_netlink_test, Linux only)
 - Multicast capability validation (validate_multicast_test)
 - Encrypt component (tests/unit/encrypt/): AEAD encrypt/decrypt and tamper
   detection (encrypt_aead_*_test), replay window, per-sender and per-session

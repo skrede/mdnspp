@@ -47,7 +47,7 @@ explicit basic_service_monitor(executor_type ex,
 
 Constructs the monitor from an executor. The optional [`monitor_options`](monitor_options.md) supplies discovery callbacks, the error handler, and the monitoring mode. The optional `sock_opts` controls network interface selection and multicast group (see [Socket Options](../socket-options.md)); its type is `policy_socket_options_t<P>` — plain `socket_options` for the default and asio policies. The optional [`mdns_options`](mdns_options.md) controls query backoff timing, TTL refresh thresholds, and TC accumulation windows. The optional [`cache_options`](cache_options.md) controls the goodbye grace period and cache expiry callbacks. Throws `std::system_error` on socket construction failure or invalid options (`std::errc::invalid_argument`).
 
-Options are invalid when `copts.goodbye_grace` is not positive or `mdns_opts` fails [validation](mdns_options.md#validation). The monitor installs its own `cache_options::on_expired` handler (expiry drives loss detection), so an `on_expired` supplied in `copts` is not called; `on_cache_flush` and `goodbye_grace` are kept.
+Options are invalid when `copts.goodbye_grace` is not positive or `mdns_opts` fails [validation](mdns_options.md#validation). Expiry drives loss detection, so the monitor handles each expired batch first (`on_lost`, and `on_updated` with `update_event::removed`); an `on_expired` supplied in `copts` is called after that with the same entries. `on_cache_flush` and `goodbye_grace` are kept.
 
 **Note:** `monitor_options` is move-only. Use `std::move` when passing a named variable.
 

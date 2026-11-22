@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
+#include <span>
 #include <array>
 #include <cerrno>
 #include <chrono>
@@ -44,28 +45,22 @@ inline native_socket_t open_netlink_socket()
     return fd;
 }
 
-inline bool drain_netlink_socket(native_socket_t fd)
+template <typename Receive>
+bool drain_netlink(Receive &&receive)
 {
     std::array<std::byte, 8192> buf{};
     bool changed = false;
-    while(true)
-    {
-        ssize_t n = ::recv(fd, buf.data(), buf.size(), MSG_DONTWAIT);
-        if(n > 0)
-        {
-            changed = true;
-            continue;
-        }
-        // ENOBUFS: the kernel dropped notifications because the socket buffer overflowed, so events were lost
-        // and the interface list must be resynchronized regardless.
-        if(n < 0 && errno == ENOBUFS)
-        {
-            changed = true;
-            continue;
-        }
-        break;
-    }
-    return changed;
+    ssize_t n = 0;
+    while((n = receive(std::span<std::byte>(buf))) > 0)
+        changed = true;
+    // ENOBUFS reports notifications the kernel dropped (netlink(7)). The caller re-enumerates on any change, so
+    // the drain ends there rather than spinning for as long as the kernel keeps reporting it.
+    return changed || (n < 0 && errno == ENOBUFS);
+}
+
+inline bool drain_netlink_socket(native_socket_t fd)
+{
+    return drain_netlink([fd](std::span<std::byte> buf) { return ::recv(fd, buf.data(), buf.size(), MSG_DONTWAIT); });
 }
 
 }

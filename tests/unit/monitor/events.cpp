@@ -1,9 +1,19 @@
 #include "fixture.h"
 
+#include "mdnspp/records.h"
+#include "mdnspp/cache_entry.h"
+#include "mdnspp/cache_options.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <string>
+#include <vector>
 #include <cstdint>
+#include <utility>
+#include <variant>
+#include <algorithm>
+#include <string_view>
 
 namespace {
 
@@ -25,6 +35,16 @@ mdnspp::monitor_options update_options(update_log &log)
         log.last_rtype = rtype;
     };
     return opts;
+}
+
+bool holds_srv(const std::vector<mdnspp::cache_entry> &entries, std::string_view name)
+{
+    return std::ranges::any_of(entries,
+                               [name](const mdnspp::cache_entry &entry)
+                               {
+                                   const auto *srv = std::get_if<mdnspp::record_srv>(&entry.record);
+                                   return srv != nullptr && srv->name.str() == name;
+                               });
 }
 
 }
@@ -80,4 +100,27 @@ TEST_CASE("on_lost fires with goodbye when SRV goodbye packet received", "[monit
     f.tick_expired_after(std::chrono::seconds(2));
 
     check_single_loss(lost, "GoodbyeSvc._http._tcp.local.", mdnspp::loss_reason::goodbye);
+}
+
+TEST_CASE("a cache on_expired runs after the loss handling with the expired entries", "[monitor]")
+{
+    std::vector<std::string> log;
+    std::vector<mdnspp::cache_entry> seen;
+    mdnspp::monitor_options opts;
+    opts.on_found = [](const mdnspp::resolved_service &) {};
+    opts.on_lost = [&log](const mdnspp::resolved_service &, mdnspp::loss_reason) { log.emplace_back("lost"); };
+    mdnspp::cache_options cache_opts;
+    cache_opts.on_expired = [&log, &seen](std::vector<mdnspp::cache_entry> expired)
+    {
+        log.emplace_back("expired");
+        seen = std::move(expired);
+    };
+    monitor_fixture f{std::move(opts), {}, std::move(cache_opts)};
+    f.watch_and_start({"_http._tcp.local"});
+    f.inject(make_ptr_packet("_http._tcp.local", "Expiring._http._tcp.local", "expiring.local", "172.16.0.1", 1));
+
+    f.tick_expired_after(std::chrono::seconds(2));
+
+    CHECK(log == std::vector<std::string>{"lost", "expired"});
+    CHECK(holds_srv(seen, "Expiring._http._tcp.local."));
 }

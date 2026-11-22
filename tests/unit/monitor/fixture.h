@@ -4,6 +4,7 @@
 #include "helpers.h"
 
 #include "mdnspp/mdns_options.h"
+#include "mdnspp/cache_options.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/monitor_options.h"
 
@@ -67,9 +68,10 @@ inline void check_single_loss(const loss_log &log, std::string_view name, mdnspp
 struct monitor_fixture
 {
     // The clock is reset after construction because the monitor first reads it on watch or start.
-    explicit monitor_fixture(mdnspp::monitor_options opts = {}, mdnspp::mdns_options mdns_opts = {})
+    explicit monitor_fixture(mdnspp::monitor_options opts = {}, mdnspp::mdns_options mdns_opts = {},
+                             mdnspp::cache_options cache_opts = {})
         : ex{}
-        , mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts)}
+        , mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts), std::move(cache_opts)}
     {
         test_clock::reset();
     }

@@ -14,6 +14,8 @@ Natural expiry differs from goodbye eviction: a record expires naturally when it
 
 The callback is invoked from the executor thread.
 
+Given to a service monitor, the callback is called after the monitor's own expiry handling (`on_lost`, and `on_updated` with `update_event::removed`), with the same entries.
+
 ## Why
 
 Use `on_expired` when:

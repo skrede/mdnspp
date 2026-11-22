@@ -206,6 +206,8 @@ explicit basic_nic_monitor(executor_type ex, nic_monitor_options opts = {});
 
 Constructs and takes an initial interface snapshot (through
 `nic_monitor_options::enumerator` when set, otherwise `enumerate_interfaces()`).
+A failed initial enumeration counts as an empty interface list, so the first
+successful enumeration after `start()` reports every interface through `on_added`.
 Callbacks are not yet active.
 
 | Parameter | Description |
@@ -244,7 +246,8 @@ void start();
 Begins NIC change detection. Tries the platform-native backend first; falls back to
 timer-based polling if unavailable. A custom `nic_monitor_options::enumerator` forces
 the polling path. On Linux the netlink socket is drained by a 100 ms timer, so change
-detection has a latency floor of 100 ms.
+detection has a latency floor of 100 ms. A drain ends at the first `ENOBUFS` (the kernel
+dropped notifications) and re-enumerates the interfaces.
 May be called from any thread.
 
 #### stop

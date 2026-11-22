@@ -44,8 +44,9 @@ public:
     {
         std::error_code ec;
         auto initial = enumerate(ec);
-        if(!ec)
-            m_snapshot.publish(std::move(initial));
+        if(ec)
+            initial.clear();
+        m_snapshot.publish(std::move(initial));
     }
 
     ~basic_nic_monitor()

@@ -115,7 +115,9 @@ mdnspp::record_cache<> cache{std::move(opts)};
 
 `on_expired` fires inside `erase_expired()` after the expired entries have
 been removed from the internal storage. Callbacks are made with the lock
-released.
+released. In a service monitor, the monitor's own expiry handling (loss
+detection) runs first and the `on_expired` passed in its `cache_options` is
+called after it with the same entries.
 
 `on_cache_flush` fires when a record with the cache-flush bit set is inserted
 and records from other origins exist for the same name+type. The `affected`

@@ -35,6 +35,7 @@ template <policy_like P, typename Clock>
 class monitor_engine : protected basic_mdns_peer_base<P>
 {
     using base = basic_mdns_peer_base<P>;
+    using expired_callback = decltype(cache_options::on_expired);
 
 protected:
     monitor_engine(typename base::executor_type ex, monitor_options opts, policy_socket_options_t<P> sock_opts,
@@ -140,11 +141,22 @@ private:
         cache_options copts = std::move(m_cache_opts);
         if(copts.goodbye_grace.count() <= 0)
             copts.goodbye_grace = std::chrono::seconds(1);
-        copts.on_expired = [this](std::vector<cache_entry> expired)
-        {
-            m_loss.expire(std::move(expired));
-        };
+        copts.on_expired = expiry_hook(std::move(copts.on_expired));
         return copts;
+    }
+
+    expired_callback expiry_hook(expired_callback user_cb)
+    {
+        return [this, user_cb = std::move(user_cb)](std::vector<cache_entry> expired) mutable
+        {
+            if(!user_cb)
+            {
+                m_loss.expire(std::move(expired));
+                return;
+            }
+            m_loss.expire(expired);
+            user_cb(std::move(expired));
+        };
     }
 
     std::error_code validate() const noexcept

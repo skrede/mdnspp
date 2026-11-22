@@ -1,0 +1,75 @@
+# Mechanical formatting rules of the codebase, tuned so a format run reproduces its authored shape: Allman braces
+# (lambda bodies included), 120 columns, no space before a parenthesis, `template <` with a space, case labels flush
+# with their switch, constructor initializers one per line with a leading comma, a single space before a declared
+# name and no alignment of consecutive assignments. Comments are never reflowed.
+# SortIncludes is off because the include order (grouped by folder, angle includes by their top-level folder, sorted
+# by file-name length then alphabetically) is not expressible here; see CONVENTIONS.md. SortUsingDeclarations is off
+# for the same reason: declaration order is authored deliberately and the formatter must not reorder tokens.
+---
+Language: Cpp
+BasedOnStyle: LLVM
+AccessModifierOffset: -4
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignOperands: false
+BreakBeforeBinaryOperators: NonAssignment
+AlignTrailingComments: true
+AlignConsecutiveShortCaseStatements:
+  Enabled: false
+  AcrossEmptyLines: false
+  AcrossComments: false
+  AlignCaseColons: false
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: InlineOnly
+AllowShortLambdasOnASingleLine: All
+AllowShortEnumsOnASingleLine: false
+AlwaysBreakAfterDefinitionReturnType: false
+AlwaysBreakTemplateDeclarations: Yes
+BraceWrapping:
+  AfterCaseLabel: true
+  AfterClass: true
+  AfterControlStatement: true
+  AfterEnum: true
+  AfterFunction: true
+  AfterNamespace: false
+  AfterStruct: true
+  AfterUnion: true
+  AfterExternBlock: false
+  BeforeCatch: true
+  BeforeElse: true
+  BeforeLambdaBody: true
+  BeforeWhile: false
+  SplitEmptyFunction: true
+  SplitEmptyRecord: true
+  SplitEmptyNamespace: true
+BreakBeforeBraces: Custom
+BreakConstructorInitializers: BeforeComma
+FixNamespaceComments: false
+ColumnLimit: 120
+ReflowComments: false
+ConstructorInitializerIndentWidth: 4
+ContinuationIndentWidth: 4
+IndentCaseBlocks: true
+IndentCaseLabels: false
+IndentGotoLabels: false
+IndentPPDirectives: BeforeHash
+IndentWidth: 4
+InsertNewlineAtEOF: true
+KeepEmptyLinesAtTheStartOfBlocks: true
+MacroBlockBegin: ''
+MacroBlockEnd: ''
+PointerAlignment: Right
+ReferenceAlignment: Pointer
+SortIncludes: Never
+SortUsingDeclarations: Never
+SpaceAfterTemplateKeyword: true
+SpaceBeforeCtorInitializerColon: false
+SpaceBeforeParens: Never
+SpaceBeforeRangeBasedForLoopColon: true
+SpaceInEmptyParentheses: false
+SpacesInAngles: false
+SpacesInConditionalStatement: false
+SpacesInCStyleCastParentheses: false
+SpacesInParentheses: false
+TabWidth: 4
+...

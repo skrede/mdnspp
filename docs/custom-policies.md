@@ -158,13 +158,18 @@ concept timer_like = requires(T &t, std::chrono::milliseconds dur, move_only_fun
 ```
 
 `expires_after` sets the timer deadline (no return constraint; ASIO timers
-return `std::size_t`) and ends a pending wait without a success completion:
-the asio and in-process timers complete it with `operation_aborted` /
-`operation_canceled`, while `default_timer` and `mock_timer` drop the handler
-without calling it. The library handles both. `async_wait` calls `handler`
-when the timer fires or is cancelled. `cancel` completes every pending wait
-with `operation_aborted` / `operation_canceled` — every `stop()` path in the
-library waits on this guarantee. Wait handlers fire on the policy executor.
+return `std::size_t`) and completes a pending wait with an error equal to
+`std::errc::operation_canceled`. `cancel` completes every pending wait the
+same way, and `async_wait` calls `handler` with success when the deadline
+passes. A timer never drops a pending wait and never completes an ended one
+with success; every `stop()` path in the library waits on these completions,
+and every library wait handler returns on an error before touching state.
+`default_timer`, `mock_timer` and `inproc_timer` complete the wait inline,
+before `expires_after` or `cancel` returns, and invoke the handler last, so the
+handler may re-arm or destroy its timer. `asio_timer` posts the completion
+through its executor as `asio::error::operation_aborted`. A custom timer must
+complete the wait in one of these two ways. Wait handlers fire on the policy
+executor.
 
 ---
 
@@ -348,8 +353,9 @@ called by the bus when a packet arrives for this socket's endpoint.
 `inproc_timer<Clock>` satisfies `timer_like`. It implements the executor's
 `inproc_timer_base<Clock>` interface, registers with `ex.register_timer(*this)` on
 construction and deregisters in its destructor. `expires_after()` sets the
-deadline; `try_fire(now)` is called by the executor on each `step()` and fires
-the stored handler if the deadline has passed.
+deadline and completes a pending wait inline with `operation_canceled`, as
+`cancel()` does; `try_fire(now)` is called by the executor on each `step()` and
+fires the stored handler if the deadline has passed.
 
 **`post()` threading model**
 

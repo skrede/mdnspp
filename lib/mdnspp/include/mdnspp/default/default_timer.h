@@ -25,11 +25,13 @@ class default_timer
 public:
     explicit default_timer(default_context &ctx)
         : m_ctx{ctx}
+        , m_deadline{}
+        , m_pending_handler{}
     {
     }
 
     explicit default_timer(default_context &ctx, std::error_code &)
-        : m_ctx{ctx}
+        : default_timer(ctx)
     {
     }
 
@@ -43,13 +45,14 @@ public:
     default_timer(default_timer &&) = delete;
     default_timer &operator=(default_timer &&) = delete;
 
-    // Drops a pending handler without calling it, as mock_timer does; the asio and inproc timers complete it with
-    // operation_canceled instead.
+    // expires_after and cancel complete a pending wait last, so its handler may re-arm or destroy the timer.
     void expires_after(std::chrono::milliseconds dur)
     {
-        m_pending_handler = nullptr;
+        auto h = std::exchange(m_pending_handler, nullptr);
         m_deadline = std::chrono::steady_clock::now() + dur;
         m_ctx.register_timer(this);
+        if(h)
+            h(std::make_error_code(std::errc::operation_canceled));
     }
 
     void async_wait(detail::move_only_function<void(std::error_code)> handler)
@@ -59,12 +62,10 @@ public:
 
     void cancel()
     {
-        if(m_pending_handler)
-        {
-            auto h = std::exchange(m_pending_handler, nullptr);
-            h(std::make_error_code(std::errc::operation_canceled));
-        }
+        auto h = std::exchange(m_pending_handler, nullptr);
         m_ctx.deregister_timer(this);
+        if(h)
+            h(std::make_error_code(std::errc::operation_canceled));
     }
 
     void fire_if_expired()
@@ -88,7 +89,7 @@ public:
 
 private:
     default_context &m_ctx;
-    std::chrono::steady_clock::time_point m_deadline{};
+    std::chrono::steady_clock::time_point m_deadline;
     detail::move_only_function<void(std::error_code)> m_pending_handler;
 };
 

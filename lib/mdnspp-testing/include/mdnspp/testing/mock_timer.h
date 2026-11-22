@@ -6,6 +6,7 @@
 #include "mdnspp/detail/compat.h"
 
 #include <chrono>
+#include <cstdint>
 #include <utility>
 #include <system_error>
 
@@ -31,11 +32,14 @@ public:
     {
     }
 
+    // expires_after and cancel complete a pending wait last, so its handler may re-arm or destroy the timer.
     void expires_after(std::chrono::milliseconds d)
     {
+        auto h = std::exchange(m_pending_handler, nullptr);
         m_last_duration = d;
-        m_pending_handler = nullptr;
         m_cancel_count++;
+        if(h)
+            h(std::make_error_code(std::errc::operation_canceled));
     }
 
     void async_wait(detail::move_only_function<void(std::error_code)> handler)
@@ -45,12 +49,10 @@ public:
 
     void cancel()
     {
+        auto h = std::exchange(m_pending_handler, nullptr);
         m_cancel_count++;
-        if(m_pending_handler)
-        {
-            auto h = std::exchange(m_pending_handler, nullptr);
+        if(h)
             h(std::make_error_code(std::errc::operation_canceled));
-        }
     }
 
     void fire()
@@ -62,14 +64,14 @@ public:
         }
     }
 
-    int cancel_count() const { return m_cancel_count; }
+    int32_t cancel_count() const { return m_cancel_count; }
     bool has_pending() const { return m_pending_handler != nullptr; }
     std::chrono::milliseconds last_duration() const { return m_last_duration; }
 
 private:
     detail::move_only_function<void(std::error_code)> m_pending_handler;
     std::chrono::milliseconds m_last_duration;
-    int m_cancel_count;
+    int32_t m_cancel_count;
 };
 
 }

@@ -39,20 +39,19 @@ TEST_CASE("default_timer async_wait registers pending handler", "[native_timer]"
     REQUIRE_FALSE(called);
 }
 
-TEST_CASE("default_timer expires_after drops pending handler WITHOUT calling it", "[native_timer]")
+TEST_CASE("default_timer expires_after completes a pending handler with operation_canceled", "[native_timer]")
 {
     mdnspp::default_context ctx;
     mdnspp::default_timer timer{ctx};
-    bool called = false;
+    std::error_code received{};
 
     timer.expires_after(1000ms);
-    timer.async_wait([&](std::error_code) { called = true; });
+    timer.async_wait([&](std::error_code ec) { received = ec; });
     REQUIRE(timer.has_pending());
 
-    // expires_after must drop the handler silently — critical recv_loop semantic.
     timer.expires_after(2000ms);
     REQUIRE_FALSE(timer.has_pending());
-    REQUIRE_FALSE(called); // handler was dropped, NOT called
+    REQUIRE(received == std::make_error_code(std::errc::operation_canceled));
 }
 
 TEST_CASE("default_timer cancel fires handler with operation_canceled", "[native_timer]")
@@ -89,14 +88,13 @@ TEST_CASE("default_timer expires_after then async_wait re-arms correctly", "[nat
     timer.async_wait([&](std::error_code) { ++call_count; });
     REQUIRE(timer.has_pending());
 
-    // Re-arm: drops old handler without calling it.
     timer.expires_after(500ms);
     timer.async_wait([&](std::error_code) { ++call_count; });
     REQUIRE(timer.has_pending());
-    REQUIRE(call_count == 0); // first handler was dropped, not called
+    REQUIRE(call_count == 1);
 
     timer.cancel();
-    REQUIRE(call_count == 1); // only the second handler was called
+    REQUIRE(call_count == 2);
 }
 
 TEST_CASE("default_timer fires when deadline has passed", "[native_timer]")

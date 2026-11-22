@@ -104,6 +104,10 @@ Unit tests cover:
   (inproc_bus_reentrancy_test)
 - In-process harness: `advance_to_live` brings servers with one, three and five
   probes live (inproc_harness_test)
+- Timer contract over the default, mock and in-process timers: `expires_after`
+  and `cancel` complete a pending wait once with `operation_canceled` before
+  they return, and its handler may re-arm or destroy the timer
+  (timer_contract_test)
 - asio backend: IPv6 interface binding (asio_ipv6_interface_test), peer
   destruction with a pending receive (asio_peer_destroy_test), and completion
   tokens (tests/unit/asio_token/: asio_token_*_test)

@@ -17,7 +17,7 @@ Four types form the in-process bus stack:
 |------|------|
 | `inproc_bus<Clock>` | Shared multicast medium. Holds all registered sockets and a packet queue. |
 | `inproc_socket<Clock>` | Per-component I/O. Sends by enqueuing onto the bus; receives via `deliver()` called by the bus. |
-| `inproc_timer<Clock>` | Scheduling. Fires based on `Clock::now()` when `try_fire()` is called by the executor. |
+| `inproc_timer<Clock>` | Scheduling. Fires based on `Clock::now()` when `try_fire()` is called by the executor; `expires_after()` and `cancel()` complete a pending wait inline with `operation_canceled`. |
 | `inproc_executor<Clock>` | Event loop driver. Runs posted callbacks, fires expired timers, and delivers packets. |
 
 All four are template classes parameterized on a `Clock`. `inproc_policy` aliases

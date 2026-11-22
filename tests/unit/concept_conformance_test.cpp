@@ -61,16 +61,16 @@ TEST_CASE("mock_timer cancel delivers operation_canceled", "[concept][conformanc
     REQUIRE(timer.cancel_count() == 1);
 }
 
-TEST_CASE("mock_timer expires_after clears pending handler", "[concept][conformance]")
+TEST_CASE("mock_timer expires_after delivers operation_canceled", "[concept][conformance]")
 {
     mock_executor ex;
     mock_timer timer{ex};
-    bool called = false;
-    timer.async_wait([&](std::error_code) { called = true; });
+    std::error_code received{};
+    timer.async_wait([&](std::error_code ec) { received = ec; });
     REQUIRE(timer.has_pending());
     timer.expires_after(std::chrono::milliseconds{100});
     REQUIRE_FALSE(timer.has_pending());
-    REQUIRE_FALSE(called); // handler was dropped, not called
+    REQUIRE(received == std::make_error_code(std::errc::operation_canceled));
     REQUIRE(timer.cancel_count() == 1);
 }
 

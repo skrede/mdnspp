@@ -39,15 +39,14 @@ public:
     inproc_timer(inproc_timer &&) = delete;
     inproc_timer &operator=(inproc_timer &&) = delete;
 
+    // expires_after and cancel complete a pending wait last, so its handler may re-arm or destroy the timer.
     void expires_after(std::chrono::milliseconds d)
     {
+        auto h = std::exchange(m_handler, nullptr);
         m_expiry = Clock::now() + d;
-        if(m_handler)
-        {
-            auto h = std::exchange(m_handler, nullptr);
-            h(std::make_error_code(std::errc::operation_canceled));
-        }
         m_active = true;
+        if(h)
+            h(std::make_error_code(std::errc::operation_canceled));
     }
 
     void async_wait(detail::move_only_function<void(std::error_code)> handler)
@@ -57,12 +56,10 @@ public:
 
     void cancel()
     {
+        auto h = std::exchange(m_handler, nullptr);
         m_active = false;
-        if(m_handler)
-        {
-            auto h = std::exchange(m_handler, nullptr);
+        if(h)
             h(std::make_error_code(std::errc::operation_canceled));
-        }
     }
 
     bool try_fire(typename Clock::time_point now) override

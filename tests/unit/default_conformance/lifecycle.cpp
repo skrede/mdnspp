@@ -66,18 +66,18 @@ TEST_CASE("default_context stop from another thread wakes run", "[native][contex
     REQUIRE(run_returned.load(std::memory_order_acquire));
 }
 
-TEST_CASE("default_timer expires_after drops pending handler", "[native][timer]")
+TEST_CASE("default_timer expires_after delivers operation_canceled", "[native][timer]")
 {
     mdnspp::default_context ctx;
     mdnspp::default_timer timer{ctx};
 
-    bool called = false;
-    timer.async_wait([&](std::error_code) { called = true; });
+    std::error_code received{};
+    timer.async_wait([&](std::error_code ec) { received = ec; });
     REQUIRE(timer.has_pending());
 
     timer.expires_after(100ms);
     REQUIRE_FALSE(timer.has_pending());
-    REQUIRE_FALSE(called);
+    REQUIRE(received == std::make_error_code(std::errc::operation_canceled));
 }
 
 TEST_CASE("default_timer cancel delivers operation_canceled", "[native][timer]")

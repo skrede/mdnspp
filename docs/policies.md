@@ -71,9 +71,11 @@ move_only_function<void(std::error_code, const recv_metadata &, std::span<std::b
 ```
 
 On error the metadata is empty and the data span is empty. `timer_like`
-requires `expires_after`, `async_wait`, and `cancel`; `cancel()` must
-complete every pending `async_wait` with `operation_aborted` /
-`operation_canceled` — every `stop()` path waits on this. All handlers fire
+requires `expires_after`, `async_wait`, and `cancel`; `expires_after()` on a
+pending wait and `cancel()` must complete that wait with an error equal to
+`operation_canceled` (asio posts `operation_aborted`), never drop it — every
+`stop()` path waits on this. The contract is stated in full in
+[Custom Policies](custom-policies.md#timer_like-concept). All handlers fire
 on the policy executor; the library never locks around handler invocation
 and relies on executor serialization.
 

@@ -108,7 +108,7 @@ inline int default_context::compute_next_timeout_ms(std::chrono::steady_clock::t
             t->deadline() - now);
 
         const int64_t raw = diff.count();
-        const int ms = static_cast<int>(std::clamp<int64_t>(raw, 0, std::numeric_limits<int>::max()));
+        const int ms = static_cast<int>(std::clamp<int64_t>(raw, 0, (std::numeric_limits<int>::max)()));
 
         if(min_ms < 0 || ms < min_ms)
             min_ms = ms;

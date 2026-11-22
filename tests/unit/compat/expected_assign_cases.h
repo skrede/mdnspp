@@ -36,13 +36,14 @@ private:
     }
 };
 
-// Trivial assignment for std::expected is LWG 4026, a post-C++23 defect fix that libc++ does not implement yet.
+// Trivial assignment for std::expected is LWG 4026, a post-C++23 defect fix that libstdc++ implements from GCC 16;
+// libc++, older libstdc++ and other standard libraries are held only to the own expected.
 template <typename Family>
 inline constexpr bool assignment_propagates_triviality =
-#if defined(_LIBCPP_VERSION)
-    std::is_same_v<Family, own_family>;
-#else
+#if defined(_GLIBCXX_RELEASE) && _GLIBCXX_RELEASE >= 16
     true;
+#else
+    std::is_same_v<Family, own_family>;
 #endif
 
 }

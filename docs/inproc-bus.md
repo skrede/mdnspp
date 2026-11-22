@@ -30,9 +30,19 @@ standard `policy_like` concept.
 queue. Each `inproc_socket` is registered on construction and deregistered on
 destruction.
 
-**Port assignment.** The bus assigns each socket a unique `127.0.0.1:NNNN`
-endpoint, starting at port 10000. These ports are not real OS ports — they are
-internal identifiers used to distinguish sockets on the bus.
+**Endpoint assignment.** The bus assigns each socket a distinct loopback
+address: the first socket gets `127.0.0.1`, the next `127.0.0.2`, and so on
+through `127.0.0.255`, `127.0.1.0` and onward across `127.0.0.0/8`. The port
+is the one given to the `inproc_bus` constructor (default 5353), or the
+socket's `inproc_socket_options::port_override` when set. Addresses are never
+reused over a bus's lifetime, so no two sockets, live or closed, share an
+endpoint. Once all 16,777,214 addresses (the /8 without its network and
+broadcast addresses) have been handed out, registration fails: the
+`std::error_code` constructors of `inproc_socket` set
+`std::errc::address_not_available` and leave the socket closed, and the
+throwing constructors throw `std::system_error` with that code. These
+endpoints are not real OS addresses — they are internal identifiers used to
+distinguish sockets on the bus.
 
 **Packet delivery.** `inproc_socket::send()` enqueues onto the bus queue rather
 than delivering inline. This avoids re-entrancy in multi-party scenarios.

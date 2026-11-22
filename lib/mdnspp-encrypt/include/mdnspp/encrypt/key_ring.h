@@ -102,6 +102,8 @@ public:
     {
         if(!m_keyed)
             return std::make_error_code(std::errc::operation_not_permitted);
+        if(new_psk.is_zero())
+            return std::make_error_code(std::errc::invalid_argument);
         if(!gp.duration.has_value() && !gp.packet_count.has_value())
             gp.duration = default_grace_duration;
 
@@ -119,25 +121,33 @@ public:
         return m_keyed;
     }
 
+    bool has_previous_key() const
+    {
+        std::lock_guard lock(m_mutex);
+        return m_has_prev_key;
+    }
+
     std::optional<send_key> key_for_send()
     {
         std::lock_guard lock(m_mutex);
+        expire_grace_locked();
         if(!m_keyed)
             return std::nullopt;
         return send_key{key_copy(m_key), m_epoch};
     }
 
-    // Epoch + 1 tolerates initial-epoch skew under the same key; a peer that rotated fails authentication.
+    // The current key is also tried one epoch ahead, and one epoch behind while no previous key is held, so peers whose
+    // initial epochs differ by one under the same key hear each other both ways; a peer that rotated fails the AEAD.
     std::optional<receive_key> key_for_epoch(uint32_t epoch)
     {
         std::lock_guard lock(m_mutex);
         expire_grace_locked();
         if(!m_keyed)
             return std::nullopt;
-        if(epoch == m_epoch || epoch == m_epoch + 1)
-            return receive_key{key_copy(m_key), false};
         if(m_has_prev_key && epoch == m_epoch - 1)
             return receive_key{key_copy(m_prev_key), true};
+        if(epoch == m_epoch - 1 || epoch == m_epoch || epoch == m_epoch + 1)
+            return receive_key{key_copy(m_key), false};
         return std::nullopt;
     }
 
@@ -156,8 +166,8 @@ private:
     uint32_t m_epoch;
     grace_state m_grace;
 
-    // Runs on every key lookup, so an expired previous key is zeroized at the next lookup, not at destruction.
-    // Caller holds m_mutex.
+    // Runs on every send and receive key lookup, so an expired previous key is zeroized at the next lookup, not at
+    // destruction. Caller holds m_mutex.
     void expire_grace_locked() noexcept
     {
         if(!m_has_prev_key || !m_grace.expired())

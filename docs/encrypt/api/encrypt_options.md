@@ -125,7 +125,7 @@ struct grace_period
 
 Defines the overlap window during key rotation. After `update_key()` is called, the previous key remains accepted for decrypting packets from peers that have not yet switched, until the grace period expires; peers must rotate within that window (see [Key Rotation](../key-rotation.md)). The grace period expires when either condition is met.
 
-If neither field is set, `update_key()` applies a duration bound of `encrypted_socket::default_grace_duration` (`std::chrono::seconds{30}`) so the previous key cannot remain accepted indefinitely. Expiry is checked on the receive path, and the previous key is zeroized as soon as it is observed (see [Lazy Expiry](../key-rotation.md#lazy-expiry)).
+If neither field is set, `update_key()` applies a duration bound of `encrypted_socket::default_grace_duration` (`std::chrono::seconds{30}`) so the previous key cannot remain accepted indefinitely. Expiry is checked at every key lookup, on the send path and the receive path, and the previous key is zeroized as soon as it is observed (see [Lazy Expiry](../key-rotation.md#lazy-expiry)).
 
 ### Fields
 

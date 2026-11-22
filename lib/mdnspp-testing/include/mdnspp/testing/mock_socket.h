@@ -39,8 +39,11 @@ class mock_socket
 
 public:
     mock_socket()
-        : m_opts{}
-        , m_closed{false}
+        : m_closed{false}
+        , m_opts{}
+        , m_receive_queue()
+        , m_sent_packets()
+        , m_pending_receive()
     {
     }
 
@@ -60,8 +63,11 @@ public:
     }
 
     explicit mock_socket(mock_executor &, const socket_options &opts, std::error_code &ec)
-        : m_opts{opts}
-        , m_closed{false}
+        : m_closed{false}
+        , m_opts{opts}
+        , m_receive_queue()
+        , m_sent_packets()
+        , m_pending_receive()
     {
         if(s_fail_on_construct)
             ec = std::make_error_code(std::errc::address_not_available);
@@ -166,11 +172,11 @@ public:
     void clear_sent() { m_sent_packets.clear(); }
 
 private:
-    std::queue<queued_item> m_receive_queue;
-    move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_pending_receive;
-    std::vector<sent_packet> m_sent_packets;
-    socket_options m_opts;
     bool m_closed;
+    socket_options m_opts;
+    std::queue<queued_item> m_receive_queue;
+    std::vector<sent_packet> m_sent_packets;
+    move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_pending_receive;
 
     static inline bool s_fail_on_construct{false};
     static inline bool s_fail_on_send{false};

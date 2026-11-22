@@ -1,6 +1,8 @@
 #ifndef HPP_GUARD_MDNSPP_ASIO_ASIO_SOCKET_H
 #define HPP_GUARD_MDNSPP_ASIO_ASIO_SOCKET_H
 
+#include "mdnspp/asio/detail/asio_socket_setup.h"
+
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
@@ -10,8 +12,6 @@
 #ifdef _WIN32
 #include "mdnspp/detail/native_socket_setup.h"
 #endif
-
-#include "mdnspp/asio/detail/asio_socket_setup.h"
 
 #include <asio.hpp>
 

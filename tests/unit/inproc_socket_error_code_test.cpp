@@ -9,6 +9,7 @@
 
 #include <span>
 #include <cstddef>
+#include <cstdint>
 #include <system_error>
 
 using mdnspp::endpoint;
@@ -34,6 +35,24 @@ std::error_code send_exception(inproc_socket<> &sock)
     }
     return {};
 }
+
+std::error_code construct_exception(inproc_executor<> &ex)
+{
+    try
+    {
+        inproc_socket<> sock{ex};
+    }
+    catch(const std::system_error &e)
+    {
+        return e.code();
+    }
+    return {};
+}
+
+struct discard_receiver : mdnspp::inproc::inproc_receiver
+{
+    void deliver(const endpoint &, std::span<const std::byte>) override {}
+};
 
 }
 
@@ -90,4 +109,25 @@ TEST_CASE("the throwing send on a closed socket throws bad_file_descriptor", "[i
     sock.close();
     REQUIRE(send_exception(sock) == std::errc::bad_file_descriptor);
     REQUIRE_FALSE(bus.has_pending_packets());
+}
+
+TEST_CASE("construction reports address_not_available once every loopback address is used",
+    "[inproc_socket][error_code]")
+{
+    constexpr uint32_t loopback_addresses = (uint32_t{1} << 24) - 2;
+    inproc_bus<> bus;
+    inproc_executor<> ex{bus};
+    discard_receiver receiver;
+    const inproc_socket_options opts{};
+    for(uint32_t i = 0; i < loopback_addresses; ++i)
+    {
+        bus.register_socket(receiver, opts);
+        bus.deregister_socket(receiver);
+    }
+
+    std::error_code ec;
+    inproc_socket<> exhausted{ex, ec};
+    REQUIRE(ec == std::errc::address_not_available);
+    CHECK(send_exception(exhausted) == std::errc::bad_file_descriptor);
+    CHECK(construct_exception(ex) == std::errc::address_not_available);
 }

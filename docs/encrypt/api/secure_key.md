@@ -78,6 +78,14 @@ std::span<const std::byte, key_size> bytes() const noexcept;
 
 Returns a non-owning, fixed-extent span over the key material. The span is valid for the lifetime of the `secure_key` object. The extent is `key_size` (32), enforced at compile time.
 
+### is_zero
+
+```cpp
+bool is_zero() const noexcept;
+```
+
+Returns `true` when every key byte is zero, as for a default-constructed or moved-from key. The comparison runs in constant time (`sodium_is_zero`). `encrypt_options::validate()` and `encrypted_socket::update_key()` use it to refuse an all-zero key with `std::errc::invalid_argument`.
+
 ## Usage Example
 
 ```cpp

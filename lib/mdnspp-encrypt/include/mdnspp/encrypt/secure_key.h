@@ -24,6 +24,8 @@ public:
 
     std::span<const std::byte, key_size> bytes() const noexcept;
 
+    bool is_zero() const noexcept;
+
 private:
     std::array<std::byte, key_size> m_key;
 };

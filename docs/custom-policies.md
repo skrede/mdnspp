@@ -341,8 +341,11 @@ outlast all of them.
 **`socket_type = inproc_socket<Clock>`**
 
 `inproc_socket<Clock>` satisfies `socket_like`. On construction it registers
-itself with the bus via `ex.bus().register_socket(*this, opts)` and receives an
-assigned `127.0.0.1:NNNN` endpoint; it implements the bus's `inproc_receiver`
+itself with the bus via `ex.bus().register_socket(*this, opts, ec)` and receives an
+assigned endpoint: a distinct `127.x.y.z` address, counting up from
+`127.0.0.1`, with the bus's port (or `port_override`); registration fails with
+`std::errc::address_not_available` once the bus has handed out all of
+`127.0.0.0/8`. It implements the bus's `inproc_receiver`
 interface, through which the bus calls its two-argument `deliver()`. `send()` enqueues packets onto the bus
 queue rather than delivering inline — this prevents re-entrancy when a receive
 callback triggers a send. `async_receive()` stores the handler; `deliver()` is

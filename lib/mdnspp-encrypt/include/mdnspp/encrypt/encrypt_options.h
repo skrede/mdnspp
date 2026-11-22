@@ -6,7 +6,6 @@
 #include <chrono>
 #include <cstdint>
 #include <optional>
-#include <algorithm>
 #include <system_error>
 
 namespace mdnspp::encrypt {
@@ -36,10 +35,8 @@ struct encrypt_options
 
     std::error_code validate() const noexcept
     {
-        const bool zero_key = std::ranges::all_of(psk.bytes(),
-            [](std::byte b) { return b == std::byte{0}; });
         const bool zero_limit = replay_window_size == 0 || max_senders == 0 || max_sessions_per_sender == 0;
-        if(sender_id == 0 || zero_limit || zero_key)
+        if(sender_id == 0 || zero_limit || psk.is_zero())
             return std::make_error_code(std::errc::invalid_argument);
         return {};
     }

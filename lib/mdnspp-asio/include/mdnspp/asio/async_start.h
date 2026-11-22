@@ -32,9 +32,14 @@ struct start_initiation : peer_initiation<basic_service_server<P>>
 template <typename Handler, typename Work>
 struct run_state
 {
+    Work work;
+    Handler handler;
+    std::atomic<bool> completed;
+
     run_state(Handler h, Work w)
-        : handler(std::move(h))
-        , work(std::move(w))
+        : work(std::move(w))
+        , handler(std::move(h))
+        , completed(false)
     {
     }
 
@@ -53,10 +58,6 @@ struct run_state
            || ec == std::errc::invalid_argument)
             complete(ec);
     }
-
-    Handler handler;
-    Work work;
-    std::atomic<bool> completed{false};
 };
 
 template <policy_like P>

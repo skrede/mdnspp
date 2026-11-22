@@ -2,11 +2,15 @@
 #include <mdnspp/encrypt/defaults.h>
 
 #include <array>
+#include <mutex>
 #include <chrono>
 #include <thread>
 #include <cstddef>
 #include <utility>
 #include <iostream>
+#include <stop_token>
+#include <system_error>
+#include <condition_variable>
 
 // Demonstrate encrypted mDNS key rotation.
 //
@@ -30,8 +34,9 @@
 // Dual-key overlap:
 //   Immediately after update_key(), the socket holds two keys:
 //     - current key (epoch N):   used to encrypt outgoing packets and to
-//       decrypt incoming packets with epoch = N or N+1 (the latter covers
-//       peers whose epoch counter runs one ahead with the same key).
+//       decrypt incoming packets with epoch = N or N+1, and N-1 once no
+//       previous key is held (this covers peers whose epoch counter runs one
+//       ahead or behind with the same key).
 //     - previous key (epoch N-1): used to decrypt incoming packets with
 //       epoch = N-1, until the grace period expires.
 //   Packets with any other epoch are rejected immediately.
@@ -47,9 +52,9 @@
 //                      rejected as replays)
 //
 // Lazy expiry:
-//   The grace period is checked inline on each received packet. There is no
-//   background timer. When the grace period expires, the previous key is
-//   zeroized immediately.
+//   The grace period is checked inline on each sent and received packet.
+//   There is no background timer. The previous key is zeroized at the first
+//   send or receive after the grace period expires.
 //
 // Peer coordination:
 //   All peers must call update_key() with the same new key within the grace
@@ -59,11 +64,11 @@
 //   grace period.
 //
 // After grace expires:
-//   Packets from the previous epoch are rejected. Any peer that has not
-//   rotated will be unable to communicate until it also calls update_key()
-//   with the new key. A peer that restarts after the rotation must be
-//   provisioned with the new key and encrypt_options::initial_epoch set to
-//   the group's current epoch.
+//   Packets from the previous epoch fail authentication under the new key and
+//   are rejected. Any peer that has not rotated will be unable to communicate
+//   until it also calls update_key() with the new key. A peer that restarts
+//   after the rotation must be provisioned with the new key and
+//   encrypt_options::initial_epoch set to the group's current epoch.
 
 static std::array<std::byte, 32> initial_key()
 {
@@ -143,15 +148,25 @@ static void rotate_key(mdnspp::encrypt::encrypted_observer &obs)
     std::cout << "key rotated -- epoch incremented, grace period: 30 s or 1000 packets" << std::endl;
 }
 
-static void rotate_then_stop(mdnspp::encrypt::encrypted_observer &obs, mdnspp::context &ctx)
+// Returns false when a stop is requested before the delay has elapsed.
+static bool sleep_unless_stopped(std::stop_token stop, std::chrono::seconds delay)
 {
-    std::this_thread::sleep_for(std::chrono::seconds{5});
+    std::mutex mutex;
+    std::condition_variable_any wake;
+    std::unique_lock lock(mutex);
+    return !wake.wait_for(lock, stop, delay, [&stop] { return stop.stop_requested(); });
+}
+
+static void rotate_then_stop(mdnspp::encrypt::encrypted_observer &obs, mdnspp::context &ctx, std::stop_token stop)
+{
+    if(!sleep_unless_stopped(stop, std::chrono::seconds{5}))
+        return;
     rotate_key(obs);
 
     // After 35 seconds the grace period has expired on this peer. Any packets
     // still arriving with the old epoch are rejected from this point on.
-    std::this_thread::sleep_for(std::chrono::seconds{35});
-    ctx.stop();
+    if(sleep_unless_stopped(stop, std::chrono::seconds{35}))
+        ctx.stop();
 }
 
 int main()
@@ -172,8 +187,11 @@ int main()
     // In a real application, the rotation would be triggered by an application-
     // level signal (e.g., a scheduled rotation, an admin command, or a shared
     // rotation notification received over a side-channel).
-    std::thread rotation_thread{[&obs, &ctx] { rotate_then_stop(obs, ctx); }};
+    std::jthread rotation_thread{[&obs, &ctx](std::stop_token stop) { rotate_then_stop(obs, ctx, stop); }};
 
-    ctx.run();
-    rotation_thread.join();
+    std::error_code ec;
+    ctx.run(ec);
+    if(ec)
+        std::cerr << "run error: " << ec.message() << std::endl;
+    return ec ? 1 : 0;
 }

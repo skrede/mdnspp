@@ -1,5 +1,7 @@
 #include "helpers.h"
 
+#include "mdnspp/encrypt/key_ring.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
@@ -94,4 +96,19 @@ TEST_CASE("update_key with an empty grace_period applies the default duration bo
     pair.receiver.inner().enqueue(epoch0_pkt);
 
     CHECK(receive_one(pair.receiver).called);
+}
+
+TEST_CASE("an expired previous key is zeroized on the next send-key lookup", "[key_ring][key_rotation][grace]")
+{
+    using namespace std::chrono_literals;
+
+    const mdnspp::encrypt::secure_key initial = make_key(std::byte{0x42});
+    mdnspp::encrypt::key_ring ring(initial.bytes(), 0);
+    REQUIRE_FALSE(ring.update(make_key(std::byte{0x43}), {.duration = 0ns, .packet_count = {}}));
+    REQUIRE(ring.has_previous_key());
+
+    const auto key = ring.key_for_send();
+    REQUIRE(key.has_value());
+    CHECK(key->epoch == 1);
+    CHECK_FALSE(ring.has_previous_key());
 }

@@ -2,6 +2,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <cstddef>
 
 namespace {
@@ -76,4 +77,37 @@ TEST_CASE("packets one epoch ahead under a different key are rejected",
     pair.receiver.inner().enqueue(sent_packet_at(pair.sender, 0));
 
     CHECK_FALSE(receive_one(pair.receiver).called);
+}
+
+TEST_CASE("peers one epoch apart under the same key exchange packets in both directions",
+    "[encrypted_socket][key_rotation][epoch_skew]")
+{
+    paired_sockets pair(make_test_opts(std::byte{0x42}, 1), epoch_opts(std::byte{0x42}, 2, 1));
+
+    const received_packet query = receive_packet(pair.receiver, sealed(pair, probe));
+    CHECK(query.called);
+    CHECK(query.data == probe);
+
+    const received_packet response = receive_packet(pair.sender, sealed_by(pair.receiver, follow_up));
+    CHECK(response.called);
+    CHECK(response.data == follow_up);
+}
+
+TEST_CASE("packets one epoch behind under a different key are rejected",
+    "[encrypted_socket][key_rotation][epoch_skew]")
+{
+    paired_sockets pair(make_test_opts(std::byte{0x43}, 1), epoch_opts(std::byte{0x42}, 2, 1));
+
+    CHECK_FALSE(receive_packet(pair.receiver, sealed(pair, probe)).called);
+}
+
+TEST_CASE("after the grace period a peer one epoch behind on the old key is rejected",
+    "[encrypted_socket][key_rotation][epoch_skew]")
+{
+    using namespace std::chrono_literals;
+
+    paired_sockets pair;
+    rotate_key(pair.receiver, std::byte{0x43}, mdnspp::encrypt::grace_period{.duration = 0ns, .packet_count = {}});
+
+    CHECK_FALSE(receive_packet(pair.receiver, sealed(pair, probe)).called);
 }

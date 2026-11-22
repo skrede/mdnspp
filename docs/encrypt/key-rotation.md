@@ -56,21 +56,29 @@ Immediately after a call to `update_key()`, the socket holds two keys
 simultaneously:
 
 - **current key** (epoch N): used to encrypt all outgoing packets and to
-  decrypt incoming packets with epoch = N or epoch = N+1
+  decrypt incoming packets with epoch = N or epoch = N+1, and with
+  epoch = N-1 while no previous key is held
 - **previous key** (epoch N-1): used only to decrypt incoming packets with
   epoch = N-1, as long as the grace period has not expired
 
-The epoch N+1 case is attempted with the current key. It tolerates
-initial-epoch skew under the same key: a peer whose epoch counter runs one
-ahead while holding the same key material (for example, a peer provisioned
-with an `initial_epoch` one beyond ours) is accepted. It does not let an
-unrotated peer read traffic from a peer that has rotated: after a real
-rotation the keys differ, the AEAD verification fails, and the packet is
-dropped exactly like any forged packet.
+The epoch N+1 and N-1 cases attempted with the current key tolerate
+initial-epoch skew under the same key in both directions: two peers holding
+the same key material whose `initial_epoch` values differ by one (for example
+0 and 1) accept each other's packets, so a query from either reaches the
+other and the response comes back. This does not let an unrotated peer read
+traffic from a peer that has rotated: after a real rotation the keys differ,
+the AEAD verification fails, and the packet is dropped exactly like any forged
+packet. While a previous key is held, epoch N-1 is tried with the previous key
+only, so a peer one epoch behind that already holds the current key is not
+heard until the grace period has expired.
 
 Once the grace period expires, the previous key is zeroized (`sodium_memzero`)
-and packets with epoch N-1 are rejected. Packets with any other epoch are
-always rejected immediately, regardless of the grace period.
+and packets with epoch N-1 are tried with the current key: packets sealed
+with the rotated-out key fail authentication and are rejected. A rotation
+that installs the same key material again does not retire the old epoch,
+because its packets still authenticate under the current key. Packets with
+any other epoch are always rejected immediately, regardless of the grace
+period.
 
 Note the inherent asymmetry during a staggered rotation: a peer that has not
 yet rotated does not hold the new key and therefore drops new-epoch traffic
@@ -106,11 +114,12 @@ been accepted with it.
 
 ## Lazy Expiry
 
-The grace period is checked inline on each received packet. There is no
+The grace period is checked inline on each key lookup, that is on every
+encrypted packet sent and every encrypted packet received. There is no
 background timer. The check compares the elapsed time since `update_key()` was
 called (measured with `std::chrono::steady_clock`) and the count of old-epoch
 packets accepted since rotation. This means that grace expiry is bounded by the
-arrival of the next packet, not by wall-clock accuracy. As soon as expiry is
+next send or receive, not by wall-clock accuracy. As soon as expiry is
 observed, the previous key is zeroized rather than retained until destruction.
 
 ## update_key()
@@ -122,7 +131,10 @@ void update_key(secure_key new_psk, grace_period gp, std::error_code &ec);
 
 On a socket without a usable key, the non-throwing overload sets `ec` to
 `std::errc::operation_not_permitted` and the throwing overload throws
-`std::system_error` with that code; nothing is rotated.
+`std::system_error` with that code; nothing is rotated. An all-zero `new_psk`
+(the value of a default-constructed `secure_key`, which construction rejects
+as well) is refused the same way with `std::errc::invalid_argument`: the
+current key, the epoch and the grace state stay unchanged.
 
 Called on the `encrypted_socket` (accessible via `peer.socket()` for
 policy-wrapped types). `update_key()` may be called from any thread,
@@ -191,5 +203,5 @@ shorter than the grace period.
 | N (current) | any | current | Accepted if AEAD verification passes |
 | N+1 | any | current | Accepted if AEAD verification passes (epoch-counter skew with shared key) |
 | N-1 (previous) | not expired | previous | Accepted if AEAD verification passes |
-| N-1 (previous) | expired | none | Rejected (previous key already zeroized) |
+| N-1 (previous) | expired, or no rotation yet | current | Accepted if AEAD verification passes (epoch-counter skew with shared key); packets sealed with the rotated-out key are rejected |
 | any other | any | none | Rejected |

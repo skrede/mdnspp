@@ -154,8 +154,9 @@ receive. During the grace period the receiver accepts packets stamped with the
 previous epoch (decrypted with the previous key). A peer that has not rotated
 cannot read new-epoch traffic, so all peers must call `update_key()` within the
 grace window; rotation is not seamless for a peer that rotates late. The
-receiver also tries the current key for packets stamped one epoch ahead, which
-only tolerates initial-epoch skew under the same key. A peer that restarts
+receiver also tries the current key for packets stamped one epoch ahead and,
+while it holds no previous key, one epoch behind, which only tolerates
+initial-epoch skew under the same key, in both directions. A peer that restarts
 after a rotation rejoins by setting `encrypt_options::initial_epoch` to the
 group's current epoch.
 

@@ -41,4 +41,9 @@ std::span<const std::byte, secure_key::key_size> secure_key::bytes() const noexc
     return m_key;
 }
 
+bool secure_key::is_zero() const noexcept
+{
+    return sodium_is_zero(reinterpret_cast<const unsigned char *>(m_key.data()), key_size) == 1;
+}
+
 }

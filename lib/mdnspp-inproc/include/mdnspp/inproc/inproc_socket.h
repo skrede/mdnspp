@@ -25,6 +25,13 @@ namespace mdnspp::inproc {
 template <typename Clock = std::chrono::steady_clock>
 class inproc_socket : public inproc_receiver
 {
+    struct queued_packet
+    {
+        std::vector<std::byte> data;
+        endpoint from;
+        std::optional<uint8_t> ttl;
+    };
+
     struct checked
     {
     };
@@ -46,12 +53,16 @@ public:
     }
 
     explicit inproc_socket(inproc_executor<Clock> &ex, const inproc_socket_options &opts, std::error_code &ec)
-        : m_bus(&ex.bus())
+        : m_closed(false)
+        , m_bus(&ex.bus())
+        , m_ep(m_bus->register_socket(*this, opts, ec))
         , m_opts(opts)
-        , m_ep(m_bus->register_socket(*this, opts))
-        , m_closed(false)
+        , m_recv_buf()
+        , m_recv_queue()
+        , m_pending_receive()
     {
-        ec.clear();
+        if(ec)
+            close();
     }
 
     ~inproc_socket() override
@@ -143,21 +154,13 @@ public:
     const inproc_socket_options &options() const noexcept { return m_opts; }
 
 private:
-    inproc_bus<Clock> *m_bus;
-    inproc_socket_options m_opts;
-    endpoint m_ep;
     bool m_closed;
-    move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_pending_receive;
+    inproc_bus<Clock> *m_bus;
+    endpoint m_ep;
+    inproc_socket_options m_opts;
     std::vector<std::byte> m_recv_buf;
-
-    struct queued_packet
-    {
-        std::vector<std::byte> data;
-        endpoint from;
-        std::optional<uint8_t> ttl;
-    };
-
     std::queue<queued_packet> m_recv_queue;
+    move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_pending_receive;
 
     inproc_socket(checked, inproc_executor<Clock> &ex, const inproc_socket_options &opts, std::error_code ec)
         : inproc_socket(ex, opts, ec)

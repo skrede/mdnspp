@@ -79,7 +79,9 @@ session's window and unmarked.
 
 Key rotation (`update_key()` with a fresh key) is the remedy for recordings:
 once a receiver has rotated and its grace period has expired, packets stamped
-with an earlier epoch are rejected by epoch before any replay check. During
+with an earlier epoch are rejected before any replay check: by epoch, or, for
+the epoch just before the current one, by the AEAD verification under the
+fresh key. During
 the grace period, previous-epoch packets are still subject to the windows
 above.
 

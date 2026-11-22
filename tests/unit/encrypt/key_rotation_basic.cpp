@@ -5,6 +5,7 @@
 #include <chrono>
 #include <thread>
 #include <cstddef>
+#include <system_error>
 
 namespace {
 
@@ -30,6 +31,26 @@ std::thread rotate_from_other_thread(test_socket &sock)
         std::this_thread::sleep_for(1ms);
         rotate_key(sock, std::byte{0x43});
     }};
+}
+
+std::error_code zero_key_rotation_error(test_socket &sock)
+{
+    std::error_code ec;
+    sock.update_key(mdnspp::encrypt::secure_key{}, ten_second_grace(), ec);
+    return ec;
+}
+
+std::error_code zero_key_rotation_exception(test_socket &sock)
+{
+    try
+    {
+        sock.update_key(mdnspp::encrypt::secure_key{}, ten_second_grace());
+    }
+    catch(const std::system_error &e)
+    {
+        return e.code();
+    }
+    return {};
 }
 
 }
@@ -91,4 +112,18 @@ TEST_CASE("cross-thread update_key during receive traffic is well-defined", "[en
     auto delivered = deliver_all_sent(pair, packet_count);
     rotation_thread.join();
     CHECK(delivered == packet_count);
+}
+
+TEST_CASE("update_key rejects an all-zero key and keeps the current key and epoch",
+    "[encrypted_socket][key_rotation][zero_key]")
+{
+    paired_sockets pair;
+    CHECK(zero_key_rotation_error(pair.sender) == std::make_error_code(std::errc::invalid_argument));
+    CHECK(zero_key_rotation_exception(pair.sender) == std::make_error_code(std::errc::invalid_argument));
+
+    const plain_bytes packet = sealed(pair, probe);
+    CHECK(header_of(packet).epoch == 0);
+    const received_packet result = receive_packet(pair.receiver, packet);
+    CHECK(result.called);
+    CHECK(result.data == probe);
 }

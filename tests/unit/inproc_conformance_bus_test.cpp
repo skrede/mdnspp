@@ -12,7 +12,10 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <set>
 #include <span>
+#include <memory>
+#include <string>
 #include <vector>
 #include <cstddef>
 #include <system_error>
@@ -40,6 +43,14 @@ void record_into(inproc_socket<Clock> &sock, receipt &r)
         r.data.assign(data.begin(), data.end());
         r.received = true;
     });
+}
+
+std::vector<std::unique_ptr<inproc_socket<Clock>>> open_sockets(inproc_executor<Clock> &ex, std::size_t count)
+{
+    std::vector<std::unique_ptr<inproc_socket<Clock>>> sockets;
+    for(std::size_t i = 0; i < count; ++i)
+        sockets.push_back(std::make_unique<inproc_socket<Clock>>(ex));
+    return sockets;
 }
 
 }
@@ -119,4 +130,30 @@ TEST_CASE("inproc_bus loopback disabled", "[inproc][bus]")
 
     REQUIRE_FALSE(at_sender.received);
     REQUIRE(at_receiver.received);
+}
+
+TEST_CASE("inproc_bus gives every live socket a distinct endpoint past 255 registrations", "[inproc][bus]")
+{
+    test_clock::reset();
+    inproc_bus<Clock> bus;
+    inproc_executor<Clock> ex{bus};
+
+    const std::vector<std::unique_ptr<inproc_socket<Clock>>> sockets = open_sockets(ex, 300);
+    std::set<std::string> addresses;
+    for(const auto &sock : sockets)
+        addresses.insert(sock->assigned_endpoint().address);
+    CHECK(addresses.size() == sockets.size());
+    CHECK(sockets[0]->assigned_endpoint().address == "127.0.0.1");
+    CHECK(sockets[255]->assigned_endpoint().address == "127.0.1.0");
+
+    receipt first{};
+    receipt target{};
+    record_into(*sockets[0], first);
+    record_into(*sockets[256], target);
+    const std::byte payload[] = {std::byte{0x5A}};
+    sockets[1]->send(sockets[256]->assigned_endpoint(), std::span<const std::byte>{payload});
+    ex.drain();
+
+    CHECK(target.received);
+    CHECK_FALSE(first.received);
 }

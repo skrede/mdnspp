@@ -33,18 +33,23 @@ uint16_t bound_port(mdnspp::detail::native_socket_t fd)
     return ntohs(reinterpret_cast<const sockaddr_in &>(addr).sin_port);
 }
 
+mdnspp::socket_options group_options(const char *group, const char *loopback)
+{
+    mdnspp::socket_options opts;
+    opts.multicast_group = mdnspp::endpoint{group, 0};
+    // Darwin rejects an IPv6 link-local group join with interface index 0 when it has no IPv6 route to the group.
+    if(std::string_view{group}.find(':') != std::string_view::npos)
+        opts.interface_address = loopback;
+    return opts;
+}
+
 std::optional<mdnspp::recv_metadata> receive_from_self(const char *group, const char *loopback)
 {
     mdnspp::default_context ctx;
     std::error_code ec;
     std::optional<mdnspp::recv_metadata> received;
     bool expired = false;
-    mdnspp::socket_options opts;
-    opts.multicast_group = mdnspp::endpoint{group, 0};
-    // Darwin rejects an IPv6 link-local group join with interface index 0 when it has no IPv6 route to the group.
-    if(std::string_view{group}.find(':') != std::string_view::npos)
-        opts.interface_address = loopback;
-    mdnspp::default_socket socket(ctx, opts, ec);
+    mdnspp::default_socket socket(ctx, group_options(group, loopback), ec);
     if(ec)
         mdnspp::test_support::skip_or_fail("default_socket construction failed: " + ec.message());
     socket.async_receive([&](std::error_code result, const mdnspp::recv_metadata &meta, std::span<std::byte>)

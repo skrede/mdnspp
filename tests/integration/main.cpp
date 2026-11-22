@@ -24,16 +24,13 @@
 #include <type_traits>
 #include <system_error>
 
-// Validate that the exported compile features propagate cxx_std_20 to a
-// consumer that does not set CMAKE_CXX_STANDARD itself.
+// The exported compile features must propagate cxx_std_20 to a consumer that does not set CMAKE_CXX_STANDARD.
 #if defined(_MSVC_LANG)
 static_assert(_MSVC_LANG >= 202002L, "cxx_std_20 was not propagated to the consumer");
 #else
 static_assert(__cplusplus >= 202002L, "cxx_std_20 was not propagated to the consumer");
 #endif
 
-// Validate that the type aliases in defaults.h name valid class types
-// without requiring template arguments.
 static_assert(std::is_class_v<mdnspp::querier>);
 static_assert(std::is_class_v<mdnspp::observer>);
 static_assert(std::is_class_v<mdnspp::service_discovery>);
@@ -41,18 +38,15 @@ static_assert(std::is_class_v<mdnspp::service_server>);
 static_assert(std::is_class_v<mdnspp::service_monitor>);
 static_assert(std::is_class_v<mdnspp::context>);
 
-// Validate that basic_querier<default_policy> is instantiable (template correctness check).
 static_assert(std::is_class_v<mdnspp::basic_querier<mdnspp::default_policy>>);
 
-// Validate the installed mdnspp::testing and mdnspp::inproc components: the
-// inproc policy depends on mdnspp/testing/test_clock.h, so this instantiation
-// catches a dangling mdnspp::testing reference in the installed export set.
+// The inproc policy depends on mdnspp/testing/test_clock.h, so this instantiation catches a dangling
+// mdnspp::testing reference in the installed export set.
 static_assert(std::is_class_v<mdnspp::testing::test_clock>);
 static_assert(std::is_class_v<mdnspp::inproc::inproc_policy<mdnspp::testing::test_clock>>);
 static_assert(std::is_class_v<mdnspp::basic_querier<mdnspp::inproc_test_policy>>);
 
 #ifdef MDNSPP_HAS_ASIO
-// Validate that asio_policy-based template instantiation compiles against installed headers.
 static_assert(std::is_class_v<mdnspp::basic_querier<mdnspp::asio_policy>>);
 #endif
 
@@ -122,8 +116,6 @@ bool encrypt_boundary_holds()
 }
 #endif
 
-// Proves the installed headers compile and the templates instantiate correctly.
-// No network calls -- this is a compile-and-link verification.
 void prove_header_surface()
 {
     constexpr auto qtype = mdnspp::dns_type::a;

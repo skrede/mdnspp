@@ -15,14 +15,8 @@
 #include <optional>
 #include <system_error>
 
-// Two modes, selected by the first input byte:
-// - raw decrypt: the remaining input is fed directly to aead_decrypt with a
-//   fixed key (header parsing and tag verification).
-// - round-trip: input-derived options configure a sender and a receiver
-//   encrypted_socket; an input-derived payload is encrypted with the real key,
-//   selected bytes are mutated, and the result is pushed through the full
-//   receive path twice (detection modes, receive_mode filtering, epoch
-//   selection, replay window), so the logic past tag verification is reached.
+// The first input byte selects raw decrypt (the rest goes to aead_decrypt under a fixed key) or a round trip that
+// mutates a real encrypted packet and receives it twice, which reaches the receive logic past tag verification.
 
 namespace {
 

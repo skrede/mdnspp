@@ -30,7 +30,7 @@ TEST_CASE("flipping a byte in the ciphertext region causes decrypt_failed", "[ae
 
     auto packet = seal_packet(key, hdr, payload);
 
-    // Flip a byte in the ciphertext (immediately after the header)
+    // first ciphertext byte
     packet[mdnspp::encrypt::encrypted_header_size] ^= std::byte{0xFF};
 
     auto result = unseal_packet(key, packet);
@@ -110,7 +110,7 @@ TEST_CASE("wrong magic returns invalid_header", "[aead][header]")
 
     auto packet = seal_packet(key, hdr, payload);
 
-    // Overwrite magic at offset 0-1
+    // magic, offsets 0 and 1
     packet[0] = std::byte{0xDE};
     packet[1] = std::byte{0xAD};
 
@@ -139,7 +139,6 @@ TEST_CASE("too-short packet returns invalid_header", "[aead][header]")
 {
     auto key = make_raw_key();
 
-    // Construct a packet shorter than encrypted_overhead
     std::vector<std::byte> short_packet(mdnspp::encrypt::encrypted_overhead - 1, std::byte{0});
 
     auto result = unseal_packet(key, short_packet);
@@ -155,7 +154,7 @@ TEST_CASE("auth-only mode tag tamper is detected", "[aead][auth-only][tamper]")
 
     auto packet = seal_packet(key, hdr, payload);
 
-    // Flip the last byte of the auth tag
+    // last byte of the auth tag
     packet.back() ^= std::byte{0x01};
 
     auto result = unseal_packet(key, packet);

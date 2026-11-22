@@ -1,5 +1,3 @@
-// tests/concept_conformance_test.cpp
-
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
@@ -46,7 +44,7 @@ TEST_CASE("mock_timer fire delivers success error_code", "[concept][conformance]
     REQUIRE(timer.has_pending());
     timer.fire();
     REQUIRE_FALSE(timer.has_pending());
-    REQUIRE_FALSE(received); // success error_code is falsy
+    REQUIRE_FALSE(received);
 }
 
 TEST_CASE("mock_timer cancel delivers operation_canceled", "[concept][conformance]")
@@ -81,7 +79,7 @@ TEST_CASE("mock_socket error_code constructor path", "[concept][error_code]")
     std::error_code ec;
     mock_socket sock{ex, ec};
     REQUIRE(ec);
-    mock_socket::set_fail_on_construct(false); // reset
+    mock_socket::set_fail_on_construct(false);
 }
 
 TEST_CASE("mock_policy::post pushes to executor queue", "[concept][conformance][post]")

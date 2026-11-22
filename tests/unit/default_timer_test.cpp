@@ -9,7 +9,6 @@
 
 using namespace std::chrono_literals;
 
-// static_assert compiled from default_timer.h — verified here as a belt-and-suspenders check.
 static_assert(mdnspp::timer_like<mdnspp::default_timer>, "default_timer must satisfy timer_like");
 
 TEST_CASE("default_timer constructs from default_context reference", "[native_timer]")
@@ -24,7 +23,7 @@ TEST_CASE("default_timer error_code constructor leaves ec unchanged", "[native_t
     mdnspp::default_context ctx;
     std::error_code ec{};
     mdnspp::default_timer timer{ctx, ec};
-    REQUIRE_FALSE(ec); // timer construction is infallible
+    REQUIRE_FALSE(ec);
     REQUIRE_FALSE(timer.has_pending());
 }
 
@@ -74,7 +73,7 @@ TEST_CASE("default_timer cancel with no pending handler is a no-op", "[native_ti
     mdnspp::default_context ctx;
     mdnspp::default_timer timer{ctx};
     REQUIRE_FALSE(timer.has_pending());
-    REQUIRE_NOTHROW(timer.cancel()); // must not crash or throw
+    REQUIRE_NOTHROW(timer.cancel());
     REQUIRE_FALSE(timer.has_pending());
 }
 
@@ -103,15 +102,13 @@ TEST_CASE("default_timer fires when deadline has passed", "[native_timer]")
     mdnspp::default_timer timer{ctx};
     std::error_code received{std::make_error_code(std::errc::interrupted)};
 
-    // Set a deadline in the past.
-    timer.expires_after(-1ms); // already expired
+    timer.expires_after(-1ms);
     timer.async_wait([&](std::error_code ec) { received = ec; });
     REQUIRE(timer.has_pending());
 
-    // fire_if_expired() should deliver success (no error).
     timer.fire_if_expired();
     REQUIRE_FALSE(timer.has_pending());
-    REQUIRE_FALSE(received); // success error_code is falsy
+    REQUIRE_FALSE(received);
 }
 
 TEST_CASE("default_timer does not fire before deadline", "[native_timer]")
@@ -120,13 +117,13 @@ TEST_CASE("default_timer does not fire before deadline", "[native_timer]")
     mdnspp::default_timer timer{ctx};
     bool called = false;
 
-    timer.expires_after(60000ms); // 60 seconds in the future
+    timer.expires_after(60000ms);
     timer.async_wait([&](std::error_code) { called = true; });
     REQUIRE(timer.has_pending());
 
     timer.fire_if_expired();
     REQUIRE_FALSE(called);
-    REQUIRE(timer.has_pending()); // still pending
+    REQUIRE(timer.has_pending());
 }
 
 TEST_CASE("default_timer compute_next_timeout_ms returns -1 with no pending handlers", "[native_timer]")
@@ -134,7 +131,6 @@ TEST_CASE("default_timer compute_next_timeout_ms returns -1 with no pending hand
     mdnspp::default_context ctx;
     mdnspp::default_timer timer{ctx};
 
-    // Timer registered but no handler pending — timeout should be -1 (block indefinitely).
     timer.expires_after(100ms);
     REQUIRE_FALSE(timer.has_pending());
 
@@ -147,16 +143,13 @@ TEST_CASE("default_timer compute_next_timeout_ms clamps expired deadline to 0", 
     mdnspp::default_context ctx;
     mdnspp::default_timer timer{ctx};
 
-    // Set a deadline in the past and arm a handler.
     timer.expires_after(-1ms);
     timer.async_wait([](std::error_code) {});
     REQUIRE(timer.has_pending());
 
-    // Already-expired deadline must clamp to 0 (fire on next poll cycle).
     const auto now = std::chrono::steady_clock::now();
     REQUIRE(ctx.compute_next_timeout_ms(now) == 0);
 
-    // Cleanup
     timer.cancel();
 }
 
@@ -165,11 +158,9 @@ TEST_CASE("default_timer fire_if_expired is a no-op when no handler is pending",
     mdnspp::default_context ctx;
     mdnspp::default_timer timer{ctx};
 
-    // Set an already-expired deadline but do NOT arm a handler.
     timer.expires_after(-1ms);
     REQUIRE_FALSE(timer.has_pending());
 
-    // fire_if_expired should not crash or change state.
     REQUIRE_NOTHROW(timer.fire_if_expired());
     REQUIRE_FALSE(timer.has_pending());
 }
@@ -184,8 +175,6 @@ TEST_CASE("default_timer destructor deregisters from default_context", "[native_
         {
         });
         REQUIRE(timer.has_pending());
-        // timer goes out of scope — must deregister without crashing
     }
-    // ctx should not reference destroyed timer; poll_one is safe to call.
     REQUIRE_NOTHROW(ctx.poll_one());
 }

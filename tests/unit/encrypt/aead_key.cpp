@@ -29,17 +29,14 @@ TEST_CASE("secure_key move constructor zeroes source bytes", "[secure_key][move]
     auto raw = make_raw_key(0x42);
     mdnspp::encrypt::secure_key src{raw};
 
-    // Verify src has the expected bytes before move
     for(auto b : src.bytes())
         REQUIRE(b == std::byte{0x42});
 
     mdnspp::encrypt::secure_key dst{std::move(src)};
 
-    // After move, source must be all-zero (sodium_memzero was called)
     for(auto b : src.bytes())  // NOLINT(bugprone-use-after-move) — intentional verification
         REQUIRE(b == std::byte{0});
 
-    // Destination must carry the original key material
     for(auto b : dst.bytes())
         REQUIRE(b == std::byte{0x42});
 }
@@ -54,11 +51,9 @@ TEST_CASE("secure_key move-assign zeroes source and previous destination bytes",
 
     b = std::move(a);
 
-    // a must be zeroed after move-assign
     for(auto byte : a.bytes())  // NOLINT(bugprone-use-after-move)
         REQUIRE(byte == std::byte{0});
 
-    // b must now carry a's original material
     for(auto byte : b.bytes())
         REQUIRE(byte == std::byte{0x42});
 }

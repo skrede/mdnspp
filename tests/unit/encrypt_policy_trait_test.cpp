@@ -1,6 +1,3 @@
-// tests/unit/encrypt_policy_trait_test.cpp
-// Compile-time and runtime tests for the policy_socket_options_t detection trait.
-
 #include "mdnspp/policy.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/nic_group_options.h"
@@ -16,22 +13,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-// ---------------------------------------------------------------------------
-// Mock extended socket options
-// ---------------------------------------------------------------------------
-
 struct extended_socket_options : mdnspp::socket_options
 {
     int extra_field{42};
 };
 
-// ---------------------------------------------------------------------------
-// Mock policy with socket_options_type
-// ---------------------------------------------------------------------------
-
-// A minimal mock policy that carries extended_socket_options.
-// It reuses default_policy's socket and timer types, but specifies
-// socket_options_type to activate the detection trait.
 struct MockExtendedPolicy
 {
     using executor_type = mdnspp::default_policy::executor_type;
@@ -45,10 +31,6 @@ struct MockExtendedPolicy
         mdnspp::default_policy::post(ex, std::move(fn));
     }
 };
-
-// ---------------------------------------------------------------------------
-// Static assertions (compile-time tests)
-// ---------------------------------------------------------------------------
 
 static_assert(std::same_as<mdnspp::policy_socket_options_t<mdnspp::default_policy>, mdnspp::socket_options>,
     "policy_socket_options_t<default_policy> must resolve to socket_options");
@@ -74,10 +56,6 @@ static_assert(std::same_as<
     mdnspp::encrypt::encrypt_socket_options>,
     "policy_socket_options_t<encrypted_policy<default_policy>> must resolve to encrypt_socket_options");
 #endif
-
-// ---------------------------------------------------------------------------
-// Runtime test — confirms compilation with a trivial assertion
-// ---------------------------------------------------------------------------
 
 TEST_CASE("policy_socket_options_t resolves correctly at runtime", "[policy][trait]")
 {

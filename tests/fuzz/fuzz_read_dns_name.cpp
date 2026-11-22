@@ -28,8 +28,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     auto buf = std::span<const std::byte>(reinterpret_cast<const std::byte *>(data), size);
 
-    // Test from offset 0; on success skip_dns_name must agree (a pointer at
-    // offset 0 can never be backward, so the read path is pointer-free here)
+    // On success skip_dns_name must agree; a pointer at offset 0 can never be backward, so this read is pointer-free.
     auto result = mdnspp::detail::read_dns_name(buf, 0);
     if(result.has_value())
     {
@@ -38,7 +37,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
         assert(mdnspp::detail::skip_dns_name(buf, offset));
     }
 
-    // Test from a random offset within the buffer
     if(size > 0)
     {
         FuzzedDataProvider fdp(data, size);

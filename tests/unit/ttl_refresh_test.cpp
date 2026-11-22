@@ -23,8 +23,6 @@ struct clock_guard
     ~clock_guard() { test_clock::reset(); }
 };
 
-// Seed that produces zero jitter for the default jitter range — we brute-force
-// determinism by setting refresh_jitter_pct = 0.0 instead.
 mdns_options zero_jitter_opts()
 {
     return mdns_options{.refresh_jitter_pct = 0.0};
@@ -35,7 +33,7 @@ mdns_options zero_jitter_opts()
 TEST_CASE("make_refresh_schedule produces fire points at threshold fractions of TTL", "[ttl_refresh]")
 {
     clock_guard cg;
-    // wire_ttl=100s, zero jitter, default thresholds {0.80, 0.85, 0.90, 0.95}
+    // default thresholds {0.80, 0.85, 0.90, 0.95}
     auto opts = zero_jitter_opts();
     auto inserted_at = test_clock::now();
     std::mt19937 rng{42};
@@ -56,7 +54,6 @@ TEST_CASE("make_refresh_schedule for standard mDNS TTL 4500s", "[ttl_refresh]")
     auto inserted_at = test_clock::now();
     std::mt19937 rng{42};
 
-    // 4500s * 0.80 = 3600s, * 0.85 = 3825s, * 0.90 = 4050s, * 0.95 = 4275s
     auto sched = make_refresh_schedule<test_clock>(4500u, opts, inserted_at, rng);
 
     REQUIRE(sched.fire_at.size() == 4);
@@ -92,12 +89,10 @@ TEST_CASE("next_refresh_point advances through schedule", "[ttl_refresh]")
 
     auto sched = make_refresh_schedule<test_clock>(100u, opts, inserted_at, rng);
 
-    // First call returns the first fire point
     auto p0 = next_refresh_point(sched);
     REQUIRE(p0.has_value());
     CHECK(*p0 == inserted_at + 80000ms);
 
-    // Second call returns second fire point
     auto p1 = next_refresh_point(sched);
     REQUIRE(p1.has_value());
     CHECK(*p1 == inserted_at + 85000ms);
@@ -132,7 +127,7 @@ TEST_CASE("next_refresh_point returns nullopt when schedule exhausted", "[ttl_re
 
     auto sched = make_refresh_schedule<test_clock>(100u, opts, inserted_at, rng);
 
-    static_cast<void>(next_refresh_point(sched)); // consume the one point
+    static_cast<void>(next_refresh_point(sched));
     auto result = next_refresh_point(sched);
     CHECK_FALSE(result.has_value());
 }
@@ -140,7 +135,6 @@ TEST_CASE("next_refresh_point returns nullopt when schedule exhausted", "[ttl_re
 TEST_CASE("jitter is deterministic with fixed RNG seed", "[ttl_refresh]")
 {
     clock_guard cg;
-    // Use non-zero jitter to verify determinism
     mdns_options opts{.refresh_jitter_pct = 0.02};
     auto inserted_at = test_clock::now();
 
@@ -164,7 +158,6 @@ TEST_CASE("jitter is bounded within [0, wire_ttl * jitter_pct]", "[ttl_refresh]"
     };
     auto inserted_at = test_clock::now();
 
-    // Run many seeds to exercise the jitter bound
     for(uint32_t seed = 0; seed < 100; ++seed)
     {
         std::mt19937 rng{seed};

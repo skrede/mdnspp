@@ -15,7 +15,6 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     auto encoded = mdnspp::detail::encode_dns_name(input);
     if(!encoded.has_value())
     {
-        // Invalid presentation input must also normalize to the empty name
         assert(mdnspp::dns_name(input).empty());
         return 0;
     }

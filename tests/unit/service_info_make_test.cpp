@@ -1,8 +1,3 @@
-// tests/service_info_make_test.cpp
-//
-// service_info::make() — service type normalization, RFC 1035 §5.1 instance
-// label escaping, hostname derivation and the auto_address contract.
-
 #include "mdnspp/dns_name.h"
 #include "mdnspp/mdns_error.h"
 #include "mdnspp/service_info.h"

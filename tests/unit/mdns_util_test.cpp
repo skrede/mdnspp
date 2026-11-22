@@ -1,6 +1,3 @@
-// tests/mdns_util_test.cpp
-// Unit tests for ip_address_to_string — IPv4 and IPv6 formatting, edge cases.
-
 #include "mdnspp/detail/mdns_util.h"
 
 #include <catch2/catch_test_macros.hpp>

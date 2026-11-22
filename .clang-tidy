@@ -19,7 +19,6 @@ Checks: >
   concurrency-*,
   cppcoreguidelines-special-member-functions,
   misc-definitions-in-headers,
-  modernize-use-nodiscard,
   performance-*,
   -performance-avoid-endl,
   readability-identifier-naming

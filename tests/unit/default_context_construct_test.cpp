@@ -10,6 +10,7 @@
 using mdnspp::default_context;
 using mdnspp::test_support::fd_limit_guard;
 using mdnspp::test_support::skip_unless_lowered;
+using mdnspp::test_support::skip_under_address_sanitizer;
 
 namespace {
 
@@ -40,6 +41,7 @@ std::error_code thrown_by(F &&fn)
 
 TEST_CASE("a context constructed under descriptor exhaustion reports the error without throwing", "[default_context]")
 {
+    skip_under_address_sanitizer();
     std::optional<default_context> ctx;
     std::error_code ec;
     REQUIRE_NOTHROW(ec = construct_under_fd_limit(ctx));
@@ -49,6 +51,7 @@ TEST_CASE("a context constructed under descriptor exhaustion reports the error w
 
 TEST_CASE("a context whose construction failed reports bad_file_descriptor instead of waiting", "[default_context]")
 {
+    skip_under_address_sanitizer();
     std::optional<default_context> ctx;
     REQUIRE(construct_under_fd_limit(ctx) == std::errc::too_many_files_open);
     std::error_code ran;
@@ -63,6 +66,7 @@ TEST_CASE("a context whose construction failed reports bad_file_descriptor inste
 
 TEST_CASE("the default constructor throws a descriptor exhaustion as system_error", "[default_context]")
 {
+    skip_under_address_sanitizer();
     std::error_code thrown;
     {
         const fd_limit_guard guard{1};

@@ -14,6 +14,7 @@ using mdnspp::detail::invalid_socket;
 using mdnspp::detail::native_socket_t;
 using mdnspp::test_support::fd_limit_guard;
 using mdnspp::test_support::skip_unless_lowered;
+using mdnspp::test_support::skip_under_address_sanitizer;
 
 namespace {
 
@@ -62,6 +63,7 @@ TEST_CASE("a recreated wakeup still signals readiness", "[wakeup_fd]")
 
 TEST_CASE("creating the wakeup under descriptor exhaustion reports the error and leaves no descriptor", "[wakeup_fd]")
 {
+    skip_under_address_sanitizer();
     wakeup_fd wakeup;
     std::error_code ec;
     {

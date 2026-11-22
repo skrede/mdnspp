@@ -65,7 +65,6 @@ TEST_CASE("update_key bumps epoch and encrypts with new key", "[encrypted_socket
     CHECK(header_of(sent_packet_at(pair.sender, 0)).epoch == 0);
     CHECK(receive_packet(pair.receiver, sent_packet_at(pair.sender, 0)).called);
 
-    // Both sender and the second receiver rotate to the new key at epoch 1.
     rotate_key(pair.sender, std::byte{0x43});
     test_socket receiver2(pair.ex, make_test_opts(std::byte{0x42}, 3));
     rotate_key(receiver2, std::byte{0x43});

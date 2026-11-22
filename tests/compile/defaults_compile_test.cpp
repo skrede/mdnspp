@@ -1,7 +1,3 @@
-// tests/defaults_compile_test.cpp
-// Compile-time validation that all four type aliases in defaults.h work without
-// template arguments, and that mdnspp::context names a valid class type.
-
 #include <mdnspp/defaults.h>
 #include <mdnspp/service_info.h>
 #include <mdnspp/default/default_policy.h>
@@ -9,8 +5,6 @@
 
 #include <chrono>
 #include <type_traits>
-
-// --- Class type checks (existing) ---
 
 static_assert(std::is_class_v<mdnspp::observer>,
               "mdnspp::observer must be a class type (alias for basic_observer<default_policy>)");
@@ -25,8 +19,6 @@ static_assert(std::is_class_v<mdnspp::context>,
 static_assert(std::is_class_v<mdnspp::service_monitor>,
               "mdnspp::service_monitor must be a class type (alias for basic_service_monitor<default_policy>)");
 
-// --- Existing constructors without socket_options still compile ---
-
 static_assert(std::is_constructible_v<mdnspp::observer, mdnspp::default_context &>,
               "observer must remain constructible without options");
 static_assert(std::is_constructible_v<mdnspp::querier, mdnspp::default_context &>,
@@ -35,8 +27,6 @@ static_assert(std::is_constructible_v<mdnspp::service_discovery, mdnspp::default
               "service_discovery must remain constructible without options");
 static_assert(std::is_constructible_v<mdnspp::service_server, mdnspp::default_context &, mdnspp::service_info>,
               "service_server must remain constructible without socket_options");
-
-// --- New options struct constructors exist ---
 
 static_assert(std::is_constructible_v<mdnspp::observer, mdnspp::default_context &, mdnspp::observer_options>,
               "observer must be constructible with observer_options");

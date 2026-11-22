@@ -35,9 +35,7 @@ TEST_CASE("initial_epoch is stamped on sent packets and accepted by matching pee
 TEST_CASE("restarted peer provisioned with the rotated key and epoch rejoins",
     "[encrypted_socket][key_rotation][initial_epoch]")
 {
-    // Receiver was present for the rotation epoch 0 -> 1. The restarted
-    // sender missed it; it is provisioned with the current group key and
-    // initial_epoch = 1 and rejoins immediately.
+    // The receiver saw the rotation from epoch 0 to 1; the restarted sender missed it.
     paired_sockets pair(epoch_opts(std::byte{0x43}, 1, 1), make_test_opts(std::byte{0x42}, 2));
     rotate_key(pair.receiver, std::byte{0x43});
 
@@ -55,9 +53,7 @@ TEST_CASE("restarted peer provisioned with the rotated key and epoch rejoins",
 TEST_CASE("packets one epoch ahead with the same key material are accepted",
     "[encrypted_socket][key_rotation][epoch_ahead]")
 {
-    // The sender's epoch counter runs one ahead of the receiver's (e.g. it
-    // was provisioned with a skewed initial_epoch mid-rotation) while both
-    // hold the same key. The receiver tries its current key for epoch + 1.
+    // Same key, sender one epoch ahead: the receiver tries its current key for epoch + 1.
     paired_sockets pair(epoch_opts(std::byte{0x42}, 1, 1), make_test_opts(std::byte{0x42}, 2));
     plain_bytes plaintext{std::byte{0x5A}};
     send_bytes(pair.sender, plaintext);

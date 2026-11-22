@@ -56,13 +56,13 @@ TEST_CASE("nic_group start is a no-op while running and stop is idempotent", "[n
     monitor_group grp{f.executor, f.recording_grp_opts(found), one_monitor()};
     grp.watch("_test._tcp.local.");
     grp.start();
-    grp.start(); // no-op: instances must not be duplicated
+    grp.start();
     f.executor.drain();
     announced_service svc{f};
 
     REQUIRE(found.size() == 2); // one event per NIC, not four
     grp.stop();
-    grp.stop(); // idempotent
+    grp.stop();
 }
 
 TEST_CASE("nic_group restart starts with fresh caches and a monitor on every NIC", "[nic_group]")

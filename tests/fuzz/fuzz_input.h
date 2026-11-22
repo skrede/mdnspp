@@ -8,7 +8,6 @@
 
 namespace mdnspp::fuzz {
 
-// Sequential consumer over the fuzz input.
 class input_reader
 {
 public:

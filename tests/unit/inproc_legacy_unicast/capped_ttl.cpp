@@ -1,6 +1,5 @@
-// RFC 6762 §6.7: Queries received from source ports other than 5353 are
-// "legacy unicast" queries. The responder must send a unicast reply directly
-// to the sender with all TTLs capped at legacy_unicast_ttl (default 10s).
+// RFC 6762 section 6.7: a query from a source port other than 5353 is a legacy unicast query, answered by unicast
+// to the sender with every TTL capped at legacy_unicast_ttl (default 10 s).
 
 #include "helpers.h"
 

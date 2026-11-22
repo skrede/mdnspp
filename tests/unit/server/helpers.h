@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_HELPERS_H
-#define HPP_GUARD_MDNSPP_HELPERS_H
+#ifndef HPP_GUARD_MDNSPP_SERVER_HELPERS_H
+#define HPP_GUARD_MDNSPP_SERVER_HELPERS_H
 
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"

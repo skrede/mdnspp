@@ -1,10 +1,5 @@
-// basic_nic_monitor unit tests.
-//
-// The OS change-notification backends (netlink, nw_path_monitor,
-// NotifyIpInterfaceChange) cannot run deterministically in CI. These tests
-// exercise the diff/apply logic through the nic_monitor_options::enumerator
-// seam, which forces the polling path and substitutes a test-controlled
-// interface list for enumerate_interfaces().
+// The OS change-notification backends cannot run deterministically in CI, so the nic_monitor_options::enumerator
+// seam forces the polling path and substitutes a test-controlled interface list.
 
 #include "mdnspp/inproc/inproc_policy.h"
 

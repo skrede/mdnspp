@@ -1,10 +1,3 @@
-// tests/interface_resolve_test.cpp
-//
-// detail/interface_resolve.h over synthetic interface lists: binding
-// extraction, index > name > address precedence, socket address selection
-// errors, and RFC 6762 §6.2 advertised-address resolution. Socket-level
-// coverage of the same precedence lives in socket_options_test.cpp.
-
 #include "mdnspp/service_info.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/network_interface.h"
@@ -50,10 +43,6 @@ std::vector<network_interface> test_interfaces()
 
 }
 
-// ---------------------------------------------------------------------------
-// extract_interface_binding
-// ---------------------------------------------------------------------------
-
 TEST_CASE("extract_interface_binding reads socket_options binding fields", "[interface_resolve]")
 {
     socket_options opts{
@@ -70,10 +59,6 @@ TEST_CASE("extract_interface_binding reads socket_options binding fields", "[int
     REQUIRE_FALSE(extract_interface_binding(socket_options{}).bound());
 }
 
-// ---------------------------------------------------------------------------
-// find_interface — precedence
-// ---------------------------------------------------------------------------
-
 TEST_CASE("find_interface matches by index, name, then address", "[interface_resolve]")
 {
     auto nics = test_interfaces();
@@ -89,22 +74,15 @@ TEST_CASE("find_interface index takes precedence over name and address", "[inter
 {
     auto nics = test_interfaces();
 
-    // index wins even when name and address designate other interfaces
     auto *nic = find_interface(nics, {.index = 2, .name = "eth1", .address = "fe80::4"});
     REQUIRE(nic != nullptr);
     REQUIRE(nic->name == "eth0");
 
-    // an unmatched index is final — no fallback to the matching name
     REQUIRE(find_interface(nics, {.index = 99, .name = "eth0"}) == nullptr);
 
-    // name wins over address; an unmatched name does not fall back to address
     REQUIRE(find_interface(nics, {.name = "eth1", .address = "10.0.0.2"})->name == "eth1");
     REQUIRE(find_interface(nics, {.name = "nope", .address = "10.0.0.2"}) == nullptr);
 }
-
-// ---------------------------------------------------------------------------
-// select_interface_address — the socket open path
-// ---------------------------------------------------------------------------
 
 TEST_CASE("select_interface_address resolves name and index to the family address", "[interface_resolve]")
 {
@@ -151,10 +129,6 @@ TEST_CASE("select_interface_address passes a plain address binding through", "[i
     REQUIRE_FALSE(ec);
 }
 
-// ---------------------------------------------------------------------------
-// resolve_advertised_addresses — RFC 6762 §6.2
-// ---------------------------------------------------------------------------
-
 TEST_CASE("resolve_advertised_addresses is a no-op without auto_address", "[interface_resolve]")
 {
     service_info info;
@@ -178,7 +152,7 @@ TEST_CASE("resolve_advertised_addresses never crosses interfaces for a missing f
     info.auto_address = true;
     resolve_advertised_addresses(test_interfaces(), {.name = "eth1"}, info);
     REQUIRE(info.address_ipv4 == "10.0.1.3");
-    REQUIRE_FALSE(info.address_ipv6.has_value()); // eth1 has no IPv6
+    REQUIRE_FALSE(info.address_ipv6.has_value());
 }
 
 TEST_CASE("resolve_advertised_addresses preserves user-set fields", "[interface_resolve]")
@@ -208,7 +182,6 @@ TEST_CASE("resolve_advertised_addresses unbound falls back to the lowest-index c
     service_info info;
     info.auto_address = true;
     resolve_advertised_addresses(test_interfaces(), {}, info);
-    // Skips lo (loopback) and eth2 (down); eth0 (index 2) wins IPv4 and IPv6.
     REQUIRE(info.address_ipv4 == "10.0.0.2");
     REQUIRE(info.address_ipv6 == "fe80::2");
 }

@@ -93,6 +93,5 @@ TEST_CASE("update_key with an empty grace_period applies the default duration bo
 
     pair.receiver.inner().enqueue(epoch0_pkt);
 
-    // Immediately after rotation the previous key is still within the bound.
     CHECK(receive_one(pair.receiver).called);
 }

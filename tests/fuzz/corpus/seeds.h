@@ -37,7 +37,6 @@ inline void write_seed(const std::filesystem::path &dir, std::string_view name, 
     f.write(reinterpret_cast<const char *>(data.data()), static_cast<std::streamsize>(data.size()));
 }
 
-// Appends a dotted name ("_fuzz._tcp.local.") in DNS wire label format.
 inline void append_name(std::vector<std::byte> &v, std::string_view name)
 {
     std::size_t pos = 0;

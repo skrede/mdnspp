@@ -16,8 +16,6 @@ struct fuzz_executor
 {
 };
 
-// Minimal socket_like implementation that records sends and replays an
-// enqueued packet on async_receive.
 class fuzz_socket
 {
 public:

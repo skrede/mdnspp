@@ -44,8 +44,6 @@ TEST_CASE("advance_backoff produces RFC default sequence", "[query_backoff]")
     mdns_options opts{};
     query_backoff_state state{};
 
-    // Expected sequence (milliseconds): 1000, 2000, 4000, 8000, 16000, 32000,
-    //   64000, 128000, 256000, 512000, 1024000, 2048000, 3600000, 3600000
     const std::vector<std::chrono::milliseconds> expected{
         1000ms, 2000ms, 4000ms, 8000ms, 16000ms, 32000ms,
         64000ms, 128000ms, 256000ms, 512000ms, 1024000ms, 2048000ms,
@@ -58,7 +56,6 @@ TEST_CASE("advance_backoff produces RFC default sequence", "[query_backoff]")
 
 TEST_CASE("advance_backoff respects custom options", "[query_backoff]")
 {
-    // 500ms initial, 10s max, multiplier 3.0 -> 500ms, 1500ms, 4500ms, 10000ms, 10000ms
     mdns_options opts{
         .initial_interval = 500ms,
         .max_interval     = 10000ms,
@@ -78,15 +75,12 @@ TEST_CASE("advance_backoff state can be reset by reconstructing", "[query_backof
     mdns_options opts{};
     query_backoff_state state{};
 
-    // Advance a few steps
     static_cast<void>(advance_backoff(state, opts)); // 1s
     static_cast<void>(advance_backoff(state, opts)); // 2s
     static_cast<void>(advance_backoff(state, opts)); // 4s
 
-    // Reset by reconstructing
     state = query_backoff_state{};
 
-    // Sequence should restart from initial_interval
     CHECK(advance_backoff(state, opts) == 1000ms);
     CHECK(advance_backoff(state, opts) == 2000ms);
 }

@@ -6,9 +6,9 @@
 #include <chrono>
 #include <thread>
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <iostream>
-#include <stop_token>
 #include <system_error>
 #include <condition_variable>
 
@@ -70,37 +70,17 @@
 //   after the rotation must be provisioned with the new key and
 //   encrypt_options::initial_epoch set to the group's current epoch.
 
-static std::array<std::byte, 32> initial_key()
+static std::array<std::byte, 32> sequential_key(uint8_t first)
 {
-    return std::array<std::byte, 32>{
-        std::byte{0x01}, std::byte{0x02}, std::byte{0x03}, std::byte{0x04},
-        std::byte{0x05}, std::byte{0x06}, std::byte{0x07}, std::byte{0x08},
-        std::byte{0x09}, std::byte{0x0A}, std::byte{0x0B}, std::byte{0x0C},
-        std::byte{0x0D}, std::byte{0x0E}, std::byte{0x0F}, std::byte{0x10},
-        std::byte{0x11}, std::byte{0x12}, std::byte{0x13}, std::byte{0x14},
-        std::byte{0x15}, std::byte{0x16}, std::byte{0x17}, std::byte{0x18},
-        std::byte{0x19}, std::byte{0x1A}, std::byte{0x1B}, std::byte{0x1C},
-        std::byte{0x1D}, std::byte{0x1E}, std::byte{0x1F}, std::byte{0x20},
-    };
-}
-
-static std::array<std::byte, 32> rotated_key()
-{
-    return std::array<std::byte, 32>{
-        std::byte{0xA1}, std::byte{0xA2}, std::byte{0xA3}, std::byte{0xA4},
-        std::byte{0xA5}, std::byte{0xA6}, std::byte{0xA7}, std::byte{0xA8},
-        std::byte{0xA9}, std::byte{0xAA}, std::byte{0xAB}, std::byte{0xAC},
-        std::byte{0xAD}, std::byte{0xAE}, std::byte{0xAF}, std::byte{0xB0},
-        std::byte{0xB1}, std::byte{0xB2}, std::byte{0xB3}, std::byte{0xB4},
-        std::byte{0xB5}, std::byte{0xB6}, std::byte{0xB7}, std::byte{0xB8},
-        std::byte{0xB9}, std::byte{0xBA}, std::byte{0xBB}, std::byte{0xBC},
-        std::byte{0xBD}, std::byte{0xBE}, std::byte{0xBF}, std::byte{0xC0},
-    };
+    std::array<std::byte, 32> key{};
+    for(std::size_t i = 0; i < key.size(); ++i)
+        key[i] = std::byte(first + i);
+    return key;
 }
 
 static mdnspp::encrypt::encrypt_socket_options make_socket_options()
 {
-    std::array<std::byte, 32> key = initial_key();
+    std::array<std::byte, 32> key = sequential_key(0x01);
     mdnspp::encrypt::encrypt_socket_options sock_opts{
         .encrypt = {
             .psk       = mdnspp::encrypt::secure_key{key},
@@ -127,7 +107,7 @@ static mdnspp::observer_options make_observer_options()
 
 static void rotate_key(mdnspp::encrypt::encrypted_observer &obs)
 {
-    std::array<std::byte, 32> new_raw_key = rotated_key();
+    std::array<std::byte, 32> new_raw_key = sequential_key(0xA1);
 
     // update_key() is called on the encrypted_socket, accessible via socket().
     // socket() returns the encrypted_socket<InnerSocket> for encrypted_policy.
@@ -148,24 +128,47 @@ static void rotate_key(mdnspp::encrypt::encrypted_observer &obs)
     std::cout << "key rotated -- epoch incremented, grace period: 30 s or 1000 packets" << std::endl;
 }
 
-// Returns false when a stop is requested before the delay has elapsed.
-static bool sleep_unless_stopped(std::stop_token stop, std::chrono::seconds delay)
+class stop_signal
 {
-    std::mutex mutex;
-    std::condition_variable_any wake;
-    std::unique_lock lock(mutex);
-    return !wake.wait_for(lock, stop, delay, [&stop] { return stop.stop_requested(); });
-}
+public:
+    stop_signal()
+        : m_stopped(false)
+    {
+    }
 
-static void rotate_then_stop(mdnspp::encrypt::encrypted_observer &obs, mdnspp::context &ctx, std::stop_token stop)
+    void request()
+    {
+        std::lock_guard lock(m_mutex);
+        m_stopped = true;
+        m_wake.notify_all();
+    }
+
+    // Returns false when a stop is requested before the delay has elapsed.
+    bool sleep_for(std::chrono::seconds delay)
+    {
+        std::unique_lock lock(m_mutex);
+        return !m_wake.wait_for(lock, delay, [this] { return m_stopped; });
+    }
+
+private:
+    std::mutex m_mutex;
+    std::condition_variable m_wake;
+    bool m_stopped;
+};
+
+// Simulate a key rotation after 5 seconds.
+// In a real application, the rotation would be triggered by an application-
+// level signal (e.g., a scheduled rotation, an admin command, or a shared
+// rotation notification received over a side-channel).
+static void rotate_then_stop(mdnspp::encrypt::encrypted_observer &obs, mdnspp::context &ctx, stop_signal &stop)
 {
-    if(!sleep_unless_stopped(stop, std::chrono::seconds{5}))
+    if(!stop.sleep_for(std::chrono::seconds{5}))
         return;
     rotate_key(obs);
 
     // After 35 seconds the grace period has expired on this peer. Any packets
     // still arriving with the old epoch are rejected from this point on.
-    if(sleep_unless_stopped(stop, std::chrono::seconds{35}))
+    if(stop.sleep_for(std::chrono::seconds{35}))
         ctx.stop();
 }
 
@@ -183,14 +186,13 @@ int main()
         ctx.stop();
     });
 
-    // Simulate a key rotation after 5 seconds.
-    // In a real application, the rotation would be triggered by an application-
-    // level signal (e.g., a scheduled rotation, an admin command, or a shared
-    // rotation notification received over a side-channel).
-    std::jthread rotation_thread{[&obs, &ctx](std::stop_token stop) { rotate_then_stop(obs, ctx, stop); }};
+    stop_signal stop;
+    std::thread rotation_thread{[&obs, &ctx, &stop] { rotate_then_stop(obs, ctx, stop); }};
 
     std::error_code ec;
     ctx.run(ec);
+    stop.request();
+    rotation_thread.join();
     if(ec)
         std::cerr << "run error: " << ec.message() << std::endl;
     return ec ? 1 : 0;

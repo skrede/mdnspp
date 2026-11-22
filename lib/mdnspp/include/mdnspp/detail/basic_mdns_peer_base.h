@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DETAIL_BASIC_MDNS_PEER_BASE_H
 
 #include "mdnspp/detail/recv_loop.h"
+#include "mdnspp/detail/mdns_options_validation.h"
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
@@ -15,33 +16,6 @@
 #include <system_error>
 
 namespace mdnspp::detail {
-
-inline std::error_code validate_mdns_options(const mdns_options &opts) noexcept
-{
-    const auto invalid = std::make_error_code(std::errc::invalid_argument);
-
-    if(opts.response_delay_min.count() < 0 || opts.response_delay_min > opts.response_delay_max)
-        return invalid;
-    if(opts.tc_wait_min.count() < 0 || opts.tc_wait_min > opts.tc_wait_max)
-        return invalid;
-    if(opts.initial_interval.count() <= 0 || opts.max_interval < opts.initial_interval)
-        return invalid;
-    if(opts.backoff_multiplier < 1.0)
-        return invalid;
-    if(opts.refresh_jitter_pct < 0.0)
-        return invalid;
-    if(opts.ka_suppression_fraction <= 0.0 || opts.ka_suppression_fraction >= 1.0)
-        return invalid;
-    if(opts.tc_suppression_fraction <= 0.0 || opts.tc_suppression_fraction >= 1.0)
-        return invalid;
-    for(double threshold : opts.ttl_refresh_thresholds)
-    {
-        if(threshold <= 0.0 || threshold >= 1.0)
-            return invalid;
-    }
-
-    return {};
-}
 
 inline void throw_on_error(std::error_code ec)
 {

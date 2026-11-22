@@ -19,7 +19,8 @@ struct ttl_refresh_schedule
     std::size_t next_idx{0};
 };
 
-// Fire points keep the order of ttl_refresh_thresholds; they are not sorted.
+// Fire points keep the order of ttl_refresh_thresholds, which validation requires to be strictly increasing;
+// only jitter can put a fire point before its predecessor.
 template <typename Clock = std::chrono::steady_clock>
 inline ttl_refresh_schedule<Clock>
 make_refresh_schedule(uint32_t wire_ttl_seconds,

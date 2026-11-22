@@ -59,11 +59,11 @@ Options are validated at construction. The constructor fails with `std::errc::in
 
 - `service_name`, `service_type` or `hostname` of `info` is empty; `dns_name` turns invalid presentation text into the empty name, so invalid names and the root name are rejected as well;
 - `probe_count` or `announce_count` is zero, `probe_interval` or `announce_interval` is not positive, or `probe_initial_delay_max` or `probe_defer_delay` is negative;
-- `ptr_ttl`, `srv_ttl`, `txt_ttl`, `a_ttl`, `aaaa_ttl` or `fallback_record_ttl` is not positive;
-- in `mdns_opts`, `record_ttl` or `legacy_unicast_ttl` is not positive, `response_delay_min` is negative or greater than `response_delay_max`, or `tc_wait_min` is negative or greater than `tc_wait_max`;
-- in `mdns_opts`, `backoff_multiplier` is less than `1.0`, `ka_suppression_fraction` or `tc_suppression_fraction` lies outside the open interval (0, 1), or an entry of `ttl_refresh_thresholds` lies outside (0, 1).
+- `ptr_ttl`, `srv_ttl`, `txt_ttl`, `a_ttl`, `aaaa_ttl`, `fallback_record_ttl` or `probe_authority_ttl` is not positive;
+- in `mdns_opts`, `legacy_unicast_ttl` is not positive;
+- `mdns_opts` breaks any of the [`mdns_options` rules](mdns_options.md#validation) that the other peers apply, so a server rejects every `mdns_options` the observer, querier, service discovery and service monitor reject.
 
-The server constructors do not check the remaining [`mdns_options` rules](mdns_options.md#validation) (`initial_interval`, `max_interval`, `refresh_jitter_pct`). Socket construction failure also throws.
+Socket construction failure also throws.
 
 ### Throwing, for the servers of a NIC group
 

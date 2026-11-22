@@ -50,6 +50,9 @@ Unit tests cover:
 - Observer raw packet delivery (tests/unit/observer/: observer_*_test)
 - Querier query construction and result delivery (tests/unit/querier/:
   querier_*_test; query_backoff_test)
+- mDNS option validation shared by every peer, strictly increasing refresh
+  thresholds included (mdns_options_validation_test), and the service server
+  constructor rejections (tests/unit/server/: server_validation_test)
 - Endpoint, sender address text and socket option handling (endpoint_test,
   sockaddr_text_test, socket_options_test, socket_options_validation_test)
 - Interface enumeration and binding resolution (enumerate_interfaces_test,

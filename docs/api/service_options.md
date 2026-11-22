@@ -88,7 +88,7 @@ struct service_options
 | `a_ttl` | `std::chrono::seconds` | `120s` | RFC 6762 §10 | TTL for A records in outgoing responses. A records name a host; §10 recommends 120 s. |
 | `aaaa_ttl` | `std::chrono::seconds` | `120s` | RFC 6762 §10 | TTL for AAAA records in outgoing responses. Same rationale as `a_ttl`. |
 | `fallback_record_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §10 | Fallback TTL used for NSEC, meta-query PTR and subtype PTR records, which have no per-record-type TTL field. |
-| `probe_authority_ttl` | `std::chrono::seconds` | `120s` | RFC 6762 §8.2 | TTL for the records placed in the authority section of probe queries (the full proposed record set: SRV, TXT, A/AAAA) for simultaneous-probe tiebreaking. This value is not cached by recipients; changing it has no interoperability impact. |
+| `probe_authority_ttl` | `std::chrono::seconds` | `120s` | RFC 6762 §8.2 | TTL for the records placed in the authority section of probe queries (the full proposed record set: SRV, TXT, A/AAAA) for simultaneous-probe tiebreaking. This value is not cached by recipients; changing it has no interoperability impact. A non-positive value fails server construction with `std::errc::invalid_argument`. |
 | `probe_defer_delay` | `std::chrono::milliseconds` | `1000ms` | RFC 6762 §8.2 | Delay before re-probing after losing a simultaneous-probe tiebreak. When the tiebreaking comparison indicates the remote probe wins, the local node defers by this duration before restarting its probe sequence. |
 
 The TTL fields (`ptr_ttl`, `srv_ttl`, `txt_ttl`, `a_ttl`, `aaaa_ttl`, `fallback_record_ttl` and

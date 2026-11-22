@@ -124,7 +124,8 @@ known services alive before their records expire.
 Each value is a fraction of the wire TTL. When that fraction of the record's
 lifetime has elapsed since insertion, a refresh query is sent. The schedule
 covers the last 20% of the TTL window by default, giving four attempts before
-expiry.
+expiry. Values must lie in (0, 1) and be strictly increasing; construction
+fails with `std::errc::invalid_argument` otherwise.
 
 The service monitor keeps one schedule per tracked service instance and
 rebuilds it on every SRV record with a positive TTL that arrives for the
@@ -169,8 +170,10 @@ same threshold tick. Only disable in controlled test environments.
 ### TC handling (RFC 6762 sections 6 and 7.2)
 
 These parameters control how the service server accumulates truncated-response
-(TC-bit) continuation packets and limits known-answer sections in outgoing
-queries.
+(TC-bit) continuation packets. The known-answer list of an outgoing query is not
+capped: the service monitor's PTR queries, the only queries that carry known
+answers, include every qualifying record, and a list too large for
+`max_query_payload` is split into TC continuation packets.
 
 #### tc_wait_min and tc_wait_max
 
@@ -189,19 +192,6 @@ Risk of changing: Reducing `tc_wait_min` below 400 ms may cause the server to
 respond before all continuation packets have arrived on slow or congested links,
 resulting in unnecessary re-announcements. Increasing `tc_wait_max` beyond
 500 ms lengthens responses and may affect UX in interactive discovery scenarios.
-
-#### max_known_answers
-
-| | |
-|---|---|
-| **Type** | `std::size_t` |
-| **Default** | 0 |
-| **RFC section** | 6762 §7.1 |
-
-Not read by the library. The service monitor's PTR queries, the only queries
-that carry known answers, include every qualifying record whatever this field
-holds; a list too large for `max_query_payload` is split into TC continuation
-packets.
 
 ---
 

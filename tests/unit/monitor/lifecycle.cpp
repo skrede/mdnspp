@@ -109,6 +109,18 @@ TEST_CASE("basic_service_monitor: constructor rejects ttl refresh threshold outs
     CHECK(ec == std::errc::invalid_argument);
 }
 
+TEST_CASE("basic_service_monitor: constructor rejects decreasing ttl refresh thresholds", "[monitor][validate]")
+{
+    mock_executor ex;
+    mdnspp::mdns_options bad;
+    bad.ttl_refresh_thresholds = {0.9, 0.8};
+
+    std::error_code ec;
+    test_monitor mon{ex, mdnspp::monitor_options{}, mdnspp::socket_options{},
+                     std::move(bad), mdnspp::cache_options{}, ec};
+    CHECK(ec == std::errc::invalid_argument);
+}
+
 TEST_CASE("basic_service_monitor: constructor rejects non-positive goodbye_grace", "[monitor][validate]")
 {
     mock_executor ex;

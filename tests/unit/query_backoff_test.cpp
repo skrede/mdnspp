@@ -26,7 +26,6 @@ TEST_CASE("mdns_options default-constructs with RFC-compliant values", "[mdns_op
     CHECK(opts.refresh_jitter_pct == 0.02);
     CHECK(opts.tc_wait_min == 400ms);
     CHECK(opts.tc_wait_max == 500ms);
-    CHECK(opts.max_known_answers == 0);
 }
 
 TEST_CASE("advance_backoff first call returns initial_interval", "[query_backoff]")

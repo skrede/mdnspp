@@ -25,5 +25,5 @@ Change it only if:
 ## Danger
 
 - **Changing this value has no interoperability impact** under RFC 6762 §8.2 as currently specified. Recipients of probe queries do not cache authority section records.
-- Setting this to zero produces a malformed DNS record (TTL=0 in a non-goodbye authority record), which may cause parsing failures in strict implementations.
+- A TTL of zero marks a goodbye record (RFC 6762 §10.1), so the server constructors reject a non-positive value with `std::errc::invalid_argument`.
 - This field is unlikely to ever need manual configuration in production deployments.

@@ -110,8 +110,7 @@ One-shot operations (`querier`, `service_discovery`) hold no record cache
 when their single query is built, so their queries carry an empty Answer
 section — they never suppress any responder.
 
-The known-answer list is not capped: `mdns_options::max_known_answers` is not
-read by the library.
+The known-answer list is not capped.
 
 ### Relationship to duplicate answer suppression
 
@@ -130,10 +129,8 @@ See [duplicate-suppression.md](duplicate-suppression.md) for section 7.4.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `suppress_known_answers` | `bool` | `true` | Enable server-side known-answer suppression. |
-| `max_known_answers` | `std::size_t` | `0` | Not read by the library; the known-answer list is not capped. |
 
-`suppress_known_answers` is part of `service_options`; `max_known_answers` is
-part of `mdns_options`. See the respective API pages for the full struct reference.
+`suppress_known_answers` is part of `service_options`; see its API page for the full struct reference.
 
 ## See Also
 

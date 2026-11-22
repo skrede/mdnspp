@@ -19,8 +19,6 @@ struct mdns_options {
     double                    refresh_jitter_pct{0.02};
     std::chrono::milliseconds tc_wait_min{400};
     std::chrono::milliseconds tc_wait_max{500};
-    std::size_t               max_known_answers{0};
-    std::chrono::seconds      record_ttl{4500};
     std::chrono::milliseconds response_delay_min{20};
     std::chrono::milliseconds response_delay_max{120};
     std::chrono::seconds      legacy_unicast_ttl{10};
@@ -38,12 +36,10 @@ struct mdns_options {
 | `initial_interval` | `std::chrono::milliseconds` | `1s` | RFC 6762 §5.2 | Starting interval for the service monitor's exponential query backoff. The first PTR query of a watched type waits a random delay drawn from `[response_delay_min, response_delay_max]` (20 to 120 ms by default); the next follows after `initial_interval`, and each later interval is multiplied by `backoff_multiplier` until `max_interval` is reached. |
 | `max_interval` | `std::chrono::milliseconds` | `1h` | RFC 6762 §5.2 | Upper bound on the backoff interval. Once the computed interval exceeds this value it is clamped here and the backoff stops growing. |
 | `backoff_multiplier` | `double` | `2.0` | RFC 6762 §5.2 | Multiplicative factor applied to the current interval on each backoff step. Values below 1.0 cause the interval to shrink, producing unbounded query storms. |
-| `ttl_refresh_thresholds` | `std::vector<double>` | `{0.80, 0.85, 0.90, 0.95}` | RFC 6762 §5.2 | Fractional TTL thresholds at which refresh queries are issued. Each value represents the fraction of the wire TTL elapsed since record insertion. Values must be in (0, 1) and should be strictly increasing. |
+| `ttl_refresh_thresholds` | `std::vector<double>` | `{0.80, 0.85, 0.90, 0.95}` | RFC 6762 §5.2 | Fractional TTL thresholds at which refresh queries are issued. Each value represents the fraction of the wire TTL elapsed since record insertion. Values must be in (0, 1) and strictly increasing. |
 | `refresh_jitter_pct` | `double` | `0.02` | RFC 6762 §5.2 | Maximum jitter applied to each refresh query fire point as a fraction of the wire TTL. A uniform random offset in `[0, wire_ttl * refresh_jitter_pct]` is added to desynchronize simultaneous queriers. Set to `0.0` to disable jitter. |
 | `tc_wait_min` | `std::chrono::milliseconds` | `400ms` | RFC 6762 §6 | Minimum wait duration for accumulating truncated-response continuation packets. When a query arrives with the TC bit set, the responder waits a random duration in `[tc_wait_min, tc_wait_max]` before processing the aggregated known-answer set. |
 | `tc_wait_max` | `std::chrono::milliseconds` | `500ms` | RFC 6762 §6 | Maximum wait duration for accumulating TC continuation packets. See `tc_wait_min`. |
-| `max_known_answers` | `std::size_t` | `0` | RFC 6762 §7.1 | Not read by the library: outgoing queries carry every qualifying known answer whatever its value. |
-| `record_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §10 | Not applied to outgoing records: their TTLs come from the per-type fields of [`service_options`](service_options.md) (`ptr_ttl`, `srv_ttl`, `txt_ttl`, `a_ttl`, `aaaa_ttl`, `fallback_record_ttl`). The service server constructors still reject a non-positive value. |
 | `response_delay_min` | `std::chrono::milliseconds` | `20ms` | RFC 6762 §5.2, §6 | Minimum random delay before sending a multicast response. A random delay uniformly drawn from `[response_delay_min, response_delay_max]` is applied to avoid simultaneous replies from multiple responders. The same range delays the multicast (QM) query of the querier and service discovery and the service monitor's first PTR query per watched type. |
 | `response_delay_max` | `std::chrono::milliseconds` | `120ms` | RFC 6762 §5.2, §6 | Maximum random delay before sending a multicast response or the first multicast query. See `response_delay_min`. |
 | `legacy_unicast_ttl` | `std::chrono::seconds` | `10s` | RFC 6762 §6.7 | TTL cap applied to all records sent in legacy unicast responses. When a query arrives via unicast from a port other than 5353, all answer record TTLs are capped at this value to prevent aggressive caching by non-mDNS resolvers. A value above 2^31 - 1 s is taken as 2^31 - 1 s (RFC 2181 section 8). The reply repeats the whole question section; a query whose questions cannot all be repeated gets no reply. |
@@ -88,7 +84,7 @@ mdnspp::observer obs{ctx, observer_opts, sock_opts, mdns_opts};
 
 ## Validation
 
-The observer, querier, service discovery and service monitor constructors validate `mdns_options`: the throwing forms throw `std::system_error` and the non-throwing forms set `ec` to `std::errc::invalid_argument` when
+The observer, querier, service discovery, service monitor and service server constructors validate `mdns_options`: the throwing forms throw `std::system_error` and the non-throwing forms set `ec` to `std::errc::invalid_argument` when
 
 - `response_delay_min` is negative or greater than `response_delay_max`;
 - `tc_wait_min` is negative or greater than `tc_wait_max`;
@@ -96,9 +92,13 @@ The observer, querier, service discovery and service monitor constructors valida
 - `backoff_multiplier` is less than `1.0`;
 - `refresh_jitter_pct` is negative;
 - `ka_suppression_fraction` or `tc_suppression_fraction` lies outside the open interval (0, 1);
-- any entry of `ttl_refresh_thresholds` lies outside the open interval (0, 1).
+- any entry of `ttl_refresh_thresholds` lies outside the open interval (0, 1), or an entry is not greater than the one before it (equal neighbors included). An empty list is valid.
 
-The service server constructors check a different set of fields, listed in [service_server](service_server.md#throwing).
+The service server constructors also reject a non-positive `legacy_unicast_ttl`; their full list is in [service_server](service_server.md#throwing).
+
+## Removed fields
+
+`max_known_answers` and `record_ttl` have been removed. Neither had any effect on the wire: outgoing queries carried every qualifying known answer whatever `max_known_answers` held, and outgoing record TTLs come from the per-type fields of [`service_options`](service_options.md), never from `record_ttl`. Neither took part in the validation of the observer, querier, service discovery or service monitor. Code that sets either field no longer compiles; drop the assignment.
 
 ## Common Tuning Scenarios
 

@@ -19,8 +19,6 @@ struct mdns_options
     double refresh_jitter_pct{0.02};
     std::chrono::milliseconds tc_wait_min{400};
     std::chrono::milliseconds tc_wait_max{500};
-    std::size_t max_known_answers{0};
-    std::chrono::seconds record_ttl{4500};
     std::chrono::milliseconds response_delay_min{20};
     std::chrono::milliseconds response_delay_max{120};
     std::chrono::seconds legacy_unicast_ttl{10};

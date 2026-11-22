@@ -27,7 +27,6 @@ mdns_options capped_ttl()
 {
     mdns_options mopts = immediate_responses();
     mopts.legacy_unicast_ttl = std::chrono::seconds{10};
-    mopts.record_ttl = std::chrono::seconds{4500};
     return mopts;
 }
 
@@ -83,7 +82,7 @@ SCENARIO("Server sends unicast response to legacy unicast query (port != 5353)",
 SCENARIO("Server respects legacy_unicast_ttl cap on legacy unicast responses",
          "[service_server][legacy_unicast][ttl]")
 {
-    GIVEN("a live server with legacy_unicast_ttl=10 (default) and record_ttl=4500")
+    GIVEN("a live server with legacy_unicast_ttl=10 (default)")
     {
         server_fixture f{make_test_info(), {}, capped_ttl()};
         live_query_from(f, legacy_sender());

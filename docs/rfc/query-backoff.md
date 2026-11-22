@@ -124,10 +124,10 @@ where `jitter` is uniform-random in `[0, wire_ttl * refresh_jitter_pct]`
 (default 2% of the wire TTL). Jitter desynchronizes simultaneous queriers that
 monitor the same record on the same network segment.
 
-Fire points keep the order of the thresholds and are consumed in that order;
-the list is not sorted. A fire point that falls before its predecessor (an
-unsorted list, or jitter larger than the spacing of two thresholds) is sent at
-the same wakeup as that predecessor.
+The thresholds must be strictly increasing (each peer rejects any other list
+with `std::errc::invalid_argument`), and fire points are consumed in list order.
+Only jitter larger than the spacing of two thresholds can put a fire point before
+its predecessor; such a point is sent at the same wakeup as that predecessor.
 
 When a fire time is reached, the monitor sends one query for the instance's
 SRV, TXT, A and AAAA records. If a fresh SRV record arrives before all

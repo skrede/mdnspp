@@ -35,8 +35,6 @@ Five options account for most real-world configuration; everything else in this 
 | [refresh_jitter_pct](refresh_jitter_pct_in_mdns_options.md) | Maximum jitter applied to refresh query fire points |
 | [tc_wait_min](tc_wait_min_in_mdns_options.md) | Minimum wait for accumulating TC continuation packets |
 | [tc_wait_max](tc_wait_max_in_mdns_options.md) | Maximum wait for accumulating TC continuation packets |
-| [max_known_answers](max_known_answers_in_mdns_options.md) | Not read by the library; known-answer lists are not capped |
-| [record_ttl](record_ttl_in_mdns_options.md) | Validated by the service server, not applied to outgoing records |
 | [response_delay_min](response_delay_min_in_mdns_options.md) | Minimum random delay before sending a multicast response |
 | [response_delay_max](response_delay_max_in_mdns_options.md) | Maximum random delay before sending a multicast response |
 | [legacy_unicast_ttl](legacy_unicast_ttl_in_mdns_options.md) | TTL cap for records sent in legacy unicast responses |

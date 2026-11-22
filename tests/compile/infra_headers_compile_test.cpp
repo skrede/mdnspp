@@ -108,6 +108,7 @@
 #include "mdnspp/detail/interface_enumeration.h"
 #include "mdnspp/detail/server_probe_announce.h"
 #include "mdnspp/detail/discovery_query_sender.h"
+#include "mdnspp/detail/mdns_options_validation.h"
 #include "mdnspp/detail/server_question_section.h"
 #include "mdnspp/detail/nic_group_server_callbacks.h"
 #include "mdnspp/detail/server_known_answer_record.h"

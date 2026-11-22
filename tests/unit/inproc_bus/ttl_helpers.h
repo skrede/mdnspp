@@ -29,6 +29,9 @@ inline std::vector<std::byte> make_ptr_response(std::string_view service_name, s
     return detail::build_dns_response(make_service(service_name, service_type, host, port), dns_type::ptr, srv_opts);
 }
 
+// The PTR answer and its SRV, A and TXT additionals.
+inline constexpr std::size_t ptr_response_records = 4;
+
 inline mdns_options ttl_floor(uint32_t minimum)
 {
     mdns_options opts;

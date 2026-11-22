@@ -168,6 +168,6 @@ TEST_CASE("nic_group services claiming one instance name still conflict (probe d
     start_live(f, grp);
     f.advance_to_live();
 
-    REQUIRE(watch.name_conflicts >= 1);
+    REQUIRE(watch.name_conflicts == 1);
     grp.stop();
 }

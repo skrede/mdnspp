@@ -17,15 +17,18 @@ service_info dual_stack_service(std::string_view name, std::string_view host, ui
     return info;
 }
 
-void check_ttls(const std::map<std::string, uint32_t> &ttls, uint32_t ptr, uint32_t srv, uint32_t a, uint32_t aaaa)
+void check_ttls(const std::map<std::string, uint32_t> &ttls, uint32_t ptr, uint32_t srv, uint32_t txt, uint32_t a,
+                uint32_t aaaa)
 {
     REQUIRE(ttls.count("ptr") > 0);
     REQUIRE(ttls.count("srv") > 0);
+    REQUIRE(ttls.count("txt") > 0);
     REQUIRE(ttls.count("a") > 0);
     REQUIRE(ttls.count("aaaa") > 0);
 
     CHECK(ttls.at("ptr") == ptr);
     CHECK(ttls.at("srv") == srv);
+    CHECK(ttls.at("txt") == txt);
     CHECK(ttls.at("a") == a);
     CHECK(ttls.at("aaaa") == aaaa);
 }
@@ -46,7 +49,7 @@ TEST_CASE("Per-type TTLs appear in wire responses", "[inproc][ttl]")
     h.advance_to_live(server);
     h.executor.drain();
 
-    check_ttls(ttls.ttl_by_type, 100u, 200u, 400u, 500u);
+    check_ttls(ttls.ttl_by_type, 100u, 200u, 300u, 400u, 500u);
 }
 
 TEST_CASE("Goodbye uses TTL=0 for all record types", "[inproc][ttl]")
@@ -67,5 +70,5 @@ TEST_CASE("Goodbye uses TTL=0 for all record types", "[inproc][ttl]")
     server.stop();
     h.executor.drain();
 
-    check_ttls(ttls.ttl_by_type, 0u, 0u, 0u, 0u);
+    check_ttls(ttls.ttl_by_type, 0u, 0u, 0u, 0u, 0u);
 }

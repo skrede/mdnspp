@@ -58,7 +58,7 @@ TEST_CASE("on_updated fires on TXT record change for live service", "[monitor]")
 
     f.inject(make_txt_packet("_http._tcp.local", "TxtSvc._http._tcp.local", "txtsvc.local", {{"version", "2"}}));
 
-    REQUIRE(updated.count >= 1);
+    REQUIRE(updated.count == 1);
     CHECK(updated.last_event == mdnspp::update_event::added);
     CHECK(updated.last_rtype == mdnspp::dns_type::txt);
 }
@@ -72,7 +72,7 @@ TEST_CASE("on_updated fires when a new A record is added to live service", "[mon
 
     f.inject(make_a_packet("_http._tcp.local", "MultiAddr._http._tcp.local", "multiaddr.local", "10.2.2.3"));
 
-    REQUIRE(updated.count >= 1);
+    REQUIRE(updated.count == 1);
     CHECK(updated.last_event == mdnspp::update_event::added);
 }
 

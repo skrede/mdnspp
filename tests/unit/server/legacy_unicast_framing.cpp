@@ -62,7 +62,7 @@ void check_no_cache_flush(const std::vector<std::byte> &pkt)
     uint16_t ancount = read_u16_be(pkt, 6);
     uint16_t arcount = read_u16_be(pkt, 10);
     uint32_t total = static_cast<uint32_t>(ancount) + arcount;
-    REQUIRE(total >= 1);
+    REQUIRE(total == 4);
     for(uint32_t i = 0; i < total; ++i)
     {
         REQUIRE(skip_dns_name(span, offset));

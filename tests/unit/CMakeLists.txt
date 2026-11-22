@@ -87,6 +87,7 @@ make_subdir_test(dns_name_comparison_test   dns_name/comparison.cpp)
 
 make_subdir_test(monitor_lifecycle_test     monitor/lifecycle.cpp)
 make_subdir_test(monitor_resolution_test    monitor/resolution.cpp)
+make_subdir_test(monitor_staged_test        monitor/staged.cpp)
 make_subdir_test(monitor_filtering_test     monitor/filtering.cpp)
 make_subdir_test(monitor_events_test        monitor/events.cpp)
 make_subdir_test(monitor_scheduler_test     monitor/scheduler.cpp)

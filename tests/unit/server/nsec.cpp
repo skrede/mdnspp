@@ -38,7 +38,7 @@ void check_nsec_in_additional(const std::vector<sent_packet> &sent)
     const auto &pkt = sent.back().data;
     REQUIRE(pkt.size() >= 12);
     uint16_t arcount = read_u16_be(pkt, 10);
-    REQUIRE(arcount >= 1);
+    REQUIRE(arcount == 1);
     bool found_nsec = false;
     for_each_record_type(pkt, [&](uint16_t rtype)
     {

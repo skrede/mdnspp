@@ -119,7 +119,7 @@ SCENARIO("stop() called from within the record callback does not deadlock", "[ob
             THEN("async_observe() returns without deadlocking and stop flag is set")
             {
                 REQUIRE_NOTHROW(obs.async_observe());
-                REQUIRE(callback_count >= 1);
+                REQUIRE(callback_count == 1);
             }
         }
     }

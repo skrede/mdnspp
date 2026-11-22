@@ -43,10 +43,10 @@ void check_routed_by_type(const service_events &http, const service_events &ssh)
 
 void check_ceremony_records(inproc_harness &h, const std::vector<mdns_record_variant> &captured)
 {
-    // The first probe carries the SRV record in its authority section.
+    // The first probe proposes the SRV, TXT and A records in its authority section.
     h.advance(250ms);
     std::size_t after_probe1 = captured.size();
-    CHECK(after_probe1 >= 1u);
+    CHECK(after_probe1 == 3u);
     finish_ceremony(h);
     CHECK(captured.size() > after_probe1);
     CHECK(holds_record<record_ptr>(captured));
@@ -73,6 +73,9 @@ TEST_CASE("Observer captures all traffic", "[inproc][routing]")
     h.advance(300ms);
     // At least the three probe SRV records and PTR, SRV, TXT and A of both announcements.
     CHECK(captured.size() >= 8u);
+    // The PTR, SRV, A and TXT of one response: the monitor's second query fires before that response in the same
+    // step, so it carries no known answer.
+    CHECK(query_response_count == 4u);
     obs.observer.stop();
     obs2.observer.stop();
     h.executor.drain();

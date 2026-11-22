@@ -102,15 +102,15 @@ TEST_CASE("Cache-flush propagation across monitors", "[inproc][rfc]")
     flush_fixture f{probe_delay};
 
     f.discover();
-    REQUIRE(f.found_a >= 1);
-    REQUIRE(f.found_b >= 1);
+    REQUIRE(f.found_a == 1);
+    REQUIRE(f.found_b == 1);
 
     f.inject_stale_address();
     f.advance_until_flushed();
 
-    CHECK(f.flush_a >= 1);
-    CHECK(f.flush_b >= 1);
+    CHECK(f.flush_a == 1);
+    CHECK(f.flush_b == 1);
     // The cache flush refreshed the record rather than removing the still-live service.
-    CHECK(f.found_a >= 1);
-    CHECK(f.found_b >= 1);
+    CHECK(f.found_a == 1);
+    CHECK(f.found_b == 1);
 }

@@ -12,7 +12,7 @@ TEST_CASE("nullopt TTL with ttl_unknown_policy::accept passes packet", "[inproc]
     auto pkt = make_ptr_response("TtlOptAccept._http._tcp.local.", "_http._tcp.local.", "ttloptaccept.local.", 9010);
 
     obs.deliver({"192.168.1.60", 5353}, pkt, std::nullopt);
-    REQUIRE(obs.records >= 1u);
+    REQUIRE(obs.records == ptr_response_records);
 }
 
 TEST_CASE("nullopt TTL with ttl_unknown_policy::reject drops packet", "[inproc][ttl-filter][optional-ttl]")

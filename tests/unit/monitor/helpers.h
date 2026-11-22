@@ -10,10 +10,12 @@
 #include "mdnspp/testing/test_clock.h"
 #include "mdnspp/testing/mock_policy.h"
 
+#include <array>
 #include <string>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
 using mdnspp::testing::mock_policy;
 using mdnspp::testing::test_clock;
@@ -91,6 +93,17 @@ inline std::vector<std::byte> make_txt_packet(const std::string &service_type,
     info.port          = 8080;
     info.txt_records   = txt;
     return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::txt, make_uniform_opts(ttl));
+}
+
+inline std::vector<std::byte> make_single_record_packet(std::string_view owner, mdnspp::dns_type type,
+                                                        const std::vector<std::byte> &rdata, uint32_t ttl = 4500)
+{
+    std::vector<std::byte> packet;
+    // RFC 1035 section 4.1.1 header: ID, flags (QR and AA), QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT.
+    for(uint16_t field : std::array<uint16_t, 6>{0, 0x8400, 0, 1, 0, 0})
+        mdnspp::detail::push_u16_be(packet, field);
+    mdnspp::detail::append_dns_rr(packet, *mdnspp::detail::encode_dns_name(owner), type, ttl, rdata);
+    return packet;
 }
 
 inline mdnspp::endpoint default_sender()

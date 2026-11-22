@@ -77,6 +77,6 @@ TEST_CASE("Normal query from port 5353 gets multicast response with full TTLs",
     f.h.executor.drain();
     f.h.advance(std::chrono::milliseconds{5});
 
-    REQUIRE(f.multicast_ptrs >= 1);
+    REQUIRE(f.multicast_ptrs == 1);
     CHECK(f.ptr_ttl == 4500u);
 }

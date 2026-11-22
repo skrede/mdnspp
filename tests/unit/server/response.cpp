@@ -18,8 +18,8 @@ void ptr_response_sections(const std::vector<std::byte> &pkt)
     THEN("ancount >= 1 and arcount >= 1 (answer + additional)")
     {
         REQUIRE(pkt.size() >= 12);
-        REQUIRE(read_u16_be(pkt, 6) >= 1);
-        REQUIRE(read_u16_be(pkt, 10) >= 1);
+        REQUIRE(read_u16_be(pkt, 6) == 1);
+        REQUIRE(read_u16_be(pkt, 10) == 3);
     }
 
     THEN("walk_dns_frame parses a PTR record with the correct ptr_name")

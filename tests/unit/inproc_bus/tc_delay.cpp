@@ -65,7 +65,9 @@ void inject_ptr_response(inproc_harness &h, std::string_view instance_name, uint
 struct query_sniffer
 {
     explicit query_sniffer(inproc_harness &h)
-        : packets{}, socket{h.executor}
+        : packets{}
+        , times{}
+        , socket{h.executor}
     {
         arm();
     }
@@ -76,13 +78,17 @@ struct query_sniffer
         {
             // RFC 1035 section 4.1.1: a clear QR bit marks a query.
             if(data.size() >= 3 && (std::to_integer<uint8_t>(data[2]) & 0x80u) == 0)
+            {
                 packets.push_back(std::vector<std::byte>(data.begin(), data.end()));
+                times.push_back(test_clock::now());
+            }
             arm();
         });
     }
 
     // Declared first so the packets outlive the socket and its pending receive handler.
     std::vector<std::vector<std::byte>> packets;
+    std::vector<test_clock::time_point> times;
     inproc_socket<test_clock> socket;
 };
 
@@ -99,7 +105,7 @@ TEST_CASE("TC continuation delay spaces packets", "[inproc][tc]")
     query_sniffer sniffer{h};
 
     h.advance(200ms);
-    REQUIRE(sniffer.packets.size() >= 1u);
+    REQUIRE(sniffer.packets.size() == 1u);
     std::size_t count_after_initial = sniffer.packets.size();
 
     h.advance(49ms);
@@ -119,6 +125,8 @@ TEST_CASE("TC continuation delay zero sends all packets immediately", "[inproc][
     inject_ptr_response(h, "InstanceD._http._tcp.local.");
     query_sniffer sniffer{h};
 
+    // Header and question take 34 bytes and each known-answer PTR 56, so 200 bytes hold two of the four answers.
     h.advance(200ms);
-    CHECK(sniffer.packets.size() > 1u);
+    REQUIRE(sniffer.packets.size() == 2u);
+    CHECK(sniffer.times[1] == sniffer.times[0]);
 }

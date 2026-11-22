@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <cstdint>
 #include <system_error>
 
 using namespace std::chrono_literals;
@@ -81,7 +82,7 @@ TEST_CASE("default_timer expires_after then async_wait re-arms correctly", "[nat
 {
     mdnspp::default_context ctx;
     mdnspp::default_timer timer{ctx};
-    int call_count = 0;
+    int32_t call_count = 0;
 
     timer.expires_after(1000ms);
     timer.async_wait([&](std::error_code) { ++call_count; });

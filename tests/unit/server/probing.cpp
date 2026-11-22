@@ -124,6 +124,9 @@ SCENARIO("queries dropped during probing", "[service_server][probing][drop]")
 
             THEN("no response was sent to the querier (query was dropped during probing)")
             {
+                f.server.delay_timer().fire();
+                // Three probes and two announcements of two packets each; an answer to the query would add one.
+                REQUIRE(f.sent().size() == 7);
                 REQUIRE_FALSE(std::ranges::any_of(f.sent(), [&](const sent_packet &p) { return p.dest == sender; }));
             }
         }

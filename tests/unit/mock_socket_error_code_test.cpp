@@ -1,3 +1,5 @@
+#include "support/failure_injection.h"
+
 #include "mdnspp/testing/mock_socket.h"
 #include "mdnspp/testing/mock_executor.h"
 
@@ -14,24 +16,9 @@ using mdnspp::endpoint;
 using mdnspp::socket_options;
 using mdnspp::testing::mock_socket;
 using mdnspp::testing::mock_executor;
+using mdnspp::test_support::failure_injection;
 
 namespace {
-
-class failure_injection
-{
-public:
-    failure_injection(bool on_construct, bool on_send)
-    {
-        mock_socket::set_fail_on_construct(on_construct);
-        mock_socket::set_fail_on_send(on_send);
-    }
-
-    ~failure_injection()
-    {
-        mock_socket::set_fail_on_construct(false);
-        mock_socket::set_fail_on_send(false);
-    }
-};
 
 template <typename F>
 std::error_code thrown_by(F &&fn)

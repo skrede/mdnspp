@@ -5,6 +5,8 @@
 
 #include "mdnspp/detail/native_socket.h"
 
+#include <catch2/catch_test_macros.hpp>
+
 #include <span>
 #include <array>
 #include <cstddef>
@@ -24,6 +26,9 @@ public:
         m_msg.msg_control = m_storage.data();
     }
 
+    control_buffer(const control_buffer &) = delete;
+    control_buffer &operator=(const control_buffer &) = delete;
+
     template <typename T>
     void add(int32_t level, int32_t type, const T &value)
     {
@@ -32,6 +37,7 @@ public:
 
     void add_raw(int32_t level, int32_t type, std::span<const std::byte> payload)
     {
+        REQUIRE(m_used + CMSG_SPACE(payload.size()) <= m_storage.size());
         auto *cmsg = reinterpret_cast<cmsghdr *>(m_storage.data() + m_used);
         cmsg->cmsg_level = level;
         cmsg->cmsg_type = type;

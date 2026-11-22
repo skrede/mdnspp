@@ -14,7 +14,7 @@ public:
         : m_saved{}
         , m_lowered{false}
     {
-        if(::getrlimit(RLIMIT_NOFILE, &m_saved) != 0)
+        if(::getrlimit(RLIMIT_NOFILE, &m_saved) != 0 || soft >= m_saved.rlim_cur)
             return;
         rlimit lowered = m_saved;
         lowered.rlim_cur = soft;

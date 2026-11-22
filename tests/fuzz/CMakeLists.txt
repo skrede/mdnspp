@@ -1,3 +1,4 @@
+# The harness invariants are asserts, so -UNDEBUG keeps them in a Release build.
 function(make_fuzz_target TARGET_FILE)
     add_executable(${TARGET_FILE} "${TARGET_FILE}.cpp")
     target_link_libraries(${TARGET_FILE} PRIVATE mdnspp::mdnspp)
@@ -5,6 +6,7 @@ function(make_fuzz_target TARGET_FILE)
         -fsanitize=fuzzer,address,undefined
         -fno-sanitize-recover=all
         -fno-omit-frame-pointer
+        -UNDEBUG
         -g
         -O1
     )

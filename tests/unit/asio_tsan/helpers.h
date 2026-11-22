@@ -20,6 +20,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <system_error>
 
 using namespace std::chrono_literals;
 using mdnspp::test_support::construct_or_skip;
@@ -48,16 +49,34 @@ inline mdnspp::service_options fast_service_options()
     };
 }
 
-// A ThreadSanitizer build fails the run on any data race, so reaching the closing
-// REQUIRE(true) of a case means none was reported.
+struct completion_log
+{
+    int32_t calls;
+    std::error_code ec;
+
+    void record(std::error_code received)
+    {
+        ++calls;
+        ec = received;
+    }
+};
+
+// A ThreadSanitizer build fails the run on any data race; the completion logs are what a case checks in every build.
+// They are declared before the server, whose destructor completes still-pending handlers into them.
 struct tsan_fixture
 {
     asio::io_context io;
+    completion_log ready;
+    completion_log done;
     std::optional<mdnspp::basic_service_server<mdnspp::asio_policy>> server;
     std::thread io_thread;
 
     tsan_fixture()
-        : io{}, server{}, io_thread{}
+        : io{}
+        , ready{}
+        , done{}
+        , server{}
+        , io_thread{}
     {
     }
 
@@ -79,6 +98,13 @@ struct tsan_fixture
     void run_io()
     {
         io_thread = std::thread([this] { io.run(); });
+    }
+
+    void start_logged()
+    {
+        server->async_start([this](std::error_code ec) { ready.record(ec); },
+                            [this](std::error_code ec) { done.record(ec); });
+        run_io();
     }
 
     void sync_io()

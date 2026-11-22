@@ -1,11 +1,12 @@
 #include "inproc_bus/helpers.h"
+#include "inproc_bus/query_sniffer.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
-#include <variant>
 
 namespace {
 
@@ -18,25 +19,12 @@ mdns_options backoff_opts()
     return opts;
 }
 
-// The observer sees no questions, so the distinct arrival times of the server's PTR answers stand in for the
-// monitor's query times.
-observer_options ptr_answer_times(std::vector<test_clock::time_point> &times)
+std::vector<std::chrono::milliseconds> intervals(const std::vector<test_clock::time_point> &times)
 {
-    observer_options opts;
-    opts.on_record = [&times](const endpoint &, const mdns_record_variant &rec)
-    {
-        if(std::holds_alternative<record_ptr>(rec) && (times.empty() || test_clock::now() != times.back()))
-            times.push_back(test_clock::now());
-    };
-    return opts;
-}
-
-bool intervals_non_decreasing(const std::vector<test_clock::time_point> &times)
-{
-    for(std::size_t i = 2; i < times.size(); ++i)
-        if(times[i] - times[i - 1] < times[i - 1] - times[i - 2])
-            return false;
-    return true;
+    std::vector<std::chrono::milliseconds> spacing;
+    for(std::size_t i = 1; i < times.size(); ++i)
+        spacing.push_back(std::chrono::duration_cast<std::chrono::milliseconds>(times[i] - times[i - 1]));
+    return spacing;
 }
 
 }
@@ -45,16 +33,13 @@ TEST_CASE("Query backoff convergence", "[inproc][routing]")
 {
     inproc_harness h;
     live_server srv{h, make_service("BackoffServer._http._tcp.local.", "_http._tcp.local.", "backoff.local.", 7777)};
-    std::vector<test_clock::time_point> query_times;
-    live_observer obs{h, ptr_answer_times(query_times)};
+    query_sniffer sniffer{h};
     live_monitor monitor{h, "_http._tcp.local.", discover_opts(), backoff_opts()};
 
-    // Intervals 1, 2, 4, 8 and 8 s fit in 24 one-second steps.
     for(int32_t i = 0; i < 24; ++i)
         h.advance(1000ms);
 
-    REQUIRE(query_times.size() >= 3u);
-    CHECK(intervals_non_decreasing(query_times));
-    obs.observer.stop();
+    REQUIRE(sniffer.times.size() == 6u);
+    CHECK(intervals(sniffer.times) == std::vector<std::chrono::milliseconds>{1000ms, 2000ms, 4000ms, 8000ms, 8000ms});
     h.executor.drain();
 }

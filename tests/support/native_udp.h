@@ -3,6 +3,8 @@
 
 #include "mdnspp/detail/native_socket.h"
 
+#include <catch2/catch_test_macros.hpp>
+
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -20,6 +22,7 @@ public:
     udp_socket()
         : m_fd{::socket(AF_INET, SOCK_DGRAM, 0)}
     {
+        REQUIRE(m_fd >= 0);
         ::fcntl(m_fd, F_SETFL, ::fcntl(m_fd, F_GETFL) | O_NONBLOCK);
     }
 
@@ -60,8 +63,8 @@ inline uint16_t bind_loopback(detail::native_socket_t fd)
 {
     sockaddr_in addr = loopback(0);
     socklen_t len = sizeof(addr);
-    ::bind(fd, reinterpret_cast<sockaddr *>(&addr), len);
-    ::getsockname(fd, reinterpret_cast<sockaddr *>(&addr), &len);
+    REQUIRE(::bind(fd, reinterpret_cast<sockaddr *>(&addr), len) == 0);
+    REQUIRE(::getsockname(fd, reinterpret_cast<sockaddr *>(&addr), &len) == 0);
     return ntohs(addr.sin_port);
 }
 

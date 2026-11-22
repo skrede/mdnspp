@@ -14,9 +14,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
     if(skipped)
         assert(offset <= buf.size());
 
-    // skip and read must never disagree on record boundaries: whenever
-    // read_dns_name succeeds at offset 0 (necessarily pointer-free, since a
-    // pointer at offset 0 cannot be backward), skip_dns_name must succeed too
+    // A pointer cannot be the first label, and skip_dns_name accepts any name read_dns_name accepts.
     auto decoded = mdnspp::detail::read_dns_name(buf, 0);
     if(decoded.has_value())
         assert(skipped);

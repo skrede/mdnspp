@@ -45,8 +45,7 @@ uint32_t count_goodbye_packets(const std::vector<sent_packet> &packets)
 void check_first_goodbye_records(const std::vector<sent_packet> &packets)
 {
     auto goodbye = std::ranges::find_if(packets, [](const sent_packet &sp) { return is_goodbye_packet(sp.data); });
-    if(goodbye == packets.end())
-        return;
+    REQUIRE(goodbye != packets.end());
     REQUIRE(contains_record<record_ptr>(goodbye->data));
     REQUIRE(contains_record<record_srv>(goodbye->data));
     REQUIRE(contains_record<record_a>(goodbye->data));

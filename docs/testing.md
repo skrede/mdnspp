@@ -294,9 +294,6 @@ link. They verify:
 
 - `defaults_compile_test.cpp` — `defaults.h` type aliases compile and the
   template instantiations are valid.
-- `infra_headers_compile_test.cpp` — every public and detail header of the
-  core library is included by one translation unit, ordered so that leaf
-  headers precede the aggregating ones, catching missing-include regressions.
 - `encrypt_defaults_compile_test.cpp` — the encrypt convenience aliases
   compile (built only with `MDNSPP_ENABLE_ENCRYPT=ON`).
 - `header_self_contained.cmake` — every installed header of every enabled

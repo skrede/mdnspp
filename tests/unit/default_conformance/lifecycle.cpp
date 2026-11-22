@@ -94,7 +94,7 @@ TEST_CASE("default_timer cancel delivers operation_canceled", "[native][timer]")
     REQUIRE(received == std::make_error_code(std::errc::operation_canceled));
 }
 
-TEST_CASE("default_timer fires after deadline via run()", "[native][timer]")
+TEST_CASE("default_timer fires after deadline via poll_one()", "[native][timer]")
 {
     mdnspp::default_context ctx;
     mdnspp::default_timer timer{ctx};
@@ -109,12 +109,11 @@ TEST_CASE("default_timer fires after deadline via run()", "[native][timer]")
         ec_received = ec;
     });
 
-    while(!fired)
+    const auto poll_until_fired = [&]
     {
         ctx.poll_one();
-        std::this_thread::sleep_for(1ms);
-    }
-
-    REQUIRE(fired);
+        return fired;
+    };
+    REQUIRE(mdnspp::test_support::wait_until(poll_until_fired, 5s));
     REQUIRE_FALSE(ec_received);
 }

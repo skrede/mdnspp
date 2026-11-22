@@ -1,3 +1,5 @@
+#include "support/failure_injection.h"
+
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
@@ -17,7 +19,12 @@ static_assert(std::constructible_from<mdnspp::testing::mock_socket, mdnspp::test
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <memory>
+#include <vector>
+#include <cstdint>
+
 using namespace mdnspp::testing;
+using mdnspp::test_support::failure_injection;
 
 TEST_CASE("mock_socket satisfies socket_like concept", "[concept][conformance]")
 {
@@ -74,12 +81,11 @@ TEST_CASE("mock_timer expires_after delivers operation_canceled", "[concept][con
 
 TEST_CASE("mock_socket error_code constructor path", "[concept][error_code]")
 {
-    mock_socket::set_fail_on_construct(true);
+    const failure_injection injected{true, false};
     mock_executor ex;
     std::error_code ec;
     mock_socket sock{ex, ec};
     REQUIRE(ec);
-    mock_socket::set_fail_on_construct(false);
 }
 
 TEST_CASE("mock_policy::post pushes to executor queue", "[concept][conformance][post]")
@@ -104,18 +110,18 @@ TEST_CASE("mock_executor::drain_posted executes queued work", "[concept][conform
 TEST_CASE("drain_posted executes in FIFO order", "[concept][conformance][post]")
 {
     mock_executor ex;
-    std::vector<int> order;
+    std::vector<int32_t> order;
     mock_policy::post(ex, [&] { order.push_back(1); });
     mock_policy::post(ex, [&] { order.push_back(2); });
     ex.drain_posted();
-    REQUIRE(order == std::vector<int>{1, 2});
+    REQUIRE(order == std::vector<int32_t>{1, 2});
 }
 
 TEST_CASE("post accepts move-only callable", "[concept][conformance][post]")
 {
     mock_executor ex;
-    auto ptr = std::make_unique<int>(42);
-    int result = 0;
+    auto ptr = std::make_unique<int32_t>(42);
+    int32_t result = 0;
     mock_policy::post(ex, [p = std::move(ptr), &result] { result = *p; });
     ex.drain_posted();
     REQUIRE(result == 42);
@@ -157,12 +163,13 @@ TEST_CASE("mock_socket ec send failure injection", "[concept][error_code][send]"
     mdnspp::endpoint dest{"224.0.0.251", 5353};
     std::error_code ec;
 
-    mock_socket::set_fail_on_send(true);
-    sock.send(dest, std::span<const std::byte>{payload}, ec);
-    REQUIRE(ec == std::make_error_code(std::errc::network_unreachable));
-    REQUIRE(sock.sent_packets().empty());
+    {
+        const failure_injection injected{false, true};
+        sock.send(dest, std::span<const std::byte>{payload}, ec);
+        REQUIRE(ec == std::make_error_code(std::errc::network_unreachable));
+        REQUIRE(sock.sent_packets().empty());
+    }
 
-    mock_socket::set_fail_on_send(false);
     sock.send(dest, std::span<const std::byte>{payload}, ec);
     REQUIRE_FALSE(ec);
     REQUIRE(sock.sent_packets().size() == 1);
@@ -170,7 +177,7 @@ TEST_CASE("mock_socket ec send failure injection", "[concept][error_code][send]"
 
 TEST_CASE("observer error_code constructor path", "[observer][error_code]")
 {
-    mock_socket::set_fail_on_construct(true);
+    const failure_injection injected{true, false};
     mock_executor ex;
     std::error_code ec;
     mdnspp::basic_observer<mdnspp::testing::mock_policy> obs{
@@ -183,5 +190,4 @@ TEST_CASE("observer error_code constructor path", "[observer][error_code]")
         ec
     };
     REQUIRE(ec);
-    mock_socket::set_fail_on_construct(false);
 }

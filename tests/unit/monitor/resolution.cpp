@@ -70,13 +70,11 @@ TEST_CASE("incremental resolution: PTR then SRV then A fires on_found", "[monito
     CHECK(found.services[0].ipv4_addresses[0] == "192.168.1.1");
 }
 
-TEST_CASE("incremental resolution: SRV arrives before A -- on_found fires only after A",
-          "[monitor]")
+TEST_CASE("incremental resolution: a full-chain PTR packet delivered twice fires on_found once", "[monitor]")
 {
     found_log found{};
     monitor_fixture f{log_found(found)};
     f.watch_and_start({"_http._tcp.local"});
-    // The PTR builder carries the whole chain, so this checks that on_found fires once and only once.
     auto pkt = make_ptr_packet("_http._tcp.local", "Instance2._http._tcp.local", "host2.local", "10.0.0.2");
     f.inject(pkt);
 

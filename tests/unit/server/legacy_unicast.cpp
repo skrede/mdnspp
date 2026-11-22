@@ -57,7 +57,7 @@ void check_ttls_capped(const std::vector<sent_packet> &packets)
 }
 
 SCENARIO("Server sends unicast response to legacy unicast query (port != 5353)",
-         "[service_server][legacy_unicast][rfc01]")
+         "[service_server][legacy_unicast][rfc6762-6.7]")
 {
     GIVEN("a live server with default service_options (respond_to_legacy_unicast=true)")
     {
@@ -134,6 +134,12 @@ SCENARIO("Normal mDNS query from port 5353 uses multicast path", "[service_serve
             THEN("no direct unicast response is sent to the sender")
             {
                 REQUIRE_FALSE(sent_to(f.sent(), normal_sender));
+            }
+
+            THEN("the response is multicast to 224.0.0.251:5353 when the delay timer fires")
+            {
+                f.server.delay_timer().fire();
+                REQUIRE(sent_to(f.sent(), mdns_group()));
             }
         }
     }

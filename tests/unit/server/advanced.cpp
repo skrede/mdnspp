@@ -1,12 +1,16 @@
 #include "fixture.h"
 #include "query_helpers.h"
 
+#include "support/failure_injection.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <string>
 #include <cstddef>
 #include <string_view>
 #include <system_error>
+
+using mdnspp::test_support::failure_injection;
 
 namespace {
 
@@ -32,7 +36,7 @@ service_options recording_continuation(endpoint &captured_sender, std::size_t &c
     return opts;
 }
 
-void continuation_sections(const endpoint &captured_sender, const endpoint &remote)
+void continuation_sections(const endpoint &captured_sender, std::size_t captured_count, const endpoint &remote)
 {
     THEN("on_tc_continuation was called with the correct sender")
     {
@@ -40,10 +44,10 @@ void continuation_sections(const endpoint &captured_sender, const endpoint &remo
         REQUIRE(captured_sender.port == remote.port);
     }
 
-    THEN("on_tc_continuation reports at least one continuation entry")
+    THEN("on_tc_continuation reports no known answers for a question-only TC query")
     {
-        // The first TC packet is itself the known-answer set, so the count may be 0.
         REQUIRE(captured_sender.address == remote.address);
+        REQUIRE(captured_count == 0);
     }
 }
 
@@ -98,7 +102,7 @@ SCENARIO("on_error callback fires on send failure", "[service_server][on_error]"
         std::error_code received_ec;
         std::string received_context;
         server_fixture f{make_test_info(), recording_error(received_ec, received_context)};
-        mock_socket::set_fail_on_send(true);
+        const failure_injection injected{false, true};
 
         WHEN("the server starts and attempts to send a probe")
         {
@@ -112,8 +116,6 @@ SCENARIO("on_error callback fires on send failure", "[service_server][on_error]"
                 REQUIRE_FALSE(received_context.empty());
             }
         }
-
-        mock_socket::set_fail_on_send(false);
     }
 }
 
@@ -159,7 +161,7 @@ SCENARIO("on_tc_continuation callback fires when TC timer expires",
         WHEN("the TC wait timer fires")
         {
             f.server.tc_timer().fire();
-            continuation_sections(captured_sender, remote);
+            continuation_sections(captured_sender, captured_count, remote);
         }
     }
 }

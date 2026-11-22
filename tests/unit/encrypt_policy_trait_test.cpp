@@ -13,9 +13,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
+
 struct extended_socket_options : mdnspp::socket_options
 {
-    int extra_field{42};
+    int32_t extra_field{42};
 };
 
 struct MockExtendedPolicy

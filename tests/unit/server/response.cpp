@@ -15,7 +15,7 @@ void ptr_response_sections(const std::vector<std::byte> &pkt)
         REQUIRE(read_u16_be(pkt, 2) == 0x8400);
     }
 
-    THEN("ancount >= 1 and arcount >= 1 (answer + additional)")
+    THEN("ancount == 1 and arcount == 3 (PTR answer, SRV/TXT/A additionals)")
     {
         REQUIRE(pkt.size() >= 12);
         REQUIRE(read_u16_be(pkt, 6) == 1);

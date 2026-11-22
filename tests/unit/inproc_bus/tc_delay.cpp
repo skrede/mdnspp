@@ -1,4 +1,5 @@
 #include "inproc_bus/helpers.h"
+#include "inproc_bus/query_sniffer.h"
 
 #include "mdnspp/inproc/inproc_socket.h"
 
@@ -61,36 +62,6 @@ void inject_ptr_response(inproc_harness &h, std::string_view instance_name, uint
     injector.send(endpoint{"224.0.0.251", 5353}, std::span<const std::byte>(pkt));
     h.executor.drain();
 }
-
-struct query_sniffer
-{
-    explicit query_sniffer(inproc_harness &h)
-        : packets{}
-        , times{}
-        , socket{h.executor}
-    {
-        arm();
-    }
-
-    void arm()
-    {
-        socket.async_receive([this](std::error_code, const recv_metadata &, std::span<std::byte> data)
-        {
-            // RFC 1035 section 4.1.1: a clear QR bit marks a query.
-            if(data.size() >= 3 && (std::to_integer<uint8_t>(data[2]) & 0x80u) == 0)
-            {
-                packets.push_back(std::vector<std::byte>(data.begin(), data.end()));
-                times.push_back(test_clock::now());
-            }
-            arm();
-        });
-    }
-
-    // Declared first so the packets outlive the socket and its pending receive handler.
-    std::vector<std::vector<std::byte>> packets;
-    std::vector<test_clock::time_point> times;
-    inproc_socket<test_clock> socket;
-};
 
 }
 

@@ -1,3 +1,5 @@
+#include "support/failure_injection.h"
+
 #include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
 
@@ -10,6 +12,7 @@
 
 using namespace mdnspp;
 using namespace mdnspp::testing;
+using mdnspp::test_support::failure_injection;
 
 TEST_CASE("Default socket_options has empty interface_address", "[socket_options]")
 {
@@ -67,11 +70,10 @@ TEST_CASE("mock_socket socket_options with error_code", "[socket_options][mock]"
 
     SECTION("failure path sets error_code")
     {
-        mock_socket::set_fail_on_construct(true);
+        const failure_injection injected{true, false};
         std::error_code ec;
         mock_socket mock{ex, opts, ec};
         REQUIRE(ec);
-        mock_socket::set_fail_on_construct(false);
     }
 }
 

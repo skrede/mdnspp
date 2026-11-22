@@ -79,7 +79,7 @@ void instance_and_hostname_nsec_sections(const service_info &info)
         auto nsec = planned_nsec(info, answer_plan{.nsec_service_name = true}, info.service_name);
         // rdata = owner name, window, length, bitmap; the bitmap flags TXT(16), SRV(33), NSEC(47)
         auto owner = wire_name(info.service_name).size();
-        REQUIRE(nsec.rdata.size() > owner + 2);
+        REQUIRE(nsec.rdata.size() == owner + 2 + 6);
         CHECK(rdata_byte(nsec, owner) == 0);
         REQUIRE(rdata_byte(nsec, owner + 1) == 6);
         CHECK(rdata_byte(nsec, owner + 2 + 2) == 0x80); // TXT(16)
@@ -103,6 +103,7 @@ void service_type_nsec_and_ttl_sections(const service_info &info)
     {
         auto nsec = planned_nsec(info, answer_plan{.nsec_service_type = true}, info.service_type);
         auto owner = wire_name(info.service_type).size();
+        REQUIRE(nsec.rdata.size() == owner + 2 + 2);
         REQUIRE(rdata_byte(nsec, owner + 1) == 2);
         CHECK(rdata_byte(nsec, owner + 2 + 1) == 0x08); // PTR(12)
     }

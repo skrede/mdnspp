@@ -28,13 +28,14 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {
     auto buf = std::span<const std::byte>(reinterpret_cast<const std::byte *>(data), size);
 
-    // On success skip_dns_name must agree; a pointer at offset 0 can never be backward, so this read is pointer-free.
+    // A pointer cannot be the first label, and skip_dns_name accepts any name read_dns_name accepts.
     auto result = mdnspp::detail::read_dns_name(buf, 0);
     if(result.has_value())
     {
         check_decoded(*result);
         size_t offset = 0;
-        assert(mdnspp::detail::skip_dns_name(buf, offset));
+        const bool skipped = mdnspp::detail::skip_dns_name(buf, offset);
+        assert(skipped);
     }
 
     if(size > 0)

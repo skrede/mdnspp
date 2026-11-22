@@ -22,9 +22,12 @@ inline std::error_code seal_outgoing(key_ring &keys, uint64_t &sequence,
     if(!sending)
         return std::make_error_code(std::errc::operation_not_permitted);
     auto hdr = header_template;
-    hdr.sequence = ++sequence;
+    hdr.sequence = sequence + 1;
     hdr.epoch = sending->epoch;
-    return aead_encrypt(sending->key.span(), hdr, plaintext, out, written);
+    const std::error_code ec = aead_encrypt(sending->key.span(), hdr, plaintext, out, written);
+    if(!ec)
+        sequence = hdr.sequence;
+    return ec;
 }
 
 }

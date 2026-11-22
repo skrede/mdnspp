@@ -105,3 +105,18 @@ TEST_CASE("throwing send carries the same buffer_too_small code and sends nothin
     }
     CHECK(sent_count(pair.sender) == 0);
 }
+
+TEST_CASE("a send that reports buffer_too_small consumes no sequence number", "[encrypted_socket][sequence]")
+{
+    paired_sockets pair;
+    auto oversized = largest_plaintext();
+    oversized.push_back(std::byte{0x5A});
+    std::error_code ec;
+
+    pair.sender.send(mdnspp::endpoint{}, std::span<const std::byte>(oversized), ec);
+    REQUIRE(ec == mdnspp::encrypt::encrypt_error::buffer_too_small);
+    send_bytes(pair.sender, plain_bytes{std::byte{0xAB}});
+
+    REQUIRE(sent_count(pair.sender) == 1);
+    CHECK(header_of(sent_packet_at(pair.sender, 0)).sequence == 1);
+}

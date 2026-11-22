@@ -5,9 +5,14 @@
 #include <string>
 #include <compare>
 #include <sstream>
+#include <utility>
+#include <type_traits>
 #include <unordered_map>
 
 using mdnspp::dns_name;
+
+static_assert(std::is_same_v<decltype(std::declval<const dns_name &>() <=> std::declval<const dns_name &>()),
+                             std::weak_ordering>);
 
 namespace {
 
@@ -116,9 +121,23 @@ SCENARIO("dns_name supports three-way comparison via operator<=>", "[dns_name][c
     {
         dns_name a("test.local.");
         dns_name b("test.local.");
-        THEN("a <=> b is equal")
+        THEN("a <=> b is equivalent")
         {
-            REQUIRE((a <=> b) == std::strong_ordering::equal);
+            REQUIRE((a <=> b) == std::weak_ordering::equivalent);
+        }
+    }
+}
+
+SCENARIO("dns_name orders names that differ only in ASCII case as equivalent", "[dns_name][comparison]")
+{
+    GIVEN("two names that differ only in ASCII case in their first label")
+    {
+        dns_name a("A.local.");
+        dns_name b("a.local.");
+        THEN("a <=> b is equivalent while their stored values differ")
+        {
+            REQUIRE((a <=> b) == std::weak_ordering::equivalent);
+            REQUIRE(a.str() != b.str());
         }
     }
 }

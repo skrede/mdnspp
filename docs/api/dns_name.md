@@ -37,14 +37,14 @@ public:
     const std::string &str() const noexcept;
 
     bool empty() const noexcept;
-    auto find(std::string_view sv, std::size_t pos = 0) const noexcept;
-    static constexpr auto npos = std::string::npos;
+    std::size_t find(std::string_view sv, std::size_t pos = 0) const noexcept;
+    static constexpr std::size_t npos = std::string::npos;
 
     static constexpr char ascii_fold(char c) noexcept;
     std::string comparison_key() const;
 
     bool operator==(const dns_name &other) const noexcept;
-    std::strong_ordering operator<=>(const dns_name &other) const noexcept;
+    std::weak_ordering operator<=>(const dns_name &other) const noexcept;
 };
 
 std::ostream &operator<<(std::ostream &os, const dns_name &n);
@@ -104,7 +104,10 @@ and yield the empty `dns_name` without an error.
 `operator==`, `operator<=>` and `std::hash<dns_name>` are case-insensitive over
 ASCII `'A'`-`'Z'` only (RFC 6762 §16); bytes at and above `0x80` are never folded.
 Because both operands hold the canonical escaped form, the byte-wise folded
-comparison is a label-aware name comparison. The hash is FNV-1a over the folded
+comparison is a label-aware name comparison. `operator<=>` returns
+`std::weak_ordering`: names that differ only in ASCII case compare equivalent, yet
+`str()` and `operator<<` tell them apart, so equivalent names are not substitutable
+and the ordering is not strong. The hash is FNV-1a over the folded
 bytes, so names that compare equal hash equal.
 
 | Member | Description |

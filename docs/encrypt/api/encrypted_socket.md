@@ -109,8 +109,11 @@ void send(const endpoint &dest, std::span<const std::byte> plaintext, std::error
 Seals `plaintext` into the socket's send buffer with the current epoch key, the `sender_id`, this socket's session ID, and the next sequence number (the first packet carries 1), then passes the datagram to the inner socket's `send`. The encrypt layer allocates nothing per call; the send buffer is sized once at construction. Failures are reported through `ec`:
 
 - `std::errc::operation_not_permitted` if the socket has no usable key (see Constructors); nothing is sent and the sequence number is not consumed.
-- `encrypt_error::buffer_too_small` if the sealed packet would not fit in `max_udp_payload` (9000) bytes. The maximum plaintext is therefore `max_udp_payload - 68` (`encrypted_overhead`), i.e. 8932 bytes; a larger plaintext is not sent and the inner socket sees nothing.
-- Whatever error the inner socket's `send` reports.
+- `encrypt_error::buffer_too_small` if the sealed packet would not fit in `max_udp_payload` (9000) bytes. The maximum plaintext is therefore `max_udp_payload - 68` (`encrypted_overhead`), i.e. 8932 bytes; a larger plaintext is not sent, the inner socket sees nothing, and the sequence number is not consumed.
+- `std::errc::not_supported` if libsodium cannot be initialized; nothing is sent and the sequence number is not consumed.
+- Whatever error the inner socket's `send` reports. The packet was sealed, so its sequence number is consumed.
+
+The sequence counter advances only when a packet is sealed: a failed seal leaves it unchanged, and the next sealed packet carries the number the failed one would have had.
 
 When `auth_only` mode is enabled, the plaintext is not encrypted: the packet carries the header, the plaintext, and the AEAD tag covering both (the `flag_encrypted` bit is cleared). The overhead is the same 68 bytes.
 

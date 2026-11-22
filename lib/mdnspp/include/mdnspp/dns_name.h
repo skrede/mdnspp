@@ -77,8 +77,8 @@ public:
     const std::string &str() const noexcept { return m_name; }
 
     bool empty() const noexcept { return m_name.empty(); }
-    auto find(std::string_view sv, std::size_t pos = 0) const noexcept { return m_name.find(sv, pos); }
-    static constexpr auto npos = std::string::npos;
+    std::size_t find(std::string_view sv, std::size_t pos = 0) const noexcept { return m_name.find(sv, pos); }
+    static constexpr std::size_t npos = std::string::npos;
 
     // RFC 6762 §16: only ASCII 'A'-'Z' fold; UTF-8 bytes at and above 0x80 never do.
     static constexpr char ascii_fold(char c) noexcept
@@ -103,7 +103,8 @@ public:
                           [](char a, char b) { return ascii_fold(a) == ascii_fold(b); });
     }
 
-    std::strong_ordering operator<=>(const dns_name &other) const noexcept
+    // Weak, not strong: names that differ only in ASCII case are equivalent but not substitutable (str() differs).
+    std::weak_ordering operator<=>(const dns_name &other) const noexcept
     {
         return std::lexicographical_compare_three_way(
             m_name.begin(), m_name.end(), other.m_name.begin(), other.m_name.end(),

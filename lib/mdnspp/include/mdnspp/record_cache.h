@@ -14,6 +14,7 @@
 #include <vector>
 #include <cstdint>
 #include <utility>
+#include <algorithm>
 #include <shared_mutex>
 #include <system_error>
 #include <unordered_map>
@@ -138,7 +139,8 @@ private:
     // RFC 6762 section 10.1: a goodbye record (TTL 0) is retained for goodbye_grace.
     uint32_t retained_ttl(uint32_t ttl) const
     {
-        return (ttl == 0) ? static_cast<uint32_t>(m_options.goodbye_grace.count()) : ttl;
+        auto grace = (std::min)(m_options.goodbye_grace.count(), std::chrono::seconds::rep{UINT32_MAX});
+        return (ttl == 0) ? static_cast<uint32_t>(grace) : ttl;
     }
 
     bool refresh_match(const key_type &key, const mdns_record_variant &rec, endpoint &origin, bool flush,

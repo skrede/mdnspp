@@ -56,7 +56,7 @@ inline bool append_uncompressed_question(std::vector<std::byte> &section, std::s
 }
 
 // Legacy unicast responses repeat the question section (RFC 6762 section 6.7), here without compression pointers.
-// The rebuild stops at the first malformed question; a packet shorter than a header gives an empty section and 0.
+// A question that cannot be rebuilt, or a packet shorter than a header, gives an empty section and 0.
 inline std::pair<std::vector<std::byte>, uint16_t> rebuild_question_section(std::span<const std::byte> data)
 {
     if(data.size() < 12)
@@ -68,7 +68,7 @@ inline std::pair<std::vector<std::byte>, uint16_t> rebuild_question_section(std:
     for(uint16_t i = 0; i < qdcount; ++i)
     {
         if(!append_uncompressed_question(section, data, offset))
-            break;
+            return {};
         ++rebuilt;
     }
     return {std::move(section), rebuilt};

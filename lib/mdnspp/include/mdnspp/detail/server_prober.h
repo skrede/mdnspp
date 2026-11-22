@@ -4,6 +4,7 @@
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/dns_query.h"
+#include "mdnspp/detail/dns_write.h"
 #include "mdnspp/detail/server_context.h"
 #include "mdnspp/detail/server_announcer.h"
 #include "mdnspp/detail/server_conflicts.h"
@@ -108,7 +109,7 @@ private:
         if(m_ctx.pa_state.state != server_state::probing) return;
         if(m_ctx.stopped()) return;
 
-        auto probe = build_probe_query(m_ctx.info, static_cast<uint32_t>(m_ctx.opts.probe_authority_ttl.count()));
+        auto probe = build_probe_query(m_ctx.info, wire_ttl(m_ctx.opts.probe_authority_ttl));
         if(probe.empty())
         {
             // An unencodable name (label over 63 or name over 255 bytes) can never be announced.

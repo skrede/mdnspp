@@ -3,6 +3,7 @@
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_write.h"
 #include "mdnspp/detail/dns_response.h"
 #include "mdnspp/detail/server_context.h"
 #include "mdnspp/detail/server_multicast.h"
@@ -98,7 +99,7 @@ private:
 
     void send_enumeration_announcements()
     {
-        uint32_t ttl = static_cast<uint32_t>(m_ctx.opts.fallback_record_ttl.count());
+        uint32_t ttl = wire_ttl(m_ctx.opts.fallback_record_ttl);
         if(m_ctx.opts.respond_to_meta_queries)
         {
             auto pkt = build_meta_query_response(m_ctx.info, ttl);

@@ -127,6 +127,8 @@ inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qt
                                               response_mode mode = response_mode::multicast)
 {
     auto packet = build_dns_query(name, qtype, mode);
+    if(packet.empty())
+        return packet;
     uint16_t ancount = 0;
     for(const auto &ka : known_answers)
     {

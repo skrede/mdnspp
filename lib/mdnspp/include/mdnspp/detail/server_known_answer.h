@@ -3,6 +3,7 @@
 
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_write.h"
 #include "mdnspp/detail/server_record_match.h"
 #include "mdnspp/detail/server_known_answer_record.h"
 
@@ -41,7 +42,7 @@ struct ka_thresholds
 inline ka_thresholds make_ka_thresholds(const service_options &opts, double fraction)
 {
     auto th = [fraction](std::chrono::seconds ttl) -> uint32_t {
-        return static_cast<uint32_t>(static_cast<double>(ttl.count()) * fraction);
+        return static_cast<uint32_t>(static_cast<double>(wire_ttl(ttl)) * fraction);
     };
     return ka_thresholds{
         .ptr  = th(opts.ptr_ttl),

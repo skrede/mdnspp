@@ -14,7 +14,6 @@
 #include <climits>
 #include <cstddef>
 #include <cstdint>
-#include <algorithm>
 
 namespace mdnspp::detail {
 
@@ -31,7 +30,7 @@ struct response_ttls
 inline response_ttls make_response_ttls(const mdnspp::service_options &opts, uint32_t legacy_unicast_cap)
 {
     auto ttl_for = [&](std::chrono::seconds t) -> uint32_t {
-        return (std::min)(static_cast<uint32_t>(t.count()), legacy_unicast_cap);
+        return wire_ttl(t, legacy_unicast_cap);
     };
     return {ttl_for(opts.ptr_ttl), ttl_for(opts.srv_ttl), ttl_for(opts.txt_ttl), ttl_for(opts.a_ttl),
             ttl_for(opts.aaaa_ttl)};

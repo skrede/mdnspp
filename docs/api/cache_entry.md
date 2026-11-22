@@ -25,7 +25,7 @@ struct cache_entry {
 | `record` | `mdns_record_variant` | The cached record. A `std::variant` over `record_a`, `record_aaaa`, `record_ptr`, `record_srv`, and `record_txt`. Use `std::visit` to inspect the concrete type. |
 | `origin` | `endpoint` | The sender's address and port from which this record was received. |
 | `cache_flush` | `bool` | Whether the cache-flush bit was set on this record (RFC 6762 §10.2). When true, this record asserts authority over the name/type: records of the same name/type from other origins received more than one second ago are scheduled to expire after `cache_options::goodbye_grace`. |
-| `wire_ttl` | `uint32_t` | Original TTL from the network, in seconds. Goodbye records (TTL=0 on the wire) are stored with `wire_ttl` equal to `cache_options::goodbye_grace` in seconds (default 1) per the RFC 6762 §10.1 grace period. |
+| `wire_ttl` | `uint32_t` | Original TTL from the network, in seconds. Goodbye records (TTL=0 on the wire) are stored with `wire_ttl` equal to `cache_options::goodbye_grace` in seconds (default 1, at most `UINT32_MAX`) per the RFC 6762 §10.1 grace period. |
 | `ttl_remaining` | `std::chrono::nanoseconds` | Time remaining until record expiry, computed from `wire_ttl` and the time elapsed since insertion. May be negative for records that have already expired but not yet been evicted by `erase_expired()`. |
 
 **Note:** `cache_entry` is a pure value type with no internal synchronization. Values returned by `record_cache::find()`, `snapshot()`, and `erase_expired()` are snapshots computed at the moment the call returns.

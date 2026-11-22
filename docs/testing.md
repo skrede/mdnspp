@@ -42,6 +42,7 @@ Unit tests cover:
 - Query deduplication and response aggregation (tests/unit/server_detail/:
   server_response_aggregation_test, server_answer_plan_test,
   server_answer_response_test; duplicate_answer_suppression_test)
+- Outgoing TTL limits (tests/unit/server_detail/: server_wire_ttl_test)
 - Service monitor and discovery aggregation (tests/unit/monitor/:
   monitor_*_test; tests/unit/discovery/: discovery_*_test;
   tests/unit/service_aggregation/: service_aggregation_test,

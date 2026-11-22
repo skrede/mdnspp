@@ -5,6 +5,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <span>
+#include <vector>
 #include <cstddef>
 
 TEST_CASE("rebuild_question_section re-encodes questions for legacy unicast", "[server_query_match]")
@@ -31,4 +32,17 @@ TEST_CASE("rebuild_question_section re-encodes questions for legacy unicast", "[
     auto name2 = read_dns_name(span, offset);
     REQUIRE(name2.has_value());
     CHECK(*name2 == "myhost.local.");
+}
+
+TEST_CASE("rebuild_question_section gives no section when a later question is malformed", "[server_query_match]")
+{
+    std::vector<std::byte> pkt;
+    push_header(pkt, 2, 0);
+    push_question(pkt, "_http._tcp.local.", dns_type::ptr, false);
+    pkt.push_back(std::byte{5});
+    pkt.push_back(std::byte{'a'});
+
+    auto [section, count] = rebuild_question_section(std::span(pkt));
+    CHECK(count == 0);
+    CHECK(section.empty());
 }

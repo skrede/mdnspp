@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DETAIL_SERVER_RESPONDER_H
 
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_write.h"
 #include "mdnspp/detail/server_context.h"
 #include "mdnspp/detail/server_multicast.h"
 #include "mdnspp/detail/server_answer_plan.h"
@@ -103,8 +104,8 @@ private:
         return true;
     }
 
-    // RFC 6762 section 6.7: the response repeats the query ID and question, never sets the cache-flush
-    // bit, and caps TTLs at legacy_unicast_ttl.
+    // RFC 6762 section 6.7: the response repeats the query ID and the whole question section ("MUST repeat"), so a
+    // query whose questions cannot all be repeated gets no reply; it never sets cache-flush and caps TTLs.
     void answer_legacy_unicast(const endpoint &sender, std::span<const std::byte> cdata)
     {
         auto qmr = match_queries(cdata, m_ctx.info, m_ctx.opts);
@@ -116,12 +117,14 @@ private:
             return;
 
         auto [questions, qdcount] = rebuild_question_section(cdata);
+        if(qdcount == 0)
+            return;
 
         response_header_options hdr;
         hdr.id = qmr.query_id;
         hdr.cache_flush = false;
         hdr.include_nsec = false;
-        hdr.ttl_cap = static_cast<uint32_t>(m_ctx.mdns_opts.legacy_unicast_ttl.count());
+        hdr.ttl_cap = wire_ttl(m_ctx.mdns_opts.legacy_unicast_ttl);
         hdr.questions = std::span<const std::byte>(questions);
         hdr.qdcount = qdcount;
 
@@ -134,14 +137,14 @@ private:
     {
         if(qmr.meta_matched)
         {
-            uint32_t meta_ttl = static_cast<uint32_t>(m_ctx.opts.fallback_record_ttl.count());
+            uint32_t meta_ttl = wire_ttl(m_ctx.opts.fallback_record_ttl);
             auto pkt = build_meta_query_response(m_ctx.info, meta_ttl);
             m_ctx.send_to(qmr.mode, sender, pkt, "meta-query response send");
         }
 
         if(!qmr.matched_subtype.empty())
         {
-            uint32_t sub_ttl = static_cast<uint32_t>(m_ctx.opts.fallback_record_ttl.count());
+            uint32_t sub_ttl = wire_ttl(m_ctx.opts.fallback_record_ttl);
             auto pkt = build_subtype_response(qmr.matched_subtype, m_ctx.info, sub_ttl);
             m_ctx.send_to(qmr.mode, sender, pkt, "subtype response send");
         }

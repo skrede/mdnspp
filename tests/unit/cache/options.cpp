@@ -1,5 +1,6 @@
 #include "helpers.h"
 
+#include <cstdint>
 #include <system_error>
 
 static void check_configured_grace_expiry(record_cache<clock_type> &cache)
@@ -76,6 +77,17 @@ TEST_CASE("goodbye_grace configurable", "[record_cache]")
     }
 
     check_configured_grace_expiry(cache);
+}
+
+TEST_CASE("goodbye_grace above 32 bits retains a goodbye record instead of wrapping", "[record_cache]")
+{
+    clock_guard cg;
+    record_cache<clock_type> cache(cache_options{.goodbye_grace = std::chrono::seconds((int64_t{1} << 32) + 1)});
+    cache.insert(make_a_record("myhost.local.", "192.168.1.50", 0), test_origin());
+
+    clock_type::advance(2s);
+    CHECK(cache.erase_expired().empty());
+    CHECK(cache.find("myhost.local.", dns_type::a).size() == 1);
 }
 
 TEST_CASE("record_cache rejects a non-positive goodbye_grace", "[record_cache][validate]")

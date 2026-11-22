@@ -62,15 +62,14 @@ build_dns_query_tc(std::string_view name, dns_type qtype,
 {
     std::vector<std::vector<std::byte>> result;
     auto current_pkt = build_dns_query(name, qtype, mode);
-    if(known_answers.empty())
-    {
-        result.push_back(std::move(current_pkt));
+    if(current_pkt.empty())
         return result;
-    }
     auto answers = encode_known_answers(known_answers);
     uint16_t current_ancount = 0;
     for(const auto &[start, end] : answers.bounds)
     {
+        if(start == end)
+            continue;
         if(needs_continuation(current_pkt, current_ancount, end - start, max_payload))
             start_continuation(result, current_pkt, current_ancount);
         current_pkt.insert(current_pkt.end(), answers.bytes.data() + start, answers.bytes.data() + end);

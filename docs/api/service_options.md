@@ -81,7 +81,7 @@ struct service_options
 | `probe_count` | `uint8_t` | `3` | RFC 6762 §8.1 | Number of probe packets sent before a service is considered conflict-free and announcing begins. Must be at least 1: the server constructors reject `0` with `std::errc::invalid_argument`. |
 | `probe_interval` | `std::chrono::milliseconds` | `250ms` | RFC 6762 §8.1 | Interval between successive probe packets. |
 | `probe_initial_delay_max` | `std::chrono::milliseconds` | `250ms` | RFC 6762 §8.1 | Upper bound on the random initial delay before the first probe is sent. The first probe is delayed by a uniform random value in `[0, probe_initial_delay_max]` to desynchronize simultaneous startups. |
-| `respond_to_legacy_unicast` | `bool` | `true` | RFC 6762 §6.7 | Whether to respond to legacy unicast queries (source port != 5353). When enabled, the responder sends a unicast reply that repeats the query ID and question, with TTLs capped at `mdns_options::legacy_unicast_ttl`. |
+| `respond_to_legacy_unicast` | `bool` | `true` | RFC 6762 §6.7 | Whether to respond to legacy unicast queries (source port != 5353). When enabled, the responder sends a unicast reply that repeats the query ID and the whole question section, with TTLs capped at `mdns_options::legacy_unicast_ttl`. A query whose questions cannot all be repeated gets no reply. |
 | `ptr_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §10 | TTL for PTR records in outgoing responses. |
 | `srv_ttl` | `std::chrono::seconds` | `120s` | RFC 6762 §10 | TTL for SRV records in outgoing responses. SRV rdata contains a host name; §10 recommends 120 s for host-name-containing records. |
 | `txt_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §10 | TTL for TXT records in outgoing responses. |
@@ -90,6 +90,10 @@ struct service_options
 | `fallback_record_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §10 | Fallback TTL used for NSEC, meta-query PTR and subtype PTR records, which have no per-record-type TTL field. |
 | `probe_authority_ttl` | `std::chrono::seconds` | `120s` | RFC 6762 §8.2 | TTL for the records placed in the authority section of probe queries (the full proposed record set: SRV, TXT, A/AAAA) for simultaneous-probe tiebreaking. This value is not cached by recipients; changing it has no interoperability impact. |
 | `probe_defer_delay` | `std::chrono::milliseconds` | `1000ms` | RFC 6762 §8.2 | Delay before re-probing after losing a simultaneous-probe tiebreak. When the tiebreaking comparison indicates the remote probe wins, the local node defers by this duration before restarting its probe sequence. |
+
+The TTL fields (`ptr_ttl`, `srv_ttl`, `txt_ttl`, `a_ttl`, `aaaa_ttl`, `fallback_record_ttl` and
+`probe_authority_ttl`) are sent as at most 2^31 - 1 s (2147483647 s): RFC 2181 section 8 limits a TTL to 31 bits and
+has a receiver treat a value with the top bit set as zero. A larger configured value is sent as 2^31 - 1.
 
 ### on_conflict
 

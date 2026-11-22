@@ -42,7 +42,7 @@ public:
 
     uint32_t ttl_for(std::chrono::seconds t) const
     {
-        return (std::min)(static_cast<uint32_t>(t.count()), m_hdr.ttl_cap);
+        return wire_ttl(t, m_hdr.ttl_cap);
     }
 
     void add_answer(const std::vector<std::byte> &name, dns_type rtype, uint32_t ttl,

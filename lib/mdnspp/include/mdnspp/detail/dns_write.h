@@ -9,13 +9,24 @@
 #include "mdnspp/mdns_error.h"
 #include "mdnspp/service_info.h"
 
+#include <chrono>
 #include <string>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
 #include <utility>
+#include <algorithm>
 
 namespace mdnspp::detail {
+
+// RFC 2181 section 8: a TTL is at most 2^31 - 1; a receiver treats a value with the top bit set as zero.
+inline constexpr uint32_t max_wire_ttl = 0x7FFFFFFFu;
+
+inline uint32_t wire_ttl(std::chrono::seconds ttl, uint32_t cap = max_wire_ttl)
+{
+    auto limit = static_cast<std::chrono::seconds::rep>((std::min)(cap, max_wire_ttl));
+    return static_cast<uint32_t>(std::clamp<std::chrono::seconds::rep>(ttl.count(), 0, limit));
+}
 
 // Callers resolve name-encoding failures first; the guard only protects packet structure against an empty owner
 // name or rdata over the uint16_t RDLENGTH limit.

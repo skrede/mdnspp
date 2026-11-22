@@ -2,6 +2,8 @@
 
 #include <vector>
 #include <cstddef>
+#include <cstdint>
+#include <utility>
 #include <filesystem>
 
 namespace mdnspp::corpus {
@@ -27,22 +29,23 @@ void valid_a_response(const std::filesystem::path &dir)
 
 void valid_ptr_response(const std::filesystem::path &dir)
 {
-    write_seed(dir, "valid_ptr_response",
-        bytes({0x00, 0x00,
-               0x84, 0x00,  // QR=1, AA=1
-               0x00, 0x00,
-               0x00, 0x01,  // ANCOUNT = 1
-               0x00, 0x00,
-               0x00, 0x00,
-               // "_http._tcp.local."
-               0x05, '_', 'h', 't', 't', 'p', 0x04, '_', 't', 'c', 'p', 0x05, 'l', 'o', 'c', 'a', 'l', 0x00,
-               0x00, 0x0C,              // TYPE = PTR
-               0x00, 0x01,              // CLASS = IN
-               0x00, 0x00, 0x11, 0x94,  // TTL = 4500
-               0x00, 0x19,              // RDLENGTH = 25
-               // "MyService._http._tcp.local."
-               0x09, 'M', 'y', 'S', 'e', 'r', 'v', 'i', 'c', 'e',
-               0x05, '_', 'h', 't', 't', 'p', 0x04, '_', 't', 'c', 'p', 0x05, 'l', 'o', 'c', 'a', 'l', 0x00}));
+    std::vector<std::byte> seed;
+    append_u16(seed, 0x0000); // ID
+    append_u16(seed, 0x8400); // QR=1, AA=1
+    append_u16(seed, 0x0000);
+    append_u16(seed, 0x0001); // ANCOUNT = 1
+    append_u16(seed, 0x0000);
+    append_u16(seed, 0x0000);
+    append_name(seed, "_http._tcp.local.");
+    append_u16(seed, 0x000C); // TYPE = PTR
+    append_u16(seed, 0x0001); // CLASS = IN
+    append_u16(seed, 0x0000); // TTL = 4500
+    append_u16(seed, 0x1194);
+    std::vector<std::byte> rdata;
+    append_name(rdata, "MyService._http._tcp.local.");
+    append_u16(seed, static_cast<uint16_t>(rdata.size())); // RDLENGTH
+    seed.insert(seed.end(), rdata.begin(), rdata.end());
+    write_seed(dir, "valid_ptr_response", std::move(seed));
 }
 
 void malformed_headers(const std::filesystem::path &dir)

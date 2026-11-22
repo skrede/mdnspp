@@ -39,6 +39,7 @@ class inproc_bus
     struct socket_entry
     {
         std::reference_wrapper<inproc_receiver> receiver;
+        uint64_t id;
         endpoint assigned_ep;
         endpoint group;
         bool loopback;
@@ -48,6 +49,7 @@ public:
     explicit inproc_bus(uint16_t start_port = 5353)
         : m_port(start_port)
         , m_next_ip{1}
+        , m_next_id{0}
         , m_queue()
         , m_sockets()
     {
@@ -64,6 +66,7 @@ public:
         endpoint assigned{"127.0.0." + std::to_string(m_next_ip++), port};
         m_sockets.push_back(socket_entry{
             receiver,
+            m_next_id++,
             assigned,
             opts.multicast_group,
             opts.multicast_loopback == loopback_mode::enabled
@@ -107,6 +110,7 @@ public:
 private:
     uint16_t m_port;
     uint8_t m_next_ip;
+    uint64_t m_next_id;
     std::deque<queued_packet> m_queue;
     std::vector<socket_entry> m_sockets;
 
@@ -123,15 +127,26 @@ private:
         return false;
     }
 
+    static bool takes_multicast(const socket_entry &entry, const queued_packet &pkt)
+    {
+        return pkt.to == entry.group && (entry.loopback || entry.assigned_ep != pkt.from);
+    }
+
+    // A handler may open or close sockets: the packet goes to the sockets registered when its delivery began that are
+    // still registered when their turn comes.
     void deliver_multicast(const queued_packet &pkt)
     {
-        for(auto &entry : m_sockets)
+        std::vector<uint64_t> targets;
+        for(const socket_entry &entry : m_sockets)
         {
-            if(pkt.to != entry.group)
-                continue;
-            if(!entry.loopback && entry.assigned_ep == pkt.from)
-                continue;
-            entry.receiver.get().deliver(pkt.from, std::span<const std::byte>(pkt.data));
+            if(takes_multicast(entry, pkt))
+                targets.push_back(entry.id);
+        }
+        for(uint64_t id : targets)
+        {
+            auto it = std::ranges::find(m_sockets, id, &socket_entry::id);
+            if(it != m_sockets.end())
+                it->receiver.get().deliver(pkt.from, std::span<const std::byte>(pkt.data));
         }
     }
 };

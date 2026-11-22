@@ -21,18 +21,21 @@
 #include "mdnspp/testing/test_clock.h"
 
 #include <chrono>
+#include <cstdint>
 
 namespace mdnspp::inproc {
 
 struct inproc_harness
 {
     inproc_harness()
+        : bus()
+        , executor(bus)
     {
         testing::test_clock::reset();
     }
 
     inproc_bus<testing::test_clock>      bus;
-    inproc_executor<testing::test_clock> executor{bus};
+    inproc_executor<testing::test_clock> executor;
 
     void advance(std::chrono::milliseconds d)
     {
@@ -77,15 +80,14 @@ struct inproc_harness
             executor, std::move(opts), std::move(sock_opts), std::move(mdns_opts)};
     }
 
-    // The maximum initial delay fires the first probe whatever the random draw; three probe intervals then cover
-    // probes 2 and 3 and the conflict window after probe 3. The first announcement is immediate.
+    // The maximum initial delay fires the first probe whatever the random draw; probe_count probe intervals then
+    // cover probes 2 to probe_count and the conflict window after the last probe. The first announcement is immediate.
     void advance_to_live(basic_service_server<inproc_test_policy> &server,
                          service_options opts = {})
     {
         advance(opts.probe_initial_delay_max);
-        advance(opts.probe_interval);
-        advance(opts.probe_interval);
-        advance(opts.probe_interval);
+        for(uint8_t i = 0; i < opts.probe_count; ++i)
+            advance(opts.probe_interval);
         for(uint8_t i = 1; i < opts.announce_count; ++i)
             advance(opts.announce_interval);
         (void)server;

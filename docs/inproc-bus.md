@@ -49,6 +49,15 @@ dispatches it:
   `socket_options::multicast_loopback` defaults to `loopback_mode::enabled`.
   Set `loopback_mode::disabled` to skip delivery back to the sender.
 
+**Handlers that open or close sockets.** Delivery runs the receiving socket's
+pending receive handler synchronously, and that handler may open, close or
+destroy sockets on the same bus. A multicast packet goes to the sockets that
+were registered when its delivery began, each at most once; a socket closed or
+destroyed by an earlier handler is skipped, and a socket opened during the
+delivery does not receive that packet (it receives the packets dequeued after
+it). A unicast packet goes to one socket only, so nothing is read from the
+socket list after its handler runs.
+
 **Multicast group isolation.** Sockets join a group by setting
 `socket_options::multicast_group`. Only sockets in the same group receive
 multicast packets for that group. Sockets not joined to the group are invisible

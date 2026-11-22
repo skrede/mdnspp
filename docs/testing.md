@@ -99,6 +99,11 @@ Unit tests cover:
 - In-process executor threading: posts from several threads each run once and
   in posting order per thread, and `stop()` from another thread ends `run()`
   (inproc_executor_post_test)
+- In-process bus reentrancy: a receive handler that opens sockets, destroys
+  another socket or closes its own during a multicast delivery
+  (inproc_bus_reentrancy_test)
+- In-process harness: `advance_to_live` brings servers with one, three and five
+  probes live (inproc_harness_test)
 - asio backend: IPv6 interface binding (asio_ipv6_interface_test), peer
   destruction with a pending receive (asio_peer_destroy_test), and completion
   tokens (tests/unit/asio_token/: asio_token_*_test)
@@ -156,12 +161,11 @@ and `inproc_executor<test_clock>` so tests can advance simulated time with
   `basic_*` peer on `inproc_test_policy` with the shared executor, forwarding the
   given options.
 - `advance_to_live(server, opts)` advances `opts.probe_initial_delay_max` (so the
-  first probe fires whatever the random initial delay), three
-  `opts.probe_interval` steps (probes 2 and 3 and the conflict window after
-  probe 3), and `opts.announce_count - 1` `opts.announce_interval` steps; with the
-  default `service_options` that is 2000 ms. Pass the server's `service_options`
-  when they are not the defaults. The probe steps assume three probes and do
-  not follow `opts.probe_count`.
+  first probe fires whatever the random initial delay), `opts.probe_count`
+  `opts.probe_interval` steps (probes 2 to `probe_count` and the conflict window
+  after the last probe), and `opts.announce_count - 1` `opts.announce_interval`
+  steps; with the default `service_options` that is 2000 ms. Pass the server's
+  `service_options` when they are not the defaults.
 
 Beyond the ten core scenarios below, dedicated suites cover legacy unicast
 responses (`inproc_legacy_unicast/`, using

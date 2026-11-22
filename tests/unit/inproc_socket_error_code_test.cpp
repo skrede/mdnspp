@@ -112,7 +112,7 @@ TEST_CASE("the throwing send on a closed socket throws bad_file_descriptor", "[i
 }
 
 TEST_CASE("construction reports address_not_available once every loopback address is used",
-    "[inproc_socket][error_code]")
+    "[.][address_exhaustion][inproc_socket][error_code]")
 {
     constexpr uint32_t loopback_addresses = (uint32_t{1} << 24) - 2;
     inproc_bus<> bus;

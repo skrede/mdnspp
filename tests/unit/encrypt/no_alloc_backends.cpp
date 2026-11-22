@@ -17,6 +17,7 @@
 #include <string>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 #include <system_error>
 
 namespace {
@@ -33,10 +34,13 @@ uint16_t bound_port(mdnspp::detail::native_socket_t fd)
     return ntohs(reinterpret_cast<const sockaddr_in &>(addr).sin_port);
 }
 
-mdnspp::encrypt::encrypt_socket_options loopback_opts(const char *group, uint32_t sender_id)
+mdnspp::encrypt::encrypt_socket_options loopback_opts(const char *group, const char *loopback, uint32_t sender_id)
 {
     auto opts = make_test_opts(std::byte{0x42}, sender_id);
     opts.multicast_group = mdnspp::endpoint{group, 0};
+    // Darwin rejects an IPv6 link-local group join with interface index 0 when it has no IPv6 route to the group.
+    if(std::string_view{group}.find(':') != std::string_view::npos)
+        opts.interface_address = loopback;
     return opts;
 }
 
@@ -54,8 +58,8 @@ struct default_rig
         : ctx{}
         , receiver_ec{}
         , sender_ec{}
-        , receiver(ctx, loopback_opts(group, 2), receiver_ec)
-        , sender(ctx, loopback_opts(group, 1), sender_ec)
+        , receiver(ctx, loopback_opts(group, loopback, 2), receiver_ec)
+        , sender(ctx, loopback_opts(group, loopback, 1), sender_ec)
         , dest{loopback, receiver_ec ? uint16_t{0} : bound_port(receiver.inner().native_handle())}
         , delivered(0)
     {

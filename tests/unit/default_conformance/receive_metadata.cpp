@@ -18,6 +18,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string_view>
 #include <system_error>
 
 namespace {
@@ -40,6 +41,9 @@ std::optional<mdnspp::recv_metadata> receive_from_self(const char *group, const 
     bool expired = false;
     mdnspp::socket_options opts;
     opts.multicast_group = mdnspp::endpoint{group, 0};
+    // Darwin rejects an IPv6 link-local group join with interface index 0 when it has no IPv6 route to the group.
+    if(std::string_view{group}.find(':') != std::string_view::npos)
+        opts.interface_address = loopback;
     mdnspp::default_socket socket(ctx, opts, ec);
     if(ec)
         mdnspp::test_support::skip_or_fail("default_socket construction failed: " + ec.message());

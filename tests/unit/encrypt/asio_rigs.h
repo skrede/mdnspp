@@ -162,6 +162,9 @@ private:
     {
         auto opts = make_test_opts(std::byte{0x42}, sender_id);
         opts.multicast_group = mdnspp::endpoint{family.group, 0};
+        // Darwin rejects an IPv6 link-local group join with interface index 0 when it has no IPv6 route to the group.
+        if(family.protocol == asio::ip::udp::v6())
+            opts.interface_address = family.dest;
         return opts;
     }
 

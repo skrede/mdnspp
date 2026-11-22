@@ -14,6 +14,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <span>
+#include <chrono>
 #include <string>
 #include <cstddef>
 #include <cstdint>
@@ -77,10 +78,15 @@ struct default_rig
         });
     }
 
+    // Darwin queues loopback datagrams asynchronously, so a single zero-timeout poll can miss one and push the
+    // first-receive allocations into the measured window; wait for each delivery instead.
     void cycle(std::span<const std::byte> plaintext)
     {
+        const uint64_t target = delivered + 1;
+        const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
         sender.send(dest, plaintext);
-        ctx.poll_one();
+        while(delivered < target && std::chrono::steady_clock::now() < deadline)
+            ctx.poll_one();
     }
 };
 

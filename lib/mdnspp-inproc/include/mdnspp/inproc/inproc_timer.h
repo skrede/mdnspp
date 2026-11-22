@@ -6,30 +6,32 @@
 #include "mdnspp/detail/compat.h"
 
 #include <chrono>
+#include <utility>
 #include <system_error>
 
 namespace mdnspp::inproc {
 
 template <typename Clock = std::chrono::steady_clock>
-class inproc_timer
+class inproc_timer : public inproc_timer_base<Clock>
 {
 public:
     explicit inproc_timer(inproc_executor<Clock> &ex)
-        : m_exec(&ex)
+        : m_active{false}
+        , m_exec(ex)
+        , m_expiry{}
+        , m_handler()
     {
-        m_exec->register_timer(this);
+        m_exec.register_timer(*this);
     }
 
     explicit inproc_timer(inproc_executor<Clock> &ex, std::error_code &)
-        : m_exec(&ex)
+        : inproc_timer(ex)
     {
-        m_exec->register_timer(this);
     }
 
-    ~inproc_timer()
+    ~inproc_timer() override
     {
-        if(m_exec)
-            m_exec->deregister_timer(this);
+        m_exec.deregister_timer(*this);
     }
 
     inproc_timer(const inproc_timer &) = delete;
@@ -63,7 +65,7 @@ public:
         }
     }
 
-    bool try_fire(typename Clock::time_point now)
+    bool try_fire(typename Clock::time_point now) override
     {
         if(!m_active || !m_handler)
             return false;
@@ -80,10 +82,10 @@ public:
     typename Clock::time_point expiry() const noexcept { return m_expiry; }
 
 private:
-    inproc_executor<Clock> *m_exec;
-    typename Clock::time_point m_expiry{};
+    bool m_active;
+    inproc_executor<Clock> &m_exec;
+    typename Clock::time_point m_expiry;
     detail::move_only_function<void(std::error_code)> m_handler;
-    bool m_active{false};
 };
 
 }

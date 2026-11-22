@@ -20,7 +20,7 @@ Four types form the in-process bus stack:
 | `inproc_timer<Clock>` | Scheduling. Fires based on `Clock::now()` when `try_fire()` is called by the executor. |
 | `inproc_executor<Clock>` | Event loop driver. Runs posted callbacks, fires expired timers, and delivers packets. |
 
-All four are template classes parameterised on a `Clock`. `inproc_policy` aliases
+All four are template classes parameterized on a `Clock`. `inproc_policy` aliases
 `inproc_policy<std::chrono::steady_clock>`, which wires these together under the
 standard `policy_like` concept.
 
@@ -78,6 +78,13 @@ packets).
 
 `run()` loops `drain()` + `sleep_for(1ms)` until `stop()` is called. This
 models the same blocking-loop pattern as `default_context::run()`.
+
+**Threading.** `post()` and `stop()` may be called from any thread. A callable
+posted from another thread enters a mutex-protected ingress that the next
+`step()` drains into the posted queue, so callables posted from one thread run
+in their posting order. Stepping (`step()`, `drain()`, `run()`), the sockets,
+the timers and the bus belong to the one thread that drives the executor; other
+threads reach them only through `post()`.
 
 ## Usage pattern
 
@@ -138,7 +145,7 @@ separately — `mdnspp::inproc` brings it in as a dependency.
 |----------|-------|
 | In-process service simulation | Multiple components interacting without real network or OS sockets. |
 | Testing without network | Deterministic, hermetic — no firewall rules, no multicast routing, no port conflicts. |
-| Process-local service registry | Multiple threads or coroutines in one process discovering each other by service type. |
+| Process-local service registry | Components in one process discovering each other by service type. All of them run on the thread that drives the shared executor; other threads hand work to it with `post()`. |
 | CI environments without multicast | default_policy requires multicast-capable networking. inproc_policy does not. |
 
 **What inproc_policy is not.** It does not replace default_policy for real network

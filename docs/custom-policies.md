@@ -336,26 +336,29 @@ outlast all of them.
 **`socket_type = inproc_socket<Clock>`**
 
 `inproc_socket<Clock>` satisfies `socket_like`. On construction it registers
-itself with the bus via `ex.bus().register_socket(...)` and receives an
-assigned `127.0.0.1:NNNN` endpoint. `send()` enqueues packets onto the bus
+itself with the bus via `ex.bus().register_socket(*this, opts)` and receives an
+assigned `127.0.0.1:NNNN` endpoint; it implements the bus's `inproc_receiver`
+interface, through which the bus calls its two-argument `deliver()`. `send()` enqueues packets onto the bus
 queue rather than delivering inline — this prevents re-entrancy when a receive
 callback triggers a send. `async_receive()` stores the handler; `deliver()` is
 called by the bus when a packet arrives for this socket's endpoint.
 
 **`timer_type = inproc_timer<Clock>`**
 
-`inproc_timer<Clock>` satisfies `timer_like`. On construction it registers with
-`ex.register_timer(this)`. `expires_after()` sets the deadline; `try_fire(now)`
-is called by the executor on each `step()` and fires the stored handler if the
-deadline has passed.
+`inproc_timer<Clock>` satisfies `timer_like`. It implements the executor's
+`inproc_timer_base<Clock>` interface, registers with `ex.register_timer(*this)` on
+construction and deregisters in its destructor. `expires_after()` sets the
+deadline; `try_fire(now)` is called by the executor on each `step()` and fires
+the stored handler if the deadline has passed.
 
 **`post()` threading model**
 
-`inproc_policy::post()` delegates to `ex.post()`, which appends to a
-`std::deque`. This is simpler than `default_policy` (which uses a mutex-protected
-queue) because `inproc_executor` is single-threaded by design — it is not safe to
-call `post()` from a thread other than the one driving `run()` unless the caller
-handles synchronisation externally.
+`inproc_policy::post()` delegates to `ex.post()`, which may be called from any
+thread. The callable enters a mutex-protected ingress, and the next `step()` on
+the driving thread moves it into the executor's queue; callables posted from one
+thread run in their posting order. `stop()` may also be called from any thread
+and ends `run()`. Everything else (`step()`, `drain()`, `run()`, the sockets,
+the timers and the bus) belongs to the one thread that drives the executor.
 
 **Bus parameter vs. context model**
 

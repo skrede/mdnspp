@@ -96,6 +96,9 @@ Unit tests cover:
   in-process sockets, the throwing forms that wrap them, and the mock socket's
   failure injection reaching both (mock_socket_error_code_test,
   inproc_socket_error_code_test)
+- In-process executor threading: posts from several threads each run once and
+  in posting order per thread, and `stop()` from another thread ends `run()`
+  (inproc_executor_post_test)
 - asio backend: IPv6 interface binding (asio_ipv6_interface_test), peer
   destruction with a pending receive (asio_peer_destroy_test), and completion
   tokens (tests/unit/asio_token/: asio_token_*_test)
@@ -282,8 +285,20 @@ link. They verify:
   headers precede the aggregating ones, catching missing-include regressions.
 - `encrypt_defaults_compile_test.cpp` — the encrypt convenience aliases
   compile (built only with `MDNSPP_ENABLE_ENCRYPT=ON`).
+- `header_self_contained.cmake` — every installed header of every enabled
+  library (`mdnspp`, `mdnspp::testing`, `mdnspp::inproc`, and `mdnspp::asio` and
+  `mdnspp::encrypt` when enabled) compiles as the first and only include of a
+  generated translation unit, one object library per library
+  (`mdnspp_self_contained`, `mdnspp__testing_self_contained` and so on), with
+  the project warning flags. The
+  `inproc_template_instantiation` object library explicitly instantiates
+  `inproc_executor`, `inproc_timer`, `inproc_bus` and `inproc_socket` for
+  `std::chrono::steady_clock` and `mdnspp::testing::test_clock`, each from its
+  own header alone. A header that depends on being included after another
+  breaks the build.
 
-Compile tests run as part of the standard build and are included in `ctest`.
+Compile tests run as part of the standard build and are included in `ctest`;
+the self-containment check has no `ctest` entry, the build is the check.
 
 ## Sanitizer jobs in CI
 

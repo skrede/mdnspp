@@ -15,3 +15,5 @@ if (MDNSPP_ENABLE_ENCRYPT)
     target_compile_options(encrypt_defaults_compile_test PRIVATE ${MDNSPP_WARNING_FLAGS})
     add_test(NAME encrypt_defaults_compile_test COMMAND encrypt_defaults_compile_test)
 endif ()
+
+include("${CMAKE_CURRENT_LIST_DIR}/header_self_contained.cmake")

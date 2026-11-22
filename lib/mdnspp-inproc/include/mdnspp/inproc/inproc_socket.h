@@ -23,7 +23,7 @@
 namespace mdnspp::inproc {
 
 template <typename Clock = std::chrono::steady_clock>
-class inproc_socket
+class inproc_socket : public inproc_receiver
 {
     struct checked
     {
@@ -48,13 +48,13 @@ public:
     explicit inproc_socket(inproc_executor<Clock> &ex, const inproc_socket_options &opts, std::error_code &ec)
         : m_bus(&ex.bus())
         , m_opts(opts)
-        , m_ep(m_bus->register_socket(this, opts))
+        , m_ep(m_bus->register_socket(*this, opts))
         , m_closed(false)
     {
         ec.clear();
     }
 
-    ~inproc_socket()
+    ~inproc_socket() override
     {
         close();
     }
@@ -107,12 +107,12 @@ public:
         m_recv_queue = {};
         if(m_bus)
         {
-            m_bus->deregister_socket(this);
+            m_bus->deregister_socket(*this);
             m_bus = nullptr;
         }
     }
 
-    void deliver(const endpoint &from, std::span<const std::byte> data)
+    void deliver(const endpoint &from, std::span<const std::byte> data) override
     {
         deliver(from, data, std::optional<uint8_t>{uint8_t{255}});
     }

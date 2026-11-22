@@ -14,18 +14,42 @@
 #include <cstddef>
 #include <cstdint>
 #include <algorithm>
+#include <functional>
 
 namespace mdnspp::inproc {
 
-template <typename Clock>
-class inproc_socket;
+class inproc_receiver
+{
+public:
+    virtual ~inproc_receiver() = default;
+
+    virtual void deliver(const endpoint &from, std::span<const std::byte> data) = 0;
+};
 
 template <typename Clock = std::chrono::steady_clock>
 class inproc_bus
 {
+    struct queued_packet
+    {
+        endpoint from;
+        endpoint to;
+        std::vector<std::byte> data;
+    };
+
+    struct socket_entry
+    {
+        std::reference_wrapper<inproc_receiver> receiver;
+        endpoint assigned_ep;
+        endpoint group;
+        bool loopback;
+    };
+
 public:
     explicit inproc_bus(uint16_t start_port = 5353)
         : m_port(start_port)
+        , m_next_ip{1}
+        , m_queue()
+        , m_sockets()
     {
     }
 
@@ -34,12 +58,12 @@ public:
     inproc_bus(inproc_bus &&) = delete;
     inproc_bus &operator=(inproc_bus &&) = delete;
 
-    endpoint register_socket(inproc_socket<Clock> *sock, const inproc_socket_options &opts)
+    endpoint register_socket(inproc_receiver &receiver, const inproc_socket_options &opts)
     {
         uint16_t port = opts.port_override.value_or(m_port);
         endpoint assigned{"127.0.0." + std::to_string(m_next_ip++), port};
         m_sockets.push_back(socket_entry{
-            sock,
+            receiver,
             assigned,
             opts.multicast_group,
             opts.multicast_loopback == loopback_mode::enabled
@@ -47,9 +71,9 @@ public:
         return assigned;
     }
 
-    void deregister_socket(inproc_socket<Clock> *sock) noexcept
+    void deregister_socket(inproc_receiver &receiver) noexcept
     {
-        std::erase_if(m_sockets, [sock](const socket_entry &e) { return e.sock == sock; });
+        std::erase_if(m_sockets, [&receiver](const socket_entry &e) { return &e.receiver.get() == &receiver; });
     }
 
     void enqueue(const endpoint &from, const endpoint &to, std::span<const std::byte> data)
@@ -81,25 +105,10 @@ public:
     }
 
 private:
-    struct queued_packet
-    {
-        endpoint from;
-        endpoint to;
-        std::vector<std::byte> data;
-    };
-
-    struct socket_entry
-    {
-        inproc_socket<Clock> *sock;
-        endpoint assigned_ep;
-        endpoint group;
-        bool loopback;
-    };
-
-    std::vector<socket_entry> m_sockets;
+    uint16_t m_port;
+    uint8_t m_next_ip;
     std::deque<queued_packet> m_queue;
-    uint16_t m_port{5353};
-    uint8_t  m_next_ip{1};
+    std::vector<socket_entry> m_sockets;
 
     bool deliver_unicast(const queued_packet &pkt)
     {
@@ -107,7 +116,7 @@ private:
         {
             if(pkt.to == entry.assigned_ep)
             {
-                entry.sock->deliver(pkt.from, std::span<const std::byte>(pkt.data));
+                entry.receiver.get().deliver(pkt.from, std::span<const std::byte>(pkt.data));
                 return true;
             }
         }
@@ -122,7 +131,7 @@ private:
                 continue;
             if(!entry.loopback && entry.assigned_ep == pkt.from)
                 continue;
-            entry.sock->deliver(pkt.from, std::span<const std::byte>(pkt.data));
+            entry.receiver.get().deliver(pkt.from, std::span<const std::byte>(pkt.data));
         }
     }
 };

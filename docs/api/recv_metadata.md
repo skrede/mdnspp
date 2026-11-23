@@ -26,7 +26,7 @@ struct recv_metadata {
 |-------|------|---------|-------------|
 | `sender` | `endpoint` | — | Source address and port of the received packet. A link-local IPv6 sender carries an RFC 4007 numeric zone suffix (`fe80::1%3`, the index of the receiving interface); other senders carry no zone. |
 | `ttl` | `std::optional<uint8_t>` | `std::nullopt` | IP hop limit (TTL) of the received packet. `nullopt` when the platform or socket type could not extract the TTL. |
-| `recv_ifindex` | `uint32_t` | `0` | Interface index on which the packet arrived. Populated from `IP_PKTINFO` for IPv4 (Linux, macOS, Windows; `IP_RECVIF` with `sockaddr_dl` where `IP_PKTINFO` is unavailable) and from `IPV6_PKTINFO` for IPv6 (on macOS through the RFC 3542 options). `0` when not populated or when the control data was truncated. |
+| `recv_ifindex` | `uint32_t` | `0` | Interface index on which the packet arrived. Populated from `IP_PKTINFO` for IPv4 (Linux, macOS, Windows) and from `IPV6_PKTINFO` for IPv6 (on macOS through the RFC 3542 options). `0` when not populated or when the control data was truncated. |
 | `destination` | `std::optional<ip_address>` | `std::nullopt` | The destination address from the IP header of the received packet: the multicast group for a multicast datagram, the local unicast address for a unicast one. Read from the same `IP_PKTINFO` (`ipi_addr`) and `IPV6_PKTINFO` (`ipi6_addr`) control messages as `recv_ifindex`. `nullopt` when the platform reports no destination or when the control data was truncated, in which case `recv_ifindex` and `ttl` are unknown too. See [ip_address](ip_address.md). |
 
 `recv_metadata` is passed by const reference to the `socket_like::async_receive` handler
@@ -74,21 +74,25 @@ See [mdns_options](mdns_options.md) for the full options struct.
 
 ---
 
-## TTL Extraction Platform Matrix
+## Receive Metadata Platform Matrix
 
-TTL extraction is configured when the socket is constructed (via `IP_RECVTTL` /
-`IPV6_RECVHOPLIMIT` `setsockopt` or `WSAIoctl`). Failure is silent: the socket opens
-normally and `recv_metadata::ttl` is left as `nullopt`.
+TTL, interface index and destination are enabled when the socket is constructed with
+`setsockopt`. Failure is silent: the socket opens normally and the affected fields are left
+unknown (`ttl == nullopt`, `recv_ifindex == 0`, `destination == nullopt`). The default and
+asio sockets read the same control messages through one shared parser: `default_socket`
+calls `recvmsg()` (`WSARecvMsg` on Windows, obtained via `SIO_GET_EXTENSION_FUNCTION_POINTER`),
+and `asio_socket` waits with `async_wait` and makes the same call on `native_handle()`.
 
-| Platform | default_socket | asio_socket |
-|----------|--------------|------------|
-| Linux | `recvmsg()` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT`; always available when socket opens | `async_wait` + `recvmsg()` on `native_handle()`; same ancillary data path |
-| macOS | `recvmsg()` + `IP_RECVTTL` (the TTL arrives as a one-byte `IP_RECVTTL` payload) / `IPV6_RECVHOPLIMIT` (RFC 3542 options, enabled by `__APPLE_USE_RFC_3542`); always available when socket opens | `async_wait` + `recvmsg()` on `native_handle()`; same ancillary data path |
-| Windows | `WSARecvMsg` via `SIO_GET_EXTENSION_FUNCTION_POINTER`; `nullopt` on systems where the extension is unavailable (pre-Vista) | `WSARecvMsg` on `native_handle()`; same extension pointer approach |
+| Platform | Enabling options | `ttl` source | `recv_ifindex` and `destination` source | Status |
+|----------|------------------|--------------|------------------------------------------|--------|
+| Linux | `IP_RECVTTL`, `IP_PKTINFO`; `IPV6_RECVHOPLIMIT`, `IPV6_RECVPKTINFO` | `IP_TTL` (int); `IPV6_HOPLIMIT` | `in_pktinfo` `ipi_ifindex` / `ipi_addr`; `in6_pktinfo` `ipi6_ifindex` / `ipi6_addr` | verified by the receive metadata tests |
+| macOS | `IP_RECVTTL`, `IP_PKTINFO`; `IPV6_RECVHOPLIMIT`, `IPV6_RECVPKTINFO` (RFC 3542 options, enabled by `__APPLE_USE_RFC_3542`) | `IP_RECVTTL` (one byte); `IPV6_HOPLIMIT` | `in_pktinfo` `ipi_ifindex` / `ipi_addr`; `in6_pktinfo` `ipi6_ifindex` / `ipi6_addr` | implemented, not yet confirmed by a hosted macOS run |
+| Windows | `IP_RECVTTL`, `IP_PKTINFO`; `IPV6_HOPLIMIT`, `IPV6_PKTINFO` (Windows has no `IPV6_RECV*` options) | `IP_TTL` or `IP_RECVTTL` (the type is undocumented, both are read); `IPV6_HOPLIMIT` | `IN_PKTINFO` `ipi_ifindex` / `ipi_addr`; `IN6_PKTINFO` `ipi6_ifindex` / `ipi6_addr` | implemented, not yet confirmed by a hosted Windows run |
 
-On all platforms, TTL extraction failure results in silent degradation: the socket
-continues to function and `recv_metadata::ttl` is `nullopt` for every received packet.
-`unknown_ttl_policy` governs whether those packets are accepted or rejected.
+For a multicast datagram `destination` is the group; for a unicast datagram it is the local
+address the datagram was sent to. On Windows systems without `WSARecvMsg` the socket falls back
+to `recvfrom()`, and every field except `sender` is unknown. `unknown_ttl_policy` governs
+whether packets without a TTL are accepted or rejected.
 
 Each control message is read only up to its payload length; a payload shorter than the
 option's type is ignored. When the kernel reports that the control data was truncated

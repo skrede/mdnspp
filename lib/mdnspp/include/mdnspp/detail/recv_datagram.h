@@ -21,6 +21,9 @@ inline constexpr std::size_t control_buffer_size = 256;
 #ifdef __linux__
 static_assert(control_buffer_size >= CMSG_SPACE(sizeof(in6_pktinfo)) + CMSG_SPACE(sizeof(int32_t))
                   + CMSG_SPACE(sizeof(in_pktinfo)) + CMSG_SPACE(sizeof(int32_t)));
+#elif defined(_WIN32)
+static_assert(control_buffer_size >= WSA_CMSG_SPACE(sizeof(IN6_PKTINFO)) + WSA_CMSG_SPACE(sizeof(int32_t))
+                  + WSA_CMSG_SPACE(sizeof(IN_PKTINFO)) + WSA_CMSG_SPACE(sizeof(int32_t)));
 #endif
 
 struct datagram_result

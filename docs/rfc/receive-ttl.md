@@ -117,8 +117,8 @@ constructed with those options.
 ### Interface index extraction
 
 Alongside TTL, mdnspp extracts the receiving interface index into
-`recv_metadata::recv_ifindex` using `IP_PKTINFO` (Linux / Windows) or `IP_RECVIF` with
-`sockaddr_dl` (macOS). This field is used internally by `basic_nic_group` to populate
+`recv_metadata::recv_ifindex` using `IP_PKTINFO` (IPv4) and `IPV6_PKTINFO` (IPv6) on
+Linux, macOS and Windows. This field is used internally by `basic_nic_group` to populate
 `resolved_service::source_interface`.
 
 ## See Also

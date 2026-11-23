@@ -63,6 +63,10 @@ inline std::span<const std::byte> bounded_payload(const void *header, const void
 inline bool is_int_ttl(const control_payload &msg)
 {
     bool is_ttl = msg.level == IPPROTO_IP && msg.type == IP_TTL;
+#if defined(_WIN32) && defined(IP_RECVTTL)
+    // Windows does not document the control message type that carries the IPv4 TTL, so both candidates are read.
+    is_ttl = is_ttl || (msg.level == IPPROTO_IP && msg.type == IP_RECVTTL);
+#endif
 #ifdef IPV6_HOPLIMIT
     is_ttl = is_ttl || (msg.level == IPPROTO_IPV6 && msg.type == IPV6_HOPLIMIT);
 #endif
@@ -85,20 +89,12 @@ inline void read_ttl_message(const control_payload &msg, ancillary_data &out)
 // ipi_addr is the IP header destination; ipi_spec_dst is the preferred reply source on Linux and zero on xnu.
 inline void read_pktinfo_v4_message(const control_payload &msg, ancillary_data &out)
 {
-#if defined(IP_PKTINFO)
+#ifdef IP_PKTINFO
     pktinfo4_t info{};
     if(msg.level != IPPROTO_IP || msg.type != IP_PKTINFO || !read_payload(msg.bytes, info))
         return;
     out.ifindex = static_cast<uint32_t>(info.ipi_ifindex);
     out.destination = to_ip_address(info.ipi_addr);
-#elif defined(__APPLE__) && defined(IP_RECVIF)
-    // The kernel sends sdl_len bytes of the sockaddr_dl, often fewer than sizeof(sockaddr_dl).
-    constexpr std::size_t index_end = offsetof(sockaddr_dl, sdl_index) + sizeof(sockaddr_dl::sdl_index);
-    if(msg.level != IPPROTO_IP || msg.type != IP_RECVIF || msg.bytes.size() < index_end)
-        return;
-    sockaddr_dl sdl{};
-    std::memcpy(&sdl, msg.bytes.data(), (std::min)(sizeof(sdl), msg.bytes.size()));
-    out.ifindex = static_cast<uint32_t>(sdl.sdl_index);
 #endif
 }
 

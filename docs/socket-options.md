@@ -49,7 +49,7 @@ struct socket_options
 | `interface_index` | `std::optional<uint32_t>` | `std::nullopt` | OS interface index of the NIC to bind. Resolved at socket open via `enumerate_interfaces()`. |
 | `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. Change this to isolate mDNS traffic to a custom namespace. |
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets are looped back to the sending host. Enabled by default so that services and clients on the same machine can communicate. |
-| `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | Multicast TTL (IPv4) or hop limit (IPv6) of sent packets. `std::nullopt`: the native and Asio sockets send with 255, as RFC 6762 Section 11 requires, not with the OS default. |
+| `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | TTL (IPv4) or hop limit (IPv6) of sent packets, multicast and unicast alike. `std::nullopt`: the native and Asio sockets send with 255, as RFC 6762 Section 11 requires, not with the OS default. |
 
 ### Interface selection precedence and address family
 
@@ -215,6 +215,15 @@ explicitly:
 mdnspp::socket_options opts{.multicast_ttl = 255};
 ```
 
+Unicast datagrams (for example replies to a QU question or to a legacy querier) leave with
+the same value: the native and Asio sockets set `IP_TTL` / `IPV6_UNICAST_HOPS` alongside
+`IP_MULTICAST_TTL` / `IPV6_MULTICAST_HOPS`. RFC 6762 Section 11:
+
+> All Multicast DNS responses (including responses sent via unicast) SHOULD be sent with IP TTL set to 255.  This is recommended to provide backwards-compatibility with older Multicast DNS queriers (implementing a draft version of this document, posted in February 2004) that check the IP TTL on reception to determine whether the packet originated on the local link.  These older queriers discard all packets with TTLs other than 255.
+
+Without it a unicast reply would leave with the operating system default (64 on Linux) and
+a peer whose `receive_ttl_minimum` is 255 would drop it.
+
 ### Using socket_options with default_policy convenience aliases
 
 All default_policy convenience aliases (`mdnspp::observer`, `mdnspp::querier`,
@@ -255,6 +264,11 @@ multicast address (`ff00::/8`). Any other address, including an empty or
 malformed one, fails construction of the native and Asio sockets with
 `std::errc::invalid_argument` (the throwing constructors throw
 `std::system_error`).
+
+A socket for an IPv6 group is IPv6-only: the native and Asio sockets set
+`IPV6_V6ONLY` before binding, so an IPv6 socket never receives IPv4 datagrams
+sent to its port (as IPv4-mapped senders) on dual-stack systems. If the option
+cannot be set, construction fails with the `setsockopt` error.
 
 ### Recommended address ranges
 
@@ -326,9 +340,10 @@ extraction is enabled:
 |----------|--------|---------|
 | Linux (IPv4) | `IP_RECVTTL` | Deliver IP TTL as ancillary data in `recvmsg` |
 | Linux (IPv6) | `IPV6_RECVHOPLIMIT` | Deliver IPv6 hop limit as ancillary data |
-| Linux / macOS | `IP_PKTINFO` / `IP_RECVIF` | Deliver receiving interface index as ancillary data |
+| Linux / macOS / Windows | `IP_PKTINFO` | Deliver receiving interface index and destination address as ancillary data |
+| Linux / macOS (IPv6) | `IPV6_RECVPKTINFO` | Deliver IPv6 receiving interface index and destination address |
 | Windows (IPv4) | `IP_RECVTTL`, `WSARecvMsg` obtained via `WSAIoctl(SIO_GET_EXTENSION_FUNCTION_POINTER)` | WSARecvMsg ancillary TTL |
-| Windows (IPv6) | `IPV6_RECVHOPLIMIT` | WSARecvMsg ancillary hop limit |
+| Windows (IPv6) | `IPV6_HOPLIMIT`, `IPV6_PKTINFO` | WSARecvMsg ancillary hop limit, interface index and destination (Windows has no `IPV6_RECV*` options) |
 
 ### Platform matrix
 

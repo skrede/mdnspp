@@ -71,10 +71,12 @@ inline void open_socket(asio::ip::udp::socket &socket, bool v6, std::error_code 
     if(ec)
         return;
     enable_receive_info(socket, v6);
-    socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
-    if(ec)
-        return;
-    apply_reuse_port(socket);
+    if(v6)
+        socket.set_option(asio::ip::v6_only(true), ec);
+    if(!ec)
+        socket.set_option(asio::ip::udp::socket::reuse_address(true), ec);
+    if(!ec)
+        apply_reuse_port(socket);
 }
 
 inline void bind_any(asio::ip::udp::socket &socket, bool v6, uint16_t port, std::error_code &ec)
@@ -119,12 +121,14 @@ inline void join_v4(asio::ip::udp::socket &socket, const asio::ip::address &grou
     socket.set_option(asio::ip::multicast::join_group(group.to_v4(), iface), ec);
 }
 
-inline void set_multicast_options(asio::ip::udp::socket &socket, const socket_options &opts, std::error_code &ec)
+inline void set_send_options(asio::ip::udp::socket &socket, const socket_options &opts, std::error_code &ec)
 {
-    socket.set_option(asio::ip::multicast::hops(opts.multicast_ttl.value_or(255)), ec);
-    if(ec)
-        return;
-    socket.set_option(asio::ip::multicast::enable_loopback(opts.multicast_loopback == loopback_mode::enabled), ec);
+    const int32_t hops = opts.multicast_ttl.value_or(255);
+    socket.set_option(asio::ip::multicast::hops(hops), ec);
+    if(!ec)
+        socket.set_option(asio::ip::unicast::hops(hops), ec);
+    if(!ec)
+        socket.set_option(asio::ip::multicast::enable_loopback(opts.multicast_loopback == loopback_mode::enabled), ec);
 }
 
 inline void open_and_join(asio::ip::udp::socket &socket, const socket_options &opts, const asio::ip::address &group,
@@ -139,7 +143,7 @@ inline void open_and_join(asio::ip::udp::socket &socket, const socket_options &o
     else if(!ec)
         join_v4(socket, group, iface_address, ec);
     if(!ec)
-        set_multicast_options(socket, opts, ec);
+        set_send_options(socket, opts, ec);
     if(ec)
     {
         std::error_code ignored;

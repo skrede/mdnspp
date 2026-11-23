@@ -30,21 +30,28 @@ inline bool join_v6_group(native_socket_t fd, const socket_options &opts, uint32
     return set_option(fd, IPPROTO_IPV6, IPV6_JOIN_GROUP, mreq, ec);
 }
 
-inline bool set_v6_multicast_options(native_socket_t fd, const socket_options &opts, std::error_code &ec)
+inline bool set_v6_send_options(native_socket_t fd, const socket_options &opts, std::error_code &ec)
 {
     const int32_t hops = static_cast<int32_t>(opts.multicast_ttl.value_or(255));
     const int32_t loop = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
     return set_option(fd, IPPROTO_IPV6, IPV6_MULTICAST_HOPS, hops, ec)
+        && set_option(fd, IPPROTO_IPV6, IPV6_UNICAST_HOPS, hops, ec)
         && set_option(fd, IPPROTO_IPV6, IPV6_MULTICAST_LOOP, loop, ec);
 }
 
 inline void enable_v6_receive_info(native_socket_t fd)
 {
-#ifdef IPV6_RECVHOPLIMIT
+#ifdef _WIN32
+    // Windows has no RFC 3542 IPV6_RECV* options; setting IPV6_PKTINFO and IPV6_HOPLIMIT enables the control data.
+    set_flag_best_effort(fd, IPPROTO_IPV6, IPV6_PKTINFO);
+    set_flag_best_effort(fd, IPPROTO_IPV6, IPV6_HOPLIMIT);
+#else
+#  ifdef IPV6_RECVHOPLIMIT
     set_flag_best_effort(fd, IPPROTO_IPV6, IPV6_RECVHOPLIMIT);
-#endif
-#ifdef IPV6_RECVPKTINFO
+#  endif
+#  ifdef IPV6_RECVPKTINFO
     set_flag_best_effort(fd, IPPROTO_IPV6, IPV6_RECVPKTINFO);
+#  endif
 #endif
 }
 
@@ -57,11 +64,11 @@ inline void configure_ipv6(native_socket_t fd, const socket_options &opts, const
         ec = std::make_error_code(std::errc::invalid_argument);
         return;
     }
-    if(!bind_any_v6(fd, opts.multicast_group.port, ec))
+    if(!set_option(fd, IPPROTO_IPV6, IPV6_V6ONLY, int32_t{1}, ec) || !bind_any_v6(fd, opts.multicast_group.port, ec))
         return;
     if(!iface_address.empty() && !set_option(fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, iface_idx, ec))
         return;
-    if(!join_v6_group(fd, opts, iface_idx, ec) || !set_v6_multicast_options(fd, opts, ec))
+    if(!join_v6_group(fd, opts, iface_idx, ec) || !set_v6_send_options(fd, opts, ec))
         return;
     enable_v6_receive_info(fd);
 }

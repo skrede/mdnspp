@@ -42,11 +42,12 @@ inline bool join_v4_group(native_socket_t fd, const socket_options &opts, const 
     return set_option(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, mreq, ec);
 }
 
-inline bool set_v4_multicast_options(native_socket_t fd, const socket_options &opts, std::error_code &ec)
+inline bool set_v4_send_options(native_socket_t fd, const socket_options &opts, std::error_code &ec)
 {
     const int32_t ttl = static_cast<int32_t>(opts.multicast_ttl.value_or(255));
     const int32_t loop = (opts.multicast_loopback == loopback_mode::enabled) ? 1 : 0;
     return set_option(fd, IPPROTO_IP, IP_MULTICAST_TTL, ttl, ec)
+        && set_option(fd, IPPROTO_IP, IP_TTL, ttl, ec)
         && set_option(fd, IPPROTO_IP, IP_MULTICAST_LOOP, loop, ec);
 }
 
@@ -55,10 +56,8 @@ inline void enable_v4_receive_info(native_socket_t fd)
 #ifdef IP_RECVTTL
     set_flag_best_effort(fd, IPPROTO_IP, IP_RECVTTL);
 #endif
-#if defined(IP_PKTINFO)
+#ifdef IP_PKTINFO
     set_flag_best_effort(fd, IPPROTO_IP, IP_PKTINFO);
-#elif defined(__APPLE__) && defined(IP_RECVIF)
-    set_flag_best_effort(fd, IPPROTO_IP, IP_RECVIF);
 #endif
 }
 
@@ -70,7 +69,7 @@ inline void configure_ipv4(native_socket_t fd, const socket_options &opts, const
         return;
     if(!iface_address.empty() && !set_option(fd, IPPROTO_IP, IP_MULTICAST_IF, iface_addr, ec))
         return;
-    if(!join_v4_group(fd, opts, iface_addr, ec) || !set_v4_multicast_options(fd, opts, ec))
+    if(!join_v4_group(fd, opts, iface_addr, ec) || !set_v4_send_options(fd, opts, ec))
         return;
     enable_v4_receive_info(fd);
 }

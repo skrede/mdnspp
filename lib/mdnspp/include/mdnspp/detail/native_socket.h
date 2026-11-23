@@ -15,9 +15,6 @@
 #  ifdef __linux__
 #    include <sys/eventfd.h>
 #  endif
-#  ifdef __APPLE__
-#    include <net/if_dl.h>
-#  endif
 #endif
 
 #include <system_error>

@@ -107,8 +107,19 @@ Unit tests cover:
   inproc_conformance_bus_test;
   tests/unit/default_conformance/: default_conformance_construct_test,
   default_conformance_send_receive_test, default_conformance_lifecycle_test,
-  default_conformance_receive_metadata_test,
   default_conformance_ipv6_interface_test)
+- Receive metadata on real sockets, built and run on Linux, macOS and Windows
+  for the default and the asio socket: a self-sent loopback unicast datagram
+  reports TTL 255, the loopback interface index and the loopback destination
+  (default_conformance_receive_metadata_unicast_test); a looped multicast
+  datagram on the lowest-index up, non-loopback interface with an address of
+  the family reports the group as destination, that interface's index and a
+  TTL (default_conformance_receive_metadata_multicast_test); an IPv6 socket
+  receives IPv6 but not IPv4 datagrams sent to its port
+  (default_conformance_v6_only_test); the asio twins are
+  asio_receive_metadata_test and asio_receive_v6_only_test
+  (tests/unit/asio_receive/). Without such an interface the multicast cases
+  skip, and fail under `MDNSPP_REQUIRE_NETWORK`
 - Test-double sockets: the error_code constructors and send of the mock and
   in-process sockets, the throwing forms that wrap them, and the mock socket's
   failure injection reaching both (mock_socket_error_code_test,
@@ -140,8 +151,7 @@ Unit tests cover:
 Some targets depend on the platform or build options:
 default_poll_errors_test, default_reentrant_poll_test,
 default_nested_receive_test, wakeup_fd_test, default_context_construct_test,
-recv_ancillary_bounds_test and
-default_conformance_receive_metadata_test are not built on Windows; the
+and recv_ancillary_bounds_test are not built on Windows; the
 `asio_*` targets and receive_contract_asio_test require
 `MDNSPP_ENABLE_ASIO_POLICY=ON`; the encrypt targets other than
 encrypt_policy_trait_test, and receive_contract_encrypted_test, require

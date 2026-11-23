@@ -47,10 +47,16 @@ jobs:
             -DMDNSPP_CMAKE_FETCH_DEPS=ON
 
       - name: Build
+        id: build
         run: cmake --build build
 
       - name: Test
-        run: cd build && ctest --output-on-failure --timeout 60
+        run: cd build && ctest --output-on-failure --timeout 60 -LE multicast_probe
+
+      # Local network privacy denies multicast to unprivileged processes; root is exempt (Apple TN3179).
+      - name: Multicast receive probes (root)
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: cd build && sudo env PATH="$PATH" MDNSPP_REQUIRE_NETWORK=1 ctest --output-on-failure --timeout 60 -L multicast_probe --no-tests=error
 
   install-test:
     runs-on: macos-15

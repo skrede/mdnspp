@@ -158,6 +158,7 @@ Defined in `<mdnspp/detail/dns_enums.h>`. Use `to_string(dns_type)` for a human-
 enum class dns_class : uint16_t {
     none = 0,
     in   = 1,
+    any  = 255,
 };
 ```
 

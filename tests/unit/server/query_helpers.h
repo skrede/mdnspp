@@ -35,6 +35,19 @@ inline std::vector<std::byte> make_multi_question_query(std::initializer_list<qu
     return packet;
 }
 
+inline std::vector<std::byte> make_question_packet(uint16_t flags, std::string_view name, dns_type qtype,
+                                                   uint16_t qclass)
+{
+    std::vector<std::byte> packet;
+    for(uint16_t field : {uint16_t{0x0000}, flags, uint16_t{1}, uint16_t{0}, uint16_t{0}, uint16_t{0}})
+        push_u16_be(packet, field);
+    auto encoded = encode_dns_name(name).value();
+    packet.insert(packet.end(), encoded.begin(), encoded.end());
+    push_u16_be(packet, mdnspp::detail::to_underlying(qtype));
+    push_u16_be(packet, qclass);
+    return packet;
+}
+
 // Probes carry flags 0x0000; announcements and responses carry 0x8400.
 inline unsigned count_multicast_responses_after(const std::vector<sent_packet> &packets, size_t start_index)
 {

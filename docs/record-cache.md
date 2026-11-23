@@ -106,7 +106,7 @@ mdnspp::cache_options opts{
     .on_cache_flush = [](const mdnspp::cache_entry &authoritative,
                           std::vector<mdnspp::cache_entry> affected) {
         // A cache-flush record was received; `affected` entries from other
-        // origins for the same name+type have been scheduled for eviction.
+        // origins for the same name, type and class have been scheduled for eviction.
     },
 };
 
@@ -120,7 +120,7 @@ detection) runs first and the `on_expired` passed in its `cache_options` is
 called after it with the same entries.
 
 `on_cache_flush` fires when a record with the cache-flush bit set is inserted
-and records from other origins exist for the same name+type. The `affected`
+and records from other origins exist for the same name, type and class. The `affected`
 entries are scheduled for eviction after a 1-second grace period per RFC 6762
 section 10.2, but have not been removed yet at callback time.
 
@@ -147,12 +147,25 @@ fires `on_expired`.
 ### Cache-flush semantics (RFC 6762 section 10.2)
 
 When a record with the cache-flush bit set arrives, all records of the same
-name and type from *other* origins are marked for eviction after a 1-second
+name, type and class from *other* origins are marked for eviction after a 1-second
 grace window. The newly-inserted record from the authoritative sender is
-kept. `on_cache_flush` fires immediately with the affected records.
+kept. `on_cache_flush` fires immediately with the affected records. A record of
+another class under the same name and type is left alone: RFC 6762 section 10.2
+scopes the flush to "records of this name/rrtype/rrclass".
 
 Records from the same origin are considered a TTL refresh (dedup path); the
 flush does not apply to them.
+
+### Record class
+
+Records are keyed by name, type and class. Records of any class are cached;
+none is dropped. `find(name, type)` returns class IN records, and
+`find(name, type, rclass)` returns the records of the given class:
+
+```cpp
+auto in_records = cache.find("myhost.local.", mdnspp::dns_type::a);
+auto other = cache.find("myhost.local.", mdnspp::dns_type::a, static_cast<mdnspp::dns_class>(3));
+```
 
 ### Non-copyable, non-movable
 

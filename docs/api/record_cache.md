@@ -45,7 +45,7 @@ void insert(mdns_record_variant rec, endpoint origin);
 Inserts or updates a record in the cache.
 
 - If a record with the same name, type, DNS class, and rdata already exists, its insertion time and TTL are refreshed (deduplication by identity).
-- If `rec.cache_flush == true`, records of the same name/type from different origins that were received more than one second ago are scheduled to expire after `cache_options::goodbye_grace` (default one second, RFC 6762 §10.2), and `cache_options::on_cache_flush` is fired if any were affected. Records received within the last second are exempt (the §10.2 young-record exemption).
+- If `rec.cache_flush == true`, records of the same name, type and class from different origins that were received more than one second ago are scheduled to expire after `cache_options::goodbye_grace` (default one second, RFC 6762 §10.2), and `cache_options::on_cache_flush` is fired if any were affected. Records received within the last second are exempt (the §10.2 young-record exemption).
 - Goodbye records (`rec.ttl == 0`) are retained for `goodbye_grace` then expired (RFC 6762 §10.1).
 
 | Parameter | Type | Description |
@@ -58,15 +58,16 @@ Inserts or updates a record in the cache.
 ### find
 
 ```cpp
-std::vector<cache_entry> find(dns_name name, dns_type type) const;
+std::vector<cache_entry> find(dns_name name, dns_type type, dns_class rclass = dns_class::in) const;
 ```
 
-Returns all cached entries matching the given name and DNS type. Returns an empty vector if no matching records are cached.
+Returns all cached entries matching the given name, DNS type and DNS class. Returns an empty vector if no matching records are cached. Records are keyed by the class they carry (`rec.rclass`, the cache-flush bit already removed), so a record built by hand with the default `dns_class::none` is found only with `find(name, type, dns_class::none)`.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
 | `name` | `dns_name` | The DNS name to look up (e.g. `"_http._tcp.local."`; `dns_name` converts implicitly from string types). Comparison is ASCII case-insensitive. |
 | `type` | `dns_type` | The record type (e.g. `dns_type::srv`, `dns_type::a`). |
+| `rclass` | `dns_class` | The record class; defaults to `dns_class::in`. `dns_class::any` is not a wildcard here: it matches only records stored with class 255. |
 
 **Returns:** A vector of [`cache_entry`](cache_entry.md) values with `ttl_remaining` computed at the moment of the call. Does not remove expired entries; call `erase_expired()` separately.
 

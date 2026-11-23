@@ -2,8 +2,11 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <string>
 #include <vector>
 #include <cstddef>
+#include <utility>
+#include <string_view>
 
 namespace {
 
@@ -18,6 +21,16 @@ std::vector<std::byte> answer_to_authority(std::vector<std::byte> pkt)
 {
     pkt[7] = std::byte{0x00}; // ancount: 1 -> 0
     pkt[9] = std::byte{0x01}; // nscount: 0 -> 1
+    return pkt;
+}
+
+std::vector<std::byte> with_question(std::vector<std::byte> pkt, std::string_view qname)
+{
+    std::vector<std::byte> question = *mdnspp::detail::encode_dns_name(qname);
+    mdnspp::detail::push_u16_be(question, mdnspp::detail::to_underlying(mdnspp::dns_type::ptr));
+    mdnspp::detail::push_u16_be(question, 0x0001);
+    pkt.insert(pkt.begin() + 12, question.begin(), question.end());
+    pkt[5] = std::byte{0x01}; // qdcount: 0 -> 1
     return pkt;
 }
 
@@ -80,4 +93,20 @@ TEST_CASE("QR filtering: Authority-section probe proposals are never cached",
     snap = f.mon.services();
     REQUIRE(snap.size() == 1);
     CHECK(snap[0].port == 8080);
+}
+
+TEST_CASE("QR filtering: a response that carries a question still has its answers resolved", "[monitor][qr-flag]")
+{
+    bool found_called{false};
+    monitor_fixture f{flag_found(found_called)};
+    f.watch_and_start({"_http._tcp.local"});
+
+    auto response = make_ptr_packet("_http._tcp.local", "AskSvc._http._tcp.local", "asksvc.local", "10.7.7.7");
+    f.inject(with_question(std::move(response), "_http._tcp.local."));
+
+    CHECK(found_called);
+    auto snap = f.mon.services();
+    REQUIRE(snap.size() == 1);
+    CHECK(snap[0].port == 8080);
+    CHECK(snap[0].ipv4_addresses == std::vector<std::string>{"10.7.7.7"});
 }

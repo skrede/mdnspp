@@ -4,6 +4,7 @@
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/server_question_section.h"
+#include "mdnspp/detail/server_enumeration_match.h"
 
 #include "mdnspp/dns_name.h"
 #include "mdnspp/service_info.h"
@@ -15,11 +16,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <string_view>
 
 namespace mdnspp::detail {
-
-static constexpr std::string_view meta_query_name{"_services._dns-sd._udp.local."};
 
 enum class owned_name : uint8_t
 {
@@ -59,30 +57,6 @@ inline bool query_name_matches(std::span<const std::byte> data, size_t name_star
         || qname == info.hostname;
 }
 
-inline bool matches_meta_query(std::span<const std::byte> data, size_t name_start)
-{
-    auto decoded = read_dns_name(data, name_start);
-    if(!decoded.has_value())
-        return false;
-    return dns_name{*decoded} == dns_name{meta_query_name};
-}
-
-inline std::string_view matches_subtype_query(std::span<const std::byte> data, size_t name_start,
-                                              const service_info &info)
-{
-    auto decoded = read_dns_name(data, name_start);
-    if(!decoded.has_value())
-        return {};
-    dns_name qname{*decoded};
-    for(const auto &sub : info.subtypes)
-    {
-        auto subtype_name = sub + "._sub." + info.service_type.str();
-        if(qname == dns_name{subtype_name})
-            return sub;
-    }
-    return {};
-}
-
 inline bool has_record_type(dns_type qtype, const service_info &info)
 {
     switch(qtype)
@@ -113,6 +87,14 @@ inline std::optional<owned_name> classify_owned_name(std::span<const std::byte> 
     return std::nullopt;
 }
 
+// RFC 6762 section 6: the record rrclass must match the question qclass unless the qclass is "ANY" (255). The QU bit
+// is masked off first; every record this server owns is of class IN.
+inline bool qclass_matches(uint16_t qclass) noexcept
+{
+    auto rclass = static_cast<dns_class>(qclass & 0x7FFFu);
+    return rclass == dns_class::in || rclass == dns_class::any;
+}
+
 // A question without the QU bit (top bit of QCLASS) asks for a multicast response (RFC 6762 section 5.4).
 inline void note_response_mode(query_match_result &result, uint16_t qclass)
 {
@@ -135,25 +117,13 @@ inline void accumulate_match(query_match_result &result, owned_name target, cons
     note_response_mode(result, q.qclass);
 }
 
-// Meta-query and subtype questions are recorded on their own and never reach the owned-name match.
-inline bool match_enumeration_question(query_match_result &result, std::span<const std::byte> data,
-                                       const parsed_question &q, const service_info &info,
-                                       const service_options &opts)
+inline void record_enumeration_match(query_match_result &result, const enumeration_match &match, uint16_t qclass)
 {
-    if(opts.respond_to_meta_queries && q.qtype == dns_type::ptr && matches_meta_query(data, q.name_start))
-    {
+    if(match.meta)
         result.meta_matched = true;
-        note_response_mode(result, q.qclass);
-        return true;
-    }
-    if(q.qtype != dns_type::ptr)
-        return false;
-    auto sub = matches_subtype_query(data, q.name_start, info);
-    if(sub.empty())
-        return false;
-    result.matched_subtype = sub;
-    note_response_mode(result, q.qclass);
-    return true;
+    else
+        result.matched_subtype = match.subtype;
+    note_response_mode(result, qclass);
 }
 
 inline query_match_result match_queries(std::span<const std::byte> data, const service_info &info,
@@ -172,9 +142,11 @@ inline query_match_result match_queries(std::span<const std::byte> data, const s
         auto q = read_question(data, offset);
         if(!q.has_value())
             break;
-        if(match_enumeration_question(result, data, *q, info, opts))
+        if(!qclass_matches(q->qclass))
             continue;
-        if(auto target = classify_owned_name(data, q->name_start, info); target.has_value())
+        if(auto match = match_enumeration_question(data, *q, info, opts); match.has_value())
+            record_enumeration_match(result, *match, q->qclass);
+        else if(auto target = classify_owned_name(data, q->name_start, info); target.has_value())
             accumulate_match(result, *target, *q);
     }
     result.offset_after_questions = offset;

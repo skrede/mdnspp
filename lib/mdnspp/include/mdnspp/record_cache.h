@@ -12,9 +12,7 @@
 #include <mutex>
 #include <chrono>
 #include <vector>
-#include <cstdint>
 #include <utility>
-#include <algorithm>
 #include <shared_mutex>
 #include <system_error>
 #include <unordered_map>
@@ -56,13 +54,13 @@ public:
     {
         auto key = detail::extract_name_type(rec);
         auto flush = detail::extract_cache_flush(rec);
-        auto effective_ttl = retained_ttl(detail::extract_ttl(rec));
+        auto effective_ttl = detail::retained_ttl(detail::extract_ttl(rec), m_options.goodbye_grace);
 
         std::unique_lock lock(m_mutex);
 
         auto flush_origin = origin;
 
-        if (!refresh_match(key, rec, origin, flush, effective_ttl))
+        if (!detail::refresh_match(m_entries.equal_range(key), rec, origin, flush, effective_ttl, Clock::now()))
         {
             m_entries.emplace(key, internal_entry{
                 .record = std::move(rec),
@@ -78,14 +76,14 @@ public:
             apply_cache_flush(key, flush_origin, lock);
     }
 
-    std::vector<cache_entry> find(dns_name name, dns_type type) const
+    std::vector<cache_entry> find(dns_name name, dns_type type, dns_class rclass = dns_class::in) const
     {
         std::shared_lock lock(m_mutex);
 
         auto now = Clock::now();
         std::vector<cache_entry> result;
 
-        auto key = key_type{std::move(name), type};
+        auto key = key_type{std::move(name), type, rclass};
         auto [it, end] = m_entries.equal_range(key);
         for (; it != end; ++it)
             result.push_back(detail::to_cache_entry(it->second, now));
@@ -111,7 +109,7 @@ public:
     {
         std::unique_lock lock(m_mutex);
 
-        auto expired = take_expired(Clock::now());
+        auto expired = detail::take_expired(m_entries, Clock::now());
 
         lock.unlock();
 
@@ -134,50 +132,6 @@ private:
         if(m_options.goodbye_grace.count() <= 0)
             return std::make_error_code(std::errc::invalid_argument);
         return {};
-    }
-
-    // RFC 6762 section 10.1: a goodbye record (TTL 0) is retained for goodbye_grace.
-    uint32_t retained_ttl(uint32_t ttl) const
-    {
-        auto grace = (std::min)(m_options.goodbye_grace.count(), std::chrono::seconds::rep{UINT32_MAX});
-        return (ttl == 0) ? static_cast<uint32_t>(grace) : ttl;
-    }
-
-    bool refresh_match(const key_type &key, const mdns_record_variant &rec, endpoint &origin, bool flush,
-                       uint32_t effective_ttl)
-    {
-        auto [it, end] = m_entries.equal_range(key);
-        for (; it != end; ++it)
-        {
-            if (detail::record_identity_equal(it->second.record, rec))
-            {
-                it->second.inserted_at = Clock::now();
-                it->second.wire_ttl = effective_ttl;
-                it->second.cache_flush = flush;
-                it->second.origin = std::move(origin);
-                it->second.flush_deadline.reset();
-                return true;
-            }
-        }
-        return false;
-    }
-
-    std::vector<cache_entry> take_expired(time_point now)
-    {
-        std::vector<cache_entry> expired;
-        for (auto it = m_entries.begin(); it != m_entries.end(); )
-        {
-            if (detail::is_expired(it->second, now))
-            {
-                expired.push_back(detail::to_cache_entry(it->second, now));
-                it = m_entries.erase(it);
-            }
-            else
-            {
-                ++it;
-            }
-        }
-        return expired;
     }
 
     void apply_cache_flush(const key_type &key, const endpoint &origin, std::unique_lock<std::shared_mutex> &lock)

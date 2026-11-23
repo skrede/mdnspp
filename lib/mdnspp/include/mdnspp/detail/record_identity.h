@@ -20,6 +20,7 @@ struct record_name_type
 {
     dns_name name;
     dns_type type{dns_type::none};
+    dns_class rclass{dns_class::in};
 
     bool operator==(const record_name_type &) const = default;
 };
@@ -30,20 +31,16 @@ struct record_name_type_hash
     {
         auto h1 = std::hash<dns_name>{}(k.name);
         auto h2 = std::hash<uint16_t>{}(detail::to_underlying(k.type));
-        return hash_combine(h1, h2);
+        auto h3 = std::hash<uint16_t>{}(detail::to_underlying(k.rclass));
+        return hash_combine(hash_combine(h1, h2), h3);
     }
 };
 
 inline record_name_type extract_name_type(const mdns_record_variant &rec)
 {
     return std::visit([](const auto &r) -> record_name_type {
-        return {r.name, std::remove_cvref_t<decltype(r)>::rtype};
+        return {r.name, std::remove_cvref_t<decltype(r)>::rtype, r.rclass};
     }, rec);
-}
-
-inline dns_class extract_class(const mdns_record_variant &rec)
-{
-    return std::visit([](const auto &r) { return r.rclass; }, rec);
 }
 
 inline uint32_t extract_ttl(const mdns_record_variant &rec)
@@ -90,11 +87,7 @@ inline bool rdata_equal(const mdns_record_variant &a, const mdns_record_variant 
 
 inline bool record_identity_equal(const mdns_record_variant &a, const mdns_record_variant &b)
 {
-    auto ka = extract_name_type(a);
-    auto kb = extract_name_type(b);
-    return ka == kb &&
-           extract_class(a) == extract_class(b) &&
-           rdata_equal(a, b);
+    return extract_name_type(a) == extract_name_type(b) && rdata_equal(a, b);
 }
 
 }

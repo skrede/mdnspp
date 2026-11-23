@@ -17,6 +17,7 @@ are implemented and which remain pending.
 | 6/7.2 | TC bit and multi-packet known-answer (both sides) | `[x]` | [tc-handling.md](tc-handling.md) |
 | 6 | Random response delay (20–120 ms) | `[x]` | [traffic-reduction.md](traffic-reduction.md) |
 | 6 | Parameterized response delay (20–120 ms) | `[x]` | [mdns_options](../api/mdns_options.md): response_delay_min/max |
+| 6 | Class and type matching of questions (qtype and qclass ANY, QU bit masked) | `[x]` | Questions of a class other than IN or ANY are not answered |
 | 6.1 | Negative responses (NSEC, per-name owner and type bitmap) | `[x]` | [negative-responses.md](negative-responses.md) |
 | 6.1 | Querier-side NSEC consumption | `[ ]` | Received NSEC records are not used to suppress retries |
 | 6.7 | Legacy unicast responses (ID/question echo, no cache-flush, TTL cap) | `[x]` | [legacy-unicast.md](legacy-unicast.md) |
@@ -32,6 +33,7 @@ are implemented and which remain pending.
 | 10 | Record TTL defaults (4500 s; 120 s for host-name-containing records) | `[x]` | [service_options](../api/service_options.md) |
 | 10.1 | Goodbye packets (TTL=0) | `[x]` | [goodbye.md](goodbye.md) |
 | 10.2 | Cache-flush bit (young-record exemption) | `[x]` | [cache-flush.md](cache-flush.md) |
+| 10.2 | Cache-flush scope: name, rrtype and rrclass | `[x]` | [record-cache.md](../record-cache.md): records of another class are not flushed |
 | 10.5 | Passive Observation Of Failures (POOF) | `[ ]` | Not implemented |
 | 11 | Multicast TTL 255 | `[x]` | [socket-options.md](../socket-options.md) |
 | 11 | Receive-side TTL 255 enforcement | `[x]` | [receive-ttl.md](receive-ttl.md) -- [recv_metadata](../api/recv_metadata.md) |

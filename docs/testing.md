@@ -14,7 +14,12 @@ Unit tests exercise individual components in isolation. `mock_policy` replaces
 real network I/O with controllable in-process fakes:
 
 - `mock_socket` — exposes `sent_packets()` for inspection and accepts manually
-  enqueued inbound packets.
+  enqueued inbound packets (`enqueue`, `inject_receive`). A packet given without
+  metadata carries `default_metadata()`: sender port equal to the configured
+  group port (empty sender address), destination equal to the group address,
+  TTL 255 and interface index 0, so it looks like ordinary multicast traffic. A
+  packet given with a sender endpoint keeps the other defaults, and a packet
+  given with a full `recv_metadata` carries it unchanged.
 - `mock_timer` — supports manual `fire()` and `cancel()` for deterministic
   timer control.
 - `mock_executor` — holds a posted-work deque that drains with
@@ -53,14 +58,20 @@ Unit tests cover:
 - mDNS option validation shared by every peer, strictly increasing refresh
   thresholds included (mdns_options_validation_test), and the service server
   constructor rejections (tests/unit/server/: server_validation_test)
+- The raw address type: multicast classification, equality, prefix matching
+  and text round trips (ip_address_test)
 - Endpoint, sender address text and socket option handling (endpoint_test,
   sockaddr_text_test, socket_options_test, socket_options_validation_test)
 - Interface enumeration and binding resolution (enumerate_interfaces_test,
   interface_resolve_test)
 - Receive-loop lifecycle, delivery, error propagation and stop behavior
   (tests/unit/recv_loop/: recv_loop_*_test)
-- Receive ancillary data: TTL, hop limit and arrival interface, including
-  truncated control data (recv_ancillary_test, recv_ancillary_bounds_test)
+- Receive ancillary data: TTL, hop limit, arrival interface and destination
+  address, including truncated control data (recv_ancillary_test,
+  recv_ancillary_bounds_test, recv_ancillary_destination_test)
+- Receive metadata of the test-double sockets: the mock socket's default and
+  explicit metadata (mock_receive_metadata_test) and the destination of
+  in-process multicast and unicast deliveries (inproc_bus_destination_test)
 - The receive contract every socket honors: one completion per arm, ordering,
   and close semantics (tests/unit/receive_contract/: receive_contract_*_test)
 - Default event loop: socket registry, timer dispatch, poll errors, re-entrant

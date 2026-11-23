@@ -76,7 +76,8 @@ Guides and API reference for the mdnspp C++20 mDNS/DNS-SD library.
 
 - [nic_group](api/nic_group.md) -- Multi-NIC orchestrator: basic_nic_group, basic_nic_monitor, basic_dynamic_nic_group
 - [nic_group_options](api/nic_group_options.md) -- nic_group_options, nic_monitor_options, server_peer_options, dedup_mode
-- [recv_metadata](api/recv_metadata.md) -- recv_metadata struct (sender, optional ttl, recv_ifindex) and ttl_unknown_policy
+- [recv_metadata](api/recv_metadata.md) -- recv_metadata struct (sender, optional ttl, recv_ifindex, optional destination) and ttl_unknown_policy
+- [ip_address](api/ip_address.md) -- Raw IPv4/IPv6 address value type with multicast classification
 
 ### Configuration
 

@@ -34,7 +34,7 @@ plain_bytes version_one_packet(std::size_t size)
 {
     plain_bytes packet(size, std::byte{0xAB});
     const plain_bytes lead{std::byte{0x4D}, std::byte{0x43}, std::byte{0x01}, std::byte{0x01}};
-    std::copy_n(lead.begin(), std::min(size, lead.size()), packet.begin());
+    std::copy_n(lead.begin(), (std::min)(size, lead.size()), packet.begin());
     return packet;
 }
 

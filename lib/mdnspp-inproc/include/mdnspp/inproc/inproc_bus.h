@@ -26,7 +26,7 @@ class inproc_receiver
 public:
     virtual ~inproc_receiver() = default;
 
-    virtual void deliver(const endpoint &from, std::span<const std::byte> data) = 0;
+    virtual void deliver(const endpoint &from, const endpoint &to, std::span<const std::byte> data) = 0;
 };
 
 template <typename Clock = std::chrono::steady_clock>
@@ -151,7 +151,7 @@ private:
         {
             if(pkt.to == entry.assigned_ep)
             {
-                entry.receiver.get().deliver(pkt.from, std::span<const std::byte>(pkt.data));
+                entry.receiver.get().deliver(pkt.from, pkt.to, std::span<const std::byte>(pkt.data));
                 return true;
             }
         }
@@ -177,7 +177,7 @@ private:
         {
             auto it = std::ranges::find(m_sockets, id, &socket_entry::id);
             if(it != m_sockets.end())
-                it->receiver.get().deliver(pkt.from, std::span<const std::byte>(pkt.data));
+                it->receiver.get().deliver(pkt.from, pkt.to, std::span<const std::byte>(pkt.data));
         }
     }
 };

@@ -26,7 +26,7 @@ plain_bytes magic_packet(std::size_t size, std::byte version)
 {
     plain_bytes packet(size, std::byte{0x11});
     const plain_bytes lead{std::byte{0x4D}, std::byte{0x43}, version};
-    std::copy_n(lead.begin(), std::min(size, lead.size()), packet.begin());
+    std::copy_n(lead.begin(), (std::min)(size, lead.size()), packet.begin());
     return packet;
 }
 

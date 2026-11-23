@@ -116,9 +116,17 @@ concept socket_like = requires(S &s, const endpoint &ep, std::span<const std::by
 
 `async_receive` delivers one datagram by calling `handler(ec, metadata, data)`,
 error code first (the Asio convention). On success `ec` is falsy, `metadata` is a
-`recv_metadata` containing the sender endpoint, the optional IP TTL, and the
-receiving interface index, and `data` spans the payload. On error `ec` carries
-the failure, the metadata is empty, and the data span is empty.
+`recv_metadata` containing the sender endpoint, the optional IP TTL, the
+receiving interface index and the optional destination address, and `data`
+spans the payload. On error `ec` carries the failure, the metadata is empty,
+and the data span is empty.
+
+A custom socket fills `recv_metadata::destination` with the address the packet
+was sent to (the multicast group or the local unicast address, as an
+[ip_address](api/ip_address.md)) when its transport reports it, and leaves it
+`std::nullopt` otherwise. Build the metadata with designated initializers
+(`recv_metadata{.sender = from, .ttl = ttl, .destination = dst}`) so a field
+added later keeps its default.
 
 Receive is one-shot. The concept cannot express this contract, which every
 socket must honor:
@@ -346,7 +354,8 @@ assigned endpoint: a distinct `127.x.y.z` address, counting up from
 `127.0.0.1`, with the bus's port (or `port_override`); registration fails with
 `std::errc::address_not_available` once the bus has handed out all of
 `127.0.0.0/8`. It implements the bus's `inproc_receiver`
-interface, through which the bus calls its two-argument `deliver()`. `send()` enqueues packets onto the bus
+interface, through which the bus calls `deliver(from, to, data)` with the packet's source and destination
+endpoints. `send()` enqueues packets onto the bus
 queue rather than delivering inline — this prevents re-entrancy when a receive
 callback triggers a send. `async_receive()` stores the handler; `deliver()` is
 called by the bus when a packet arrives for this socket's endpoint.

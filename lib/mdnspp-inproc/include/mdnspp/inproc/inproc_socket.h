@@ -5,6 +5,8 @@
 #include "mdnspp/inproc/inproc_executor.h"
 #include "mdnspp/inproc/inproc_socket_options.h"
 
+#include "mdnspp/inproc/detail/inproc_receive_queue.h"
+
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
@@ -12,12 +14,8 @@
 #include "mdnspp/detail/compat.h"
 
 #include <span>
-#include <queue>
-#include <vector>
 #include <cstddef>
-#include <cstdint>
 #include <utility>
-#include <optional>
 #include <system_error>
 
 namespace mdnspp::inproc {
@@ -25,13 +23,6 @@ namespace mdnspp::inproc {
 template <typename Clock = std::chrono::steady_clock>
 class inproc_socket : public inproc_receiver
 {
-    struct queued_packet
-    {
-        std::vector<std::byte> data;
-        endpoint from;
-        std::optional<uint8_t> ttl;
-    };
-
     struct checked
     {
     };
@@ -57,9 +48,7 @@ public:
         , m_bus(&ex.bus())
         , m_ep(m_bus->register_socket(*this, opts, ec))
         , m_opts(opts)
-        , m_recv_buf()
-        , m_recv_queue()
-        , m_pending_receive()
+        , m_receive()
     {
         if(ec)
             close();
@@ -77,19 +66,8 @@ public:
 
     void async_receive(move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
     {
-        if(m_closed)
-            return;
-        if(!m_recv_queue.empty())
-        {
-            auto [data, from, ttl] = std::move(m_recv_queue.front());
-            m_recv_queue.pop();
-            recv_metadata meta{from, ttl};
-            handler(std::error_code{}, meta, std::span<std::byte>(data));
-        }
-        else
-        {
-            m_pending_receive = std::move(handler);
-        }
+        if(!m_closed)
+            m_receive.receive(std::move(handler));
     }
 
     void send(const endpoint &dest, std::span<const std::byte> data)
@@ -114,8 +92,7 @@ public:
     void close() noexcept
     {
         m_closed = true;
-        m_pending_receive = nullptr;
-        m_recv_queue = {};
+        m_receive.clear();
         if(m_bus)
         {
             m_bus->deregister_socket(*this);
@@ -123,31 +100,15 @@ public:
         }
     }
 
-    void deliver(const endpoint &from, std::span<const std::byte> data) override
+    void deliver(const endpoint &from, const endpoint &to, std::span<const std::byte> data) override
     {
-        deliver(from, data, std::optional<uint8_t>{uint8_t{255}});
+        deliver(detail::inproc_metadata(from, to), data);
     }
 
-    void deliver(const endpoint &from, std::span<const std::byte> data, uint8_t ttl)
+    void deliver(const recv_metadata &meta, std::span<const std::byte> data)
     {
-        deliver(from, data, std::optional<uint8_t>{ttl});
-    }
-
-    void deliver(const endpoint &from, std::span<const std::byte> data, std::optional<uint8_t> ttl)
-    {
-        if(m_closed)
-            return;
-        if(m_pending_receive)
-        {
-            m_recv_buf.assign(data.begin(), data.end());
-            recv_metadata meta{from, ttl};
-            auto h = std::exchange(m_pending_receive, nullptr);
-            h(std::error_code{}, meta, std::span<std::byte>(m_recv_buf));
-        }
-        else
-        {
-            m_recv_queue.push({std::vector<std::byte>(data.begin(), data.end()), from, ttl});
-        }
+        if(!m_closed)
+            m_receive.deliver(meta, data);
     }
 
     const endpoint &assigned_endpoint() const noexcept { return m_ep; }
@@ -158,9 +119,7 @@ private:
     inproc_bus<Clock> *m_bus;
     endpoint m_ep;
     inproc_socket_options m_opts;
-    std::vector<std::byte> m_recv_buf;
-    std::queue<queued_packet> m_recv_queue;
-    move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> m_pending_receive;
+    detail::inproc_receive_queue m_receive;
 
     inproc_socket(checked, inproc_executor<Clock> &ex, const inproc_socket_options &opts, std::error_code ec)
         : inproc_socket(ex, opts, ec)

@@ -1,5 +1,10 @@
 #include "helpers.h"
 
+#include "mdnspp/policy.h"
+#include "mdnspp/endpoint.h"
+
+#include "mdnspp/detail/ip_address_ops.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
@@ -54,13 +59,15 @@ TEST_CASE("recv_metadata forwarded unchanged", "[encrypted_socket][metadata]")
     paired_sockets pair;
     send_bytes(pair.sender, plain_bytes{std::byte{0xFF}});
 
-    pair.receiver.inner().enqueue(sent_packet_at(pair.sender, 0),
-                                  mdnspp::endpoint{"1.2.3.4", 5353},
-                                  std::optional<uint8_t>{uint8_t{128}});
+    const mdnspp::recv_metadata inner{.sender = mdnspp::endpoint{"1.2.3.4", 5353}, .ttl = uint8_t{128},
+                                      .destination = mdnspp::detail::parse_ip_address("192.0.2.1")};
+    pair.receiver.inner().enqueue(sent_packet_at(pair.sender, 0), inner);
     auto result = receive_one(pair.receiver);
 
     CHECK(result.meta.ttl == std::optional<uint8_t>{uint8_t{128}});
     CHECK(result.meta.sender.address == "1.2.3.4");
+    REQUIRE(result.meta.destination.has_value());
+    CHECK(result.meta.destination == inner.destination);
 }
 
 TEST_CASE("magic_byte detection passes cleartext through when accept_cleartext is set",

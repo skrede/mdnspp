@@ -8,6 +8,7 @@ set(PUBLIC_HEADERS
     ${INCLUDE_DIRECTORY}/mdnspp/defaults.h
     ${INCLUDE_DIRECTORY}/mdnspp/records.h
     ${INCLUDE_DIRECTORY}/mdnspp/endpoint.h
+    ${INCLUDE_DIRECTORY}/mdnspp/ip_address.h
     ${INCLUDE_DIRECTORY}/mdnspp/mdns_error.h
     ${INCLUDE_DIRECTORY}/mdnspp/cache_entry.h
     ${INCLUDE_DIRECTORY}/mdnspp/record_cache.h

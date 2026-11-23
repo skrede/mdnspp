@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_POLICY_H
 
 #include "mdnspp/endpoint.h"
+#include "mdnspp/ip_address.h"
 #include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
@@ -53,6 +54,7 @@ struct recv_metadata
     endpoint sender;
     std::optional<uint8_t> ttl;
     uint32_t recv_ifindex{0};
+    std::optional<ip_address> destination;
 };
 
 // Receive is one-shot, which the concept cannot express: each async_receive yields at most one completion, and no

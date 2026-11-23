@@ -75,7 +75,8 @@ TEST_CASE("mock_socket::enqueue(packet, endpoint) stores sender and delivers to 
     REQUIRE(received_data[1] == std::byte{0xCD});
 }
 
-TEST_CASE("mock_socket::enqueue(packet) delivers endpoint{}", "[mock_socket][enqueue_default_endpoint]")
+TEST_CASE("mock_socket::enqueue(packet) delivers an empty sender address on the group port",
+          "[mock_socket][enqueue_default_endpoint]")
 {
     mock_executor ex;
     mock_socket sock{ex};
@@ -90,7 +91,7 @@ TEST_CASE("mock_socket::enqueue(packet) delivers endpoint{}", "[mock_socket][enq
     });
 
     REQUIRE(received_from.address == "");
-    REQUIRE(received_from.port == 0);
+    REQUIRE(received_from.port == 5353);
 }
 
 TEST_CASE("push_u16_be appends 2 bytes big-endian", "[dns_wire][push_u16_be]")

@@ -59,6 +59,15 @@ dispatches it:
   `socket_options::multicast_loopback` defaults to `loopback_mode::enabled`.
   Set `loopback_mode::disabled` to skip delivery back to the sender.
 
+**Receive metadata.** Every delivery reports the sender's assigned endpoint as
+`recv_metadata::sender`, a TTL of 255 and interface index 0. Its `destination`
+is the group address for a multicast delivery (`224.0.0.251` or `ff02::fb` for
+the default groups) and the receiving socket's assigned `127.x.y.z` address for
+a unicast delivery. Tests that need other metadata (an unknown TTL, a unicast
+destination, an off-link sender) hand a `recv_metadata` and the packet bytes
+straight to the socket with `inproc_socket::deliver(const recv_metadata &,
+std::span<const std::byte>)`, which bypasses the bus.
+
 **Handlers that open or close sockets.** Delivery runs the receiving socket's
 pending receive handler synchronously, and that handler may open, close or
 destroy sockets on the same bus. A multicast packet goes to the sockets that

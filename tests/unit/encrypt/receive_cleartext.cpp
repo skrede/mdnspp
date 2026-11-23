@@ -26,7 +26,7 @@ plain_bytes non_magic_packet(std::size_t size, std::byte third)
 {
     plain_bytes packet(size, std::byte{0x11});
     const plain_bytes lead{std::byte{0x12}, std::byte{0x34}, third};
-    std::copy_n(lead.begin(), std::min(size, lead.size()), packet.begin());
+    std::copy_n(lead.begin(), (std::min)(size, lead.size()), packet.begin());
     return packet;
 }
 
@@ -106,14 +106,14 @@ TEST_CASE("interleaved cleartext and encrypted packets arrive in order", "[encry
 {
     paired_sockets pair(make_test_opts(std::byte{0x42}, 1), receiver_options(cleartext_detection::attempt_decrypt, true));
     const auto large = non_magic_packet(1400, std::byte{0x00});
-    const auto small = non_magic_packet(28, std::byte{0xFF});
+    const auto short_packet = non_magic_packet(28, std::byte{0xFF});
     payloads got;
 
     arm_collecting(pair.receiver, got);
     inject(pair.receiver, large);
     inject(pair.receiver, sealed(pair, probe));
-    inject(pair.receiver, small);
+    inject(pair.receiver, short_packet);
     inject(pair.receiver, sealed(pair, follow_up));
 
-    REQUIRE(got == payloads{large, probe, small, follow_up});
+    REQUIRE(got == payloads{large, probe, short_packet, follow_up});
 }

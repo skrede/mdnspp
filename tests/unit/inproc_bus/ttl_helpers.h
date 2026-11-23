@@ -3,6 +3,9 @@
 
 #include "inproc_bus/helpers.h"
 
+#include "mdnspp/inproc/detail/inproc_receive_queue.h"
+
+#include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/mdns_options.h"
@@ -57,7 +60,9 @@ struct counting_observer
 
     void deliver(const endpoint &from, std::span<const std::byte> packet, std::optional<uint8_t> ttl)
     {
-        observer.socket().deliver(from, packet, ttl);
+        recv_metadata meta = detail::inproc_metadata(from, observer.socket().options().multicast_group);
+        meta.ttl = ttl;
+        observer.socket().deliver(meta, packet);
         harness.executor.drain();
     }
 

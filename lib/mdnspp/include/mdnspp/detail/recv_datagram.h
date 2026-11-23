@@ -40,7 +40,8 @@ inline datagram_result truncated_datagram()
 
 inline recv_metadata reserved_metadata()
 {
-    return recv_metadata{.sender = reserved_endpoint(), .ttl = std::nullopt, .recv_ifindex = 0};
+    return recv_metadata{
+        .sender = reserved_endpoint(), .ttl = std::nullopt, .recv_ifindex = 0, .destination = std::nullopt};
 }
 
 inline void fill_metadata(recv_metadata &meta, const sockaddr_storage &sender, const ancillary_data &ancillary)
@@ -48,6 +49,7 @@ inline void fill_metadata(recv_metadata &meta, const sockaddr_storage &sender, c
     assign_endpoint(sender, meta.sender);
     meta.ttl = ancillary.ttl;
     meta.recv_ifindex = ancillary.ifindex;
+    meta.destination = ancillary.destination;
 }
 
 inline datagram_result received_datagram(std::size_t size, const sockaddr_storage &sender,

@@ -2,6 +2,9 @@
 #define HPP_GUARD_MDNSPP_DETAIL_RECV_ANCILLARY_H
 
 #include "mdnspp/detail/native_socket.h"
+#include "mdnspp/detail/ip_address_ops.h"
+
+#include "mdnspp/ip_address.h"
 
 #include <span>
 #include <cstddef>
@@ -16,6 +19,7 @@ struct ancillary_data
 {
     std::optional<uint8_t> ttl;
     uint32_t ifindex;
+    std::optional<ip_address> destination;
 };
 
 struct control_payload
@@ -78,12 +82,15 @@ inline void read_ttl_message(const control_payload &msg, ancillary_data &out)
         out.ttl = static_cast<uint8_t>(int_ttl);
 }
 
-inline void read_ifindex_v4_message(const control_payload &msg, ancillary_data &out)
+// ipi_addr is the IP header destination; ipi_spec_dst is the preferred reply source on Linux and zero on xnu.
+inline void read_pktinfo_v4_message(const control_payload &msg, ancillary_data &out)
 {
 #if defined(IP_PKTINFO)
     pktinfo4_t info{};
-    if(msg.level == IPPROTO_IP && msg.type == IP_PKTINFO && read_payload(msg.bytes, info))
-        out.ifindex = static_cast<uint32_t>(info.ipi_ifindex);
+    if(msg.level != IPPROTO_IP || msg.type != IP_PKTINFO || !read_payload(msg.bytes, info))
+        return;
+    out.ifindex = static_cast<uint32_t>(info.ipi_ifindex);
+    out.destination = to_ip_address(info.ipi_addr);
 #elif defined(__APPLE__) && defined(IP_RECVIF)
     // The kernel sends sdl_len bytes of the sockaddr_dl, often fewer than sizeof(sockaddr_dl).
     constexpr std::size_t index_end = offsetof(sockaddr_dl, sdl_index) + sizeof(sockaddr_dl::sdl_index);
@@ -96,20 +103,22 @@ inline void read_ifindex_v4_message(const control_payload &msg, ancillary_data &
 }
 
 #ifdef IPV6_PKTINFO
-inline void read_ifindex_v6_message(const control_payload &msg, ancillary_data &out)
+inline void read_pktinfo_v6_message(const control_payload &msg, ancillary_data &out)
 {
     pktinfo6_t info{};
-    if(msg.level == IPPROTO_IPV6 && msg.type == IPV6_PKTINFO && read_payload(msg.bytes, info))
-        out.ifindex = static_cast<uint32_t>(info.ipi6_ifindex);
+    if(msg.level != IPPROTO_IPV6 || msg.type != IPV6_PKTINFO || !read_payload(msg.bytes, info))
+        return;
+    out.ifindex = static_cast<uint32_t>(info.ipi6_ifindex);
+    out.destination = to_ip_address(info.ipi6_addr);
 }
 #endif
 
 inline void read_control_message(const control_payload &msg, ancillary_data &out)
 {
     read_ttl_message(msg, out);
-    read_ifindex_v4_message(msg, out);
+    read_pktinfo_v4_message(msg, out);
 #ifdef IPV6_PKTINFO
-    read_ifindex_v6_message(msg, out);
+    read_pktinfo_v6_message(msg, out);
 #endif
 }
 

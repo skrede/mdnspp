@@ -51,7 +51,7 @@ std::error_code construct_exception(inproc_executor<> &ex)
 
 struct discard_receiver : mdnspp::inproc::inproc_receiver
 {
-    void deliver(const endpoint &, std::span<const std::byte>) override {}
+    void deliver(const endpoint &, const endpoint &, std::span<const std::byte>) override {}
 };
 
 }

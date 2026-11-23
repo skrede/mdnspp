@@ -5,6 +5,7 @@
 #include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/native_socket.h"
+#include "mdnspp/detail/ip_address_ops.h"
 
 #include "mdnspp/default/default_timer.h"
 #include "mdnspp/default/default_socket.h"
@@ -76,6 +77,9 @@ TEST_CASE("a default_socket reports the TTL and interface of an IPv4 loopback da
     REQUIRE(meta.has_value());
     REQUIRE(meta->ttl.has_value());
     REQUIRE(meta->recv_ifindex != 0);
+    REQUIRE(meta->destination.has_value());
+    REQUIRE(meta->destination == mdnspp::detail::parse_ip_address("127.0.0.1"));
+    REQUIRE_FALSE(meta->destination->is_multicast());
 }
 
 TEST_CASE("a default_socket reports the hop limit and interface of an IPv6 loopback datagram",
@@ -86,4 +90,7 @@ TEST_CASE("a default_socket reports the hop limit and interface of an IPv6 loopb
     REQUIRE(meta.has_value());
     REQUIRE(meta->ttl.has_value());
     REQUIRE(meta->recv_ifindex != 0);
+    REQUIRE(meta->destination.has_value());
+    REQUIRE(meta->destination == mdnspp::detail::parse_ip_address("::1"));
+    REQUIRE_FALSE(meta->destination->is_multicast());
 }

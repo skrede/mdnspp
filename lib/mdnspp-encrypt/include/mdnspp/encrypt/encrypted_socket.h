@@ -11,6 +11,8 @@
 
 #include "mdnspp/policy.h"
 
+#include "mdnspp/detail/transport_traits.h"
+
 #include <span>
 #include <chrono>
 #include <vector>
@@ -31,6 +33,7 @@ class encrypted_socket
 
 public:
     static constexpr std::chrono::seconds default_grace_duration{key_ring::default_grace_duration};
+    static constexpr bool in_process_transport{detail::is_in_process_v<InnerSocket>};
 
     template <typename Executor>
         requires (!std::is_same_v<std::remove_cvref_t<Executor>, encrypted_socket>)

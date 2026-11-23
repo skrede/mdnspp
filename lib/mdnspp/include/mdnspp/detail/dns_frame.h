@@ -39,7 +39,19 @@ struct dns_frame_header
     {
         return (flags & 0x8000U) != 0;
     }
+
+    constexpr uint8_t opcode() const noexcept
+    {
+        return static_cast<uint8_t>((flags >> 11) & 0xFU);
+    }
+
+    constexpr uint8_t rcode() const noexcept
+    {
+        return static_cast<uint8_t>(flags & 0xFU);
+    }
 };
+
+inline constexpr std::size_t dns_frame_header_size = 12;
 
 inline dns_frame_header read_frame_header(std::span<const std::byte> data)
 {

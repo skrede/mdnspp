@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DETAIL_BASIC_MDNS_PEER_BASE_H
 
 #include "mdnspp/detail/recv_loop.h"
+#include "mdnspp/detail/packet_gate.h"
 #include "mdnspp/detail/mdns_options_validation.h"
 
 #include "mdnspp/policy.h"
@@ -9,9 +10,11 @@
 #include "mdnspp/mdns_options.h"
 #include "mdnspp/socket_options.h"
 
+#include <span>
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <cstddef>
 #include <utility>
 #include <system_error>
 
@@ -42,6 +45,7 @@ protected:
     explicit basic_mdns_peer_base(executor_type ex, policy_socket_options_t<P> opts = {},
                                    mdns_options mdns_opts = {})
         : m_multicast_ep(opts.multicast_group)
+        , m_gate(opts.multicast_group.port)
         , m_executor(ex)
         , m_socket(ex, opts)
         , m_timer(ex)
@@ -53,6 +57,7 @@ protected:
     basic_mdns_peer_base(executor_type ex, policy_socket_options_t<P> opts, mdns_options mdns_opts,
                          std::error_code &ec)
         : m_multicast_ep(opts.multicast_group)
+        , m_gate(opts.multicast_group.port)
         , m_executor(ex)
         , m_socket(ex, opts, ec)
         , m_timer(ex)
@@ -106,7 +111,12 @@ protected:
                            move_only_function<void()> on_silence,
                            typename recv_loop<P>::error_handler on_error)
     {
-        m_loop = std::make_unique<recv_loop<P>>(m_socket, m_timer, silence_timeout, std::move(on_packet),
+        auto gated = [this, handler = std::move(on_packet)](const recv_metadata &meta,
+                                                            std::span<std::byte> data) mutable
+        {
+            return m_gate.admit(meta, data) && handler(meta, data);
+        };
+        m_loop = std::make_unique<recv_loop<P>>(m_socket, m_timer, silence_timeout, std::move(gated),
                                                 std::move(on_silence), m_mdns_opts.receive_ttl_minimum,
                                                 m_mdns_opts.unknown_ttl_policy, std::move(on_error));
     }
@@ -120,6 +130,7 @@ protected:
 
     std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
     endpoint m_multicast_ep;
+    packet_gate<P> m_gate;
     executor_type m_executor;
     socket_type m_socket;
     timer_type m_timer;

@@ -89,6 +89,18 @@ automatically by `basic_*` constructors via `policy_socket_options_t<P>`). Its
 port, simulating legacy unicast clients that query from a source port other
 than 5353 (RFC 6762 §6.7).
 
+**Source port rule.** RFC 6762 §6: "Multicast DNS implementations MUST
+silently ignore any Multicast DNS responses they receive where the source UDP
+port is not 5353." Every peer drops a response whose source port is not the
+configured multicast port, but not over the in-process transport: a server
+whose socket uses `port_override` still answers the other peers on the bus,
+and an `encrypted_socket` over an `inproc_socket` keeps the exemption. The
+exemption is a compile-time property of the socket type, which declares
+`static constexpr bool in_process_transport{true}`. No runtime option and
+nothing a packet carries can grant it, so a socket that receives from a real
+network never skips the rule. Queries are not subject to it on any transport:
+a query from another port is a legacy unicast query and gets its reply.
+
 ## Executor model
 
 `inproc_executor` drives all activity with a three-priority loop. Each

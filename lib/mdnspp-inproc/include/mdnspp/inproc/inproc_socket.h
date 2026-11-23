@@ -28,6 +28,8 @@ class inproc_socket : public inproc_receiver
     };
 
 public:
+    static constexpr bool in_process_transport{true};
+
     explicit inproc_socket(inproc_executor<Clock> &ex)
         : inproc_socket(checked{}, ex, inproc_socket_options{}, std::error_code{})
     {

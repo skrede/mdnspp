@@ -72,6 +72,9 @@ Unit tests cover:
 - Receive metadata of the test-double sockets: the mock socket's default and
   explicit metadata (mock_receive_metadata_test) and the destination of
   in-process multicast and unicast deliveries (inproc_bus_destination_test)
+- The inbound packet gate every peer type applies: OPCODE and RCODE rules,
+  packets shorter than a DNS header, and the source port rule for responses
+  with its in-process exemption (tests/unit/gate/: gate_*_test)
 - The receive contract every socket honors: one completion per arm, ordering,
   and close semantics (tests/unit/receive_contract/: receive_contract_*_test)
 - Default event loop: socket registry, timer dispatch, poll errors, re-entrant

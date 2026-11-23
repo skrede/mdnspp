@@ -18,6 +18,7 @@ are implemented and which remain pending.
 | 6 | Random response delay (20–120 ms) | `[x]` | [traffic-reduction.md](traffic-reduction.md) |
 | 6 | Parameterized response delay (20–120 ms) | `[x]` | [mdns_options](../api/mdns_options.md): response_delay_min/max |
 | 6 | Class and type matching of questions (qtype and qclass ANY, QU bit masked) | `[x]` | Questions of a class other than IN or ANY are not answered |
+| 6 | Source port of received responses: "Multicast DNS implementations MUST silently ignore any Multicast DNS responses they receive where the source UDP port is not 5353." | `[x]` | Every peer type drops a response from a port other than the configured multicast port; queries from any port are kept (6.7). In-process transports are exempt: [inproc-bus.md](../inproc-bus.md) |
 | 6.1 | Negative responses (NSEC, per-name owner and type bitmap) | `[x]` | [negative-responses.md](negative-responses.md) |
 | 6.1 | Querier-side NSEC consumption | `[ ]` | Received NSEC records are not used to suppress retries |
 | 6.7 | Legacy unicast responses (ID/question echo, no cache-flush, TTL cap) | `[x]` | [legacy-unicast.md](legacy-unicast.md) |
@@ -38,6 +39,8 @@ are implemented and which remain pending.
 | 11 | Multicast TTL 255 | `[x]` | [socket-options.md](../socket-options.md) |
 | 11 | Receive-side TTL 255 enforcement | `[x]` | [receive-ttl.md](receive-ttl.md) -- [recv_metadata](../api/recv_metadata.md) |
 | 11 | On-link source-address check | `[ ]` | Only the IP TTL is validated on receive |
+| 18.3 | OPCODE: "Multicast DNS messages received with an OPCODE other than zero MUST be silently ignored." | `[x]` | Every peer type drops such packets, and packets shorter than a DNS header |
+| 18.11 | RCODE: "Multicast DNS messages received with non-zero Response Codes MUST be silently ignored." | `[x]` | Every peer type drops such packets |
 
 ## RFC 6763 -- DNS-Based Service Discovery
 

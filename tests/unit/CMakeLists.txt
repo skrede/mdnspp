@@ -155,6 +155,7 @@ make_inproc_subdir_test(inproc_legacy_unicast_capped_ttl_test inproc_legacy_unic
 make_inproc_subdir_test(inproc_legacy_unicast_full_ttl_test   inproc_legacy_unicast/full_ttl.cpp)
 make_inproc_test(nic_monitor_test)
 make_inproc_test(nic_monitor_baseline_test)
+make_test(nic_monitor_diff_test)
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     make_test(nic_monitor_netlink_test)
 endif ()

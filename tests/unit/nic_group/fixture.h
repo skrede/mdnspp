@@ -13,6 +13,8 @@
 #include "mdnspp/basic_service_server.h"
 #include "mdnspp/basic_service_monitor.h"
 
+#include "mdnspp/detail/ip_address_ops.h"
+
 #include <chrono>
 #include <memory>
 #include <string>
@@ -20,6 +22,7 @@
 #include <cstdint>
 #include <utility>
 #include <algorithm>
+#include <string_view>
 #include <system_error>
 
 using namespace mdnspp;
@@ -35,11 +38,11 @@ using observer_group = basic_nic_group<inproc_test_policy, basic_observer>;
 using group_options = basic_nic_group_options<inproc_test_policy>;
 using found_list = std::vector<std::pair<std::string, std::string>>;
 
-inline network_interface make_nic(uint32_t index, std::string name, std::string ipv4)
+inline network_interface make_nic(uint32_t index, std::string name, std::string_view ipv4)
 {
     network_interface nic;
     nic.name = std::move(name);
-    nic.ipv4_address = std::move(ipv4);
+    nic.addresses.push_back({*detail::parse_ip_address(ipv4), 24});
     nic.index = index;
     nic.is_up = true;
     return nic;

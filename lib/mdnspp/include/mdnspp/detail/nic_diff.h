@@ -21,11 +21,10 @@ struct nic_change
     network_interface iface;
 };
 
+// A user enumerator need not sort the addresses, so their order is not a change.
 inline bool nic_changed(const network_interface &before, const network_interface &after)
 {
-    return after.is_up != before.is_up ||
-           after.ipv4_address != before.ipv4_address ||
-           after.ipv6_address != before.ipv6_address;
+    return after.is_up != before.is_up || !std::ranges::is_permutation(before.addresses, after.addresses);
 }
 
 inline std::vector<network_interface>::const_iterator find_nic(const std::vector<network_interface> &nics,

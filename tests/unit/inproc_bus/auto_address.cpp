@@ -6,6 +6,8 @@
 #include "mdnspp/network_interface.h"
 #include "mdnspp/nic_group_options.h"
 
+#include "mdnspp/detail/ip_address_ops.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <memory>
@@ -64,7 +66,7 @@ basic_nic_group_options<inproc_test_policy> single_nic_opts()
 {
     network_interface nic;
     nic.name = "nic1";
-    nic.ipv4_address = "10.7.0.1";
+    nic.addresses.push_back({*detail::parse_ip_address("10.7.0.1"), 24});
     nic.index = 1;
     nic.is_up = true;
     auto nics = std::make_shared<std::vector<network_interface>>();

@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_BASIC_NIC_GROUP_H
 
 #include "mdnspp/policy.h"
+#include "mdnspp/ip_address.h"
 #include "mdnspp/basic_observer.h"
 #include "mdnspp/resolved_service.h"
 #include "mdnspp/basic_nic_monitor.h"
@@ -11,9 +12,11 @@
 #include "mdnspp/basic_service_monitor.h"
 
 #include "mdnspp/detail/peer_traits.h"
+#include "mdnspp/detail/ip_address_ops.h"
 #include "mdnspp/detail/nic_group_slots.h"
 #include "mdnspp/detail/sibling_records.h"
 #include "mdnspp/detail/nic_group_builder.h"
+#include "mdnspp/detail/interface_addresses.h"
 
 #include <mutex>
 #include <atomic>
@@ -160,10 +163,11 @@ private:
             return m_grp_opts.socket_options_factory(nic);
 
         policy_socket_options_t<P> sock_opts{};
-        if(!nic.ipv4_address.empty())
-            sock_opts.interface_address = nic.ipv4_address;
-        else if(!nic.ipv6_address.empty())
-            sock_opts.interface_address = nic.ipv6_address;
+        const ip_network *address = detail::first_address(nic, address_family::ipv4);
+        if(address == nullptr)
+            address = detail::first_address(nic, address_family::ipv6);
+        if(address != nullptr)
+            sock_opts.interface_address = detail::format_ip_address(address->address);
         return sock_opts;
     }
 };

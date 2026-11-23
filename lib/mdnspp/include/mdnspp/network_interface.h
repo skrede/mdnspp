@@ -1,6 +1,8 @@
 #ifndef HPP_GUARD_MDNSPP_NETWORK_INTERFACE_H
 #define HPP_GUARD_MDNSPP_NETWORK_INTERFACE_H
 
+#include "mdnspp/ip_address.h"
+
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -13,8 +15,7 @@ namespace mdnspp {
 struct network_interface
 {
     std::string name;
-    std::string ipv4_address;
-    std::string ipv6_address;
+    std::vector<ip_network> addresses;
     uint32_t index{0};
     bool is_loopback{false};
     bool is_up{false};

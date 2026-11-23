@@ -1,4 +1,5 @@
-#include "mdnspp/service_info.h"
+#include "interface_resolve_fixture.h"
+
 #include "mdnspp/socket_options.h"
 #include "mdnspp/network_interface.h"
 
@@ -6,42 +7,12 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <string>
 #include <vector>
 #include <cstdint>
 #include <system_error>
 
 using namespace mdnspp;
 using namespace mdnspp::detail;
-
-namespace {
-
-network_interface make_nic(uint32_t index, std::string name,
-                           std::string ipv4 = {}, std::string ipv6 = {},
-                           bool loopback = false, bool up = true)
-{
-    network_interface nic;
-    nic.name = std::move(name);
-    nic.ipv4_address = std::move(ipv4);
-    nic.ipv6_address = std::move(ipv6);
-    nic.index = index;
-    nic.is_loopback = loopback;
-    nic.is_up = up;
-    return nic;
-}
-
-std::vector<network_interface> test_interfaces()
-{
-    return {
-        make_nic(1, "lo", "127.0.0.1", "::1", true),
-        make_nic(2, "eth0", "10.0.0.2", "fe80::2"),
-        make_nic(3, "eth1", "10.0.1.3"),               // no IPv6
-        make_nic(4, "wlan0", {}, "fe80::4"),           // no IPv4
-        make_nic(5, "eth2", "10.0.2.5", {}, false, false), // down
-    };
-}
-
-}
 
 TEST_CASE("extract_interface_binding reads socket_options binding fields", "[interface_resolve]")
 {
@@ -82,6 +53,20 @@ TEST_CASE("find_interface index takes precedence over name and address", "[inter
 
     REQUIRE(find_interface(nics, {.name = "eth1", .address = "10.0.0.2"})->name == "eth1");
     REQUIRE(find_interface(nics, {.name = "nope", .address = "10.0.0.2"}) == nullptr);
+}
+
+TEST_CASE("find_interface matches a binding address against every address of an interface", "[interface_resolve]")
+{
+    network_interface multi = make_nic(6, "eth3", "192.0.2.6", "2001:db8::6");
+    multi.addresses.push_back({*parse_ip_address("198.51.100.6"), 24});
+    multi.addresses.push_back({*parse_ip_address("fe80::6"), 64});
+    std::vector<network_interface> nics = test_interfaces();
+    nics.push_back(multi);
+
+    REQUIRE(find_interface(nics, {.address = "198.51.100.6"})->name == "eth3");
+    REQUIRE(find_interface(nics, {.address = "fe80::6"})->name == "eth3");
+    REQUIRE(find_interface(nics, {.address = "192.0.2.99"}) == nullptr);
+    REQUIRE(find_interface(nics, {.address = "not an address"}) == nullptr);
 }
 
 TEST_CASE("select_interface_address resolves name and index to the family address", "[interface_resolve]")
@@ -127,74 +112,4 @@ TEST_CASE("select_interface_address passes a plain address binding through", "[i
     REQUIRE_FALSE(ec);
     REQUIRE(select_interface_address(nics, {}, false, ec).empty());
     REQUIRE_FALSE(ec);
-}
-
-TEST_CASE("resolve_advertised_addresses is a no-op without auto_address", "[interface_resolve]")
-{
-    service_info info;
-    resolve_advertised_addresses(test_interfaces(), {}, info);
-    REQUIRE_FALSE(info.address_ipv4.has_value());
-    REQUIRE_FALSE(info.address_ipv6.has_value());
-}
-
-TEST_CASE("resolve_advertised_addresses uses the bound interface", "[interface_resolve]")
-{
-    service_info info;
-    info.auto_address = true;
-    resolve_advertised_addresses(test_interfaces(), {.index = 2}, info);
-    REQUIRE(info.address_ipv4 == "10.0.0.2");
-    REQUIRE(info.address_ipv6 == "fe80::2");
-}
-
-TEST_CASE("resolve_advertised_addresses never crosses interfaces for a missing family", "[interface_resolve]")
-{
-    service_info info;
-    info.auto_address = true;
-    resolve_advertised_addresses(test_interfaces(), {.name = "eth1"}, info);
-    REQUIRE(info.address_ipv4 == "10.0.1.3");
-    REQUIRE_FALSE(info.address_ipv6.has_value());
-}
-
-TEST_CASE("resolve_advertised_addresses preserves user-set fields", "[interface_resolve]")
-{
-    service_info info;
-    info.auto_address = true;
-    info.address_ipv4 = "192.0.2.1";
-    resolve_advertised_addresses(test_interfaces(), {.index = 2}, info);
-    REQUIRE(info.address_ipv4 == "192.0.2.1");
-    REQUIRE(info.address_ipv6 == "fe80::2");
-}
-
-TEST_CASE("resolve_advertised_addresses uses an address-only binding verbatim", "[interface_resolve]")
-{
-    // The bound link is not in the enumerated list (e.g. an inproc or
-    // container interface): the binding address itself is the announcing
-    // link's address for its family.
-    service_info info;
-    info.auto_address = true;
-    resolve_advertised_addresses(test_interfaces(), {.address = "172.16.0.9"}, info);
-    REQUIRE(info.address_ipv4 == "172.16.0.9");
-    REQUIRE_FALSE(info.address_ipv6.has_value());
-}
-
-TEST_CASE("resolve_advertised_addresses unbound falls back to the lowest-index candidate", "[interface_resolve]")
-{
-    service_info info;
-    info.auto_address = true;
-    resolve_advertised_addresses(test_interfaces(), {}, info);
-    REQUIRE(info.address_ipv4 == "10.0.0.2");
-    REQUIRE(info.address_ipv6 == "fe80::2");
-}
-
-TEST_CASE("resolve_advertised_addresses leaves a family with no candidate unset", "[interface_resolve]")
-{
-    std::vector<network_interface> v4_only{
-        make_nic(1, "lo", "127.0.0.1", "::1", true),
-        make_nic(2, "eth0", "10.0.0.2"),
-    };
-    service_info info;
-    info.auto_address = true;
-    resolve_advertised_addresses(v4_only, {}, info);
-    REQUIRE(info.address_ipv4 == "10.0.0.2");
-    REQUIRE_FALSE(info.address_ipv6.has_value());
 }

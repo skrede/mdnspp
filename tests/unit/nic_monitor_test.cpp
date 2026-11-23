@@ -7,6 +7,8 @@
 #include "mdnspp/network_interface.h"
 #include "mdnspp/nic_group_options.h"
 
+#include "mdnspp/detail/ip_address_ops.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
@@ -16,6 +18,7 @@
 #include <cstdint>
 #include <utility>
 #include <algorithm>
+#include <string_view>
 #include <system_error>
 
 using namespace mdnspp;
@@ -25,14 +28,19 @@ using mdnspp::inproc::inproc_executor;
 
 namespace {
 
-network_interface make_nic(uint32_t index, std::string name, std::string ipv4)
+network_interface make_nic(uint32_t index, std::string name, std::string_view ipv4)
 {
     network_interface nic;
     nic.name = std::move(name);
-    nic.ipv4_address = std::move(ipv4);
+    nic.addresses.push_back({*detail::parse_ip_address(ipv4), 24});
     nic.index = index;
     nic.is_up = true;
     return nic;
+}
+
+std::string first_address_of(const network_interface &nic)
+{
+    return detail::format_ip_address(nic.addresses.front().address);
 }
 
 struct monitor_fixture
@@ -140,13 +148,13 @@ TEST_CASE("nic_monitor treats an address change as remove followed by add", "[ni
     basic_nic_monitor<inproc_test_policy> mon{f.executor, f.make_opts()};
 
     std::vector<std::pair<std::string, std::string>> events; // (kind, ipv4)
-    mon.on_added([&](const network_interface &nic) { events.emplace_back("added", nic.ipv4_address); });
-    mon.on_removed([&](const network_interface &nic) { events.emplace_back("removed", nic.ipv4_address); });
+    mon.on_added([&](const network_interface &nic) { events.emplace_back("added", first_address_of(nic)); });
+    mon.on_removed([&](const network_interface &nic) { events.emplace_back("removed", first_address_of(nic)); });
 
     mon.start();
     f.executor.drain();
 
-    f.nics->front().ipv4_address = "10.0.0.2";
+    f.nics->front().addresses.front().address = *detail::parse_ip_address("10.0.0.2");
     f.advance(std::chrono::milliseconds{100});
     f.executor.drain();
 

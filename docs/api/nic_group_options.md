@@ -38,7 +38,7 @@ struct basic_nic_group_options {
 |-------|------|---------|-------------|
 | `dedup` | `dedup_mode` | `dedup_mode::merged` | Controls how `services()` aggregates results from multiple interfaces. Event callbacks are unaffected — they always fire per interface. |
 | `interface_filter` | `move_only_function<bool(const network_interface &)>` | `{}` (none, accept all) | Predicate called for each interface. Return `false` to skip that interface. |
-| `socket_options_factory` | `move_only_function<policy_socket_options_t<P>(const network_interface &)>` | `{}` (none, auto-derive) | Factory for per-interface socket options. If not set, the interface IPv4 or IPv6 address is used. |
+| `socket_options_factory` | `move_only_function<policy_socket_options_t<P>(const network_interface &)>` | `{}` (none, auto-derive) | Factory for per-interface socket options. If not set, `interface_address` is the interface's first IPv4 address in `addresses`, else its first IPv6 address. |
 | `mdns_opts` | `mdns_options` | default `mdns_options{}` | Forwarded to every `basic_service_monitor` and `basic_observer` instance created per interface. |
 | `monitor_opts` | `nic_monitor_options` | default `nic_monitor_options{}` | Forwarded to the internal `basic_nic_monitor`. Controls the fallback polling interval and the optional custom enumerator. |
 | `on_found` | `move_only_function<void(const network_interface &, const resolved_service &)>` | `{}` | Fired once per interface when a service instance becomes fully resolved on that interface. Requires `basic_service_monitor` in the `Peers` pack. |
@@ -79,6 +79,29 @@ struct nic_monitor_options {
 |-------|------|---------|-------------|
 | `poll_interval` | `std::chrono::milliseconds` | 5 s | Interval between interface enumeration polls when no native backend is active. A change is seen at the next poll, so polling detects changes up to one `poll_interval` late. |
 | `enumerator` | `move_only_function<std::vector<network_interface>(std::error_code &)>` | `{}` (use `enumerate_interfaces()`) | Optional replacement for `enumerate_interfaces()`. When set, the native backends are bypassed and the monitor polls this callable every `poll_interval`. Intended for tests and for supplying a curated interface universe. |
+
+An enumerator fills each interface's `addresses` with every address and its on-link prefix
+length. The order is free: the monitor reports an interface as changed (a removal followed
+by an addition) when its `is_up` flag or the set of its `addresses` differs, and a
+reordering of the same addresses is not a change. An added or removed address, or a changed
+prefix length, is a change.
+
+```cpp
+mdnspp::nic_monitor_options mon_opts{
+    .enumerator = [](std::error_code &ec)
+    {
+        ec.clear();
+        mdnspp::network_interface nic;
+        nic.name = "eth0";
+        nic.index = 2;
+        nic.is_up = true;
+        nic.addresses.push_back({.address = {.family = mdnspp::address_family::ipv4,
+                                             .bytes = {std::byte{192}, std::byte{0}, std::byte{2}, std::byte{10}}},
+                                 .prefix_length = 24});
+        return std::vector<mdnspp::network_interface>{nic};
+    },
+};
+```
 
 On Linux, macOS, and Windows the native backend is used and `poll_interval` polling is
 not active unless `enumerator` is set. The Linux netlink backend drains its socket on a
@@ -153,7 +176,15 @@ move_only_function<policy_socket_options_t<P>(const network_interface &)>
 
 A non-copyable callable that takes a `network_interface` and returns the policy's socket
 options type (`socket_options` for `default_policy`). Invoked once per interface when
-instances are created. Set via `nic_group_options::socket_options_factory`.
+instances are created. Set via `nic_group_options::socket_options_factory`. Binding by
+index needs no address text:
+
+```cpp
+grp_opts.socket_options_factory = [](const mdnspp::network_interface &nic) -> mdnspp::socket_options
+{
+    return mdnspp::socket_options{.interface_index = nic.index};
+};
+```
 
 ---
 

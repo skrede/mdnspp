@@ -1,6 +1,10 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_INTERFACE_RESOLVE_H
 #define HPP_GUARD_MDNSPP_DETAIL_INTERFACE_RESOLVE_H
 
+#include "mdnspp/detail/ip_address_ops.h"
+#include "mdnspp/detail/interface_addresses.h"
+
+#include "mdnspp/ip_address.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/network_interface.h"
@@ -60,11 +64,17 @@ find_interface(const std::vector<network_interface> &interfaces, const interface
     if(binding.name.has_value())
         return find([&](const network_interface &nic) { return nic.name == *binding.name; });
     if(!binding.address.empty())
-        return find([&](const network_interface &nic)
-        {
-            return nic.ipv4_address == binding.address || nic.ipv6_address == binding.address;
-        });
+    {
+        const std::optional<ip_address> address = parse_ip_address(binding.address);
+        return address ? find([&](const network_interface &nic) { return contains(nic, *address); }) : nullptr;
+    }
     return nullptr;
+}
+
+inline std::string first_address_text(const network_interface &nic, bool ipv6)
+{
+    const ip_network *net = first_address(nic, ipv6 ? address_family::ipv6 : address_family::ipv4);
+    return net != nullptr ? format_ip_address(net->address) : std::string{};
 }
 
 // A binding by address is passed through unchecked; the socket's address parsing validates its family.
@@ -83,7 +93,7 @@ select_interface_address(const std::vector<network_interface> &interfaces,
         return {};
     }
 
-    const std::string &address = ipv6 ? nic->ipv6_address : nic->ipv4_address;
+    std::string address = first_address_text(*nic, ipv6);
     if(address.empty())
     {
         ec = std::make_error_code(std::errc::invalid_argument);
@@ -113,7 +123,7 @@ lowest_index_interface(const std::vector<network_interface> &interfaces, bool ip
     {
         if(nic.is_loopback || !nic.is_up)
             continue;
-        if((ipv6 ? nic.ipv6_address : nic.ipv4_address).empty())
+        if(!has_family(nic, ipv6 ? address_family::ipv6 : address_family::ipv4))
             continue;
         if(best == nullptr || nic.index < best->index)
             best = &nic;
@@ -126,7 +136,7 @@ inline std::string advertised_address(const std::vector<network_interface> &inte
 {
     std::string address;
     if(bound != nullptr)
-        address = ipv6 ? bound->ipv6_address : bound->ipv4_address;
+        address = first_address_text(*bound, ipv6);
     else if(!binding.address.empty())
     {
         if(address_is_ipv6(binding.address) == ipv6)
@@ -135,7 +145,7 @@ inline std::string advertised_address(const std::vector<network_interface> &inte
     else if(!binding.bound())
     {
         if(const network_interface *nic = lowest_index_interface(interfaces, ipv6))
-            address = ipv6 ? nic->ipv6_address : nic->ipv4_address;
+            address = first_address_text(*nic, ipv6);
     }
     return address;
 }

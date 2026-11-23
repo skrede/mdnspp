@@ -224,7 +224,8 @@ void on_added(move_only_function<void(const network_interface &)> cb);
 ```
 
 Registers a callback fired on the executor when an interface is added or its state changes
-(treated as a remove then add). Registration is marshalled through `P::post` and takes
+(treated as a remove then add). The state is the `is_up` flag and the set of `addresses`
+with their prefix lengths; a reordering of the same addresses is not a change. Registration is marshalled through `P::post` and takes
 effect once the executor processes it; it may be called from any thread. Called by
 `basic_nic_group` internally.
 

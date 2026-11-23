@@ -4,6 +4,8 @@
 #include "mdnspp/network_interface.h"
 #include "mdnspp/nic_group_options.h"
 
+#include "mdnspp/detail/ip_address_ops.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
@@ -12,6 +14,7 @@
 #include <cstdint>
 #include <utility>
 #include <algorithm>
+#include <string_view>
 #include <system_error>
 
 using namespace mdnspp;
@@ -21,11 +24,11 @@ using mdnspp::inproc::inproc_executor;
 
 namespace {
 
-network_interface make_nic(uint32_t index, std::string name, std::string ipv4)
+network_interface make_nic(uint32_t index, std::string name, std::string_view ipv4)
 {
     network_interface nic;
     nic.name = std::move(name);
-    nic.ipv4_address = std::move(ipv4);
+    nic.addresses.push_back({*detail::parse_ip_address(ipv4), 24});
     nic.index = index;
     nic.is_up = true;
     return nic;

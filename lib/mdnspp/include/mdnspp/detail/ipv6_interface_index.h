@@ -2,11 +2,13 @@
 #define HPP_GUARD_MDNSPP_DETAIL_IPV6_INTERFACE_INDEX_H
 
 #include "mdnspp/detail/native_socket.h"
+#include "mdnspp/detail/ip_address_ops.h"
+
+#include "mdnspp/ip_address.h"
 
 #include <string>
 #include <cstddef>
 #include <cstdint>
-#include <cstring>
 
 #ifdef _WIN32
 #  include <memory>
@@ -75,12 +77,16 @@ inline uint32_t resolve_ipv6_interface_index(const std::string &addr)
 
 inline uint32_t interface_index_of(const ifaddrs *list, const in6_addr &target)
 {
+    const ip_address wanted = to_ip_address(target);
     for(const ifaddrs *ifa = list; ifa; ifa = ifa->ifa_next)
     {
         if(!ifa->ifa_addr || ifa->ifa_addr->sa_family != AF_INET6)
             continue;
-        auto &sa6 = *reinterpret_cast<const sockaddr_in6 *>(ifa->ifa_addr);
-        if(std::memcmp(&sa6.sin6_addr, &target, sizeof(in6_addr)) == 0)
+        ip_address candidate = to_ip_address(reinterpret_cast<const sockaddr_in6 *>(ifa->ifa_addr)->sin6_addr);
+#ifdef __APPLE__
+        clear_embedded_scope(candidate);
+#endif
+        if(candidate == wanted)
             return ::if_nametoindex(ifa->ifa_name);
     }
     return 0;

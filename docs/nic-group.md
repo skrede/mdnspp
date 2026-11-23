@@ -243,15 +243,15 @@ All seven combinations of the three peer types are supported.
 ### Per-interface socket options via socket_options_factory
 
 By default, `nic_group` derives the socket's interface address from the `network_interface`
-passed to it (IPv4 first, then IPv6 if no IPv4 address is present). To customize socket
-options per interface, provide a factory:
+passed to it: the first IPv4 address in `addresses`, or the first IPv6 address if the
+interface has no IPv4 address. To customize socket options per interface, provide a factory:
 
 ```cpp
 mdnspp::nic_group_options grp_opts{
     .socket_options_factory = [](const mdnspp::network_interface &nic) -> mdnspp::socket_options
     {
         mdnspp::socket_options s;
-        s.interface_address = nic.ipv4_address;
+        s.interface_index = nic.index;
         // additional per-interface customization
         return s;
     },

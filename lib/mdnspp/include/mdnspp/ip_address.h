@@ -28,6 +28,14 @@ struct ip_address
     bool operator==(const ip_address &) const = default;
 };
 
+struct ip_network
+{
+    ip_address address;
+    uint8_t prefix_length{0};
+
+    bool operator==(const ip_network &) const = default;
+};
+
 }
 
 #endif

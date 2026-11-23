@@ -63,7 +63,7 @@ Unit tests cover:
 - Endpoint, sender address text and socket option handling (endpoint_test,
   sockaddr_text_test, socket_options_test, socket_options_validation_test)
 - Interface enumeration and binding resolution (enumerate_interfaces_test,
-  interface_resolve_test)
+  interface_addresses_test, interface_resolve_test, interface_resolve_address_test)
 - Receive-loop lifecycle, delivery, error propagation and stop behavior
   (tests/unit/recv_loop/: recv_loop_*_test)
 - Receive ancillary data: TTL, hop limit, arrival interface and destination
@@ -89,7 +89,8 @@ Unit tests cover:
   interface monitoring (tests/unit/nic_group/: nic_group_server_test,
   nic_group_monitor_test, nic_group_options_test, nic_group_dynamic_test,
   nic_group_siblings_test; nic_monitor_test), a failed first enumeration
-  followed by a good one (nic_monitor_baseline_test), and the Linux netlink
+  followed by a good one (nic_monitor_baseline_test), what counts as an interface
+  change (nic_monitor_diff_test), and the Linux netlink
   drain over a scripted receive call, ending at the first ENOBUFS
   (nic_monitor_netlink_test, Linux only)
 - Multicast capability validation (validate_multicast_test)

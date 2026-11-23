@@ -102,8 +102,7 @@ namespace mdnspp {
 struct network_interface
 {
     std::string name;
-    std::string ipv4_address;
-    std::string ipv6_address;
+    std::vector<ip_network> addresses;
     uint32_t index{0};
     bool is_loopback{false};
     bool is_up{false};
@@ -117,11 +116,26 @@ struct network_interface
 | Field | Type | Description |
 |-------|------|-------------|
 | `name` | `std::string` | OS-reported interface name (e.g. `"eth0"`, `"en0"`, `"Ethernet"`). |
-| `ipv4_address` | `std::string` | IPv4 address in dotted-decimal notation. Empty if the interface has no IPv4 address. |
-| `ipv6_address` | `std::string` | IPv6 address in colon-hex notation. Empty if the interface has no IPv6 address. |
+| `addresses` | `std::vector<ip_network>` | Every IPv4 and IPv6 address assigned to the interface, each with its on-link prefix length (see [ip_network](api/ip_address.md#ip_network)). Empty if the interface has no address. |
 | `index` | `uint32_t` | OS interface index. |
 | `is_loopback` | `bool` | `true` if this is the loopback interface (`lo`, `lo0`). |
 | `is_up` | `bool` | `true` if the interface is currently up. |
+
+`enumerate_interfaces()` sorts `addresses` by family (IPv4 first), then by address bytes,
+then by prefix length, so a global or unique-local IPv6 address comes before a link-local
+one (`fe80::/10`). Where the library picks one address of a family for an interface
+(binding by `interface_name` or `interface_index`, the advertised address of an
+`auto_address` service, and the default `nic_group` socket options), it takes the first
+address of that family in `addresses`, which for `enumerate_interfaces()` is the first in
+this order.
+
+The prefix length is the on-link prefix. On Linux and macOS it is counted from the
+`getifaddrs` netmask; on Windows it is `IP_ADAPTER_UNICAST_ADDRESS::OnLinkPrefixLength`,
+which the Windows SDK declares when it targets Windows Vista or later (`_WIN32_WINNT`
+`0x0600` or higher, the SDK default). The loopback interface reports `127.0.0.1/8` and
+`::1/128`. macOS embeds the interface scope in bytes 2 and 3 of a link-local address
+returned by `getifaddrs`; the library clears them, so a link-local address reads as
+`fe80::...` on every platform.
 
 ## enumerate_interfaces()
 
@@ -136,7 +150,8 @@ std::vector<network_interface> enumerate_interfaces(std::error_code &ec);
 ```
 
 Cross-platform: uses `getifaddrs` on Linux and macOS, `GetAdaptersAddresses`
-on Windows.
+on Windows. The address bytes are in network byte order; `inet_ntop` formats them as
+text.
 
 ### Example: list all interfaces
 
@@ -150,11 +165,15 @@ int main()
     for (const auto &iface : mdnspp::enumerate_interfaces())
     {
         std::cout << iface.name
-                  << "  ipv4=" << iface.ipv4_address
-                  << "  ipv6=" << iface.ipv6_address
+                  << "  index=" << iface.index
                   << "  up=" << iface.is_up
                   << "  loopback=" << iface.is_loopback
                   << std::endl;
+        for (const mdnspp::ip_network &net : iface.addresses)
+            std::cout << "  "
+                      << (net.address.family == mdnspp::address_family::ipv4 ? "IPv4" : "IPv6")
+                      << " /" << int{net.prefix_length}
+                      << std::endl;
     }
 }
 ```
@@ -189,20 +208,25 @@ int main()
 }
 ```
 
-Alternatively, enumerate interfaces and pass an address explicitly:
+Alternatively, enumerate interfaces and pass the chosen one's index:
 
 ```cpp
 auto ifaces = mdnspp::enumerate_interfaces();
 
 // Pick the first non-loopback interface that is up and has an IPv4 address
-auto it = std::ranges::find_if(ifaces, [](const auto &iface) {
-    return iface.is_up && !iface.is_loopback && !iface.ipv4_address.empty();
+auto has_ipv4 = [](const mdnspp::network_interface &iface) {
+    return std::ranges::any_of(iface.addresses, [](const mdnspp::ip_network &net) {
+        return net.address.family == mdnspp::address_family::ipv4;
+    });
+};
+auto it = std::ranges::find_if(ifaces, [&](const auto &iface) {
+    return iface.is_up && !iface.is_loopback && has_ipv4(iface);
 });
 
 if (it == ifaces.end())
     return 1;
 
-mdnspp::socket_options opts{.interface_address = it->ipv4_address};
+mdnspp::socket_options opts{.interface_index = it->index};
 ```
 
 ### Setting TTL for RFC 6762 compliance

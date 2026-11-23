@@ -34,7 +34,7 @@ struct resolved_service {
 | `ipv6_addresses` | `std::vector<std::string>` | AAAA | IPv6 address strings (e.g. `"fe80::1"`) |
 | `wire_ttl` | `uint32_t` | SRV | Original TTL from the network, in seconds. Zero for one-shot `aggregate()` results; populated by `service_monitor`. |
 | `ttl_remaining` | `std::chrono::nanoseconds` | SRV | Time remaining until the SRV anchor record expires. Zero for one-shot `aggregate()` results; populated by `service_monitor`'s `services()` snapshot. |
-| `source_interface` | `network_interface` | — | Network interface on which the service was received. Default-constructed (`name` empty, `index` 0, `is_up` false) for one-shot `aggregate()` results and non-nic_group usage; populated by `basic_nic_group` based on `recv_metadata::recv_ifindex`. |
+| `source_interface` | `network_interface` | — | Network interface on which the service was received, with its `addresses` (every address and its prefix length). Default-constructed (`name` empty, `addresses` empty, `index` 0, `is_up` false) for one-shot `aggregate()` results and non-nic_group usage; populated by `basic_nic_group` based on `recv_metadata::recv_ifindex`. |
 
 ### service_txt
 

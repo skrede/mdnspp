@@ -38,7 +38,25 @@ polls its context re-entrantly keeps its own data and metadata for the whole cal
 socket fills one `recv_metadata` per socket. A handler that keeps the sender copies it. It is
 not directly accessible from `monitor_options`,
 `observer_options`, or other public callback APIs — it is consumed internally to apply
-`receive_ttl_minimum` filtering to responses and to populate `resolved_service::source_interface`.
+`receive_ttl_minimum` filtering to responses, to apply the local-link test, and to populate
+`resolved_service::source_interface`.
+
+**Local-link test (RFC 6762 §11, §5.5).** Every peer type uses `destination`, `sender` and
+`recv_ifindex` to decide whether a packet came from the local link:
+
+- A packet whose `destination` is a multicast address is on-link, whatever its source.
+- A response whose `destination` is a unicast address passes only if the `sender` address lies
+  in an on-link prefix of the receiving interface (`recv_ifindex`, or every interface when it is
+  `0`) or equals an address of any local interface. A query sent to a unicast address passes on
+  the same condition.
+- When `destination` is `nullopt`, a response gets the same source test, because the gate cannot
+  tell whether it was sent to the group or to this host. On such a platform an on-link unicast
+  response is accepted, and a multicast response from a source outside every on-link prefix is
+  dropped. A query of unknown destination is always kept, so legacy queriers get their reply.
+
+The interface prefixes come from `enumerate_interfaces`, read on first use and re-read on a
+miss at most once per second. Dropped packets are discarded silently. In-process transports
+are exempt (see [inproc-bus](../inproc-bus.md)).
 
 The zone on a link-local IPv6 `sender` lets a reply sent to `sender` leave through the
 interface the packet arrived on; destination text also accepts an interface-name zone

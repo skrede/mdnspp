@@ -74,8 +74,10 @@ Unit tests cover:
   in-process multicast and unicast deliveries (inproc_bus_destination_test)
 - The inbound packet gate every peer type applies: OPCODE and RCODE rules,
   packets shorter than a DNS header, the source port rule for responses with
-  its in-process exemption, and the receive TTL rule, which applies to
-  responses only (tests/unit/gate/: gate_*_test)
+  its in-process exemption, the receive TTL rule, which applies to
+  responses only, and the local-link test of responses and direct unicast
+  queries with its rate-limited interface snapshot
+  (tests/unit/gate/: gate_*_test)
 - The receive contract every socket honors: one completion per arm, ordering,
   and close semantics (tests/unit/receive_contract/: receive_contract_*_test)
 - Default event loop: socket registry, timer dispatch, poll errors, re-entrant

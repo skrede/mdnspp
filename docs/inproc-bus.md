@@ -101,6 +101,12 @@ nothing a packet carries can grant it, so a socket that receives from a real
 network never skips the rule. Queries are not subject to it on any transport:
 a query from another port is a legacy unicast query and gets its reply.
 
+**Local-link rule.** RFC 6762 §11 makes a querier accept only responses from
+the local link, which other transports test by destination address and source
+subnet. The in-process bus has no link and no interface addresses, so the same
+compile-time property exempts it from that test, and from the matching source
+check on direct unicast queries (RFC 6762 §5.5).
+
 ## Executor model
 
 `inproc_executor` drives all activity with a three-priority loop. Each

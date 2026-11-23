@@ -1,3 +1,5 @@
+#include "interfaces.h"
+
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/mdns_options.h"
@@ -75,7 +77,8 @@ TEST_CASE("only OPCODE 0 with RCODE 0 passes the header rules, whatever QR and t
 
 TEST_CASE("packet_gate drops data shorter than a DNS header", "[gate][header]")
 {
-    const mdnspp::detail::packet_gate<mdnspp::testing::mock_policy> gate{5353, 255, mdnspp::ttl_unknown_policy::accept};
+    mdnspp::detail::packet_gate<mdnspp::testing::mock_policy> gate{5353, 255, mdnspp::ttl_unknown_policy::accept,
+                                                                   no_interfaces};
     const std::vector<std::byte> header(12, std::byte{0});
     for(std::size_t size = 0; size < header.size(); ++size)
         CHECK_FALSE(gate.admit(from_group_port(), std::span(header).first(size)));
@@ -85,7 +88,8 @@ TEST_CASE("packet_gate drops data shorter than a DNS header", "[gate][header]")
 TEST_CASE("packet_gate drops a response with a nonzero RCODE and admits a query with the ignored bits set",
           "[gate][header]")
 {
-    const mdnspp::detail::packet_gate<mdnspp::testing::mock_policy> gate{5353, 255, mdnspp::ttl_unknown_policy::accept};
+    mdnspp::detail::packet_gate<mdnspp::testing::mock_policy> gate{5353, 255, mdnspp::ttl_unknown_policy::accept,
+                                                                   no_interfaces};
     std::vector<std::byte> packet(12, std::byte{0});
     packet[2] = std::byte{0x84};
     packet[3] = std::byte{0x03};

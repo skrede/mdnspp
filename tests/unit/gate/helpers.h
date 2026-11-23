@@ -1,6 +1,8 @@
 #ifndef HPP_GUARD_MDNSPP_GATE_HELPERS_H
 #define HPP_GUARD_MDNSPP_GATE_HELPERS_H
 
+#include "metadata.h"
+
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
@@ -67,13 +69,6 @@ inline std::vector<std::byte> service_query()
     return detail::build_dns_query("_http._tcp.local.", dns_type::ptr);
 }
 
-inline recv_metadata sent_from_port(const mock_socket &socket, uint16_t port)
-{
-    recv_metadata meta = socket.default_metadata();
-    meta.sender = endpoint{"192.0.2.10", port};
-    return meta;
-}
-
 inline std::size_t count_instance(const std::vector<mdns_record_variant> &records, std::string_view instance)
 {
     return static_cast<std::size_t>(std::ranges::count_if(records, [instance](const mdns_record_variant &rec)
@@ -98,11 +93,12 @@ void feed(Rig &rig, std::vector<std::byte> packet)
 
 struct querier_rig
 {
-    querier_rig()
+    explicit querier_rig(response_mode mode = response_mode::multicast)
         : ex{}
         , peer{ex, query_options{.silence_timeout = 500ms}}
     {
-        peer.async_query("_http._tcp.local.", dns_type::ptr, [](std::error_code, std::vector<mdns_record_variant>) {});
+        peer.async_query("_http._tcp.local.", dns_type::ptr, [](std::error_code, std::vector<mdns_record_variant>) {},
+                         mode);
     }
 
     std::size_t reported(std::string_view instance) const { return count_instance(peer.results(), instance); }

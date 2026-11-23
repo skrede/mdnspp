@@ -182,6 +182,26 @@ that do not populate it, the inproc bus, and Windows systems where the
 
 See [api/recv_metadata.md](api/recv_metadata.md) for the platform matrix.
 
+## Unicast responses from another subnet are ignored
+
+**Symptom:** a querier that asks for unicast responses (`response_mode::unicast`), or a
+peer on a platform that does not report the destination address, never sees answers from a
+responder that is reachable but sits on another subnet (a routed network, a VPN peer, or a
+device misconfigured with an unrelated address).
+
+RFC 6762 §11 makes a querier accept only responses from the local link. A response sent to the
+mDNS multicast group always counts as local. A response sent by unicast counts as local only
+if its source address lies in an on-link prefix of the interface it arrived on, or is one of
+this host's own addresses; anything else is silently discarded, with no `on_error` report.
+Where the platform does not report the destination (see the platform matrix in
+[api/recv_metadata.md](api/recv_metadata.md)), every response gets the source test, so a
+multicast response from a device outside the local prefixes is discarded as well. A service
+server likewise ignores a direct unicast query from outside the local prefixes (RFC 6762 §5.5).
+
+Remedy: put the devices on a common subnet, use multicast (QM) queries, or check that the
+interface's prefix length is what you expect (`enumerate_interfaces` reports it in
+`network_interface::addresses`).
+
 ## Where errors surface
 
 mdnspp reports errors through four channels; knowing which one fires saves

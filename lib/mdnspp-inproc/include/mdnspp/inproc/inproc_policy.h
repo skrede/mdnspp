@@ -23,6 +23,7 @@ struct inproc_policy
     using executor_type = inproc_executor<Clock> &;
     using socket_type = inproc_socket<Clock>;
     using timer_type = inproc_timer<Clock>;
+    using clock_type = Clock;
     using socket_options_type = inproc_socket_options;
 
     static void post(executor_type ex, detail::move_only_function<void()> fn)

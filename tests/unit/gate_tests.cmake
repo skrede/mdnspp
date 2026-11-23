@@ -1,6 +1,12 @@
 make_subdir_test(gate_header_rules_test gate/header_rules.cpp)
 make_subdir_test(gate_peer_header_test gate/peer_header.cpp)
 make_subdir_test(gate_ttl_scope_test gate/ttl_scope.cpp)
+make_subdir_test(gate_unicast_on_link_test gate/unicast_on_link.cpp)
+make_subdir_test(gate_on_link_table_test gate/on_link_table.cpp)
+make_subdir_test(gate_on_link_rules_test gate/on_link_rules.cpp)
+make_subdir_test(gate_query_on_link_test gate/query_on_link.cpp)
+target_link_libraries(gate_on_link_table_test PRIVATE mdnspp::inproc)
+target_link_libraries(gate_on_link_rules_test PRIVATE mdnspp::inproc)
 
 make_subdir_test(gate_peer_port_test gate/peer_port.cpp)
 target_link_libraries(gate_peer_port_test PRIVATE mdnspp::inproc)

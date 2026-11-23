@@ -9,11 +9,13 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/mdns_options.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/network_interface.h"
 
 #include <span>
 #include <atomic>
 #include <chrono>
 #include <memory>
+#include <vector>
 #include <cstddef>
 #include <utility>
 #include <system_error>
@@ -24,6 +26,11 @@ inline void throw_on_error(std::error_code ec)
 {
     if(ec)
         throw std::system_error(ec);
+}
+
+inline std::vector<network_interface> system_interfaces(std::error_code &ec)
+{
+    return enumerate_interfaces(ec);
 }
 
 template <policy_like P>
@@ -45,7 +52,8 @@ protected:
     explicit basic_mdns_peer_base(executor_type ex, policy_socket_options_t<P> opts = {},
                                    mdns_options mdns_opts = {})
         : m_multicast_ep(opts.multicast_group)
-        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy)
+        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy,
+                 system_interfaces)
         , m_executor(ex)
         , m_socket(ex, opts)
         , m_timer(ex)
@@ -57,7 +65,8 @@ protected:
     basic_mdns_peer_base(executor_type ex, policy_socket_options_t<P> opts, mdns_options mdns_opts,
                          std::error_code &ec)
         : m_multicast_ep(opts.multicast_group)
-        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy)
+        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy,
+                 system_interfaces)
         , m_executor(ex)
         , m_socket(ex, opts, ec)
         , m_timer(ex)

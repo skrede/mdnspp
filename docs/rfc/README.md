@@ -14,6 +14,7 @@ are implemented and which remain pending.
 | 5.2 | Continuous query backoff (1 s → 60 min) | `[x]` | [query-backoff.md](query-backoff.md) |
 | 5.2 | TTL refresh queries (80/85/90/95%) | `[x]` | [query-backoff.md](query-backoff.md) |
 | 5.4 | QU/QM response routing (incl. quarter-TTL multicast rule) | `[x]` | [quqm-routing.md](quqm-routing.md) |
+| 5.5 | Direct unicast queries: "responders SHOULD check that the source address in the query packet matches the local subnet for that link (or, in the case of IPv6, the source address has an on-link prefix) and silently ignore the packet if not." | `[x]` | A query sent to a unicast address from a source outside the on-link prefixes of the receiving interface is dropped. A query whose destination is unknown is always kept, so a legacy querier (6.7) is never left without its reply. In-process transports are exempt |
 | 6/7.2 | TC bit and multi-packet known-answer (both sides) | `[x]` | [tc-handling.md](tc-handling.md) |
 | 6 | Random response delay (20–120 ms) | `[x]` | [traffic-reduction.md](traffic-reduction.md) |
 | 6 | Parameterized response delay (20–120 ms) | `[x]` | [mdns_options](../api/mdns_options.md): response_delay_min/max |
@@ -38,7 +39,7 @@ are implemented and which remain pending.
 | 10.5 | Passive Observation Of Failures (POOF) | `[ ]` | Not implemented |
 | 11 | Multicast TTL 255 | `[x]` | [socket-options.md](../socket-options.md) |
 | 11 | Receive-side TTL 255 enforcement | `[x]` | [receive-ttl.md](receive-ttl.md) -- [recv_metadata](../api/recv_metadata.md) |
-| 11 | On-link source-address check | `[ ]` | Only the IP TTL is validated on receive |
+| 11 | Local-link responses: "A host sending Multicast DNS queries to a link-local destination address (including the 224.0.0.251 and FF02::FB link-local multicast addresses) MUST only accept responses to that query that originate from the local link, and silently discard any other response packets." | `[x]` | Every peer type deems a response sent to a multicast address on-link. A response sent to a unicast address passes only if its source lies in an on-link prefix of the receiving interface or is one of this host's own addresses. Where the destination is unknown (the platform does not report it, or the control data was truncated) the same source test applies to every response: an on-link unicast response is accepted, and a multicast response from outside the local prefixes is dropped. In-process transports are exempt: [inproc-bus.md](../inproc-bus.md). See [recv_metadata](../api/recv_metadata.md) |
 | 18.3 | OPCODE: "Multicast DNS messages received with an OPCODE other than zero MUST be silently ignored." | `[x]` | Every peer type drops such packets, and packets shorter than a DNS header |
 | 18.11 | RCODE: "Multicast DNS messages received with non-zero Response Codes MUST be silently ignored." | `[x]` | Every peer type drops such packets |
 

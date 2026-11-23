@@ -9,6 +9,20 @@
 
 namespace mdnspp::detail {
 
+enum class destination_kind : uint8_t
+{
+    multicast,
+    unicast,
+    unknown,
+};
+
+inline destination_kind classify_destination(const recv_metadata &meta) noexcept
+{
+    if(!meta.destination)
+        return destination_kind::unknown;
+    return meta.destination->is_multicast() ? destination_kind::multicast : destination_kind::unicast;
+}
+
 // RFC 6762 section 18.3: "Multicast DNS messages received with an OPCODE other than zero MUST be silently ignored."
 // RFC 6762 section 18.11: "Multicast DNS messages received with non-zero Response Codes MUST be silently ignored."
 inline bool header_accepted(const dns_frame_header &header) noexcept

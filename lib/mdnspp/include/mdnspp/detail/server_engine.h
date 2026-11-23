@@ -8,6 +8,7 @@
 #include "mdnspp/detail/server_validate.h"
 #include "mdnspp/detail/sibling_records.h"
 #include "mdnspp/detail/server_announcer.h"
+#include "mdnspp/detail/server_lifecycle.h"
 #include "mdnspp/detail/server_multicast.h"
 #include "mdnspp/detail/server_responder.h"
 #include "mdnspp/detail/interface_resolve.h"
@@ -49,52 +50,38 @@ protected:
         , m_multicast(m_ctx)
         , m_responder(m_ctx, m_multicast)
         , m_tc(m_ctx, m_multicast)
-        , m_announcer(m_ctx, m_multicast, [this] { complete_ready(std::error_code{}); })
+        , m_announcer(m_ctx, m_multicast, [this] { m_lifecycle.complete_ready(std::error_code{}); })
         , m_prober(m_ctx, m_multicast, m_announcer, [this](std::error_code reason) { abort_startup(reason); })
         , m_dispatch(m_ctx, m_prober, m_multicast, m_tc, m_responder)
-        , m_on_ready()
-        , m_on_completion()
-        , m_started(false)
+        , m_lifecycle()
     {
         if(auto ec = validate_server_options(m_ctx.info, m_ctx.opts, this->m_mdns_opts))
             throw std::system_error(ec, "basic_service_server options");
     }
 
     server_engine(typename base::executor_type ex, service_info info, service_options opts,
-                  policy_socket_options_t<P> sock_opts, mdns_options mdns_opts, std::error_code &ec)
+                  policy_socket_options_t<P> sock_opts, mdns_options mdns_opts,
+                  std::shared_ptr<sibling_records> siblings, std::size_t element, std::error_code &ec)
         : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_ctx(ex, std::move(info), std::move(opts), extract_interface_binding(sock_opts), this->m_socket,
-                this->m_multicast_ep, this->m_mdns_opts, this->m_stopped, this->qu_history(), nullptr, 0)
+                this->m_multicast_ep, this->m_mdns_opts, this->m_stopped, this->qu_history(),
+                std::move(siblings), element)
         , m_multicast(m_ctx)
         , m_responder(m_ctx, m_multicast)
         , m_tc(m_ctx, m_multicast)
-        , m_announcer(m_ctx, m_multicast, [this] { complete_ready(std::error_code{}); })
+        , m_announcer(m_ctx, m_multicast, [this] { m_lifecycle.complete_ready(std::error_code{}); })
         , m_prober(m_ctx, m_multicast, m_announcer, [this](std::error_code reason) { abort_startup(reason); })
         , m_dispatch(m_ctx, m_prober, m_multicast, m_tc, m_responder)
-        , m_on_ready()
-        , m_on_completion()
-        , m_started(false)
+        , m_lifecycle()
     {
         if(!ec)
             ec = validate_server_options(m_ctx.info, m_ctx.opts, this->m_mdns_opts);
     }
 
-    std::error_code claim_start() noexcept
-    {
-        if(this->m_stopped.load(std::memory_order_acquire))
-            return std::make_error_code(std::errc::invalid_argument);
-        if(m_started.exchange(true, std::memory_order_acq_rel))
-            return std::make_error_code(std::errc::operation_in_progress);
-        return {};
-    }
-
     // The receive loop starts only after the first probe is scheduled.
     void start(completion_handler on_ready, completion_handler on_done)
     {
-        if(on_ready)
-            m_on_ready = std::move(on_ready);
-        if(on_done)
-            m_on_completion = std::move(on_done);
+        m_lifecycle.arm(std::move(on_ready), std::move(on_done));
         m_ctx.resolve_auto_addresses();
         this->make_receive_loop(
             infinite_silence_timeout,
@@ -113,9 +100,9 @@ protected:
     {
         m_multicast.send_goodbye();
         if(m_ctx.pa_state.state == server_state::probing || m_ctx.pa_state.state == server_state::announcing)
-            complete_ready(std::make_error_code(std::errc::operation_canceled));
+            m_lifecycle.complete_ready(std::make_error_code(std::errc::operation_canceled));
         teardown();
-        complete_done(std::error_code{});
+        m_lifecycle.complete_done(std::error_code{});
     }
 
     void update(service_info info)
@@ -133,12 +120,6 @@ protected:
         m_announcer.announce_update();
     }
 
-    void cancel_handlers()
-    {
-        complete_ready(std::make_error_code(std::errc::operation_canceled));
-        complete_done(std::make_error_code(std::errc::operation_canceled));
-    }
-
     server_context<P> m_ctx;
     server_multicast<P> m_multicast;
     server_responder<P> m_responder;
@@ -146,18 +127,16 @@ protected:
     server_announcer<P> m_announcer;
     server_prober<P> m_prober;
     server_dispatch<P> m_dispatch;
-    completion_handler m_on_ready;
-    completion_handler m_on_completion;
-    std::atomic<bool> m_started;
+    server_lifecycle m_lifecycle;
 
 private:
     void abort_startup(std::error_code reason)
     {
         if(this->m_stopped.exchange(true, std::memory_order_acq_rel))
             return;
-        complete_ready(reason);
+        m_lifecycle.complete_ready(reason);
         teardown();
-        complete_done(std::error_code{});
+        m_lifecycle.complete_done(std::error_code{});
     }
 
     void teardown()
@@ -171,18 +150,6 @@ private:
         m_tc.clear();
         if(this->m_loop)
             this->m_loop->stop();
-    }
-
-    void complete_ready(std::error_code ec)
-    {
-        if(auto h = std::exchange(m_on_ready, nullptr); h)
-            h(ec);
-    }
-
-    void complete_done(std::error_code ec)
-    {
-        if(auto h = std::exchange(m_on_completion, nullptr); h)
-            h(ec);
     }
 };
 

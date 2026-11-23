@@ -4,12 +4,16 @@
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/peer_traits.h"
 #include "mdnspp/detail/sibling_records.h"
+#include "mdnspp/detail/interface_resolve.h"
+#include "mdnspp/detail/advertised_addresses.h"
 #include "mdnspp/detail/nic_group_server_callbacks.h"
 
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/mdns_options.h"
+#include "mdnspp/service_info.h"
+#include "mdnspp/cache_options.h"
 #include "mdnspp/basic_observer.h"
 #include "mdnspp/callback_types.h"
 #include "mdnspp/monitor_options.h"
@@ -63,8 +67,10 @@ public:
         forward_monitor_events(cloned, nic);
         if(m_grp_opts.on_error)
             cloned.on_error = stamped_error(nic);
-        return std::make_unique<basic_service_monitor<P>>(m_executor, std::move(cloned), sock_opts,
-                                                          m_grp_opts.mdns_opts);
+        std::error_code ec;
+        auto peer = std::make_unique<basic_service_monitor<P>>(m_executor, std::move(cloned), sock_opts,
+                                                               m_grp_opts.mdns_opts, cache_options{}, ec);
+        return checked(std::move(peer), ec, nic, "service_monitor construction");
     }
 
     std::unique_ptr<basic_service_server<P>> make(const server_peer_options &opts,
@@ -76,8 +82,10 @@ public:
         forward_shared_callbacks(cloned, cbs);
         if(!cbs->on_error && m_grp_opts.on_error)
             cloned.on_error = stamped_error(nic);
-        return std::make_unique<basic_service_server<P>>(m_executor, opts.info, std::move(cloned), sock_opts,
-                                                         mdns_options{}, m_siblings, element);
+        std::error_code ec;
+        auto peer = std::make_unique<basic_service_server<P>>(m_executor, info_on(nic, opts.info), std::move(cloned),
+                                                              sock_opts, m_grp_opts.mdns_opts, m_siblings, element, ec);
+        return checked(std::move(peer), ec, nic, "service_server construction");
     }
 
     std::unique_ptr<basic_observer<P>> make(const observer_options &, const network_interface &nic,
@@ -91,13 +99,36 @@ public:
             };
         if(m_grp_opts.on_error)
             cloned.on_error = stamped_error(nic);
-        return std::make_unique<basic_observer<P>>(m_executor, std::move(cloned), sock_opts, m_grp_opts.mdns_opts);
+        std::error_code ec;
+        auto peer = std::make_unique<basic_observer<P>>(m_executor, std::move(cloned), sock_opts,
+                                                        m_grp_opts.mdns_opts, ec);
+        return checked(std::move(peer), ec, nic, "observer construction");
     }
 
 private:
     executor_type m_executor;
     basic_nic_group_options<P> &m_grp_opts;
     std::shared_ptr<sibling_records> m_siblings;
+
+    template <typename Peer>
+    std::unique_ptr<Peer> checked(std::unique_ptr<Peer> peer, std::error_code ec, const network_interface &nic,
+                                  std::string_view context)
+    {
+        if(!ec)
+            return peer;
+        if(m_grp_opts.on_error)
+            m_grp_opts.on_error(nic, ec, context);
+        return nullptr;
+    }
+
+    // RFC 6762 section 6.2: an instance advertises the addresses of the NIC it runs on, which a user enumerator
+    // may describe differently from the host's interface table.
+    static service_info info_on(const network_interface &nic, service_info info)
+    {
+        resolve_advertised_addresses(interface_binding{}, announcing_link{&nic, true}, info);
+        info.auto_address = false;
+        return info;
+    }
 
     error_handler stamped_error(const network_interface &nic)
     {

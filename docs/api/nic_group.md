@@ -95,7 +95,17 @@ explicit basic_nic_group(executor_type ex,
 
 Constructs the group. One `std::vector<options_type>` must be provided per `Peers...`
 entry, in the same order as the pack. Each vector element corresponds to one instance
-created per interface.
+created per interface and address family: an interface with IPv4 and IPv6 addresses gets
+one instance on `224.0.0.251` and one on `ff02::fb`, an interface with addresses of one
+family gets the instances of that family only. The socket options of each family come
+from `nic_group_options::socket_options_factory`:
+
+```cpp
+move_only_function<policy_socket_options_t<P>(const network_interface &, address_family)> socket_options_factory;
+```
+
+called once per family the interface has; without it the options bind the interface by
+index and join the family's mDNS group (see [nic_group_options](nic_group_options.md)).
 
 Throws `std::system_error` with `std::errc::invalid_argument` when a `monitor_options`
 or `observer_options` element carries callbacks (see the callback contract above).
@@ -128,6 +138,13 @@ void start();
 Begins NIC monitoring and creates per-NIC instances for all currently-active interfaces.
 Subsequent interface additions and removals are handled automatically; instances created
 for interfaces appearing at runtime are wired to the same group-level callbacks.
+
+`start()` does not throw when an instance fails to construct, here or when an interface
+appears later: the group reports the failure through `nic_group_options::on_error`
+(context `"service_monitor construction"`, `"service_server construction"` or
+`"observer construction"`) and builds no instances for that interface and family. A
+factory result whose `multicast_group` is not of the requested family is reported as
+`"socket_options_factory"` with `std::errc::invalid_argument`.
 
 Calling `start()` on a running group is a no-op (instances are not duplicated). Calling
 `start()` after `stop()` restarts the group with fresh per-NIC instances.

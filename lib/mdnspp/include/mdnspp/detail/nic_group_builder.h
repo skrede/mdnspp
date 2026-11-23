@@ -46,10 +46,14 @@ public:
         prepare_peer_options(std::make_index_sequence<sizeof...(Peers)>{});
     }
 
-    void build(instance_tuple &instances, const network_interface &nic, const socket_options_type &sock_opts,
+    bool build(instance_tuple &instances, const network_interface &nic, const socket_options_type &sock_opts,
                const std::unordered_set<std::string> &watches)
     {
-        create_instances(instances, nic, sock_opts, watches, std::make_index_sequence<sizeof...(Peers)>{});
+        constexpr auto peers = std::make_index_sequence<sizeof...(Peers)>{};
+        if(!create_instances(instances, nic, sock_opts, peers))
+            return false;
+        start_instances(instances, watches, peers);
+        return true;
     }
 
 private:
@@ -83,24 +87,39 @@ private:
     }
 
     template <std::size_t... Is>
-    void create_instances(instance_tuple &instances, const network_interface &nic, const socket_options_type &sock_opts,
-                          const std::unordered_set<std::string> &watches, std::index_sequence<Is...>)
+    bool create_instances(instance_tuple &instances, const network_interface &nic, const socket_options_type &sock_opts,
+                          std::index_sequence<Is...>)
     {
-        (create_peer_instances<Is>(std::get<Is>(instances), nic, sock_opts, watches), ...);
+        return (create_peer_instances<Is>(std::get<Is>(instances), nic, sock_opts) && ...);
     }
 
     template <std::size_t I>
-    void create_peer_instances(std::vector<std::unique_ptr<peer_type_at<I>>> &instances,
-                               const network_interface &nic, const socket_options_type &sock_opts,
-                               const std::unordered_set<std::string> &watches)
+    bool create_peer_instances(std::vector<std::unique_ptr<peer_type_at<I>>> &instances,
+                               const network_interface &nic, const socket_options_type &sock_opts)
     {
-        const auto &peer_opts_vec = std::get<I>(m_peer_opts);
-        for(std::size_t element = 0; element < peer_opts_vec.size(); ++element)
+        for(std::size_t element = 0; element < std::get<I>(m_peer_opts).size(); ++element)
         {
             auto inst = make_peer<I>(element, nic, sock_opts);
-            start_peer(*inst, watches);
+            if(!inst)
+                return false;
             instances.push_back(std::move(inst));
         }
+        return true;
+    }
+
+    template <std::size_t... Is>
+    static void start_instances(instance_tuple &instances, const std::unordered_set<std::string> &watches,
+                                std::index_sequence<Is...>)
+    {
+        (start_peer_instances(std::get<Is>(instances), watches), ...);
+    }
+
+    template <typename Peer>
+    static void start_peer_instances(std::vector<std::unique_ptr<Peer>> &instances,
+                                     const std::unordered_set<std::string> &watches)
+    {
+        for(auto &inst : instances)
+            start_peer(*inst, watches);
     }
 
     template <std::size_t I>

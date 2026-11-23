@@ -12,9 +12,9 @@
 #include "mdnspp/basic_service_monitor.h"
 
 #include "mdnspp/detail/peer_traits.h"
-#include "mdnspp/detail/ip_address_ops.h"
 #include "mdnspp/detail/nic_group_slots.h"
 #include "mdnspp/detail/sibling_records.h"
+#include "mdnspp/detail/nic_group_family.h"
 #include "mdnspp/detail/nic_group_builder.h"
 #include "mdnspp/detail/interface_addresses.h"
 
@@ -25,6 +25,7 @@
 #include <vector>
 #include <utility>
 #include <string_view>
+#include <system_error>
 #include <unordered_set>
 
 namespace mdnspp {
@@ -153,22 +154,32 @@ private:
         if(m_grp_opts.interface_filter && !m_grp_opts.interface_filter(nic))
             return;
 
-        const auto sock_opts = socket_options_for(nic);
-        m_builder.build(m_slots.add(nic), nic, sock_opts, m_watch_set);
+        for(address_family family : detail::address_families)
+        {
+            if(detail::has_family(nic, family))
+                add_family(nic, family);
+        }
     }
 
-    policy_socket_options_t<P> socket_options_for(const network_interface &nic)
+    void add_family(const network_interface &nic, address_family family)
+    {
+        const auto sock_opts = socket_options_for(nic, family);
+        if(!detail::family_matches(sock_opts, family))
+        {
+            if(m_grp_opts.on_error)
+                m_grp_opts.on_error(nic, std::make_error_code(std::errc::invalid_argument), "socket_options_factory");
+            return;
+        }
+        typename detail::nic_group_slots<P, Peers...>::instance_tuple instances;
+        if(m_builder.build(instances, nic, sock_opts, m_watch_set))
+            m_slots.add(nic, family, std::move(instances));
+    }
+
+    policy_socket_options_t<P> socket_options_for(const network_interface &nic, address_family family)
     {
         if(m_grp_opts.socket_options_factory)
-            return m_grp_opts.socket_options_factory(nic);
-
-        policy_socket_options_t<P> sock_opts{};
-        const ip_network *address = detail::first_address(nic, address_family::ipv4);
-        if(address == nullptr)
-            address = detail::first_address(nic, address_family::ipv6);
-        if(address != nullptr)
-            sock_opts.interface_address = detail::format_ip_address(address->address);
-        return sock_opts;
+            return m_grp_opts.socket_options_factory(nic, family);
+        return detail::default_family_options<policy_socket_options_t<P>>(nic, family);
     }
 };
 

@@ -3,6 +3,7 @@
 
 #include "mdnspp/inproc/inproc_policy.h"
 
+#include "mdnspp/ip_address.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/basic_observer.h"
 #include "mdnspp/basic_nic_group.h"
@@ -24,6 +25,7 @@
 #include <algorithm>
 #include <string_view>
 #include <system_error>
+#include <initializer_list>
 
 using namespace mdnspp;
 using namespace std::chrono_literals;
@@ -38,14 +40,23 @@ using observer_group = basic_nic_group<inproc_test_policy, basic_observer>;
 using group_options = basic_nic_group_options<inproc_test_policy>;
 using found_list = std::vector<std::pair<std::string, std::string>>;
 
-inline network_interface make_nic(uint32_t index, std::string name, std::string_view ipv4)
+inline network_interface make_nic(uint32_t index, std::string name, std::initializer_list<std::string_view> addresses)
 {
     network_interface nic;
     nic.name = std::move(name);
-    nic.addresses.push_back({*detail::parse_ip_address(ipv4), 24});
+    for(std::string_view text : addresses)
+    {
+        const ip_address address = *detail::parse_ip_address(text);
+        nic.addresses.push_back({address, uint8_t(address.family == address_family::ipv6 ? 64 : 24)});
+    }
     nic.index = index;
     nic.is_up = true;
     return nic;
+}
+
+inline network_interface make_nic(uint32_t index, std::string name, std::string_view address)
+{
+    return make_nic(index, std::move(name), {address});
 }
 
 inline service_info make_service(std::string name)
@@ -63,6 +74,13 @@ inline std::vector<monitor_options> one_monitor()
 {
     std::vector<monitor_options> opts;
     opts.push_back(monitor_options{});
+    return opts;
+}
+
+inline std::vector<server_peer_options> one_server()
+{
+    std::vector<server_peer_options> opts;
+    opts.push_back(server_peer_options{.info = make_service("svc._test._tcp.local.")});
     return opts;
 }
 

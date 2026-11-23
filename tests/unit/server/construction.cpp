@@ -1,8 +1,11 @@
 #include "helpers.h"
 
+#include "mdnspp/detail/sibling_records.h"
+
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <memory>
 #include <string>
 #include <utility>
 #include <type_traits>
@@ -151,6 +154,27 @@ SCENARIO("basic_service_server with socket_options", "[service_server][socket_op
             {
                 REQUIRE(server.socket().options().interface_address == "192.168.2.1");
                 REQUIRE(server.socket().queue_empty());
+            }
+        }
+    }
+}
+
+SCENARIO("service_server error_code constructor with siblings reports errors", "[service_server][create][non-throwing]")
+{
+    GIVEN("a mock_executor and a sibling registry")
+    {
+        mock_executor ex;
+        auto siblings = std::make_shared<detail::sibling_records>();
+        std::error_code ec;
+
+        WHEN("an option is invalid")
+        {
+            basic_service_server<mock_policy> server{ex, make_test_info(), service_options{.probe_count = 0}, {}, {},
+                                                     siblings, 0, ec};
+
+            THEN("ec reports invalid_argument")
+            {
+                REQUIRE(ec == std::errc::invalid_argument);
             }
         }
     }

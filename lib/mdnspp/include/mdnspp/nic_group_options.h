@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_NIC_GROUP_OPTIONS_H
 
 #include "mdnspp/policy.h"
+#include "mdnspp/ip_address.h"
 #include "mdnspp/mdns_options.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/callback_types.h"
@@ -43,7 +44,7 @@ struct basic_nic_group_options
 {
     dedup_mode dedup{dedup_mode::merged};
     move_only_function<bool(const network_interface &)> interface_filter{};
-    move_only_function<policy_socket_options_t<P>(const network_interface &)> socket_options_factory{};
+    move_only_function<policy_socket_options_t<P>(const network_interface &, address_family)> socket_options_factory{};
     mdns_options mdns_opts{};
     nic_monitor_options monitor_opts{};
     move_only_function<void(const network_interface &, const resolved_service &)> on_found{};

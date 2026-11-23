@@ -21,7 +21,7 @@ template <policy_like P>
 struct basic_nic_group_options {
     dedup_mode dedup{dedup_mode::merged};
     move_only_function<bool(const network_interface &)> interface_filter{};
-    move_only_function<policy_socket_options_t<P>(const network_interface &)> socket_options_factory{};
+    move_only_function<policy_socket_options_t<P>(const network_interface &, address_family)> socket_options_factory{};
     mdns_options mdns_opts{};
     nic_monitor_options monitor_opts{};
 
@@ -38,19 +38,30 @@ struct basic_nic_group_options {
 |-------|------|---------|-------------|
 | `dedup` | `dedup_mode` | `dedup_mode::merged` | Controls how `services()` aggregates results from multiple interfaces. Event callbacks are unaffected — they always fire per interface. |
 | `interface_filter` | `move_only_function<bool(const network_interface &)>` | `{}` (none, accept all) | Predicate called for each interface. Return `false` to skip that interface. |
-| `socket_options_factory` | `move_only_function<policy_socket_options_t<P>(const network_interface &)>` | `{}` (none, auto-derive) | Factory for per-interface socket options. If not set, `interface_address` is the interface's first IPv4 address in `addresses`, else its first IPv6 address. |
-| `mdns_opts` | `mdns_options` | default `mdns_options{}` | Forwarded to every `basic_service_monitor` and `basic_observer` instance created per interface. |
+| `socket_options_factory` | `move_only_function<policy_socket_options_t<P>(const network_interface &, address_family)>` | `{}` (none, auto-derive) | Factory for the socket options of one address family of one interface, called once for each family the interface has an address of. If not set, `interface_index` is the interface's index and `multicast_group` is `224.0.0.251:5353` for `address_family::ipv4` and `ff02::fb:5353` for `address_family::ipv6`. |
+| `mdns_opts` | `mdns_options` | default `mdns_options{}` | Forwarded to every `basic_service_monitor`, `basic_service_server` and `basic_observer` instance created per interface and family. |
 | `monitor_opts` | `nic_monitor_options` | default `nic_monitor_options{}` | Forwarded to the internal `basic_nic_monitor`. Controls the fallback polling interval and the optional custom enumerator. |
 | `on_found` | `move_only_function<void(const network_interface &, const resolved_service &)>` | `{}` | Fired once per interface when a service instance becomes fully resolved on that interface. Requires `basic_service_monitor` in the `Peers` pack. |
 | `on_updated` | `move_only_function<void(const network_interface &, const resolved_service &, update_event, dns_type)>` | `{}` | Fired once per interface when a record change alters an already-resolved service on that interface. Requires `basic_service_monitor` in the `Peers` pack. |
 | `on_lost` | `move_only_function<void(const network_interface &, const resolved_service &, loss_reason)>` | `{}` | Fired once per interface when a service is no longer reachable on that interface. Requires `basic_service_monitor` in the `Peers` pack. |
 | `on_record` | `move_only_function<void(const network_interface &, const endpoint &, const mdns_record_variant &)>` | `{}` | Fired once per interface per parsed record. Requires `basic_observer` in the `Peers` pack. |
-| `on_error` | `move_only_function<void(const network_interface &, std::error_code, std::string_view)>` | `{}` | Fired on fire-and-forget send failures and fatal receive errors of any per-NIC instance, stamped with the originating interface. Per-NIC servers use it only when `server_peer_options::service::on_error` is unset. |
+| `on_error` | `move_only_function<void(const network_interface &, std::error_code, std::string_view)>` | `{}` | Fired on fire-and-forget send failures and fatal receive errors of any per-NIC instance, stamped with the originating interface. Per-NIC servers use it only when `server_peer_options::service::on_error` is unset. The group itself reports a per-NIC instance that fails to construct and a factory whose options name the wrong family (see the table below). |
 
 The leading `network_interface` parameter identifies the originating interface. The
 `resolved_service` payload does not have `source_interface` populated in callbacks; the
 leading parameter is authoritative. The group performs no cross-interface deduplication
 of events: a service visible on two interfaces yields two `on_found` events.
+
+Errors the group reports through `on_error` while it builds the instances of an interface. The
+group never throws them out of `start()` or the event loop; the family that failed gets no
+instances, and the interface's other family is unaffected:
+
+| Context | Error | Cause |
+|---------|-------|-------|
+| `"service_monitor construction"` | the constructor's error, for example from socket creation | A per-NIC `basic_service_monitor` failed to construct. |
+| `"service_server construction"` | the constructor's error, including `std::errc::invalid_argument` for invalid options | A per-NIC `basic_service_server` failed to construct. |
+| `"observer construction"` | the constructor's error | A per-NIC `basic_observer` failed to construct. |
+| `"socket_options_factory"` | `std::errc::invalid_argument` | `socket_options_factory` returned a `multicast_group` whose address is not an address of the requested family. |
 
 **Note:** `nic_group_options` is move-only because the callback fields,
 `interface_filter`, and `socket_options_factory` are `move_only_function` fields.
@@ -171,18 +182,26 @@ A non-copyable callable that takes a `network_interface` and returns `bool`. Ret
 ### socket_options_factory
 
 ```cpp
-move_only_function<policy_socket_options_t<P>(const network_interface &)>
+move_only_function<policy_socket_options_t<P>(const network_interface &, address_family)>
 ```
 
-A non-copyable callable that takes a `network_interface` and returns the policy's socket
-options type (`socket_options` for `default_policy`). Invoked once per interface when
-instances are created. Set via `nic_group_options::socket_options_factory`. Binding by
-index needs no address text:
+A non-copyable callable that takes a `network_interface` and an `address_family` and returns
+the policy's socket options type (`socket_options` for `default_policy`). When an interface
+appears, the group calls it once for each family the interface has an address of
+(`address_family::ipv4` first) and builds one set of instances from each result. The
+returned `multicast_group` must be of the requested family; otherwise the group reports
+`on_error(nic, std::errc::invalid_argument, "socket_options_factory")` and builds nothing
+for that family. Set via `nic_group_options::socket_options_factory`. Binding by index
+needs no address text:
 
 ```cpp
-grp_opts.socket_options_factory = [](const mdnspp::network_interface &nic) -> mdnspp::socket_options
+grp_opts.socket_options_factory = [](const mdnspp::network_interface &nic, mdnspp::address_family family)
+    -> mdnspp::socket_options
 {
-    return mdnspp::socket_options{.interface_index = nic.index};
+    mdnspp::socket_options opts{.interface_index = nic.index};
+    if(family == mdnspp::address_family::ipv6)
+        opts.multicast_group = {"ff02::fb", 5353};
+    return opts;
 };
 ```
 

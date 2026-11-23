@@ -1,11 +1,15 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_NIC_GROUP_SLOTS_H
 #define HPP_GUARD_MDNSPP_DETAIL_NIC_GROUP_SLOTS_H
 
+#include "mdnspp/detail/nic_group_family.h"
+
 #include "mdnspp/policy.h"
+#include "mdnspp/ip_address.h"
 #include "mdnspp/resolved_service.h"
 #include "mdnspp/network_interface.h"
 #include "mdnspp/basic_service_monitor.h"
 
+#include <array>
 #include <tuple>
 #include <memory>
 #include <string>
@@ -28,7 +32,7 @@ private:
     struct nic_slot
     {
         network_interface nic;
-        instance_tuple instances;
+        std::array<instance_tuple, address_families.size()> families;
     };
 
 public:
@@ -37,11 +41,11 @@ public:
         return m_slots.contains(index);
     }
 
-    instance_tuple &add(const network_interface &nic)
+    void add(const network_interface &nic, address_family family, instance_tuple instances)
     {
         auto &slot = m_slots[nic.index];
         slot.nic = nic;
-        return slot.instances;
+        slot.families[family_slot(family)] = std::move(instances);
     }
 
     void remove(uint32_t index)
@@ -50,14 +54,14 @@ public:
         if(it == m_slots.end())
             return;
 
-        stop_instance_tuple(it->second.instances, std::make_index_sequence<sizeof...(Peers)>{});
+        stop_families(it->second);
         m_slots.erase(it);
     }
 
     void stop_all()
     {
         for(auto &[idx, slot] : m_slots)
-            stop_instance_tuple(slot.instances, std::make_index_sequence<sizeof...(Peers)>{});
+            stop_families(slot);
     }
 
     void clear()
@@ -140,19 +144,25 @@ private:
         {
             for(auto &[nic_idx, slot] : slots)
             {
-                for(auto &inst_ptr : std::get<idx>(slot.instances))
+                for(auto &instances : slot.families)
                 {
-                    if(inst_ptr)
+                    for(auto &inst_ptr : std::get<idx>(instances))
                         fn(slot.nic, *inst_ptr);
                 }
             }
         }
     }
 
-    template <std::size_t... Is>
-    static void stop_instance_tuple(instance_tuple &slot, std::index_sequence<Is...>)
+    static void stop_families(nic_slot &slot)
     {
-        (stop_peer_instances(std::get<Is>(slot)), ...);
+        for(auto &instances : slot.families)
+            stop_instance_tuple(instances, std::make_index_sequence<sizeof...(Peers)>{});
+    }
+
+    template <std::size_t... Is>
+    static void stop_instance_tuple(instance_tuple &instances, std::index_sequence<Is...>)
+    {
+        (stop_peer_instances(std::get<Is>(instances)), ...);
     }
 
     template <typename PeerType>

@@ -81,7 +81,8 @@ TEST_CASE("basic_nic_group_options<encrypted_policy<default_policy>> factory ret
     using EncPolicy = mdnspp::encrypt::encrypted_policy<mdnspp::default_policy>;
     mdnspp::basic_nic_group_options<EncPolicy> opts;
 
-    opts.socket_options_factory = [](const mdnspp::network_interface &) -> mdnspp::encrypt::encrypt_socket_options
+    opts.socket_options_factory = [](const mdnspp::network_interface &, mdnspp::address_family)
+        -> mdnspp::encrypt::encrypt_socket_options
     {
         mdnspp::encrypt::encrypt_socket_options so;
         so.encrypt.sender_id = 99;
@@ -89,7 +90,7 @@ TEST_CASE("basic_nic_group_options<encrypted_policy<default_policy>> factory ret
     };
 
     mdnspp::network_interface dummy{};
-    auto result = opts.socket_options_factory(dummy);
+    auto result = opts.socket_options_factory(dummy, mdnspp::address_family::ipv4);
 
     static_assert(std::same_as<decltype(result), mdnspp::encrypt::encrypt_socket_options>,
         "socket_options_factory must return encrypt_socket_options");

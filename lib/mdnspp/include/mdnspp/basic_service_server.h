@@ -52,7 +52,7 @@ public:
         if(this->m_loop)
             this->m_loop->stop();
         stop();
-        this->cancel_handlers();
+        this->m_lifecycle.cancel();
     }
 
     explicit basic_service_server(executor_type ex, service_info info,
@@ -75,13 +75,22 @@ public:
     basic_service_server(executor_type ex, service_info info,
                          service_options opts, policy_socket_options_t<P> sock_opts,
                          mdns_options mdns_opts, std::error_code &ec)
-        : base(ex, std::move(info), std::move(opts), std::move(sock_opts), std::move(mdns_opts), ec)
+        : basic_service_server(ex, std::move(info), std::move(opts), std::move(sock_opts), std::move(mdns_opts),
+                               nullptr, 0, ec)
+    {
+    }
+
+    basic_service_server(executor_type ex, service_info info, service_options opts,
+                         policy_socket_options_t<P> sock_opts, mdns_options mdns_opts,
+                         std::shared_ptr<detail::sibling_records> siblings, std::size_t element, std::error_code &ec)
+        : base(ex, std::move(info), std::move(opts), std::move(sock_opts), std::move(mdns_opts), std::move(siblings),
+               element, ec)
     {
     }
 
     void async_start(completion_handler on_ready = {}, completion_handler on_done = {})
     {
-        if(auto misuse = this->claim_start())
+        if(auto misuse = this->m_lifecycle.claim_start(this->m_stopped))
         {
             if(on_ready)
                 this->post_guarded([h = std::move(on_ready), misuse]() mutable

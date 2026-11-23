@@ -86,6 +86,18 @@ basic_service_server(executor_type ex, service_info info,
 
 Same as the throwing constructor, but sets `ec` instead of throwing — both for socket construction failure and for invalid options (`std::errc::invalid_argument`). All parameters must be provided explicitly (no defaults).
 
+### Non-throwing, for the servers of a NIC group
+
+```cpp
+basic_service_server(executor_type ex, service_info info,
+                     service_options opts, policy_socket_options_t<P> sock_opts,
+                     mdns_options mdns_opts,
+                     std::shared_ptr<detail::sibling_records> siblings, std::size_t element,
+                     std::error_code &ec);
+```
+
+The sibling constructor above, reporting through `ec` like the non-throwing constructor. [`basic_nic_group`](nic_group.md) builds its per-NIC servers with it and reports a failure through `nic_group_options::on_error` as `"service_server construction"`, so a server that cannot be built on one interface does not stop the group. The non-throwing constructor without siblings is this one with a null `siblings`.
+
 `basic_service_server` is non-copyable and non-movable: completion handlers capture `this`.
 
 **TC handling and duplicate answer suppression** are automatic when the server is constructed with `mdns_options`. When a query arrives with the TC (truncation) bit set, the server accumulates continuation packets for a random interval in `[tc_wait_min, tc_wait_max]` before processing the full known-answer set. See [tc-handling](../rfc/tc-handling.md) and [duplicate-suppression](../rfc/duplicate-suppression.md) for details.

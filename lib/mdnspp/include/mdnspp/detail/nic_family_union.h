@@ -12,7 +12,6 @@
 #include "mdnspp/network_interface.h"
 
 #include <array>
-#include <mutex>
 #include <memory>
 #include <string>
 #include <vector>
@@ -23,6 +22,8 @@
 
 namespace mdnspp::detail {
 
+// Runs on the group's executor one handler at a time (the single-threaded run() contract). A user callback may re-enter
+// or destroy the union, so each change is complete before a callback runs and nothing is touched after it returns.
 class nic_family_union
 {
     using family_views = std::array<std::optional<resolved_service>, address_families.size()>;
@@ -33,8 +34,7 @@ public:
     using lost_callback = move_only_function<void(const resolved_service &, loss_reason)>;
 
     nic_family_union(found_callback on_found, updated_callback on_updated, lost_callback on_lost)
-        : m_mutex()
-        , m_lost_cb(std::move(on_lost))
+        : m_lost_cb(std::move(on_lost))
         , m_found_cb(std::move(on_found))
         , m_updated_cb(std::move(on_updated))
         , m_services()
@@ -53,7 +53,6 @@ public:
 
     void lost(address_family family, const resolved_service &svc, loss_reason reason)
     {
-        std::lock_guard lock(m_mutex);
         auto it = m_services.find(svc.instance_name.comparison_key());
         if(it == m_services.end())
             return;
@@ -71,9 +70,6 @@ public:
     }
 
 private:
-    // The family monitors of a NIC may run on different threads of one executor; the lock also keeps the user's
-    // callbacks in the order the union changed.
-    std::mutex m_mutex;
     lost_callback m_lost_cb;
     found_callback m_found_cb;
     updated_callback m_updated_cb;
@@ -81,7 +77,6 @@ private:
 
     void store(address_family family, const resolved_service &svc, update_event event, std::optional<dns_type> type)
     {
-        std::lock_guard lock(m_mutex);
         family_views &views = m_services[svc.instance_name.comparison_key()];
         const std::optional<resolved_service> before = united(views);
         views[family_slot(family)] = svc;

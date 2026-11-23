@@ -7,6 +7,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <memory>
 #include <string>
 #include <vector>
 #include <cstdint>
@@ -127,4 +128,57 @@ TEST_CASE("nic_family_union keys instances case-insensitively and keeps instance
     e.fan_in.found(v6, service("other.local.", {"192.0.2.20"}));
 
     CHECK(e.log == std::vector<std::string>{"found Svc.local. 192.0.2.10", "found other.local. 192.0.2.20"});
+}
+
+TEST_CASE("nic_family_union lets a found callback report the same service lost", "[nic_group]")
+{
+    std::vector<std::string> log;
+    std::unique_ptr<nic_family_union> fan_in;
+    const resolved_service svc = service("svc.local.", {"192.0.2.10"});
+    fan_in = std::make_unique<nic_family_union>(
+        [&](const resolved_service &)
+        {
+            log.push_back("found");
+            fan_in->lost(v4, svc, loss_reason::goodbye);
+        },
+        [](const resolved_service &, update_event, dns_type) {},
+        [&](const resolved_service &, loss_reason) { log.push_back("lost"); });
+    fan_in->found(v4, svc);
+
+    CHECK(log == std::vector<std::string>{"found", "lost"});
+}
+
+TEST_CASE("nic_family_union survives a found callback that destroys it", "[nic_group]")
+{
+    std::vector<std::string> log;
+    std::unique_ptr<nic_family_union> fan_in;
+    fan_in = std::make_unique<nic_family_union>(
+        [&](const resolved_service &)
+        {
+            log.push_back("found");
+            fan_in.reset();
+        },
+        [](const resolved_service &, update_event, dns_type) {}, [](const resolved_service &, loss_reason) {});
+    fan_in->found(v4, service("svc.local.", {"192.0.2.10"}));
+
+    CHECK(log == std::vector<std::string>{"found"});
+    CHECK(!fan_in);
+}
+
+TEST_CASE("nic_family_union survives a lost callback that destroys it", "[nic_group]")
+{
+    std::vector<std::string> log;
+    std::unique_ptr<nic_family_union> fan_in;
+    fan_in = std::make_unique<nic_family_union>(
+        [](const resolved_service &) {}, [](const resolved_service &, update_event, dns_type) {},
+        [&](const resolved_service &, loss_reason)
+        {
+            log.push_back("lost");
+            fan_in.reset();
+        });
+    fan_in->found(v4, service("svc.local.", {"192.0.2.10"}));
+    fan_in->lost(v4, service("svc.local.", {"192.0.2.10"}), loss_reason::goodbye);
+
+    CHECK(log == std::vector<std::string>{"lost"});
+    CHECK(!fan_in);
 }

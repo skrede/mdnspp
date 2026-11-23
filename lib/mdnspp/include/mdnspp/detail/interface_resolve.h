@@ -2,6 +2,7 @@
 #define HPP_GUARD_MDNSPP_DETAIL_INTERFACE_RESOLVE_H
 
 #include "mdnspp/detail/ip_address_ops.h"
+#include "mdnspp/detail/native_sockaddr.h"
 #include "mdnspp/detail/interface_addresses.h"
 
 #include "mdnspp/ip_address.h"
@@ -50,6 +51,13 @@ inline bool address_is_ipv6(std::string_view address) noexcept
     return address.find(':') != std::string_view::npos;
 }
 
+// RFC 4007 section 11: the zone of a scoped address names the interface it belongs to.
+inline uint32_t address_zone(std::string_view text)
+{
+    sockaddr_in6 addr{};
+    return parse_ipv6(text, addr) ? addr.sin6_scope_id : 0;
+}
+
 inline const network_interface *
 find_interface(const std::vector<network_interface> &interfaces, const interface_binding &binding) noexcept
 {
@@ -66,7 +74,12 @@ find_interface(const std::vector<network_interface> &interfaces, const interface
     if(!binding.address.empty())
     {
         const std::optional<ip_address> address = parse_ip_address(binding.address);
-        return address ? find([&](const network_interface &nic) { return contains(nic, *address); }) : nullptr;
+        const uint32_t zone = address_zone(binding.address);
+        auto carries = [&](const network_interface &nic)
+        {
+            return contains(nic, *address) && (zone == 0 || nic.index == zone);
+        };
+        return address ? find(carries) : nullptr;
     }
     return nullptr;
 }
@@ -77,42 +90,51 @@ inline std::string first_address_text(const network_interface &nic, bool ipv6)
     return net != nullptr ? format_ip_address(net->address) : std::string{};
 }
 
-// A binding by address is passed through unchecked; the socket's address parsing validates its family.
-inline std::string
-select_interface_address(const std::vector<network_interface> &interfaces,
-                         const interface_binding &binding, bool ipv6, std::error_code &ec)
+struct resolved_interface
 {
-    ec.clear();
+    uint32_t index{0};
+    std::optional<ip_address> ipv4{};
+};
+
+inline std::optional<ip_address>
+bound_address(const network_interface *nic, const interface_binding &binding, address_family family)
+{
     if(!binding.index.has_value() && !binding.name.has_value())
-        return binding.address;
-
-    const network_interface *nic = find_interface(interfaces, binding);
-    if(nic == nullptr)
-    {
-        ec = std::make_error_code(std::errc::invalid_argument);
-        return {};
-    }
-
-    std::string address = first_address_text(*nic, ipv6);
-    if(address.empty())
-    {
-        ec = std::make_error_code(std::errc::invalid_argument);
-        return {};
-    }
-    return address;
+        return parse_ip_address(binding.address);
+    const ip_network *net = nic != nullptr ? first_address(*nic, family) : nullptr;
+    return net != nullptr ? std::optional{net->address} : std::nullopt;
 }
 
-inline std::string
-resolve_socket_interface_address(const socket_options &opts, bool ipv6, std::error_code &ec)
+// IPv4 multicast names its interface by address, which the kernel validates; IPv6 needs the interface index.
+inline resolved_interface select_interface(const std::vector<network_interface> &interfaces,
+                                           const interface_binding &binding, address_family family,
+                                           std::error_code &ec)
 {
     ec.clear();
-    if(!opts.interface_index.has_value() && !opts.interface_name.has_value())
-        return opts.interface_address;
+    if(!binding.bound())
+        return {};
+    const network_interface *nic = find_interface(interfaces, binding);
+    const std::optional<ip_address> address = bound_address(nic, binding, family);
+    const bool located = nic != nullptr || family == address_family::ipv4;
+    if(!located || !address.has_value() || address->family != family)
+    {
+        ec = std::make_error_code(std::errc::invalid_argument);
+        return {};
+    }
+    return {nic != nullptr ? nic->index : 0, family == address_family::ipv4 ? address : std::nullopt};
+}
 
-    auto interfaces = enumerate_interfaces(ec);
+inline resolved_interface
+resolve_socket_interface(const socket_options &opts, address_family family, std::error_code &ec)
+{
+    ec.clear();
+    const interface_binding binding = extract_interface_binding(opts);
+    if(!binding.bound())
+        return {};
+    const std::vector<network_interface> interfaces = enumerate_interfaces(ec);
     if(ec)
         return {};
-    return select_interface_address(interfaces, extract_interface_binding(opts), ipv6, ec);
+    return select_interface(interfaces, binding, family, ec);
 }
 
 inline const network_interface *

@@ -58,25 +58,37 @@ open is `interface_index` > `interface_name` > `interface_address`: a set
 `interface_index` is resolved by index only, and an unmatched index fails
 socket construction with `std::errc::invalid_argument` rather than falling
 back to the name or address (the same applies to an unmatched
-`interface_name`). An `interface_index` or `interface_name` is translated to
-the matching interface's address via `enumerate_interfaces()` and then
-follows the same code path as `interface_address`.
+`interface_name`). A binding is resolved once at socket open against
+`enumerate_interfaces()`.
 
-The family of `multicast_group.address` selects the socket family, and the
-effective interface address must be of the same family: a dotted-decimal
-IPv4 address for IPv4 sockets (applied through `IP_MULTICAST_IF` /
-`IP_ADD_MEMBERSHIP`), or a colon-hex IPv6 address for IPv6 sockets
-(translated internally to the owning interface's index for
-`IPV6_MULTICAST_IF` / `IPV6_JOIN_GROUP`). A NIC selected by index or name
-that has no address of the socket family fails with
+The family of `multicast_group.address` selects the socket family. An IPv4
+socket names its interface by address for `IP_MULTICAST_IF` /
+`IP_ADD_MEMBERSHIP`: the dotted-decimal `interface_address` as given, or the
+first IPv4 address of the NIC selected by index or name. An IPv6 socket uses
+the interface index directly for `IPV6_MULTICAST_IF` / `IPV6_JOIN_GROUP`: the
+index of the NIC selected by index or name, or of the interface that carries
+the `interface_address`. Selecting by index or name therefore picks the right
+NIC even when several interfaces share a link-local address. A NIC selected
+by index or name that has no address of the socket family, or an
+`interface_address` of the other family, fails with
 `std::errc::invalid_argument`.
+
+An IPv6 `interface_address` is matched against the enumerated addresses by
+value, so every valid text form works on every platform (`::1`,
+`0:0:0:0:0:0:0:1`, upper-case hex, zero-padded groups). A scoped address
+(`fe80::1%eth1` or `fe80::1%3`, RFC 4007 section 11) matches only on the
+interface its zone names; without a zone, an address carried by several
+interfaces resolves to the first one enumerated.
 
 Both the native and the Asio backend apply the selected IPv6 interface to
 multicast output and to group membership, whether it was chosen by
 `interface_index`, `interface_name` or `interface_address`. An IPv6
 `interface_address` that is not assigned to any interface fails socket
 construction with `std::errc::invalid_argument` instead of falling back to
-the default interface.
+the default interface. An IPv4 `interface_address` is passed to the
+operating system, which rejects one that is not assigned to a local
+interface; socket construction then fails with the operating system's error
+(`EADDRNOTAVAIL` on Linux).
 
 Policies may extend `socket_options`: a policy declaring a
 `socket_options_type` derived from `socket_options` substitutes its own

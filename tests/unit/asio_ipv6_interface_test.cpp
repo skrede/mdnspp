@@ -1,37 +1,37 @@
 #include "support/skip_or_fail.h"
+#include "support/ipv6_interface.h"
 
 #include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/network_interface.h"
 
 #include "mdnspp/asio/asio_policy.h"
 
 #include "mdnspp/detail/native_socket.h"
 #include "mdnspp/detail/native_sockaddr.h"
-#include "mdnspp/detail/ipv6_interface_index.h"
 
 #include <asio.hpp>
 
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
-#include <string>
 #include <cstddef>
 #include <cstdint>
 #include <system_error>
 
-#ifndef _WIN32
-#  include <netinet/in.h>
-#  include <sys/socket.h>
-#endif
+using mdnspp::test_support::ipv6_group_options;
+using mdnspp::test_support::loopback_ipv6_interface;
 
 namespace {
 
-mdnspp::socket_options v6_options(const std::string &iface_address)
+uint32_t selected_interface(const mdnspp::socket_options &opts)
 {
-    return mdnspp::socket_options{
-        .interface_address = iface_address,
-        .multicast_group = mdnspp::endpoint{"ff02::fb", 0},
-    };
+    asio::io_context io;
+    std::error_code ec;
+    mdnspp::asio_socket socket{io, opts, ec};
+    if(ec)
+        mdnspp::test_support::skip_or_fail("IPv6 asio_socket construction on loopback failed: " + ec.message());
+    return mdnspp::test_support::ipv6_multicast_interface(socket.native_handle());
 }
 
 #ifndef _WIN32
@@ -59,35 +59,35 @@ TEST_CASE("asio_socket rejects an IPv6 interface address assigned to no interfac
 {
     asio::io_context io;
     std::error_code ec;
-    mdnspp::asio_socket socket{io, v6_options("2001:db8::dead"), ec};
+    mdnspp::asio_socket socket{io, ipv6_group_options("2001:db8::dead"), ec};
     REQUIRE(ec == std::errc::invalid_argument);
     REQUIRE(socket.native_handle() == mdnspp::detail::invalid_socket);
 }
 
-#ifndef _WIN32
 TEST_CASE("asio_socket sends IPv6 multicast on the bound interface", "[asio][socket][ipv6]")
 {
-    const uint32_t expected = mdnspp::detail::resolve_ipv6_interface_index("::1");
-    if(expected == 0)
-        mdnspp::test_support::skip_or_fail("no interface carries ::1");
-
-    asio::io_context io;
-    std::error_code ec;
-    mdnspp::asio_socket socket{io, v6_options("::1"), ec};
-    if(ec)
-        mdnspp::test_support::skip_or_fail("asio_socket construction on ::1 failed: " + ec.message());
-
-    uint32_t index = 0;
-    socklen_t len = sizeof(index);
-    REQUIRE(::getsockopt(socket.native_handle(), IPPROTO_IPV6, IPV6_MULTICAST_IF, &index, &len) == 0);
-    REQUIRE(index == expected);
+    const uint32_t expected = loopback_ipv6_interface().index;
+    REQUIRE(selected_interface(ipv6_group_options("::1")) == expected);
 }
 
+TEST_CASE("asio_socket selects the IPv6 loopback interface by index and by name", "[asio][socket][ipv6]")
+{
+    const mdnspp::network_interface loopback = loopback_ipv6_interface();
+    mdnspp::socket_options by_index = ipv6_group_options();
+    by_index.interface_index = loopback.index;
+    mdnspp::socket_options by_name = ipv6_group_options();
+    by_name.interface_name = loopback.name;
+
+    CHECK(selected_interface(by_index) == loopback.index);
+    CHECK(selected_interface(by_name) == loopback.index);
+}
+
+#ifndef _WIN32
 TEST_CASE("asio_socket rejects every destination the native parser rejects", "[asio][socket][ipv6]")
 {
     asio::io_context io;
     std::error_code ec;
-    mdnspp::asio_socket socket{io, v6_options("::1"), ec};
+    mdnspp::asio_socket socket{io, ipv6_group_options("::1"), ec};
     if(ec)
         mdnspp::test_support::skip_or_fail("asio_socket construction on ::1 failed: " + ec.message());
 
@@ -106,7 +106,7 @@ TEST_CASE("asio_socket sends to an IPv6 destination without a zone", "[asio][soc
 {
     asio::io_context io;
     std::error_code ec;
-    mdnspp::asio_socket socket{io, v6_options("::1"), ec};
+    mdnspp::asio_socket socket{io, ipv6_group_options("::1"), ec};
     if(ec)
         mdnspp::test_support::skip_or_fail("asio_socket construction on ::1 failed: " + ec.message());
 

@@ -4,17 +4,16 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
 
+#include "mdnspp/detail/ip_address_ops.h"
 #include "mdnspp/detail/native_sockaddr.h"
 #include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/validate_multicast.h"
 #include "mdnspp/detail/native_multicast_v4.h"
 #include "mdnspp/detail/native_multicast_v6.h"
-#include "mdnspp/detail/ipv6_interface_index.h"
 
 #include <asio.hpp>
 
 #include <bit>
-#include <string>
 #include <cstdint>
 #include <system_error>
 
@@ -86,39 +85,30 @@ inline void bind_any(asio::ip::udp::socket &socket, bool v6, uint16_t port, std:
     socket.bind(asio::ip::udp::endpoint(any, port), ec);
 }
 
-inline void join_v6(asio::ip::udp::socket &socket, const asio::ip::address &group,
-                    const std::string &iface_address, std::error_code &ec)
+inline void join_v6(asio::ip::udp::socket &socket, const asio::ip::address &group, const resolved_interface &iface,
+                    std::error_code &ec)
 {
-    const uint32_t iface_idx = resolve_ipv6_interface_index(iface_address);
-    if(!iface_address.empty() && iface_idx == 0)
+    if(iface.index != 0)
     {
-        ec = std::make_error_code(std::errc::invalid_argument);
-        return;
-    }
-    if(!iface_address.empty())
-    {
-        socket.set_option(asio::ip::multicast::outbound_interface(iface_idx), ec);
+        socket.set_option(asio::ip::multicast::outbound_interface(iface.index), ec);
         if(ec)
             return;
     }
-    socket.set_option(asio::ip::multicast::join_group(group.to_v6(), iface_idx), ec);
+    socket.set_option(asio::ip::multicast::join_group(group.to_v6(), iface.index), ec);
 }
 
-inline void join_v4(asio::ip::udp::socket &socket, const asio::ip::address &group,
-                    const std::string &iface_address, std::error_code &ec)
+inline void join_v4(asio::ip::udp::socket &socket, const asio::ip::address &group, const resolved_interface &iface,
+                    std::error_code &ec)
 {
-    if(iface_address.empty())
+    if(!iface.ipv4.has_value())
     {
         socket.set_option(asio::ip::multicast::join_group(group), ec);
         return;
     }
-    const asio::ip::address_v4 iface = asio::ip::make_address_v4(iface_address, ec);
-    if(ec)
-        return;
-    socket.set_option(asio::ip::multicast::outbound_interface(iface), ec);
-    if(ec)
-        return;
-    socket.set_option(asio::ip::multicast::join_group(group.to_v4(), iface), ec);
+    const asio::ip::address_v4 address{ntohl(to_in_addr(*iface.ipv4).s_addr)};
+    socket.set_option(asio::ip::multicast::outbound_interface(address), ec);
+    if(!ec)
+        socket.set_option(asio::ip::multicast::join_group(group.to_v4(), address), ec);
 }
 
 inline void set_send_options(asio::ip::udp::socket &socket, const socket_options &opts, std::error_code &ec)
@@ -132,16 +122,16 @@ inline void set_send_options(asio::ip::udp::socket &socket, const socket_options
 }
 
 inline void open_and_join(asio::ip::udp::socket &socket, const socket_options &opts, const asio::ip::address &group,
-                          const std::string &iface_address, std::error_code &ec)
+                          const resolved_interface &iface, std::error_code &ec)
 {
     const bool v6 = group.is_v6();
     open_socket(socket, v6, ec);
     if(!ec)
         bind_any(socket, v6, opts.multicast_group.port, ec);
     if(!ec && v6)
-        join_v6(socket, group, iface_address, ec);
+        join_v6(socket, group, iface, ec);
     else if(!ec)
-        join_v4(socket, group, iface_address, ec);
+        join_v4(socket, group, iface, ec);
     if(!ec)
         set_send_options(socket, opts, ec);
     if(ec)
@@ -159,9 +149,10 @@ inline void configure(asio::ip::udp::socket &socket, const socket_options &opts,
     const asio::ip::address group = asio::ip::make_address(opts.multicast_group.address, ec);
     if(ec)
         return;
-    const std::string iface_address = resolve_socket_interface_address(opts, group.is_v6(), ec);
+    const address_family family = group.is_v6() ? address_family::ipv6 : address_family::ipv4;
+    const resolved_interface iface = resolve_socket_interface(opts, family, ec);
     if(!ec)
-        open_and_join(socket, opts, group, iface_address, ec);
+        open_and_join(socket, opts, group, iface, ec);
 }
 
 }

@@ -337,6 +337,39 @@ link. They verify:
 Compile tests run as part of the standard build and are included in `ctest`;
 the self-containment check has no `ctest` entry, the build is the check.
 
+## Network namespace tests (Linux)
+
+**Location:** `tests/unit/netns/` (targets `netns_*_test`, ctest label `netns`),
+harness `tests/netns/run.sh`
+
+Cases that need more than one real interface (several NICs, interfaces that
+share a link-local address, peers on other links) run inside a fixed
+network-namespace topology. `tests/netns/run.sh <build-dir>` enters a new
+network and mount namespace (rootless through a user namespace when not run
+as root), mounts a private tmpfs on `/run` inside that mount namespace only,
+and builds:
+
+- namespace `dut` with veth links `d0` (10.20.0.1/24, fd20:0::1/64) and `d1`
+  (10.20.1.1/24, fd20:1::1/64) to peers `q0` in namespace `p0` (10.20.0.2,
+  fd20:0::2) and `q1` in namespace `p1` (10.20.1.2, fd20:1::2), default routes
+  via `p1`;
+- dummy links `l0` and `l1` in `dut`, each carrying only `fe80::20/64`.
+
+It then runs `ctest -L netns` in the given build directory inside `dut` with
+`MDNSPP_REQUIRE_NETNS=1`. The test process lives in `dut`;
+`tests/support/netns.h` opens sockets inside `p0` or `p1` from a short-lived
+thread, so one process drives every side. Locally, with unprivileged user
+namespaces enabled:
+
+    cmake --build build -j4 --target netns_tests
+    tests/netns/run.sh build
+
+Outside the harness the `netns` tests skip (ctest reports them as skipped
+through `SKIP_RETURN_CODE`); with `MDNSPP_REQUIRE_NETNS` set they fail
+instead. `MDNSPP_REQUIRE_NETWORK` does not affect them. The Linux workflow's
+`netns` job builds the `netns_tests` target and runs the harness under
+`sudo`, because the runner blocks unprivileged user namespaces.
+
 ## Sanitizer jobs in CI
 
 The Linux workflow runs the full test suite (including asio and encrypt) in

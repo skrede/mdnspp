@@ -174,6 +174,35 @@ jobs:
       - name: Test
         run: cd build && ctest --output-on-failure --timeout 60
 
+  netns:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache FetchContent sources
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: fetchcontent-${{ runner.os }}-netns-${{ hashFiles('lib/mdnspp-asio/CMakeLists.txt', 'tests/CMakeLists.txt') }}
+
+      - name: Configure
+        run: |
+          cmake . -B build -DCMAKE_BUILD_TYPE=Debug \
+            -DMDNSPP_BUILD_TESTS=ON \
+            -DMDNSPP_BUILD_EXAMPLES=OFF \
+            -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+            -DMDNSPP_ENABLE_ENCRYPT=OFF \
+            -DMDNSPP_CMAKE_FETCH_DEPS=ON
+
+      - name: Build
+        run: cmake --build build -j4 --target netns_tests
+
+      # The runner's AppArmor profile blocks unprivileged user namespaces, so the harness runs as root.
+      - name: Test
+        run: sudo env PATH="$PATH" tests/netns/run.sh build
+
   clang-tidy:
     runs-on: ubuntu-24.04
     continue-on-error: true

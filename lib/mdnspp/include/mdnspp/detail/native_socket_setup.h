@@ -11,7 +11,6 @@
 
 #include "mdnspp/socket_options.h"
 
-#include <string>
 #include <cstdint>
 #include <system_error>
 
@@ -31,7 +30,7 @@ inline LPFN_WSARECVMSG load_wsarecvmsg(native_socket_t fd)
 #endif
 
 inline void prepare_socket(native_socket_t fd, const socket_options &opts, bool v6,
-                           const std::string &iface_address, std::error_code &ec)
+                           const resolved_interface &iface, std::error_code &ec)
 {
     if(!set_option(fd, SOL_SOCKET, SO_REUSEADDR, int32_t{1}, ec))
         return;
@@ -41,9 +40,9 @@ inline void prepare_socket(native_socket_t fd, const socket_options &opts, bool 
     if(!set_nonblocking(fd, ec))
         return;
     if(v6)
-        configure_ipv6(fd, opts, iface_address, ec);
+        configure_ipv6(fd, opts, iface, ec);
     else
-        configure_ipv4(fd, opts, iface_address, ec);
+        configure_ipv4(fd, opts, iface, ec);
 }
 
 inline native_socket_t open_and_configure(const socket_options &opts, std::error_code &ec)
@@ -55,7 +54,8 @@ inline native_socket_t open_and_configure(const socket_options &opts, std::error
 
     const bool v6 = is_ipv6(opts.multicast_group.address);
     // precedence index > name > address; an unknown index or name fails with invalid_argument
-    const std::string iface_address = resolve_socket_interface_address(opts, v6, ec);
+    const resolved_interface iface =
+        resolve_socket_interface(opts, v6 ? address_family::ipv6 : address_family::ipv4, ec);
     if(ec)
         return invalid_socket;
 
@@ -65,7 +65,7 @@ inline native_socket_t open_and_configure(const socket_options &opts, std::error
         ec = last_socket_error();
         return invalid_socket;
     }
-    prepare_socket(fd, opts, v6, iface_address, ec);
+    prepare_socket(fd, opts, v6, iface, ec);
     if(!ec)
         return fd;
     close_socket(fd);

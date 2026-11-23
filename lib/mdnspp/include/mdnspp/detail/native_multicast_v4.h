@@ -2,6 +2,8 @@
 #define HPP_GUARD_MDNSPP_DETAIL_NATIVE_MULTICAST_V4_H
 
 #include "mdnspp/detail/native_socket.h"
+#include "mdnspp/detail/ip_address_ops.h"
+#include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/native_socket_opts.h"
 
 #include "mdnspp/socket_options.h"
@@ -21,16 +23,13 @@ inline bool bind_any_v4(native_socket_t fd, uint16_t port, std::error_code &ec)
     return bind_socket(fd, reinterpret_cast<const sockaddr *>(&addr), static_cast<socklen_t>(sizeof(addr)), ec);
 }
 
-inline bool parse_v4_interface(const std::string &iface_address, in_addr &out, std::error_code &ec)
+inline in_addr multicast_interface_v4(const resolved_interface &iface) noexcept
 {
-    if(iface_address.empty())
-        out.s_addr = htonl(INADDR_ANY);
-    else if(::inet_pton(AF_INET, iface_address.c_str(), &out) != 1)
-    {
-        ec = std::make_error_code(std::errc::invalid_argument);
-        return false;
-    }
-    return true;
+    if(iface.ipv4.has_value())
+        return to_in_addr(*iface.ipv4);
+    in_addr any{};
+    any.s_addr = htonl(INADDR_ANY);
+    return any;
 }
 
 inline bool join_v4_group(native_socket_t fd, const socket_options &opts, const in_addr &iface_addr,
@@ -61,13 +60,13 @@ inline void enable_v4_receive_info(native_socket_t fd)
 #endif
 }
 
-inline void configure_ipv4(native_socket_t fd, const socket_options &opts, const std::string &iface_address,
+inline void configure_ipv4(native_socket_t fd, const socket_options &opts, const resolved_interface &iface,
                            std::error_code &ec)
 {
-    in_addr iface_addr{};
-    if(!bind_any_v4(fd, opts.multicast_group.port, ec) || !parse_v4_interface(iface_address, iface_addr, ec))
+    const in_addr iface_addr = multicast_interface_v4(iface);
+    if(!bind_any_v4(fd, opts.multicast_group.port, ec))
         return;
-    if(!iface_address.empty() && !set_option(fd, IPPROTO_IP, IP_MULTICAST_IF, iface_addr, ec))
+    if(iface.ipv4.has_value() && !set_option(fd, IPPROTO_IP, IP_MULTICAST_IF, iface_addr, ec))
         return;
     if(!join_v4_group(fd, opts, iface_addr, ec) || !set_v4_send_options(fd, opts, ec))
         return;

@@ -2,8 +2,8 @@
 #define HPP_GUARD_MDNSPP_DETAIL_NATIVE_MULTICAST_V6_H
 
 #include "mdnspp/detail/native_socket.h"
+#include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/native_socket_opts.h"
-#include "mdnspp/detail/ipv6_interface_index.h"
 
 #include "mdnspp/socket_options.h"
 
@@ -55,20 +55,14 @@ inline void enable_v6_receive_info(native_socket_t fd)
 #endif
 }
 
-inline void configure_ipv6(native_socket_t fd, const socket_options &opts, const std::string &iface_address,
+inline void configure_ipv6(native_socket_t fd, const socket_options &opts, const resolved_interface &iface,
                            std::error_code &ec)
 {
-    const uint32_t iface_idx = resolve_ipv6_interface_index(iface_address);
-    if(!iface_address.empty() && iface_idx == 0)
-    {
-        ec = std::make_error_code(std::errc::invalid_argument);
-        return;
-    }
     if(!set_option(fd, IPPROTO_IPV6, IPV6_V6ONLY, int32_t{1}, ec) || !bind_any_v6(fd, opts.multicast_group.port, ec))
         return;
-    if(!iface_address.empty() && !set_option(fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, iface_idx, ec))
+    if(iface.index != 0 && !set_option(fd, IPPROTO_IPV6, IPV6_MULTICAST_IF, iface.index, ec))
         return;
-    if(!join_v6_group(fd, opts, iface_idx, ec) || !set_v6_send_options(fd, opts, ec))
+    if(!join_v6_group(fd, opts, iface.index, ec) || !set_v6_send_options(fd, opts, ec))
         return;
     enable_v6_receive_info(fd);
 }

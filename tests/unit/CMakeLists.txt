@@ -4,6 +4,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/receive_tests.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/gate_tests.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/encrypt_tests.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/compat_tests.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/netns_tests.cmake")
 
 make_test(records_test)
 make_test(service_info_test)

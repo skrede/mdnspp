@@ -38,6 +38,13 @@ inline ip_address to_ip_address(const in6_addr &addr) noexcept
     return out;
 }
 
+inline in_addr to_in_addr(const ip_address &address) noexcept
+{
+    in_addr out{};
+    std::memcpy(&out, address.bytes.data(), sizeof(out));
+    return out;
+}
+
 inline std::optional<ip_address> parse_ip_address(std::string_view text)
 {
     sockaddr_in addr4{};

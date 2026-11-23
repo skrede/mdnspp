@@ -1,5 +1,6 @@
 #include "interface_resolve_fixture.h"
 
+#include "mdnspp/ip_address.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/network_interface.h"
 
@@ -69,47 +70,65 @@ TEST_CASE("find_interface matches a binding address against every address of an 
     REQUIRE(find_interface(nics, {.address = "not an address"}) == nullptr);
 }
 
-TEST_CASE("select_interface_address resolves name and index to the family address", "[interface_resolve]")
+TEST_CASE("select_interface resolves name and index to the interface", "[interface_resolve]")
 {
     auto nics = test_interfaces();
     std::error_code ec;
 
-    REQUIRE(select_interface_address(nics, {.name = "eth0"}, false, ec) == "10.0.0.2");
+    resolved_interface v4 = select_interface(nics, {.name = "eth0"}, address_family::ipv4, ec);
     REQUIRE_FALSE(ec);
-    REQUIRE(select_interface_address(nics, {.name = "eth0"}, true, ec) == "fe80::2");
+    REQUIRE(v4.index == 2);
+    REQUIRE(v4.ipv4 == parse_ip_address("10.0.0.2"));
+
+    resolved_interface v6 = select_interface(nics, {.name = "eth0"}, address_family::ipv6, ec);
     REQUIRE_FALSE(ec);
-    REQUIRE(select_interface_address(nics, {.index = 4}, true, ec) == "fe80::4");
+    REQUIRE(v6.index == 2);
+    REQUIRE_FALSE(v6.ipv4.has_value());
+
+    REQUIRE(select_interface(nics, {.index = 4}, address_family::ipv6, ec).index == 4);
     REQUIRE_FALSE(ec);
 }
 
-TEST_CASE("select_interface_address fails for unknown name or index", "[interface_resolve]")
+TEST_CASE("select_interface index takes precedence over name and address", "[interface_resolve]")
 {
     auto nics = test_interfaces();
     std::error_code ec;
 
-    REQUIRE(select_interface_address(nics, {.name = "nope0"}, false, ec).empty());
+    REQUIRE(select_interface(nics, {.index = 4, .name = "eth0", .address = "fe80::2"}, address_family::ipv6, ec)
+                .index == 4);
+    REQUIRE_FALSE(ec);
+    REQUIRE(select_interface(nics, {.name = "eth0", .address = "fe80::4"}, address_family::ipv6, ec).index == 2);
+    REQUIRE_FALSE(ec);
+}
+
+TEST_CASE("select_interface fails for unknown name or index", "[interface_resolve]")
+{
+    auto nics = test_interfaces();
+    std::error_code ec;
+
+    REQUIRE(select_interface(nics, {.name = "nope0"}, address_family::ipv4, ec).index == 0);
     REQUIRE(ec == std::errc::invalid_argument);
 
-    REQUIRE(select_interface_address(nics, {.index = 99}, false, ec).empty());
+    REQUIRE(select_interface(nics, {.index = 99}, address_family::ipv6, ec).index == 0);
     REQUIRE(ec == std::errc::invalid_argument);
 }
 
-TEST_CASE("select_interface_address fails when the interface lacks the family", "[interface_resolve]")
+TEST_CASE("select_interface fails when the interface lacks the family", "[interface_resolve]")
 {
     auto nics = test_interfaces();
     std::error_code ec;
 
-    REQUIRE(select_interface_address(nics, {.name = "eth1"}, true, ec).empty());
+    REQUIRE(select_interface(nics, {.name = "eth1"}, address_family::ipv6, ec).index == 0);
+    REQUIRE(ec == std::errc::invalid_argument);
+    REQUIRE_FALSE(select_interface(nics, {.index = 4}, address_family::ipv4, ec).ipv4.has_value());
     REQUIRE(ec == std::errc::invalid_argument);
 }
 
-TEST_CASE("select_interface_address passes a plain address binding through", "[interface_resolve]")
+TEST_CASE("select_interface leaves an unbound socket on index 0 without an address", "[interface_resolve]")
 {
-    auto nics = test_interfaces();
-    std::error_code ec;
-
-    REQUIRE(select_interface_address(nics, {.address = "192.0.2.7"}, false, ec) == "192.0.2.7");
+    std::error_code ec = std::make_error_code(std::errc::io_error);
+    resolved_interface unbound = select_interface(test_interfaces(), {}, address_family::ipv4, ec);
     REQUIRE_FALSE(ec);
-    REQUIRE(select_interface_address(nics, {}, false, ec).empty());
-    REQUIRE_FALSE(ec);
+    REQUIRE(unbound.index == 0);
+    REQUIRE_FALSE(unbound.ipv4.has_value());
 }

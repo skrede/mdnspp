@@ -1,4 +1,6 @@
 #include "fixture.h"
+#include "sniffer.h"
+#include "raw_sender.h"
 
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
@@ -92,5 +94,23 @@ TEST_CASE("nic_group fires interface-stamped on_record for observer peers", "[ni
 
     std::ranges::sort(record_interfaces);
     REQUIRE(record_interfaces == std::vector<std::string>{"nic1", "nic2"});
+    grp.stop();
+}
+
+TEST_CASE("nic_group servers probe without the unicast-response bit in each family", "[nic_group][family]")
+{
+    group_fixture f;
+    use_dual_stack_nics(f);
+    family_traffic traffic{f.executor};
+
+    server_group grp{f.executor, f.make_grp_opts(), server_opts({"svc._test._tcp.local."})};
+    grp.start();
+    f.executor.drain();
+    f.advance_to_live();
+
+    CHECK(traffic.ipv4.multicast_questions > 0);
+    CHECK(traffic.ipv4.unicast_questions == 0);
+    CHECK(traffic.ipv6.multicast_questions > 0);
+    CHECK(traffic.ipv6.unicast_questions == 0);
     grp.stop();
 }

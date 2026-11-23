@@ -99,10 +99,12 @@ inline std::vector<proposed_record> build_proposed_records(const service_info &i
     return records;
 }
 
-// RFC 6762 section 8.1: every proposed unique name is asked with QTYPE ANY and the QU bit; the Authority section
-// carries the full proposed record set for simultaneous-probe tiebreaking (section 8.2.1).
+// RFC 6762 section 8.1: every proposed unique name is asked with QTYPE ANY, with the QU bit when the mode is
+// unicast; the Authority section carries the full proposed record set for simultaneous-probe tiebreaking
+// (section 8.2.1).
 inline std::vector<std::byte> build_probe_query(const service_info &info,
-                                                uint32_t probe_authority_ttl = 120)
+                                                uint32_t probe_authority_ttl = 120,
+                                                response_mode mode = response_mode::unicast)
 {
     auto name_service = encode_dns_name(info.service_name);
     auto name_host = encode_dns_name(info.hostname);
@@ -114,8 +116,9 @@ inline std::vector<std::byte> build_probe_query(const service_info &info,
     std::vector<std::byte> packet;
     packet.reserve(12 + name_service->size() + name_host->size() + 8 + proposed.size() * 32);
     append_query_header(packet, 2, static_cast<uint16_t>(proposed.size()));
-    append_question(packet, *name_service, dns_type::any, uint16_t{0x8001});
-    append_question(packet, *name_host, dns_type::any, uint16_t{0x8001});
+    const uint16_t qclass = mode == response_mode::unicast ? uint16_t{0x8001} : uint16_t{0x0001};
+    append_question(packet, *name_service, dns_type::any, qclass);
+    append_question(packet, *name_host, dns_type::any, qclass);
     for(const auto &rec : proposed)
         append_dns_rr(packet, rec.owner, rec.rtype, probe_authority_ttl, rec.rdata);
     return packet;

@@ -88,3 +88,28 @@ SCENARIO("build_probe_query probes all proposed names with the full record set i
         }
     }
 }
+
+SCENARIO("build_probe_query writes the response mode into both questions", "[build_probe_query]")
+{
+    GIVEN("a test service_info")
+    {
+        auto info = make_test_service_v46();
+
+        WHEN("build_probe_query is called for multicast responses")
+        {
+            auto pkt = build_probe_query(info, 120, mdnspp::response_mode::multicast);
+
+            THEN("both questions have QCLASS=0x0001 (no QU bit)")
+            {
+                std::size_t offset = 12;
+                auto span = std::span<const std::byte>(pkt);
+                for(uint32_t q = 0; q < 2; ++q)
+                {
+                    skip_dns_name(span, offset);
+                    REQUIRE(read_u16_be(pkt.data() + offset + 2) == 0x0001);
+                    offset += 4;
+                }
+            }
+        }
+    }
+}

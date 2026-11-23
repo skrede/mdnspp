@@ -109,7 +109,10 @@ private:
         if(m_ctx.pa_state.state != server_state::probing) return;
         if(m_ctx.stopped()) return;
 
-        auto probe = build_probe_query(m_ctx.info, wire_ttl(m_ctx.opts.probe_authority_ttl));
+        // RFC 6762 section 8.1 asks for QU probes, but the per-NIC servers of a group share the port and a unicast
+        // defense reaches only one of them, so group members ask for multicast defenses (section 15.1).
+        const response_mode mode = m_ctx.siblings.in_group() ? response_mode::multicast : response_mode::unicast;
+        auto probe = build_probe_query(m_ctx.info, wire_ttl(m_ctx.opts.probe_authority_ttl), mode);
         if(probe.empty())
         {
             // An unencodable name (label over 63 or name over 255 bytes) can never be announced.

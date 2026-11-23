@@ -48,7 +48,7 @@ automatically for every incoming query.
 | Implemented | Unicast response routing | QU queries receive a unicast response to the sender |
 | Implemented | Quarter-TTL multicast rule (§5.4) | A QU question is answered via multicast instead when the records have not been multicast within the last quarter of their TTL |
 | Implemented | Multicast response routing | QM queries receive a multicast response |
-| Implemented | Probe QU queries | Outgoing probes use QU to reduce multicast load during probing |
+| Implemented | Probe QU queries | Outgoing probes use QU to reduce multicast load during probing; servers in a `nic_group` probe with QM (§15.1) |
 | Implemented | Unicast response acceptance (§6) | A unicast response is accepted only if it answers a QU question this peer sent within `qu_response_window` |
 
 ## In-Depth
@@ -64,7 +64,8 @@ unicast response. This is used in two scenarios:
 
 2. **Probing**: During RFC 6762 §8 probing, outgoing probes use QU queries so that
    only the authoritative responder for the name replies, reducing multicast
-   traffic on the segment.
+   traffic on the segment. Servers in a `nic_group` probe with QM questions
+   instead, see [nic_group](../nic-group.md#unicast-replies).
 
 ### QM semantics
 
@@ -90,7 +91,7 @@ When a `service_server` receives a query:
 
 Every peer records the QU questions it sends: a querier or service discovery
 started with `response_mode::unicast` records its question, and a probing
-`service_server` records the two QU ANY questions of each probe, so a defender
+standalone `service_server` records the two QU ANY questions of each probe, so a defender
 that answers a probe by unicast still triggers conflict handling. A response
 sent to one of this host's unicast addresses is accepted only if a record of
 its answer section answers one of these questions sent within

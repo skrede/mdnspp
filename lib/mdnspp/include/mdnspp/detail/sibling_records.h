@@ -115,6 +115,11 @@ public:
         return m_registry && m_registry->owns(m_id, record);
     }
 
+    bool in_group() const noexcept
+    {
+        return m_registry != nullptr;
+    }
+
 private:
     std::shared_ptr<sibling_records> m_registry;
     uint64_t m_id;

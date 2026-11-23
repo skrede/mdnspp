@@ -41,7 +41,8 @@ Unit tests cover:
   matching and response construction (tests/unit/server_detail/:
   server_probe_announce_test, server_probe_rate_limit_test,
   server_tiebreak_test, server_query_match_test,
-  server_question_section_test; tests/unit/server/: server_*_test)
+  server_question_section_test; tests/unit/server/: server_*_test, among them
+  server_probe_mode_test for the probe questions of grouped and standalone servers)
 - Cache operations: TTL expiry, refresh, goodbye processing (tests/unit/cache/:
   cache_*_test; ttl_refresh_test)
 - Known-answer suppression and record ownership (tests/unit/server_detail/:
@@ -97,7 +98,8 @@ Unit tests cover:
   default_nested_receive_test, wakeup_fd_test, default_context_construct_test,
   post_queue_seam_test, post_stress_test)
 - Multi-NIC orchestration: group instance lifecycle, dynamic builder, and
-  interface monitoring (tests/unit/nic_group/: nic_group_server_test,
+  interface monitoring (tests/unit/nic_group/: nic_group_server_test (grouped servers probe
+  without the unicast-response bit in each family),
   nic_group_monitor_test, nic_group_options_test, nic_group_dynamic_test,
   nic_group_siblings_test; nic_monitor_test), one instance set per address
   family per NIC and the two-argument socket options factory

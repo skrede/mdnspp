@@ -68,7 +68,7 @@ See also: [examples/service_server/](../../examples/service_server/)
 
 | Status | Aspect | Notes |
 |--------|--------|-------|
-| Implemented | Three QU probes at 250 ms intervals | With 0–250 ms random initial delay; probe queries use message ID 0 (§18.1) |
+| Implemented | Three QU probes at 250 ms intervals | With 0–250 ms random initial delay; probe queries use message ID 0 (§18.1). Servers in a `nic_group` probe with QM questions instead (§15.1) |
 | Implemented | All proposed unique names probed | Probe questions cover the service instance name AND the hostname, QTYPE=ANY (§8.1) |
 | Implemented | Authority section carries the full proposed record set | SRV + TXT + A/AAAA, for §8.2.1 tiebreaking |
 | Implemented | Simultaneous probe tiebreaking (§8.2.1) | Comparison in uncompressed form ordered by class, then type, then rdata, over the full record sets; an identical record set is NOT a conflict |
@@ -87,7 +87,8 @@ probe-announce-live state machine:
 
 1. **Probing.** After a random delay of 0–250 ms, the server sends three
    probe queries at 250 ms intervals. Each probe carries two QU questions
-   with QTYPE=ANY — one for the proposed service instance name and one for
+   (QM questions for a server in a `nic_group`, see
+   [nic_group](../nic-group.md#unicast-replies)) with QTYPE=ANY — one for the proposed service instance name and one for
    the proposed hostname — and the full proposed record set (SRV, TXT,
    A/AAAA) in the authority section for tiebreaking. Probe queries use
    message ID 0 per RFC 6762 section 18.1; loopback of the server's own

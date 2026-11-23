@@ -316,16 +316,24 @@ factory that leaves the socket unbound gives up this filtering. See
 rule and its platform status (verified on Linux; implemented, not CI-verified on macOS or
 Windows).
 
-### Unicast replies on Linux
+### Unicast replies
 
-On Linux, the per-NIC instances of one family all bind UDP port 5353 and none is tied to
-its device (mdnspp does not set `SO_BINDTODEVICE`). The kernel hands a unicast datagram
-addressed to the host's port 5353 to one of these sockets, not necessarily the one of the
-interface that asked. A unicast reply to a question sent with the unicast-response bit (a
-probe, or a querier or discovery in unicast mode) can therefore reach an instance that did
-not ask; that instance drops it, because it sent no matching question within
-`mdns_options::qu_response_window`. Questions that ask for unicast replies are lossy inside
-a `nic_group` on Linux; multicast traffic is not affected.
+The per-NIC instances of one address family bind the same UDP port 5353, and mdnspp does
+not tie them to a device. The operating system hands a unicast datagram addressed to the
+host's port 5353 to only one of these sockets, not necessarily the one of the interface
+that asked: Linux picks one by a hash of the addresses and ports, macOS and the BSDs pick
+the socket that bound first, and the result on Windows is undefined (Microsoft's
+documentation of `SO_REUSEADDR`).
+
+Inside a group only server probes ask for unicast replies. Servers in a group therefore
+send their probes without the unicast-response bit, so a defense arrives by multicast and
+reaches the instance of the link it arrived on. The cost is that a defender that multicast
+the name within the last second may answer later than it would by unicast, which is the
+reason RFC 6762 §8.1 gives for probing with the unicast-response bit. A standalone server
+keeps the unicast-response bit in its probes.
+
+Between processes the limit remains: a unicast reply reaches one process on the host, and
+RFC 6762 §15.1 describes the same limit for several responders sharing the port.
 
 ### dedup_mode
 

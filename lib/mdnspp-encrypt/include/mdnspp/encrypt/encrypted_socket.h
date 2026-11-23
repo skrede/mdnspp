@@ -112,6 +112,12 @@ public:
         ec = m_keys.update(std::move(new_psk), gp);
     }
 
+    uint32_t interface_index() const noexcept
+        requires detail::reports_interface_index<InnerSocket>
+    {
+        return m_inner.interface_index();
+    }
+
     InnerSocket &inner() noexcept { return m_inner; }
     const InnerSocket &inner() const noexcept { return m_inner; }
 

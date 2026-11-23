@@ -90,6 +90,31 @@ operating system, which rejects one that is not assigned to a local
 interface; socket construction then fails with the operating system's error
 (`EADDRNOTAVAIL` on Linux).
 
+### Receive interface attribution
+
+A bound socket reports the index of its interface through `interface_index()`
+(`default_socket`, `asio_socket`, and `encrypted_socket` over either); an
+unbound socket reports `0`. Every peer reads it once at construction and
+silently drops a packet whose destination is a multicast address and whose
+receiving interface (`recv_metadata::recv_ifindex`) is known and differs from
+the bound one, queries and responses alike. A peer bound to an interface
+therefore processes only multicast received on that interface, including the
+packets this host sends there. Unicast packets, and packets of unknown
+destination or receiving interface, are left to the local-link test (see
+[recv_metadata](api/recv_metadata.md)).
+
+The check is needed because the operating system delivers a group joined on
+any interface to every socket bound to the port. The library does not set the
+Linux `IP_MULTICAST_ALL` option instead: it has no effect on IPv6, and with
+`SO_REUSEPORT`, which the sockets set so that peers on one host share the
+port, current Linux kernels then hand an IPv4 multicast datagram to an
+arbitrary socket of the port, so a peer can lose packets from its own
+interface.
+
+Linux, IPv4 and IPv6: verified by the network namespace tests, which run two
+links into one host. macOS and Windows run the same code: implemented, not
+CI-verified on macOS or Windows.
+
 Policies may extend `socket_options`: a policy declaring a
 `socket_options_type` derived from `socket_options` substitutes its own
 struct via `policy_socket_options_t<P>`. The encrypted policy adds key
@@ -411,13 +436,15 @@ For the `recv_metadata` struct fields, see [recv_metadata](api/recv_metadata.md)
 
 ## Known limitations
 
-### Linux receive-side filtering
+### Receive-side filtering by the kernel
 
-On Linux, `IP_ADD_MEMBERSHIP` with a specific interface address controls which
-interface the kernel uses for joining the multicast group, but it does not
-fully isolate receive traffic. The kernel delivers multicast packets arriving
-on port 5353 to all sockets bound to that port, regardless of which interface
-each socket joined on. Send-side binding (`IP_MULTICAST_IF`) works correctly.
+`IP_ADD_MEMBERSHIP` / `IPV6_JOIN_GROUP` with a specific interface controls
+which interface joins the multicast group, but the kernel delivers multicast
+arriving on the port to every socket bound to it, whichever interface each
+socket joined on. The peers filter these packets themselves (see
+[Receive interface attribution](#receive-interface-attribution)); a custom
+socket without `interface_index()` gets no such filtering. Send-side binding
+(`IP_MULTICAST_IF` / `IPV6_MULTICAST_IF`) works correctly.
 
 ### Windows multicast loopback semantics
 

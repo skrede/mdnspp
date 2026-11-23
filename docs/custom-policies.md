@@ -128,6 +128,15 @@ was sent to (the multicast group or the local unicast address, as an
 (`recv_metadata{.sender = from, .ttl = ttl, .destination = dst}`) so a field
 added later keeps its default.
 
+A socket bound to one interface may expose `uint32_t interface_index() const
+noexcept`, returning the index it is bound to (`0` when unbound), as the
+default, asio and mock sockets do; `encrypted_socket` forwards it when its
+inner socket has it. The peers read it once at construction and then drop
+multicast that arrived on another interface (see
+[Receive interface attribution](socket-options.md#receive-interface-attribution)).
+A socket without the member is treated as unbound and receives from every
+interface.
+
 Receive is one-shot. The concept cannot express this contract, which every
 socket must honor:
 

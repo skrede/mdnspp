@@ -12,6 +12,11 @@ endfunction()
 make_subdir_test(netns_ipv6_selection_test netns/ipv6_selection.cpp)
 register_netns_test(netns_ipv6_selection_test)
 
+make_subdir_test(netns_attribution_test netns/attribution.cpp)
+register_netns_test(netns_attribution_test)
+make_subdir_test(netns_attribution_loop_test netns/attribution_loop.cpp)
+register_netns_test(netns_attribution_loop_test)
+
 if (TARGET mdnspp::asio)
     make_asio_subdir_test(netns_ipv6_selection_asio_test netns/ipv6_selection_asio.cpp)
     register_netns_test(netns_ipv6_selection_asio_test)

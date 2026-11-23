@@ -29,8 +29,9 @@ public:
     using enumerator = typename on_link_table<policy_clock_t<P>>::enumerator;
 
     packet_gate(uint16_t multicast_port, uint32_t receive_ttl_minimum, ttl_unknown_policy unknown_ttl_policy,
-                enumerator enumerate)
-        : m_multicast_port(multicast_port)
+                uint32_t bound_ifindex, enumerator enumerate)
+        : m_bound_ifindex(bound_ifindex)
+        , m_multicast_port(multicast_port)
         , m_receive_ttl_minimum(receive_ttl_minimum)
         , m_unknown_ttl_policy(unknown_ttl_policy)
         , m_on_link(std::move(enumerate))
@@ -42,7 +43,7 @@ public:
         if(data.size() < dns_frame_header_size)
             return false;
         const dns_frame_header header = read_frame_header(data);
-        if(!header_accepted(header))
+        if(!header_accepted(header) || interface_mismatch(meta, m_bound_ifindex))
             return false;
         if(!header.is_response())
             return query_accepted(meta);
@@ -51,6 +52,7 @@ public:
     }
 
 private:
+    uint32_t m_bound_ifindex;
     uint16_t m_multicast_port;
     uint32_t m_receive_ttl_minimum;
     ttl_unknown_policy m_unknown_ttl_policy;
@@ -78,7 +80,7 @@ private:
     {
         const std::string_view text = meta.sender.address;
         const std::optional<ip_address> source = parse_ip_address(text.substr(0, text.find('%')));
-        return source && m_on_link.on_link(*source, meta.recv_ifindex, 0);
+        return source && m_on_link.on_link(*source, meta.recv_ifindex, m_bound_ifindex);
     }
 };
 

@@ -34,6 +34,16 @@ uint32_t selected_interface(const mdnspp::socket_options &opts)
     return mdnspp::test_support::ipv6_multicast_interface(socket.native_handle());
 }
 
+uint32_t bound_interface(const mdnspp::socket_options &opts)
+{
+    asio::io_context io;
+    std::error_code ec;
+    mdnspp::asio_socket socket{io, opts, ec};
+    if(ec)
+        mdnspp::test_support::skip_or_fail("asio_socket construction failed: " + ec.message());
+    return socket.interface_index();
+}
+
 #ifndef _WIN32
 constexpr uint16_t discard_port = 9;
 const std::array<std::byte, 4> payload{};
@@ -80,6 +90,21 @@ TEST_CASE("asio_socket selects the IPv6 loopback interface by index and by name"
 
     CHECK(selected_interface(by_index) == loopback.index);
     CHECK(selected_interface(by_name) == loopback.index);
+}
+
+TEST_CASE("asio_socket reports the interface index it is bound to", "[asio][socket][ipv6]")
+{
+    const uint32_t loopback = loopback_ipv6_interface().index;
+    mdnspp::socket_options by_index = ipv6_group_options();
+    by_index.interface_index = loopback;
+
+    CHECK(bound_interface(by_index) == loopback);
+    CHECK(bound_interface(ipv6_group_options("::1")) == loopback);
+}
+
+TEST_CASE("an unbound asio_socket reports interface index 0", "[asio][socket]")
+{
+    CHECK(bound_interface(mdnspp::socket_options{.multicast_group = mdnspp::endpoint{"224.0.0.251", 0}}) == 0);
 }
 
 #ifndef _WIN32

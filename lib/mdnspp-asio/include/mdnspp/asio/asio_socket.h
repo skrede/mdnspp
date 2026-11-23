@@ -18,6 +18,7 @@
 #include <span>
 #include <memory>
 #include <vector>
+#include <cstdint>
 #include <system_error>
 
 namespace mdnspp {
@@ -42,6 +43,7 @@ public:
         , m_buffer(detail::max_udp_payload)
         , m_token(std::make_shared<char>())
         , m_meta(detail::reserved_metadata())
+        , m_interface_index(0)
 #ifdef _WIN32
         , m_fn_wsarecvmsg(nullptr)
 #endif
@@ -57,6 +59,7 @@ public:
         , m_buffer(detail::max_udp_payload)
         , m_token(std::make_shared<char>())
         , m_meta(detail::reserved_metadata())
+        , m_interface_index(0)
 #ifdef _WIN32
         , m_fn_wsarecvmsg(nullptr)
 #endif
@@ -108,6 +111,8 @@ public:
 
     asio::ip::udp::socket::native_handle_type native_handle() { return m_socket.native_handle(); }
 
+    uint32_t interface_index() const noexcept { return m_interface_index; }
+
     // asio::basic_socket::get_executor() is non-const but only reads the stored executor.
     executor_type get_executor() const noexcept
     {
@@ -119,13 +124,14 @@ private:
     std::vector<std::byte> m_buffer;
     std::shared_ptr<char> m_token;
     mdnspp::recv_metadata m_meta;
+    uint32_t m_interface_index;
 #ifdef _WIN32
     LPFN_WSARECVMSG m_fn_wsarecvmsg;
 #endif
 
     void configure(const socket_options &opts, std::error_code &ec)
     {
-        detail::configure(m_socket, opts, ec);
+        m_interface_index = detail::configure(m_socket, opts, ec);
 #ifdef _WIN32
         if(!ec)
             m_fn_wsarecvmsg = detail::load_wsarecvmsg(m_socket.native_handle());

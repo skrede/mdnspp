@@ -1,14 +1,20 @@
 #include "helpers.h"
 
 #include "support/skip_or_fail.h"
+#include "support/ipv6_interface.h"
 
 #include "mdnspp/policy.h"
+#include "mdnspp/endpoint.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/basic_querier.h"
 #include "mdnspp/basic_observer.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/network_interface.h"
 #include "mdnspp/basic_service_server.h"
 #include "mdnspp/basic_service_discovery.h"
+
+#include <cstdint>
+#include <system_error>
 
 static_assert(mdnspp::policy_like<mdnspp::default_policy>, "default_policy must satisfy policy_like");
 static_assert(mdnspp::socket_like<mdnspp::default_socket>, "default_socket must satisfy socket_like");
@@ -100,4 +106,27 @@ TEST_CASE("basic_service_server instantiates with default_policy", "[native][pol
         mdnspp::basic_service_server<mdnspp::default_policy> srv{ctx, info};
     });
     SUCCEED("service_server<default_policy> constructed");
+}
+
+TEST_CASE("default_socket reports the interface index it is bound to", "[native][socket][socket_options]")
+{
+    const uint32_t loopback = mdnspp::test_support::loopback_ipv6_interface().index;
+    mdnspp::socket_options opts = mdnspp::test_support::ipv6_group_options();
+    opts.interface_index = loopback;
+    mdnspp::default_context ctx;
+    std::error_code ec;
+    mdnspp::default_socket sock{ctx, opts, ec};
+    if(ec)
+        mdnspp::test_support::skip_or_fail("IPv6 default_socket construction on loopback failed: " + ec.message());
+    CHECK(sock.interface_index() == loopback);
+}
+
+TEST_CASE("an unbound default_socket reports interface index 0", "[native][socket][socket_options]")
+{
+    mdnspp::default_context ctx;
+    std::error_code ec;
+    mdnspp::default_socket sock{ctx, mdnspp::socket_options{.multicast_group = mdnspp::endpoint{"224.0.0.251", 0}}, ec};
+    if(ec)
+        mdnspp::test_support::skip_or_fail("default_socket construction failed: " + ec.message());
+    CHECK(sock.interface_index() == 0);
 }

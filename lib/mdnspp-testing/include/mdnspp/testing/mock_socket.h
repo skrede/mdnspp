@@ -11,6 +11,7 @@
 #include <span>
 #include <vector>
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <system_error>
 
@@ -65,6 +66,8 @@ public:
     }
 
     const socket_options &options() const noexcept { return m_opts; }
+
+    uint32_t interface_index() const noexcept { return m_opts.interface_index.value_or(0); }
 
     static void set_fail_on_construct(bool v) noexcept { s_fail_on_construct = v; }
     static bool fail_on_construct() noexcept { return s_fail_on_construct; }

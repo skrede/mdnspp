@@ -9,6 +9,7 @@
 #include "mdnspp/basic_querier.h"
 #include "mdnspp/query_options.h"
 #include "mdnspp/basic_observer.h"
+#include "mdnspp/socket_options.h"
 #include "mdnspp/monitor_options.h"
 #include "mdnspp/service_options.h"
 #include "mdnspp/observer_options.h"
@@ -129,13 +130,13 @@ struct observer_rig
 
 struct monitor_rig
 {
-    monitor_rig()
+    explicit monitor_rig(socket_options sock = {})
         : found{}
         , ex{}
         , peer{ex, monitor_options{.on_found = [this](const resolved_service &svc)
           {
               found.push_back(svc.instance_name.str());
-          }}}
+          }}, std::move(sock)}
     {
         test_clock::reset();
         peer.watch("_http._tcp.local.");
@@ -173,9 +174,9 @@ struct discovery_rig
 
 struct server_rig
 {
-    explicit server_rig(service_options opts = {})
+    explicit server_rig(service_options opts = {}, socket_options sock = {})
         : ex{}
-        , peer{ex, gate_service("Gate"), std::move(opts)}
+        , peer{ex, gate_service("Gate"), std::move(opts), std::move(sock)}
     {
         peer.async_start();
         for(uint32_t i = 0; i < 5; ++i)

@@ -60,7 +60,7 @@ template <typename P>
 bool admitted(interface_snapshot &snapshot, const mdnspp::recv_metadata &meta)
 {
     mdnspp::testing::test_clock::reset();
-    gate<P> g{5353, 255, ttl_unknown_policy::accept, enumerate_from(snapshot)};
+    gate<P> g{5353, 255, ttl_unknown_policy::accept, 0, enumerate_from(snapshot)};
     return g.admit(meta, response_header());
 }
 

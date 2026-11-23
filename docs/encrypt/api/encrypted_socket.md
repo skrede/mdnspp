@@ -150,6 +150,14 @@ If `gp` sets neither `duration` nor `packet_count`, a duration bound of `default
 
 All peers must call `update_key()` with the same new key within the grace window: a peer that has not rotated drops new-epoch traffic until it does, and peers that have rotated stop accepting its old-epoch traffic once their grace period expires. There is no staged next-key mechanism. See [Key Rotation](../key-rotation.md).
 
+### interface_index
+
+```cpp
+uint32_t interface_index() const noexcept;  // only when InnerSocket has interface_index()
+```
+
+Returns the inner socket's `interface_index()`: the index of the interface the socket is bound to, `0` when unbound. Declared only when `InnerSocket` declares it (the default, asio and mock sockets do; the in-process socket does not). The peers use it to drop multicast received on another interface (see [Receive interface attribution](../../socket-options.md#receive-interface-attribution)).
+
 ### inner
 
 ```cpp

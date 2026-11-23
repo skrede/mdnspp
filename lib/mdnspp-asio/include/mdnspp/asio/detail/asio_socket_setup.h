@@ -141,18 +141,19 @@ inline void open_and_join(asio::ip::udp::socket &socket, const socket_options &o
     }
 }
 
-inline void configure(asio::ip::udp::socket &socket, const socket_options &opts, std::error_code &ec)
+inline uint32_t configure(asio::ip::udp::socket &socket, const socket_options &opts, std::error_code &ec)
 {
     validate_multicast_address(opts.multicast_group.address, ec);
     if(ec)
-        return;
+        return 0;
     const asio::ip::address group = asio::ip::make_address(opts.multicast_group.address, ec);
     if(ec)
-        return;
+        return 0;
     const address_family family = group.is_v6() ? address_family::ipv6 : address_family::ipv4;
     const resolved_interface iface = resolve_socket_interface(opts, family, ec);
     if(!ec)
         open_and_join(socket, opts, group, iface, ec);
+    return ec ? 0 : iface.index;
 }
 
 }

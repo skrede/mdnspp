@@ -52,10 +52,10 @@ protected:
     explicit basic_mdns_peer_base(executor_type ex, policy_socket_options_t<P> opts = {},
                                    mdns_options mdns_opts = {})
         : m_multicast_ep(opts.multicast_group)
-        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy,
-                 system_interfaces)
         , m_executor(ex)
         , m_socket(ex, opts)
+        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy,
+                 bound_interface_index(m_socket), system_interfaces)
         , m_timer(ex)
         , m_stopped(false)
         , m_mdns_opts(std::move(mdns_opts))
@@ -65,10 +65,10 @@ protected:
     basic_mdns_peer_base(executor_type ex, policy_socket_options_t<P> opts, mdns_options mdns_opts,
                          std::error_code &ec)
         : m_multicast_ep(opts.multicast_group)
-        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy,
-                 system_interfaces)
         , m_executor(ex)
         , m_socket(ex, opts, ec)
+        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy,
+                 bound_interface_index(m_socket), system_interfaces)
         , m_timer(ex)
         , m_stopped(false)
         , m_mdns_opts(std::move(mdns_opts))
@@ -138,9 +138,9 @@ protected:
 
     std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
     endpoint m_multicast_ep;
-    packet_gate<P> m_gate;
     executor_type m_executor;
     socket_type m_socket;
+    packet_gate<P> m_gate;
     timer_type m_timer;
     std::unique_ptr<recv_loop<P>> m_loop;
     std::atomic<bool> m_stopped;

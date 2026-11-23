@@ -12,6 +12,7 @@
 
 #include <span>
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <optional>
 #include <system_error>
@@ -22,31 +23,23 @@ class default_socket
 {
 public:
     explicit default_socket(default_context &ctx)
-        : m_ctx{ctx}
-        , m_fd{detail::open_and_configure(socket_options{})}
+        : default_socket(ctx, detail::open_and_configure(socket_options{}))
     {
-        register_open_socket();
     }
 
     explicit default_socket(default_context &ctx, std::error_code &ec)
-        : m_ctx{ctx}
-        , m_fd{detail::open_and_configure(socket_options{}, ec)}
+        : default_socket(ctx, detail::open_and_configure(socket_options{}, ec))
     {
-        register_open_socket();
     }
 
     explicit default_socket(default_context &ctx, const socket_options &opts)
-        : m_ctx{ctx}
-        , m_fd{detail::open_and_configure(opts)}
+        : default_socket(ctx, detail::open_and_configure(opts))
     {
-        register_open_socket();
     }
 
     explicit default_socket(default_context &ctx, const socket_options &opts, std::error_code &ec)
-        : m_ctx{ctx}
-        , m_fd{detail::open_and_configure(opts, ec)}
+        : default_socket(ctx, detail::open_and_configure(opts, ec))
     {
-        register_open_socket();
     }
 
     ~default_socket()
@@ -67,6 +60,11 @@ public:
     detail::native_socket_t native_handle() const noexcept
     {
         return m_fd;
+    }
+
+    uint32_t interface_index() const noexcept
+    {
+        return m_interface_index;
     }
 
     void send(const endpoint &dest, std::span<const std::byte> data)
@@ -107,7 +105,16 @@ public:
 
 private:
     default_context &m_ctx;
+    uint32_t m_interface_index;
     detail::native_socket_t m_fd;
+
+    default_socket(default_context &ctx, detail::opened_socket opened)
+        : m_ctx{ctx}
+        , m_interface_index{opened.interface_index}
+        , m_fd{opened.fd}
+    {
+        register_open_socket();
+    }
 
     void register_open_socket()
     {

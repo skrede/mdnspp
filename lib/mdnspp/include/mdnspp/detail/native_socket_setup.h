@@ -45,40 +45,46 @@ inline void prepare_socket(native_socket_t fd, const socket_options &opts, bool 
         configure_ipv4(fd, opts, iface, ec);
 }
 
-inline native_socket_t open_and_configure(const socket_options &opts, std::error_code &ec)
+struct opened_socket
+{
+    native_socket_t fd;
+    uint32_t interface_index;
+};
+
+inline opened_socket open_and_configure(const socket_options &opts, std::error_code &ec)
 {
     ec.clear();
     validate_multicast_address(opts.multicast_group.address, ec);
     if(ec)
-        return invalid_socket;
+        return {invalid_socket, 0};
 
     const bool v6 = is_ipv6(opts.multicast_group.address);
     // precedence index > name > address; an unknown index or name fails with invalid_argument
     const resolved_interface iface =
         resolve_socket_interface(opts, v6 ? address_family::ipv6 : address_family::ipv4, ec);
     if(ec)
-        return invalid_socket;
+        return {invalid_socket, 0};
 
     const native_socket_t fd = ::socket(v6 ? AF_INET6 : AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if(fd == invalid_socket)
     {
         ec = last_socket_error();
-        return invalid_socket;
+        return {invalid_socket, 0};
     }
     prepare_socket(fd, opts, v6, iface, ec);
     if(!ec)
-        return fd;
+        return {fd, iface.index};
     close_socket(fd);
-    return invalid_socket;
+    return {invalid_socket, 0};
 }
 
-inline native_socket_t open_and_configure(const socket_options &opts)
+inline opened_socket open_and_configure(const socket_options &opts)
 {
     std::error_code ec;
-    const native_socket_t fd = open_and_configure(opts, ec);
+    const opened_socket opened = open_and_configure(opts, ec);
     if(ec)
         throw std::system_error(ec, "default_socket::open_and_configure");
-    return fd;
+    return opened;
 }
 
 }

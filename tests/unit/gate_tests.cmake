@@ -5,6 +5,7 @@ make_subdir_test(gate_unicast_on_link_test gate/unicast_on_link.cpp)
 make_subdir_test(gate_on_link_table_test gate/on_link_table.cpp)
 make_subdir_test(gate_on_link_rules_test gate/on_link_rules.cpp)
 make_subdir_test(gate_query_on_link_test gate/query_on_link.cpp)
+make_subdir_test(gate_interface_attribution_test gate/interface_attribution.cpp)
 target_link_libraries(gate_on_link_table_test PRIVATE mdnspp::inproc)
 target_link_libraries(gate_on_link_rules_test PRIVATE mdnspp::inproc)
 

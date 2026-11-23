@@ -19,7 +19,10 @@ real network I/O with controllable in-process fakes:
   group port (empty sender address), destination equal to the group address,
   TTL 255 and interface index 0, so it looks like ordinary multicast traffic. A
   packet given with a sender endpoint keeps the other defaults, and a packet
-  given with a full `recv_metadata` carries it unchanged.
+  given with a full `recv_metadata` carries it unchanged. `interface_index()`
+  reports the configured `socket_options::interface_index` (0 when unset), so a
+  peer over a mock configured with an index applies the interface rule to
+  multicast whose `recv_ifindex` differs.
 - `mock_timer` — supports manual `fire()` and `cancel()` for deterministic
   timer control.
 - `mock_executor` — holds a posted-work deque that drains with
@@ -75,8 +78,9 @@ Unit tests cover:
 - The inbound packet gate every peer type applies: OPCODE and RCODE rules,
   packets shorter than a DNS header, the source port rule for responses with
   its in-process exemption, the receive TTL rule, which applies to
-  responses only, and the local-link test of responses and direct unicast
-  queries with its rate-limited interface snapshot
+  responses only, the local-link test of responses and direct unicast
+  queries with its rate-limited interface snapshot, and the interface rule
+  that keeps a bound peer to multicast from its own interface
   (tests/unit/gate/: gate_*_test)
 - The receive contract every socket honors: one completion per arm, ordering,
   and close semantics (tests/unit/receive_contract/: receive_contract_*_test)
@@ -102,7 +106,9 @@ Unit tests cover:
   (encrypt_key_rotation_*_test), socket framing and cleartext detection modes
   (encrypt_socket_*_test), receive-side rejection, cleartext handling and
   re-arming (encrypt_receive_*_test, including encrypt_receive_rearm_test),
-  policy/trait conformance (encrypt_policy_test, encrypt_policy_trait_test)
+  policy/trait conformance (encrypt_policy_test, encrypt_policy_trait_test),
+  the inner socket's interface index forwarded
+  (encrypt_socket_interface_index_test)
 - Encrypt allocation windows: steady-state send and receive allocate nothing
   over the mock socket and over the default socket on IPv4 and IPv6, and no
   more than a plain asio receive loop over the asio socket on IPv4 and IPv6;
@@ -360,8 +366,12 @@ and builds:
 It then runs `ctest -L netns` in the given build directory inside `dut` with
 `MDNSPP_REQUIRE_NETNS=1`. The test process lives in `dut`;
 `tests/support/netns.h` opens sockets inside `p0` or `p1` from a short-lived
-thread, so one process drives every side. Locally, with unprivileged user
-namespaces enabled:
+thread, so one process drives every side. The harness waits until every
+veth link has IPv6 enabled, which the kernel does only after the link's carrier
+comes up. The cases cover IPv6 interface selection among interfaces sharing a
+link-local address and peers bound to `d0` or `d1` that must ignore multicast
+arriving on the other link while still receiving their own link's and this
+host's multicast. Locally, with unprivileged user namespaces enabled:
 
     cmake --build build -j4 --target netns_tests
     tests/netns/run.sh build

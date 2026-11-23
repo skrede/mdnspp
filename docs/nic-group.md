@@ -262,6 +262,16 @@ mdnspp::nic_group_options grp_opts{
 It is invoked once per interface when an instance is created. If not set, the default
 derivation from `network_interface` fields is used.
 
+### Interface attribution
+
+Each instance's socket is bound to its NIC (the default factory binds by the NIC's
+address, which resolves to its index), so each instance processes only multicast
+received on its own NIC, even though the operating system delivers every joined group
+to all sockets on the port. A custom factory that leaves the socket unbound gives up
+this filtering. See [Receive interface attribution](socket-options.md#receive-interface-attribution)
+for the rule and its platform status (verified on Linux; implemented, not CI-verified
+on macOS or Windows).
+
 ### dedup_mode
 
 `nic_group_options::dedup` controls how `services()` aggregates results across interfaces.

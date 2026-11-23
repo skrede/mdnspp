@@ -43,6 +43,19 @@ link_up dut d0 10.20.0.1 fd20:0::1
 link_up p0 q0 10.20.0.2 fd20:0::2
 link_up dut d1 10.20.1.1 fd20:1::1
 link_up p1 q1 10.20.1.2 fd20:1::2
+# The kernel reports a veth carrier asynchronously, and IPv6 enables a link only once it has one.
+ipv6_ready() {
+    ip -n "$1" -6 route show table local dev "$2" | grep -q '^multicast ff00::/8'
+}
+for link in "dut d0" "dut d1" "p0 q0" "p1 q1"; do
+    tries=0
+    until ipv6_ready $link; do
+        tries=$((tries + 1))
+        [ "$tries" -le 50 ] || { echo "IPv6 did not come up on $link" >&2; exit 1; }
+        sleep 0.1
+    done
+done
+
 ip -n dut route add default via 10.20.1.2 dev d1
 ip -n dut -6 route add default via fd20:1::2 dev d1
 

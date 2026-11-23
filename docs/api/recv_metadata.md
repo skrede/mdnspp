@@ -54,6 +54,12 @@ not directly accessible from `monitor_options`,
   response is accepted, and a multicast response from a source outside every on-link prefix is
   dropped. A query of unknown destination is always kept, so legacy queriers get their reply.
 
+**Interface attribution.** A peer whose socket is bound to an interface (its
+`interface_index()` is nonzero) drops a packet whose `destination` is a multicast address
+and whose `recv_ifindex` is known and differs from the bound index. An unknown
+`recv_ifindex` (`0`) or a unicast or unknown `destination` is never dropped by this rule. See
+[socket-options](../socket-options.md#receive-interface-attribution).
+
 The interface prefixes come from `enumerate_interfaces`, read on first use and re-read on a
 miss at most once per second. Dropped packets are discarded silently. In-process transports
 are exempt (see [inproc-bus](../inproc-bus.md)).
@@ -104,8 +110,8 @@ and `asio_socket` waits with `async_wait` and makes the same call on `native_han
 | Platform | Enabling options | `ttl` source | `recv_ifindex` and `destination` source | Status |
 |----------|------------------|--------------|------------------------------------------|--------|
 | Linux | `IP_RECVTTL`, `IP_PKTINFO`; `IPV6_RECVHOPLIMIT`, `IPV6_RECVPKTINFO` | `IP_TTL` (int); `IPV6_HOPLIMIT` | `in_pktinfo` `ipi_ifindex` / `ipi_addr`; `in6_pktinfo` `ipi6_ifindex` / `ipi6_addr` | verified by the receive metadata tests |
-| macOS | `IP_RECVTTL`, `IP_PKTINFO`; `IPV6_RECVHOPLIMIT`, `IPV6_RECVPKTINFO` (RFC 3542 options, enabled by `__APPLE_USE_RFC_3542`) | `IP_RECVTTL` (one byte); `IPV6_HOPLIMIT` | `in_pktinfo` `ipi_ifindex` / `ipi_addr`; `in6_pktinfo` `ipi6_ifindex` / `ipi6_addr` | implemented, not yet confirmed by a hosted macOS run |
-| Windows | `IP_RECVTTL`, `IP_PKTINFO`; `IPV6_HOPLIMIT`, `IPV6_PKTINFO` (Windows has no `IPV6_RECV*` options) | `IP_TTL` or `IP_RECVTTL` (the type is undocumented, both are read); `IPV6_HOPLIMIT` | `IN_PKTINFO` `ipi_ifindex` / `ipi_addr`; `IN6_PKTINFO` `ipi6_ifindex` / `ipi6_addr` | implemented, not yet confirmed by a hosted Windows run |
+| macOS | `IP_RECVTTL`, `IP_PKTINFO`; `IPV6_RECVHOPLIMIT`, `IPV6_RECVPKTINFO` (RFC 3542 options, enabled by `__APPLE_USE_RFC_3542`) | `IP_RECVTTL` (one byte); `IPV6_HOPLIMIT` | `in_pktinfo` `ipi_ifindex` / `ipi_addr`; `in6_pktinfo` `ipi6_ifindex` / `ipi6_addr` | loopback unicast confirmed by a hosted macOS run; multicast not confirmed, because the hosted runner denies multicast sends to unprivileged processes (local network privacy) |
+| Windows | `IP_RECVTTL`, `IP_PKTINFO`; `IPV6_HOPLIMIT`, `IPV6_PKTINFO` (Windows has no `IPV6_RECV*` options) | `IP_TTL` or `IP_RECVTTL` (the type is undocumented, both are read); `IPV6_HOPLIMIT` | `IN_PKTINFO` `ipi_ifindex` / `ipi_addr`; `IN6_PKTINFO` `ipi6_ifindex` / `ipi6_addr` | confirmed by a hosted Windows run for IPv4 and IPv6, loopback unicast and looped multicast, with the group as the multicast `destination`; which of the two IPv4 TTL types the system uses is not identified |
 
 For a multicast datagram `destination` is the group; for a unicast datagram it is the local
 address the datagram was sent to. On Windows systems without `WSARecvMsg` the socket falls back

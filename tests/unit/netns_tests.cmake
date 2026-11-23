@@ -18,6 +18,8 @@ make_subdir_test(netns_attribution_loop_test netns/attribution_loop.cpp)
 register_netns_test(netns_attribution_loop_test)
 make_subdir_test(netns_egress_test netns/egress.cpp)
 register_netns_test(netns_egress_test)
+make_subdir_test(netns_probe_defense_test netns/probe_defense.cpp)
+register_netns_test(netns_probe_defense_test)
 
 if (TARGET mdnspp::asio)
     make_asio_subdir_test(netns_ipv6_selection_asio_test netns/ipv6_selection_asio.cpp)

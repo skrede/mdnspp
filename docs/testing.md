@@ -378,7 +378,11 @@ and builds:
   (10.20.1.1/24, fd20:1::1/64) to peers `q0` in namespace `p0` (10.20.0.2,
   fd20:0::2) and `q1` in namespace `p1` (10.20.1.2, fd20:1::2), default routes
   via `p1`;
-- dummy links `l0` and `l1` in `dut`, each carrying only `fe80::20/64`.
+- dummy links `l0` and `l1` in `dut`, each carrying only `fe80::20/64`;
+- sixteen secondary addresses per family on `q0`, 10.20.0.100 to 10.20.0.115
+  and fd20:0::100 to fd20:0::115 (the IPv6 ones deprecated, so the kernel
+  never picks one as a default source). They give a defender sixteen different
+  source addresses to answer from.
 
 It then runs `ctest -L netns` in the given build directory inside `dut` with
 `MDNSPP_REQUIRE_NETNS=1`. The test process lives in `dut`;
@@ -391,7 +395,16 @@ arriving on the other link while still receiving their own link's and this
 host's multicast, and the egress rule: `d0` has the lower interface index,
 the default routes leave on `d1`, so an unbound server must advertise `d1`'s
 addresses and an unbound IPv6 socket must be pinned to `d1`, and in `p0`,
-which has no route, the egress lookup finds nothing without an error. Locally,
+which has no route, the egress lookup finds nothing without an error.
+`netns_probe_defense_test` runs two servers that share one sibling registry (as
+the per-NIC servers of a `nic_group` do) on `d0` and `d1`, with a defender on
+`p0` that answers the `d0` server's probe the way the probe asks, unicast to
+its source for a unicast-response question and multicast otherwise, with a
+conflicting service record. For each of the sixteen source addresses, in IPv4
+and in IPv6, the server on `d0` must see the conflict and the one on `d1` must
+not: the per-NIC sockets of a family share port 5353, and the kernel hands a
+unicast datagram to one of them by a hash of its addresses, so a unicast
+defense would reach the wrong server for about half of the sources. Locally,
 with unprivileged user namespaces enabled:
 
     cmake --build build -j4 --target netns_tests

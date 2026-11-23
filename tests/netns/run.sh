@@ -43,6 +43,12 @@ link_up dut d0 10.20.0.1 fd20:0::1
 link_up p0 q0 10.20.0.2 fd20:0::2
 link_up dut d1 10.20.1.1 fd20:1::1
 link_up p1 q1 10.20.1.2 fd20:1::2
+# Sixteen more sources per family on q0: the kernel hands a unicast datagram to one socket of a shared port by a hash
+# that includes the source address. A deprecated IPv6 address is never chosen as a default source.
+for n in $(seq 100 115); do
+    ip -n p0 addr add "10.20.0.$n/24" dev q0
+    ip -n p0 addr add "fd20:0::$n/64" dev q0 nodad preferred_lft 0
+done
 # The kernel reports a veth carrier asynchronously, and IPv6 enables a link only once it has one.
 ipv6_ready() {
     ip -n "$1" -6 route show table local dev "$2" | grep -q '^multicast ff00::/8'

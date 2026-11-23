@@ -55,8 +55,7 @@ struct reentrant_rig
                          loop->stop();
                          return relevant;
                      },
-                     [this] { loop->stop(); }, 0, mdnspp::ttl_unknown_policy::accept,
-                     [this](std::error_code) { loop->stop(); });
+                     [this] { loop->stop(); }, [this](std::error_code) { loop->stop(); });
         loop->start();
     }
 

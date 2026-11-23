@@ -1,8 +1,6 @@
 #ifndef HPP_GUARD_MDNSPP_RECV_LOOP_HELPERS_H
 #define HPP_GUARD_MDNSPP_RECV_LOOP_HELPERS_H
 
-#include "mdnspp/mdns_options.h"
-
 #include "mdnspp/detail/recv_loop.h"
 
 #include "mdnspp/testing/mock_policy.h"
@@ -13,7 +11,6 @@
 #include <chrono>
 #include <vector>
 #include <cstddef>
-#include <cstdint>
 #include <system_error>
 
 namespace mdnspp::test_support {
@@ -38,7 +35,7 @@ struct loop_rig
     int silences;
     detail::recv_loop<testing::mock_policy> loop;
 
-    explicit loop_rig(uint32_t ttl_minimum = 0, ttl_unknown_policy unknown = ttl_unknown_policy::accept)
+    loop_rig()
         : ex{}
         , sock{ex}
         , timer{ex}
@@ -50,7 +47,7 @@ struct loop_rig
                 packets.emplace_back(data.begin(), data.end());
                 return true;
             },
-            [this] { ++silences; }, ttl_minimum, unknown, [this](std::error_code ec) { errors.push_back(ec); }}
+            [this] { ++silences; }, [this](std::error_code ec) { errors.push_back(ec); }}
     {
     }
 };

@@ -45,7 +45,7 @@ protected:
     explicit basic_mdns_peer_base(executor_type ex, policy_socket_options_t<P> opts = {},
                                    mdns_options mdns_opts = {})
         : m_multicast_ep(opts.multicast_group)
-        , m_gate(opts.multicast_group.port)
+        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy)
         , m_executor(ex)
         , m_socket(ex, opts)
         , m_timer(ex)
@@ -57,7 +57,7 @@ protected:
     basic_mdns_peer_base(executor_type ex, policy_socket_options_t<P> opts, mdns_options mdns_opts,
                          std::error_code &ec)
         : m_multicast_ep(opts.multicast_group)
-        , m_gate(opts.multicast_group.port)
+        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy)
         , m_executor(ex)
         , m_socket(ex, opts, ec)
         , m_timer(ex)
@@ -117,8 +117,7 @@ protected:
             return m_gate.admit(meta, data) && handler(meta, data);
         };
         m_loop = std::make_unique<recv_loop<P>>(m_socket, m_timer, silence_timeout, std::move(gated),
-                                                std::move(on_silence), m_mdns_opts.receive_ttl_minimum,
-                                                m_mdns_opts.unknown_ttl_policy, std::move(on_error));
+                                                std::move(on_silence), std::move(on_error));
     }
 
     const endpoint &multicast_endpoint() const noexcept { return m_multicast_ep; }

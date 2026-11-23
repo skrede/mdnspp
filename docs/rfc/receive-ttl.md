@@ -1,15 +1,30 @@
-# Receive-Side TTL Verification
+# Receive-Side TTL Check
 
-RFC 6762 §11 requires that mDNS packets be received only from link-local senders —
-that is, packets that have not been forwarded by a router. The mechanism is the IP
-TTL (hop limit): a multicast packet sent with TTL=255 will have its hop count
-decremented to 254 by any router that forwards it. A receiver that discards packets
-with TTL below 255 is therefore guaranteed to see only link-local traffic.
+mdnspp can discard received **responses** whose IP TTL (IPv6 hop limit) is below a
+threshold, `mdns_options::receive_ttl_minimum` (default 255). A multicast packet sent
+with TTL 255 arrives with a lower TTL once a router has forwarded it, so the check
+keeps responses that crossed a router out of the cache. Queries are never dropped for
+their TTL.
 
-Without this check, an attacker on a remote network could inject spoofed mDNS packets
-and cause a resolver to accept false service announcements.
+No RFC rule requires this check. RFC 6762 has a single IP TTL rule, and it is a
+send-side SHOULD for responses (RFC 6762 §11):
 
-**RFC Reference:** RFC 6762 §11
+> All Multicast DNS responses (including responses sent via unicast) SHOULD be sent with IP TTL set to 255.  This is recommended to provide backwards-compatibility with older Multicast DNS queriers (implementing a draft version of this document, posted in February 2004) that check the IP TTL on reception to determine whether the packet originated on the local link.  These older queriers discard all packets with TTLs other than 255.
+
+The receive check is a hardening option in the spirit of those older queriers. The
+receive-side MUST of RFC 6762 §11 is that a querier accepts only responses from the
+local link, and the RFC decides that by destination address and source subnet, not by
+IP TTL.
+
+Queries are exempt because one-shot resolvers (RFC 6762 §5.1) often send with the
+operating system's default multicast TTL, commonly 1, and RFC 6762 §6.7 requires a
+reply to them:
+
+> If the source UDP port in a received Multicast DNS query is not port 5353, this indicates that the querier originating the query is a simple resolver such as described in Section 5.1, "One-Shot Multicast DNS Queries", which does not fully implement all of Multicast DNS. In this case, the Multicast DNS responder MUST send a UDP response directly back to the querier, via unicast, to the query packet's source IP address and port.
+
+With default options a service server therefore answers a legacy query sent with TTL 1.
+
+**RFC Reference:** RFC 6762 §11 (send-side TTL), RFC 6762 §6.7 (legacy queries)
 
 ## Example
 
@@ -25,7 +40,7 @@ int main()
     mdnspp::context ctx;
 
     mdnspp::mdns_options mdns_opts{
-        .receive_ttl_minimum = 255,                                     // RFC 6762 §11 default
+        .receive_ttl_minimum = 255,                                     // default; responses only
         .unknown_ttl_policy  = mdnspp::ttl_unknown_policy::accept,      // default: accept
     };
 
@@ -46,9 +61,9 @@ int main()
 }
 ```
 
-Packets with TTL below `receive_ttl_minimum` are silently discarded before any callback
-fires. The default value of 255 matches the RFC requirement. Setting `unknown_ttl_policy`
-to `reject` also discards packets where TTL extraction failed at the socket level.
+Responses with a TTL below `receive_ttl_minimum` are silently discarded before any callback
+fires. Setting `unknown_ttl_policy` to `reject` also discards responses whose TTL could not
+be extracted at the socket level. Queries pass both checks whatever their TTL.
 
 ---
 
@@ -56,28 +71,29 @@ to `reject` also discards packets where TTL extraction failed at the socket leve
 
 | Status | Aspect | Notes |
 |--------|--------|-------|
-| Implemented | Receive-side TTL threshold | `mdns_options::receive_ttl_minimum` (default 255) |
+| Implemented | Receive-side TTL threshold | `mdns_options::receive_ttl_minimum` (default 255); responses only, not an RFC requirement |
 | Implemented | TTL extraction — Linux | `recvmsg()` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` |
 | Implemented | TTL extraction — macOS | `recvmsg()` + `IP_RECVTTL` / `IPV6_RECVHOPLIMIT` |
 | Implemented | TTL extraction — Windows | `WSARecvMsg` via `SIO_GET_EXTENSION_FUNCTION_POINTER` |
 | Implemented | Silent degradation on extraction failure | `recv_metadata::ttl = nullopt`; socket continues normally |
-| Implemented | Policy for TTL-unknown packets | `mdns_options::unknown_ttl_policy` (`accept` / `reject`) |
+| Implemented | Policy for TTL-unknown responses | `mdns_options::unknown_ttl_policy` (`accept` / `reject`); queries are never dropped |
 | User choice | Policy selection | `ttl_unknown_policy::accept` is the default (backward-compatible) |
 
 ---
 
 ## In-Depth
 
-### Why TTL=255 prevents spoofing
+### What the threshold filters
 
 IPv4 TTL and IPv6 Hop Limit are decremented by every router that forwards a packet. A
-packet transmitted from the local link segment always reaches its destination with the
-original TTL intact. Any packet that has crossed at least one router arrives with TTL
-at most 254.
+packet sent with TTL 255 from the local link arrives with TTL 255; one that has crossed
+at least one router arrives with TTL at most 254.
 
-By requiring `recv_metadata::ttl >= receive_ttl_minimum` (defaulting to 255), mdnspp
-ensures that only link-local traffic is processed. Packets from remote networks are
-silently discarded regardless of their mDNS content.
+By requiring `recv_metadata::ttl >= receive_ttl_minimum` (default 255) of every response,
+mdnspp drops forwarded responses and responses from senders that do not follow the
+send-side SHOULD of RFC 6762 §11. The check runs in the receive path of every peer, after
+the header checks and the source port check and before any response is parsed. A query
+skips it and reaches the service server whatever its TTL.
 
 ### Platform TTL extraction
 
@@ -103,15 +119,15 @@ the field is populated or by observing `unknown_ttl_policy` behavior.
 
 ### ttl_unknown_policy
 
-`ttl_unknown_policy::accept` (the default) forwards packets with `nullopt` TTL to all
+`ttl_unknown_policy::accept` (the default) passes responses with `nullopt` TTL to all
 handlers without restriction. This is the backward-compatible choice: on platforms that
-do not support TTL extraction, all traffic is accepted.
+do not support TTL extraction, all responses are accepted.
 
-`ttl_unknown_policy::reject` discards packets with `nullopt` TTL. This is appropriate
-when strict RFC 6762 §11 compliance is required and the deployment target is known to
-support TTL extraction on all platforms in use.
+`ttl_unknown_policy::reject` discards responses with `nullopt` TTL. Use it only where the
+TTL check is wanted as hardening and the deployment target is known to support TTL
+extraction on all platforms in use. Queries with `nullopt` TTL are still answered.
 
-The policy is set via `mdns_options::unknown_ttl_policy` and applies to all sockets
+The policy is set via `mdns_options::unknown_ttl_policy` and applies to every peer
 constructed with those options.
 
 ### Interface index extraction

@@ -36,8 +36,8 @@ public:
 
     void answer(const endpoint &sender, std::span<const std::byte> cdata)
     {
-        // RFC 6762 section 6.7: legacy unicast detection.
-        if(m_ctx.opts.respond_to_legacy_unicast && sender.port != 0 && sender.port != 5353)
+        // RFC 6762 section 6.7: legacy unicast detection, against the configured multicast port in place of 5353.
+        if(m_ctx.opts.respond_to_legacy_unicast && sender.port != m_ctx.multicast_port())
         {
             answer_legacy_unicast(sender, cdata);
             return;

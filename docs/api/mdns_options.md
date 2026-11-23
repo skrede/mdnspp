@@ -1,6 +1,6 @@
 # mdns_options
 
-Protocol timing tunables for mDNS query backoff, TTL refresh, TC handling, response delays, and receive-side filtering.
+Protocol timing tunables for mDNS query backoff, TTL refresh, TC handling, response delays, and receive-side response filtering.
 
 ## Header
 
@@ -42,13 +42,13 @@ struct mdns_options {
 | `tc_wait_max` | `std::chrono::milliseconds` | `500ms` | RFC 6762 §6 | Maximum wait duration for accumulating TC continuation packets. See `tc_wait_min`. |
 | `response_delay_min` | `std::chrono::milliseconds` | `20ms` | RFC 6762 §5.2, §6 | Minimum random delay before sending a multicast response. A random delay uniformly drawn from `[response_delay_min, response_delay_max]` is applied to avoid simultaneous replies from multiple responders. The same range delays the multicast (QM) query of the querier and service discovery and the service monitor's first PTR query per watched type. |
 | `response_delay_max` | `std::chrono::milliseconds` | `120ms` | RFC 6762 §5.2, §6 | Maximum random delay before sending a multicast response or the first multicast query. See `response_delay_min`. |
-| `legacy_unicast_ttl` | `std::chrono::seconds` | `10s` | RFC 6762 §6.7 | TTL cap applied to all records sent in legacy unicast responses. When a query arrives via unicast from a port other than 5353, all answer record TTLs are capped at this value to prevent aggressive caching by non-mDNS resolvers. A value above 2^31 - 1 s is taken as 2^31 - 1 s (RFC 2181 section 8). The reply repeats the whole question section; a query whose questions cannot all be repeated gets no reply. |
+| `legacy_unicast_ttl` | `std::chrono::seconds` | `10s` | RFC 6762 §6.7 | TTL cap applied to all records sent in legacy unicast responses. When a query arrives from a port other than the configured multicast port (5353 by default), all answer record TTLs are capped at this value to prevent aggressive caching by non-mDNS resolvers. A value above 2^31 - 1 s is taken as 2^31 - 1 s (RFC 2181 section 8). The reply repeats the whole question section; a query whose questions cannot all be repeated gets no reply. |
 | `ka_suppression_fraction` | `double` | `0.5` | RFC 6762 §7.1 | Fraction of the wire TTL used as the known-answer suppression threshold for standard multicast queries. A known answer is valid (and suppresses re-announcement) when its remaining TTL is at least `wire_ttl * ka_suppression_fraction`. |
 | `tc_suppression_fraction` | `double` | `0.5` | RFC 6762 §7.1 | Fraction of the wire TTL used as the suppression threshold on the TC accumulation path. Applied independently from `ka_suppression_fraction` so TC-path suppression can be tuned separately. |
 | `max_query_payload` | `std::size_t` | `1472` bytes | — | Maximum UDP payload size for an outgoing query packet before it must be split into TC continuation packets. Matches Ethernet MTU minus IPv4 and UDP headers. Reduce for lower-MTU links. |
 | `tc_continuation_delay` | `std::chrono::microseconds` | `0` | RFC 6762 §6 | Delay inserted between successive TC continuation packets. Zero means packets are sent back-to-back. A non-zero value rate-limits TC continuation bursts on congested links. |
-| `receive_ttl_minimum` | `uint32_t` | `255` | RFC 6762 §11 | Minimum IP TTL (hop limit) for received mDNS packets. Packets arriving with an IP TTL below this value are silently discarded. The value 255 enforces link-local-only reception: any forwarded packet has its IP TTL decremented below 255. |
-| `unknown_ttl_policy` | `ttl_unknown_policy` | `ttl_unknown_policy::accept` | RFC 6762 §11 | Disposition for packets where the IP TTL could not be extracted. `accept` passes such packets through (default, for transports without TTL extraction support, e.g. custom policies and the inproc bus). `reject` discards them. |
+| `receive_ttl_minimum` | `uint32_t` | `255` | none (hardening; RFC 6762 §11 has only a send-side SHOULD) | Minimum IP TTL (hop limit) for received mDNS responses. Responses arriving with an IP TTL below this value are silently discarded; any forwarded response has its IP TTL decremented below 255. Queries are never dropped for their TTL, so legacy one-shot resolvers that send with TTL 1 are answered (RFC 6762 §6.7). |
+| `unknown_ttl_policy` | `ttl_unknown_policy` | `ttl_unknown_policy::accept` | none (hardening) | Disposition for responses where the IP TTL could not be extracted. `accept` passes such responses through (default, for transports without TTL extraction support, e.g. custom policies and the inproc bus). `reject` discards them. Queries are exempt. |
 
 **Note:** All defaults are RFC-compliant. Changing them is an advanced operation: incorrect settings may violate interoperability guarantees or cause excessive network traffic.
 

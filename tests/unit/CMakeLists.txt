@@ -54,6 +54,8 @@ make_subdir_test(server_advanced_test       server/advanced.cpp)
 make_subdir_test(server_meta_subtype_test   server/meta_subtype.cpp)
 make_subdir_test(server_legacy_unicast_test server/legacy_unicast.cpp)
 make_subdir_test(server_legacy_unicast_framing_test server/legacy_unicast_framing.cpp)
+make_subdir_test(server_legacy_ttl_test     server/legacy_ttl.cpp)
+make_subdir_test(server_legacy_port_test    server/legacy_port.cpp)
 make_subdir_test(server_wire_limits_test    server/wire_limits.cpp)
 
 make_subdir_test(server_known_answer_test     server_detail/known_answer.cpp)

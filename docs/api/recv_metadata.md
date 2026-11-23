@@ -38,7 +38,7 @@ polls its context re-entrantly keeps its own data and metadata for the whole cal
 socket fills one `recv_metadata` per socket. A handler that keeps the sender copies it. It is
 not directly accessible from `monitor_options`,
 `observer_options`, or other public callback APIs — it is consumed internally to apply
-`receive_ttl_minimum` filtering and to populate `resolved_service::source_interface`.
+`receive_ttl_minimum` filtering to responses and to populate `resolved_service::source_interface`.
 
 The zone on a link-local IPv6 `sender` lets a reply sent to `sender` leave through the
 interface the packet arrived on; destination text also accepts an interface-name zone
@@ -50,7 +50,7 @@ throwing `send(dest, data)` throw `std::system_error` with that code; nothing is
 
 ## ttl_unknown_policy
 
-Policy applied to packets where the IP TTL could not be extracted.
+Policy applied to responses where the IP TTL could not be extracted. Queries are never dropped for their TTL.
 
 ```cpp
 enum class ttl_unknown_policy { accept, reject };
@@ -58,8 +58,8 @@ enum class ttl_unknown_policy { accept, reject };
 
 | Value | Behavior |
 |-------|----------|
-| `accept` (default) | Packets with `recv_metadata::ttl == nullopt` are accepted and processed normally. Backward-compatible with platforms or socket configurations that do not support TTL extraction. |
-| `reject` | Packets with `recv_metadata::ttl == nullopt` are silently discarded. Enforces strict TTL checking even when extraction fails. |
+| `accept` (default) | Responses with `recv_metadata::ttl == nullopt` are accepted and processed normally. Backward-compatible with platforms or socket configurations that do not support TTL extraction. |
+| `reject` | Responses with `recv_metadata::ttl == nullopt` are silently discarded. Enforces the TTL check even when extraction fails. |
 
 Set via `mdns_options::unknown_ttl_policy`:
 
@@ -92,21 +92,22 @@ and `asio_socket` waits with `async_wait` and makes the same call on `native_han
 For a multicast datagram `destination` is the group; for a unicast datagram it is the local
 address the datagram was sent to. On Windows systems without `WSARecvMsg` the socket falls back
 to `recvfrom()`, and every field except `sender` is unknown. `unknown_ttl_policy` governs
-whether packets without a TTL are accepted or rejected.
+whether responses without a TTL are accepted or rejected.
 
 Each control message is read only up to its payload length; a payload shorter than the
 option's type is ignored. When the kernel reports that the control data was truncated
 (`MSG_CTRUNC`), the packet carries `ttl == nullopt`, `recv_ifindex == 0` and
-`destination == nullopt` rather than partial metadata, and `unknown_ttl_policy` then governs it like any other packet without a TTL.
+`destination == nullopt` rather than partial metadata, and `unknown_ttl_policy` then governs it like any other packet without a TTL (responses only).
 
-For the RFC rationale for receive-side TTL enforcement, see
+No RFC rule requires a receive TTL check; RFC 6762 §11 has only the send-side SHOULD that
+responses carry IP TTL 255. For the rationale of the response-only check, see
 [docs/rfc/receive-ttl.md](../rfc/receive-ttl.md).
 
 ---
 
 ## See Also
 
-- [rfc/receive-ttl](../rfc/receive-ttl.md) — RFC 6762 §11 receive-side TTL verification
+- [rfc/receive-ttl](../rfc/receive-ttl.md) — receive-side TTL check on responses, and what RFC 6762 §11 requires
 - [mdns_options](mdns_options.md) — `receive_ttl_minimum` and `unknown_ttl_policy` fields
 - [policies](../policies.md) — how `recv_metadata` flows through the `socket_like` concept
 - [resolved_service](resolved_service.md) — `source_interface` field populated from `recv_ifindex`

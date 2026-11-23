@@ -73,7 +73,7 @@ bool any_srv_on_port(const std::vector<sent_packet> &sent, uint16_t port)
 
 std::size_t arm_response_timer(server_fixture &f)
 {
-    f.inject(endpoint{}, make_ptr_query("_http._tcp.local."));
+    f.inject(endpoint{"192.168.1.50", 5353}, make_ptr_query("_http._tcp.local."));
     REQUIRE(f.server.delay_timer().has_pending());
     return f.sent().size();
 }

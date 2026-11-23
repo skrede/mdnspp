@@ -11,7 +11,7 @@
 `mdns_options` is a plain struct of protocol timing tunables passed to `basic_*`
 constructors in mdnspp. It controls how often queries are sent, when TTL
 refresh queries fire, how long to wait for truncated-response packets, and the
-receive-side IP TTL enforcement threshold.
+receive-side IP TTL threshold for responses.
 
 All fields default to RFC 6762-compliant values. Use designated initializers to
 override specific fields:
@@ -195,9 +195,18 @@ resulting in unnecessary re-announcements. Increasing `tc_wait_max` beyond
 
 ---
 
-### Receive-side TTL filtering (RFC 6762 §11)
+### Receive-side TTL filtering (responses only)
 
-These two fields control enforcement of the receive-side IP TTL requirement.
+These two fields control a receive-side IP TTL check on **responses**. No RFC rule
+requires it: RFC 6762 §11 has only the send-side SHOULD that responses carry IP
+TTL 255. The check is hardening, and queries are never dropped for their TTL.
+
+Queries are exempt so that legacy queriers are answered. A query whose source
+port is not the configured multicast port (`socket_options::multicast_group.port`,
+5353 by default) is a legacy query, and RFC 6762 §6.7 requires a unicast reply to
+its source address and port. A query from port 0 is a legacy query too. Such
+one-shot resolvers often send with the operating system's default multicast TTL,
+commonly 1, and with default options a service server answers them.
 
 #### receive_ttl_minimum
 
@@ -205,15 +214,15 @@ These two fields control enforcement of the receive-side IP TTL requirement.
 |---|---|
 | **Type** | `uint32_t` |
 | **Default** | `255` |
-| **RFC section** | 6762 §11 |
+| **RFC section** | none (RFC 6762 §11 covers only the send-side TTL) |
 
-Minimum IP TTL (or IPv6 hop limit) for accepted incoming mDNS packets.
-Packets with a TTL below this value are silently discarded. The value 255
-enforces link-local-only reception per RFC 6762 §11: any packet forwarded
-by a router has its TTL decremented below 255.
+Minimum IP TTL (or IPv6 hop limit) for accepted incoming mDNS responses.
+Responses with a TTL below this value are silently discarded. A response
+forwarded by a router has its TTL decremented below 255, so the default drops
+forwarded responses.
 
-Risk of changing: Reducing below 255 allows forwarded packets, violating the
-link-local scoping requirement and enabling cross-segment spoofing attacks.
+Risk of changing: reducing below 255 accepts forwarded responses and makes
+cross-segment spoofing easier.
 
 #### unknown_ttl_policy
 
@@ -222,7 +231,7 @@ link-local scoping requirement and enabling cross-segment spoofing attacks.
 | **Type** | `ttl_unknown_policy` |
 | **Default** | `ttl_unknown_policy::accept` |
 
-Disposition for packets where the IP TTL could not be extracted. Both
+Disposition for responses where the IP TTL could not be extracted. Both
 `default_socket` and `asio_socket` extract the TTL natively on Linux, macOS
 (`recvmsg` ancillary data) and Windows (`WSARecvMsg`); extraction is
 unavailable only on transports without an IP layer (e.g. custom policies,
@@ -230,8 +239,8 @@ the inproc bus) or when the platform call fails.
 
 | Value | Behaviour |
 |-------|-----------|
-| `ttl_unknown_policy::accept` | Packets without extractable TTL are accepted. Default. |
-| `ttl_unknown_policy::reject` | Packets without extractable TTL are discarded. Strict enforcement; not suitable on transports without TTL extraction support. |
+| `ttl_unknown_policy::accept` | Responses without extractable TTL are accepted. Default. |
+| `ttl_unknown_policy::reject` | Responses without extractable TTL are discarded. Not suitable on transports without TTL extraction support. Queries are still answered. |
 
 See [recv_metadata](api/recv_metadata.md) and [Receive-Side TTL](rfc/receive-ttl.md)
 for platform extraction capabilities.

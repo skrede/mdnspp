@@ -24,6 +24,7 @@
 #include <string>
 #include <vector>
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <string_view>
 #include <system_error>
@@ -71,6 +72,8 @@ public:
     }
 
     bool stopped() const noexcept { return m_stopped.load(std::memory_order_acquire); }
+
+    uint16_t multicast_port() const noexcept { return m_multicast.port; }
 
     void report_error(std::error_code ec, std::string_view context)
     {

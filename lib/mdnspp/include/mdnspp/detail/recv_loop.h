@@ -5,7 +5,6 @@
 #include "mdnspp/detail/recv_filter.h"
 
 #include "mdnspp/policy.h"
-#include "mdnspp/mdns_options.h"
 
 #include <span>
 #include <atomic>
@@ -38,13 +37,9 @@ public:
         std::chrono::milliseconds silence_timeout,
         packet_handler on_packet,
         move_only_function<void()> on_silence,
-        uint32_t receive_ttl_minimum = 0,
-        ttl_unknown_policy unknown_ttl_policy = ttl_unknown_policy::accept,
         error_handler on_error = nullptr)
         : m_silence_pending(false)
-        , m_receive_ttl_minimum(receive_ttl_minimum)
         , m_transient_failures(0)
-        , m_ttl_unknown_policy(unknown_ttl_policy)
         , m_stopped(false)
         , m_silence_timeout(silence_timeout)
         , m_silence_deadline()
@@ -116,7 +111,7 @@ private:
     void on_receive(const recv_metadata &meta, std::span<std::byte> data)
     {
         m_transient_failures = 0;
-        if(ttl_accepted(meta, m_receive_ttl_minimum, m_ttl_unknown_policy) && m_on_packet(meta, data))
+        if(m_on_packet(meta, data))
             arm_silence_timer();
         arm_receive();
     }
@@ -168,9 +163,7 @@ private:
     }
 
     bool m_silence_pending;
-    uint32_t m_receive_ttl_minimum;
     uint32_t m_transient_failures;
-    ttl_unknown_policy m_ttl_unknown_policy;
     std::atomic<bool> m_stopped;
     std::chrono::milliseconds m_silence_timeout;
     clock_type::time_point m_silence_deadline;

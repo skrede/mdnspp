@@ -44,7 +44,7 @@ struct basic_nic_group_options {
 | `on_found` | `move_only_function<void(const network_interface &, const resolved_service &)>` | `{}` | Fired once per interface when a service instance becomes fully resolved on that interface. Requires `basic_service_monitor` in the `Peers` pack. |
 | `on_updated` | `move_only_function<void(const network_interface &, const resolved_service &, update_event, dns_type)>` | `{}` | Fired once per interface when a record change alters an already-resolved service on that interface. Requires `basic_service_monitor` in the `Peers` pack. |
 | `on_lost` | `move_only_function<void(const network_interface &, const resolved_service &, loss_reason)>` | `{}` | Fired once per interface when a service is no longer reachable on that interface. Requires `basic_service_monitor` in the `Peers` pack. |
-| `on_record` | `move_only_function<void(const network_interface &, const endpoint &, const mdns_record_variant &)>` | `{}` | Fired once per interface per parsed record. Requires `basic_observer` in the `Peers` pack. |
+| `on_record` | `move_only_function<void(const network_interface &, const endpoint &, const mdns_record_variant &)>` | `{}` | Fired per parsed record of each packet an interface's observer receives; on an interface with both address families, a record announced on both groups fires once per family. Requires `basic_observer` in the `Peers` pack. |
 | `on_error` | `move_only_function<void(const network_interface &, std::error_code, std::string_view)>` | `{}` | Fired on fire-and-forget send failures and fatal receive errors of any per-NIC instance, stamped with the originating interface. Per-NIC servers use it only when `server_peer_options::service::on_error` is unset. The group itself reports a per-NIC instance that fails to construct and a factory whose options name the wrong family (see the table below). |
 
 The leading `network_interface` parameter identifies the originating interface. The
@@ -162,8 +162,8 @@ enum class dedup_mode {
 
 | Value | Behavior |
 |-------|----------|
-| `merged` (default) | One entry per `instance_name`. When the same service is visible on multiple interfaces, the last-seen entry wins for `source_interface`. Suitable when the application wants a single logical view of the network. |
-| `per_interface` | All services from all interfaces are returned, including duplicates across interfaces. Each `resolved_service` carries the `source_interface` of the interface it was seen on. Suitable for diagnostics or when per-interface attribution is required. |
+| `merged` (default) | One entry per `instance_name`, holding the addresses found on every interface and in both address families. Its other fields and `source_interface` come from one of the interfaces that found it. Suitable when the application wants a single logical view of the network. |
+| `per_interface` | One entry per `instance_name` and interface, holding the addresses that interface's IPv4 and IPv6 instances found. Each `resolved_service` carries the `source_interface` of the interface it was seen on. Suitable for diagnostics or when per-interface attribution is required. |
 
 ---
 

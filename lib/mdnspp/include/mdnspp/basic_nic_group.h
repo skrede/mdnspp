@@ -14,8 +14,10 @@
 #include "mdnspp/detail/peer_traits.h"
 #include "mdnspp/detail/nic_group_slots.h"
 #include "mdnspp/detail/sibling_records.h"
+#include "mdnspp/detail/nic_family_union.h"
 #include "mdnspp/detail/nic_group_family.h"
 #include "mdnspp/detail/nic_group_builder.h"
+#include "mdnspp/detail/nic_group_collect.h"
 #include "mdnspp/detail/interface_addresses.h"
 
 #include <mutex>
@@ -92,9 +94,7 @@ public:
         requires ((detail::peer_traits<Peers, P>::provides_services || ...))
     {
         std::lock_guard lock(m_mutex);
-        if(m_grp_opts.dedup == dedup_mode::per_interface)
-            return m_slots.collect_per_interface();
-        return m_slots.collect_merged();
+        return detail::collect_services(m_slots, m_grp_opts.dedup);
     }
 
     void watch(std::string_view service_type)
@@ -154,14 +154,16 @@ private:
         if(m_grp_opts.interface_filter && !m_grp_opts.interface_filter(nic))
             return;
 
+        detail::nic_family_unions unions;
         for(address_family family : detail::address_families)
         {
             if(detail::has_family(nic, family))
-                add_family(nic, family);
+                add_family(nic, family, unions);
         }
+        m_slots.adopt(nic.index, std::move(unions));
     }
 
-    void add_family(const network_interface &nic, address_family family)
+    void add_family(const network_interface &nic, address_family family, detail::nic_family_unions &unions)
     {
         const auto sock_opts = socket_options_for(nic, family);
         if(!detail::family_matches(sock_opts, family))
@@ -171,7 +173,7 @@ private:
             return;
         }
         typename detail::nic_group_slots<P, Peers...>::instance_tuple instances;
-        if(m_builder.build(instances, nic, sock_opts, m_watch_set))
+        if(m_builder.build(instances, {nic, family, sock_opts, unions}, m_watch_set))
             m_slots.add(nic, family, std::move(instances));
     }
 

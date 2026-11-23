@@ -105,10 +105,14 @@ Unit tests cover:
   live side by side with both addresses (nic_group_family_siblings_test),
   construction failures, factory family mismatches and the group's mdns_options
   reaching its servers (nic_group_errors_test), a default-policy group on an
-  IPv6-only loopback (nic_group_default_ipv6_test), a failed first enumeration
-  followed by a good one (nic_monitor_baseline_test), what counts as an interface
-  change (nic_monitor_diff_test), and the Linux netlink
-  drain over a scripted receive call, ending at the first ENOBUFS
+  IPv6-only loopback (nic_group_default_ipv6_test), a group started after a
+  server went live finding it by querying on the test clock
+  (nic_group_active_query_test), services united across families and NICs
+  (nic_group_union_test), found, updated and lost fired once per NIC across
+  families (nic_group_family_events_test, nic_group_family_union_test), a
+  failed first enumeration followed by a good one (nic_monitor_baseline_test),
+  what counts as an interface change (nic_monitor_diff_test), and the Linux
+  netlink drain over a scripted receive call, ending at the first ENOBUFS
   (nic_monitor_netlink_test, Linux only)
 - Multicast capability validation (validate_multicast_test)
 - Encrypt component (tests/unit/encrypt/): AEAD encrypt/decrypt and tamper

@@ -37,6 +37,7 @@ public:
     using executor_type = typename P::executor_type;
     using socket_options_type = policy_socket_options_t<P>;
     using instance_tuple = typename nic_group_slots<P, Peers...>::instance_tuple;
+    using target_type = family_target<socket_options_type>;
 
     nic_group_builder(executor_type ex, basic_nic_group_options<P> &grp_opts, std::shared_ptr<sibling_records> siblings,
                       std::vector<typename peer_traits<Peers, P>::options_type>... peer_opts)
@@ -46,11 +47,10 @@ public:
         prepare_peer_options(std::make_index_sequence<sizeof...(Peers)>{});
     }
 
-    bool build(instance_tuple &instances, const network_interface &nic, const socket_options_type &sock_opts,
-               const std::unordered_set<std::string> &watches)
+    bool build(instance_tuple &instances, const target_type &target, const std::unordered_set<std::string> &watches)
     {
         constexpr auto peers = std::make_index_sequence<sizeof...(Peers)>{};
-        if(!create_instances(instances, nic, sock_opts, peers))
+        if(!create_instances(instances, target, peers))
             return false;
         start_instances(instances, watches, peers);
         return true;
@@ -87,19 +87,17 @@ private:
     }
 
     template <std::size_t... Is>
-    bool create_instances(instance_tuple &instances, const network_interface &nic, const socket_options_type &sock_opts,
-                          std::index_sequence<Is...>)
+    bool create_instances(instance_tuple &instances, const target_type &target, std::index_sequence<Is...>)
     {
-        return (create_peer_instances<Is>(std::get<Is>(instances), nic, sock_opts) && ...);
+        return (create_peer_instances<Is>(std::get<Is>(instances), target) && ...);
     }
 
     template <std::size_t I>
-    bool create_peer_instances(std::vector<std::unique_ptr<peer_type_at<I>>> &instances,
-                               const network_interface &nic, const socket_options_type &sock_opts)
+    bool create_peer_instances(std::vector<std::unique_ptr<peer_type_at<I>>> &instances, const target_type &target)
     {
         for(std::size_t element = 0; element < std::get<I>(m_peer_opts).size(); ++element)
         {
-            auto inst = make_peer<I>(element, nic, sock_opts);
+            auto inst = make_peer<I>(element, target);
             if(!inst)
                 return false;
             instances.push_back(std::move(inst));
@@ -123,14 +121,13 @@ private:
     }
 
     template <std::size_t I>
-    std::unique_ptr<peer_type_at<I>> make_peer(std::size_t element, const network_interface &nic,
-                                               const socket_options_type &sock_opts)
+    std::unique_ptr<peer_type_at<I>> make_peer(std::size_t element, const target_type &target)
     {
         const auto &opts = std::get<I>(m_peer_opts)[element];
         if constexpr(is_server_at<I>)
-            return m_factory.make(opts, m_server_callbacks[I][element], element, nic, sock_opts);
+            return m_factory.make(opts, m_server_callbacks[I][element], element, target);
         else
-            return m_factory.make(opts, nic, sock_opts);
+            return m_factory.make(opts, element, target);
     }
 };
 

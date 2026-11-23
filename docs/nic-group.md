@@ -63,8 +63,16 @@ instantiate per interface.
 Events are delivered with per-interface semantics:
 
 - Each group-level callback (`on_found`, `on_updated`, `on_lost`, `on_record`,
-  `on_error`) fires once per interface, with the originating `network_interface`
-  as the leading parameter.
+  `on_error`) fires per interface, with the originating `network_interface` as
+  the leading parameter.
+- Address families are invisible to `on_found`, `on_updated` and `on_lost`: the
+  IPv4 and IPv6 monitors of one interface report one service. `on_found` fires
+  when the first family finds it, `on_lost` when the last family has lost it, and
+  `on_updated` only when the service united across both families changes (an
+  address one family adds that the other already reported is no update). Every
+  event carries the united service, whose addresses are those of both families.
+- `on_record` fires per received packet, so on an interface with both families a
+  record announced on both groups is reported once per family.
 - The group performs no cross-interface deduplication of events: the same
   service instance visible on two interfaces produces **two** `on_found` events
   with distinct interfaces. Applications that want one event per logical service
@@ -326,8 +334,8 @@ It affects only the `services()` snapshot — event callbacks always fire per in
 
 | Value | Behavior |
 |-------|----------|
-| `dedup_mode::merged` (default) | One entry per `instance_name`. When the same service is visible on multiple interfaces, the last-seen entry wins for `source_interface`. |
-| `dedup_mode::per_interface` | All services from all interfaces, including duplicates across interfaces. |
+| `dedup_mode::merged` (default) | One entry per `instance_name`, holding the addresses found on every interface and in both address families. Its other fields and `source_interface` come from one of the interfaces that found it. |
+| `dedup_mode::per_interface` | One entry per `instance_name` and interface, holding the addresses that interface's IPv4 and IPv6 instances found. |
 
 ```cpp
 mdnspp::nic_group_options grp_opts{

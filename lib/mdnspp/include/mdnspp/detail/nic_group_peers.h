@@ -4,6 +4,7 @@
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/peer_traits.h"
 #include "mdnspp/detail/sibling_records.h"
+#include "mdnspp/detail/nic_family_union.h"
 #include "mdnspp/detail/interface_resolve.h"
 #include "mdnspp/detail/advertised_addresses.h"
 #include "mdnspp/detail/nic_group_server_callbacks.h"
@@ -11,6 +12,7 @@
 #include "mdnspp/policy.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/ip_address.h"
 #include "mdnspp/mdns_options.h"
 #include "mdnspp/service_info.h"
 #include "mdnspp/cache_options.h"
@@ -44,6 +46,15 @@ void reject_peer_callbacks(const Options &opts)
             "use the interface-stamped callbacks in basic_nic_group_options");
 }
 
+template <typename SocketOptions>
+struct family_target
+{
+    const network_interface &nic;
+    address_family family;
+    const SocketOptions &sock_opts;
+    nic_family_unions &unions;
+};
+
 // The forwarding lambdas capture the group options by reference and the interface by value. They live inside the
 // per-NIC instances, which the group destroys before its options, so the captures cannot dangle.
 template <policy_like P>
@@ -52,6 +63,7 @@ class nic_peer_factory
 public:
     using executor_type = typename P::executor_type;
     using socket_options_type = policy_socket_options_t<P>;
+    using target_type = family_target<socket_options_type>;
 
     nic_peer_factory(executor_type ex, basic_nic_group_options<P> &grp_opts, std::shared_ptr<sibling_records> siblings)
         : m_executor(ex)
@@ -60,49 +72,49 @@ public:
     {
     }
 
-    std::unique_ptr<basic_service_monitor<P>> make(const monitor_options &opts, const network_interface &nic,
-                                                   const socket_options_type &sock_opts)
+    std::unique_ptr<basic_service_monitor<P>> make(const monitor_options &opts, std::size_t element,
+                                                   const target_type &target)
     {
         monitor_options cloned{.mode = opts.mode};
-        forward_monitor_events(cloned, nic);
+        forward_monitor_events(cloned, element, target);
         if(m_grp_opts.on_error)
-            cloned.on_error = stamped_error(nic);
+            cloned.on_error = stamped_error(target.nic);
         std::error_code ec;
-        auto peer = std::make_unique<basic_service_monitor<P>>(m_executor, std::move(cloned), sock_opts,
+        auto peer = std::make_unique<basic_service_monitor<P>>(m_executor, std::move(cloned), target.sock_opts,
                                                                m_grp_opts.mdns_opts, cache_options{}, ec);
-        return checked(std::move(peer), ec, nic, "service_monitor construction");
+        return checked(std::move(peer), ec, target.nic, "service_monitor construction");
     }
 
     std::unique_ptr<basic_service_server<P>> make(const server_peer_options &opts,
                                                   const std::shared_ptr<shared_server_callbacks> &cbs,
-                                                  std::size_t element, const network_interface &nic,
-                                                  const socket_options_type &sock_opts)
+                                                  std::size_t element, const target_type &target)
     {
         service_options cloned = clone_service_options(opts.service);
         forward_shared_callbacks(cloned, cbs);
         if(!cbs->on_error && m_grp_opts.on_error)
-            cloned.on_error = stamped_error(nic);
+            cloned.on_error = stamped_error(target.nic);
         std::error_code ec;
-        auto peer = std::make_unique<basic_service_server<P>>(m_executor, info_on(nic, opts.info), std::move(cloned),
-                                                              sock_opts, m_grp_opts.mdns_opts, m_siblings, element, ec);
-        return checked(std::move(peer), ec, nic, "service_server construction");
+        auto peer = std::make_unique<basic_service_server<P>>(m_executor, info_on(target.nic, opts.info),
+                                                              std::move(cloned), target.sock_opts,
+                                                              m_grp_opts.mdns_opts, m_siblings, element, ec);
+        return checked(std::move(peer), ec, target.nic, "service_server construction");
     }
 
-    std::unique_ptr<basic_observer<P>> make(const observer_options &, const network_interface &nic,
-                                            const socket_options_type &sock_opts)
+    std::unique_ptr<basic_observer<P>> make(const observer_options &, std::size_t, const target_type &target)
     {
         observer_options cloned{};
         if(m_grp_opts.on_record)
-            cloned.on_record = [&grp = m_grp_opts, nic](const endpoint &sender, const mdns_record_variant &record)
+            cloned.on_record = [&grp = m_grp_opts, nic = target.nic](const endpoint &sender,
+                                                                     const mdns_record_variant &record)
             {
                 grp.on_record(nic, sender, record);
             };
         if(m_grp_opts.on_error)
-            cloned.on_error = stamped_error(nic);
+            cloned.on_error = stamped_error(target.nic);
         std::error_code ec;
-        auto peer = std::make_unique<basic_observer<P>>(m_executor, std::move(cloned), sock_opts,
+        auto peer = std::make_unique<basic_observer<P>>(m_executor, std::move(cloned), target.sock_opts,
                                                         m_grp_opts.mdns_opts, ec);
-        return checked(std::move(peer), ec, nic, "observer construction");
+        return checked(std::move(peer), ec, target.nic, "observer construction");
     }
 
 private:
@@ -138,23 +150,12 @@ private:
         };
     }
 
-    void forward_monitor_events(monitor_options &cloned, const network_interface &nic)
+    void forward_monitor_events(monitor_options &cloned, std::size_t element, const target_type &target)
     {
-        if(m_grp_opts.on_found)
-            cloned.on_found = [&grp = m_grp_opts, nic](const resolved_service &svc)
-            {
-                grp.on_found(nic, svc);
-            };
-        if(m_grp_opts.on_updated)
-            cloned.on_updated = [&grp = m_grp_opts, nic](const resolved_service &svc, update_event event, dns_type type)
-            {
-                grp.on_updated(nic, svc, event, type);
-            };
-        if(m_grp_opts.on_lost)
-            cloned.on_lost = [&grp = m_grp_opts, nic](const resolved_service &svc, loss_reason reason)
-            {
-                grp.on_lost(nic, svc, reason);
-            };
+        if(!m_grp_opts.on_found && !m_grp_opts.on_updated && !m_grp_opts.on_lost)
+            return;
+        nic_family_union &fan_in = union_for(target.unions, element, m_grp_opts, target.nic);
+        route_monitor_events(cloned, fan_in, target.family);
     }
 };
 

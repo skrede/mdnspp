@@ -1,18 +1,17 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_NIC_GROUP_SLOTS_H
 #define HPP_GUARD_MDNSPP_DETAIL_NIC_GROUP_SLOTS_H
 
+#include "mdnspp/detail/nic_family_union.h"
 #include "mdnspp/detail/nic_group_family.h"
 
 #include "mdnspp/policy.h"
 #include "mdnspp/ip_address.h"
-#include "mdnspp/resolved_service.h"
 #include "mdnspp/network_interface.h"
 #include "mdnspp/basic_service_monitor.h"
 
 #include <array>
 #include <tuple>
 #include <memory>
-#include <string>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
@@ -32,6 +31,8 @@ private:
     struct nic_slot
     {
         network_interface nic;
+        // Declared before families: the monitors' callbacks reference the unions, which must be destroyed last.
+        nic_family_unions unions;
         std::array<instance_tuple, address_families.size()> families;
     };
 
@@ -46,6 +47,12 @@ public:
         auto &slot = m_slots[nic.index];
         slot.nic = nic;
         slot.families[family_slot(family)] = std::move(instances);
+    }
+
+    void adopt(uint32_t index, nic_family_unions unions)
+    {
+        if(auto it = m_slots.find(index); it != m_slots.end())
+            it->second.unions = std::move(unions);
     }
 
     void remove(uint32_t index)
@@ -72,46 +79,16 @@ public:
     template <typename Fn>
     void for_each_monitor(Fn &&fn)
     {
-        visit_monitors(m_slots, [&fn](const network_interface &, auto &inst)
+        visit_slots(m_slots, [&fn](const network_interface &, auto &inst)
         {
             fn(inst);
         });
     }
 
-    std::vector<resolved_service> collect_merged() const
+    template <typename Fn>
+    void visit_monitors(Fn &&fn) const
     {
-        std::unordered_map<std::string, resolved_service> by_name;
-        visit_monitors(m_slots, [&by_name](const network_interface &nic, const auto &inst)
-        {
-            for(auto svc : inst.services())
-            {
-                svc.source_interface = nic;
-                // ASCII-folded key: case variants of one instance observed on different interfaces merge to one
-                // entry (RFC 6762 section 16).
-                auto key = svc.instance_name.comparison_key();
-                by_name[key] = std::move(svc);
-            }
-        });
-
-        std::vector<resolved_service> result;
-        result.reserve(by_name.size());
-        for(auto &[k, v] : by_name)
-            result.push_back(std::move(v));
-        return result;
-    }
-
-    std::vector<resolved_service> collect_per_interface() const
-    {
-        std::vector<resolved_service> result;
-        visit_monitors(m_slots, [&result](const network_interface &nic, const auto &inst)
-        {
-            for(auto svc : inst.services())
-            {
-                svc.source_interface = nic;
-                result.push_back(std::move(svc));
-            }
-        });
-        return result;
+        visit_slots(m_slots, fn);
     }
 
 private:
@@ -137,7 +114,7 @@ private:
     }
 
     template <typename Slots, typename Fn>
-    static void visit_monitors(Slots &slots, Fn &&fn)
+    static void visit_slots(Slots &slots, Fn &&fn)
     {
         constexpr std::size_t idx = peer_index_of<basic_service_monitor>();
         if constexpr(idx != std::size_t(-1))

@@ -14,9 +14,9 @@
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
+#include "mdnspp/detail/policy_clock.h"
 #include "mdnspp/detail/monitor_engine.h"
 
-#include <chrono>
 #include <string>
 #include <vector>
 #include <cstddef>
@@ -26,7 +26,7 @@
 
 namespace mdnspp {
 
-template <policy_like P, typename Clock = std::chrono::steady_clock>
+template <policy_like P, typename Clock = detail::policy_clock_t<P>>
 class basic_service_monitor : detail::monitor_engine<P, Clock>
 {
     using base = detail::monitor_engine<P, Clock>;

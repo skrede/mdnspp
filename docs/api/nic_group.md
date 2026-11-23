@@ -71,12 +71,19 @@ using executor_type = typename P::executor_type;
 ### Callback contract
 
 Group-level callbacks (`nic_group_options::on_found`, `on_updated`, `on_lost`,
-`on_record`, `on_error`) fire once per interface, with the originating
+`on_record`, `on_error`) fire per interface, with the originating
 `network_interface` as the leading parameter. The group performs no cross-interface
 deduplication of events: a service instance visible on two interfaces produces two
 `on_found` events with distinct interfaces. Applications that require one event per
 logical service filter by `resolved_service::instance_name`. `services()` is unaffected
 and remains the merged snapshot.
+
+Address families are invisible to the monitor callbacks: the IPv4 and IPv6 instances of
+an interface report one service. `on_found` fires when the first family finds it,
+`on_lost` when the last family has lost it, and `on_updated` only when the service united
+across both families changes; each carries the united service, with the addresses of both
+families. `on_record` fires per received packet, so on an interface with both families a
+record announced on both groups is reported once per family.
 
 Per-NIC `monitor_options` / `observer_options` elements carry tuning only; elements with
 callback fields set are rejected at construction (`std::system_error`,
@@ -178,8 +185,11 @@ Only available when `basic_service_monitor` is in the `Peers` pack.
 Behavior is controlled by `nic_group_options::dedup`:
 - `dedup_mode::merged` (default): one entry per `instance_name`. Names are compared
   ASCII case-insensitively (RFC 6762 section 16), so case variants of one instance seen on
-  different interfaces merge into one entry; the last-seen entry wins for `source_interface`.
-- `dedup_mode::per_interface`: all services from all interfaces.
+  different interfaces merge into one entry. The entry holds the addresses found on every
+  interface and in both address families; its other fields and `source_interface` come
+  from one of the interfaces that found it.
+- `dedup_mode::per_interface`: one entry per `instance_name` and interface, holding the
+  addresses that interface's IPv4 and IPv6 instances found.
 
 **Thread-safety:** May be called from any thread.
 

@@ -1,4 +1,5 @@
 #include "interfaces.h"
+#include "qu_packets.h"
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
@@ -22,19 +23,13 @@
 #include <utility>
 #include <optional>
 
-using mdnspp::ttl_unknown_policy;
-
 namespace {
 
 template <typename P>
 using gate = mdnspp::detail::packet_gate<P>;
 
-std::vector<std::byte> response_header()
-{
-    std::vector<std::byte> packet(12, std::byte{0});
-    packet[2] = std::byte{0x84};
-    return packet;
-}
+const std::vector<std::byte> asked = question_packet({{"gate.local.", ptr_type, qu_in_class, {}}});
+const std::vector<std::byte> answer = answer_packet({{"gate.local.", ptr_type, in_class, "target.local."}});
 
 interface_snapshot lan()
 {
@@ -60,8 +55,9 @@ template <typename P>
 bool admitted(interface_snapshot &snapshot, const mdnspp::recv_metadata &meta)
 {
     mdnspp::testing::test_clock::reset();
-    gate<P> g{5353, 255, ttl_unknown_policy::accept, 0, enumerate_from(snapshot)};
-    return g.admit(meta, response_header());
+    gate<P> g{5353, {}, 0, enumerate_from(snapshot)};
+    g.history().record_sent(asked);
+    return g.admit(meta, answer);
 }
 
 using mock = mdnspp::testing::mock_policy;

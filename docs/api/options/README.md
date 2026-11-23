@@ -44,6 +44,7 @@ Five options account for most real-world configuration; everything else in this 
 | [tc_continuation_delay](tc_continuation_delay_in_mdns_options.md) | Delay between successive TC continuation packets |
 | [receive_ttl_minimum](receive_ttl_minimum_in_mdns_options.md) | Minimum IP TTL for received mDNS packets |
 | [unknown_ttl_policy](unknown_ttl_policy_in_mdns_options.md) | Disposition for received packets whose IP TTL could not be extracted |
+| [qu_response_window](qu_response_window_in_mdns_options.md) | How long after a QU question unicast responses that answer it are accepted (RFC 6762 §6) |
 
 ---
 

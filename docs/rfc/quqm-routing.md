@@ -49,6 +49,7 @@ automatically for every incoming query.
 | Implemented | Quarter-TTL multicast rule (§5.4) | A QU question is answered via multicast instead when the records have not been multicast within the last quarter of their TTL |
 | Implemented | Multicast response routing | QM queries receive a multicast response |
 | Implemented | Probe QU queries | Outgoing probes use QU to reduce multicast load during probing |
+| Implemented | Unicast response acceptance (§6) | A unicast response is accepted only if it answers a QU question this peer sent within `qu_response_window` |
 
 ## In-Depth
 
@@ -82,6 +83,30 @@ When a `service_server` receives a query:
   new joiners on the segment also see the record (§5.4).
 - If the QU bit is clear (QM query), the response is multicast to `224.0.0.251:5353`
   (IPv4) or `[ff02::fb]:5353` (IPv6).
+
+### Accepting unicast responses (RFC 6762 §6)
+
+> A Multicast DNS querier MUST only accept unicast responses if they answer a recently sent query (e.g., sent within the last two seconds) that explicitly requested unicast responses.  A Multicast DNS querier MUST silently ignore all other unicast responses.
+
+Every peer records the QU questions it sends: a querier or service discovery
+started with `response_mode::unicast` records its question, and a probing
+`service_server` records the two QU ANY questions of each probe, so a defender
+that answers a probe by unicast still triggers conflict handling. A response
+sent to one of this host's unicast addresses is accepted only if a record of
+its answer section answers one of these questions sent within
+[`mdns_options::qu_response_window`](../api/options/qu_response_window_in_mdns_options.md)
+(2 s by default): the name matches ignoring ASCII case, the type matches unless
+the question asked for ANY, and the class matches unless the question asked for
+class ANY. Every other unicast response is silently ignored, so an observer or a
+service monitor, which send no QU questions, accept no unicast response.
+
+The RFC's rule applies outside legacy unicast. No mdnspp peer is a legacy
+querier, because each binds the configured multicast port; the rule therefore
+covers every unicast response a peer receives.
+
+Where the platform does not report a datagram's destination, the rule is
+skipped and only the on-link source test of §11 applies, so on such a platform
+an on-link unicast response outside a window is accepted.
 
 ## See Also
 

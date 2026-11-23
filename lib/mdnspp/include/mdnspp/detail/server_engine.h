@@ -44,7 +44,8 @@ protected:
                   std::shared_ptr<sibling_records> siblings, std::size_t element)
         : base(ex, sock_opts, std::move(mdns_opts))
         , m_ctx(ex, std::move(info), std::move(opts), extract_interface_binding(sock_opts), this->m_socket,
-                this->m_multicast_ep, this->m_mdns_opts, this->m_stopped, std::move(siblings), element)
+                this->m_multicast_ep, this->m_mdns_opts, this->m_stopped, this->qu_history(),
+                std::move(siblings), element)
         , m_multicast(m_ctx)
         , m_responder(m_ctx, m_multicast)
         , m_tc(m_ctx, m_multicast)
@@ -63,7 +64,7 @@ protected:
                   policy_socket_options_t<P> sock_opts, mdns_options mdns_opts, std::error_code &ec)
         : base(ex, sock_opts, std::move(mdns_opts), ec)
         , m_ctx(ex, std::move(info), std::move(opts), extract_interface_binding(sock_opts), this->m_socket,
-                this->m_multicast_ep, this->m_mdns_opts, this->m_stopped, nullptr, 0)
+                this->m_multicast_ep, this->m_mdns_opts, this->m_stopped, this->qu_history(), nullptr, 0)
         , m_multicast(m_ctx)
         , m_responder(m_ctx, m_multicast)
         , m_tc(m_ctx, m_multicast)

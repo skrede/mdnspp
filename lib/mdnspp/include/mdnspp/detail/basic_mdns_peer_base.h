@@ -54,8 +54,7 @@ protected:
         : m_multicast_ep(opts.multicast_group)
         , m_executor(ex)
         , m_socket(ex, opts)
-        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy,
-                 bound_interface_index(m_socket), system_interfaces)
+        , m_gate(opts.multicast_group.port, mdns_opts, bound_interface_index(m_socket), system_interfaces)
         , m_timer(ex)
         , m_stopped(false)
         , m_mdns_opts(std::move(mdns_opts))
@@ -67,8 +66,7 @@ protected:
         : m_multicast_ep(opts.multicast_group)
         , m_executor(ex)
         , m_socket(ex, opts, ec)
-        , m_gate(opts.multicast_group.port, mdns_opts.receive_ttl_minimum, mdns_opts.unknown_ttl_policy,
-                 bound_interface_index(m_socket), system_interfaces)
+        , m_gate(opts.multicast_group.port, mdns_opts, bound_interface_index(m_socket), system_interfaces)
         , m_timer(ex)
         , m_stopped(false)
         , m_mdns_opts(std::move(mdns_opts))
@@ -135,6 +133,7 @@ protected:
     const timer_type &timer() const noexcept { return m_timer; }
     timer_type &timer() noexcept { return m_timer; }
     const mdns_options &mdns_opts() const noexcept { return m_mdns_opts; }
+    detail::qu_history<policy_clock_t<P>> &qu_history() noexcept { return m_gate.history(); }
 
     std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
     endpoint m_multicast_ep;

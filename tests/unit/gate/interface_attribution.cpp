@@ -27,6 +27,13 @@ std::size_t found(uint32_t recv_ifindex, const char *destination, std::optional<
     return rig.reported("Gate");
 }
 
+std::size_t queried(uint32_t recv_ifindex, const char *destination)
+{
+    querier_rig rig{response_mode::unicast, bound_options()};
+    feed(rig, service_response("Gate"), arriving_on(rig.peer.socket(), destination, recv_ifindex));
+    return rig.reported("Gate");
+}
+
 bool answered(uint32_t recv_ifindex, const char *destination)
 {
     server_rig rig{service_options{}, bound_options()};
@@ -55,7 +62,7 @@ TEST_CASE("a peer bound to an interface takes multicast from that interface or o
 TEST_CASE("the interface rule leaves unicast and unknown destinations to the on-link rule", "[gate][attribution]")
 {
     loopback_index();
-    CHECK(found(3, "127.0.0.1") == 1);
+    CHECK(queried(3, "127.0.0.1") == 1);
     CHECK(found(3, nullptr) == 1);
     CHECK(answered(3, "127.0.0.1"));
     CHECK(answered(3, nullptr));

@@ -70,8 +70,8 @@ public:
     {
     }
 
-    const timer_type &delay_timer() const noexcept { return this->m_delay_timer; }
-    timer_type &delay_timer() noexcept { return this->m_delay_timer; }
+    const timer_type &delay_timer() const noexcept { return this->m_sender.timer(); }
+    timer_type &delay_timer() noexcept { return this->m_sender.timer(); }
 
     void async_query(std::string_view name, dns_type qtype, completion_handler on_done,
                      response_mode mode = response_mode::multicast)
@@ -100,7 +100,7 @@ public:
     {
         base::stop([this]()
         {
-            this->m_delay_timer.cancel();
+            this->m_sender.timer().cancel();
 
             if(this->m_loop)
             {

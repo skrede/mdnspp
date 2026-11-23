@@ -94,9 +94,9 @@ void feed(Rig &rig, std::vector<std::byte> packet)
 
 struct querier_rig
 {
-    explicit querier_rig(response_mode mode = response_mode::multicast)
+    explicit querier_rig(response_mode mode = response_mode::multicast, socket_options sock = {})
         : ex{}
-        , peer{ex, query_options{.silence_timeout = 500ms}}
+        , peer{ex, query_options{.silence_timeout = 500ms}, std::move(sock)}
     {
         peer.async_query("_http._tcp.local.", dns_type::ptr, [](std::error_code, std::vector<mdns_record_variant>) {},
                          mode);

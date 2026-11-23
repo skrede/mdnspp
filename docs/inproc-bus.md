@@ -107,6 +107,14 @@ subnet. The in-process bus has no link and no interface addresses, so the same
 compile-time property exempts it from that test, and from the matching source
 check on direct unicast queries (RFC 6762 §5.5).
 
+**Unicast response rule.** The in-process transport is not exempt from RFC 6762
+§6's rule that a querier accepts a unicast response only if it answers a QU
+question it sent recently. A delivery addressed to a peer's own endpoint
+(`127.0.0.x`) is a unicast response, and it is accepted only within
+[`mdns_options::qu_response_window`](api/options/qu_response_window_in_mdns_options.md)
+of a matching QU question; the window is measured on the policy clock, so
+`test_clock` advances it.
+
 ## Executor model
 
 `inproc_executor` drives all activity with a three-priority loop. Each

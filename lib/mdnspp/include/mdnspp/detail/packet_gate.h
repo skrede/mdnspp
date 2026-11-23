@@ -3,6 +3,7 @@
 
 #include "mdnspp/detail/dns_frame.h"
 #include "mdnspp/detail/gate_rules.h"
+#include "mdnspp/detail/qu_history.h"
 #include "mdnspp/detail/recv_filter.h"
 #include "mdnspp/detail/policy_clock.h"
 #include "mdnspp/detail/on_link_table.h"
@@ -28,12 +29,12 @@ class packet_gate
 public:
     using enumerator = typename on_link_table<policy_clock_t<P>>::enumerator;
 
-    packet_gate(uint16_t multicast_port, uint32_t receive_ttl_minimum, ttl_unknown_policy unknown_ttl_policy,
-                uint32_t bound_ifindex, enumerator enumerate)
+    packet_gate(uint16_t multicast_port, const mdns_options &opts, uint32_t bound_ifindex, enumerator enumerate)
         : m_bound_ifindex(bound_ifindex)
         , m_multicast_port(multicast_port)
-        , m_receive_ttl_minimum(receive_ttl_minimum)
-        , m_unknown_ttl_policy(unknown_ttl_policy)
+        , m_receive_ttl_minimum(opts.receive_ttl_minimum)
+        , m_unknown_ttl_policy(opts.unknown_ttl_policy)
+        , m_history(opts.qu_response_window)
         , m_on_link(std::move(enumerate))
     {
     }
@@ -48,14 +49,18 @@ public:
         if(!header.is_response())
             return query_accepted(meta);
         return response_port_accepted(meta, m_multicast_port, in_process)
-            && ttl_accepted(meta, m_receive_ttl_minimum, m_unknown_ttl_policy) && response_on_link(meta);
+            && ttl_accepted(meta, m_receive_ttl_minimum, m_unknown_ttl_policy) && response_on_link(meta)
+            && unicast_solicited(meta, data);
     }
+
+    qu_history<policy_clock_t<P>> &history() noexcept { return m_history; }
 
 private:
     uint32_t m_bound_ifindex;
     uint16_t m_multicast_port;
     uint32_t m_receive_ttl_minimum;
     ttl_unknown_policy m_unknown_ttl_policy;
+    qu_history<policy_clock_t<P>> m_history;
     on_link_table<policy_clock_t<P>> m_on_link;
     static constexpr bool in_process = is_in_process_v<typename P::socket_type>;
 
@@ -73,6 +78,13 @@ private:
     bool response_on_link(const recv_metadata &meta)
     {
         return in_process || classify_destination(meta) == destination_kind::multicast || source_on_link(meta);
+    }
+
+    // An unknown destination skips the rule: counting it as unicast would drop every multicast response on a platform
+    // that reports no destination. In-process transports are held to it as well.
+    bool unicast_solicited(const recv_metadata &meta, std::span<const std::byte> data) const
+    {
+        return classify_destination(meta) != destination_kind::unicast || m_history.answers(data);
     }
 
     // The zone is dropped unparsed: resolving an interface name would cost a system call per packet.

@@ -3,6 +3,8 @@
 
 #include "mdnspp/detail/dns_enums.h"
 #include "mdnspp/detail/dns_frame.h"
+#include "mdnspp/detail/qu_history.h"
+#include "mdnspp/detail/policy_clock.h"
 #include "mdnspp/detail/address_encode.h"
 #include "mdnspp/detail/sibling_records.h"
 #include "mdnspp/detail/interface_resolve.h"
@@ -53,8 +55,8 @@ public:
 
     server_context(executor_type ex, service_info service, service_options options, interface_binding bound_to,
                    socket_type &socket, const endpoint &multicast, const mdns_options &mdns,
-                   const std::atomic<bool> &stopped_flag, std::shared_ptr<sibling_records> registry,
-                   std::size_t element)
+                   const std::atomic<bool> &stopped_flag, qu_history<policy_clock_t<P>> &history,
+                   std::shared_ptr<sibling_records> registry, std::size_t element)
         : response_timer(ex)
         , delay_timer(ex)
         , tc_timer(ex)
@@ -68,10 +70,13 @@ public:
         , m_socket(socket)
         , m_multicast(multicast)
         , m_stopped(stopped_flag)
+        , m_history(history)
     {
     }
 
     bool stopped() const noexcept { return m_stopped.load(std::memory_order_acquire); }
+
+    qu_history<policy_clock_t<P>> &history() noexcept { return m_history; }
 
     uint16_t multicast_port() const noexcept { return m_multicast.port; }
 
@@ -138,6 +143,7 @@ private:
     socket_type &m_socket;
     const endpoint &m_multicast;
     const std::atomic<bool> &m_stopped;
+    qu_history<policy_clock_t<P>> &m_history;
 };
 
 }

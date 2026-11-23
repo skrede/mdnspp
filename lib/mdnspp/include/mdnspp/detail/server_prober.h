@@ -118,6 +118,7 @@ private:
         }
 
         m_ctx.send_to(response_mode::multicast, {}, probe, "probe send");
+        m_ctx.history().record_sent(probe);
         schedule_after_probe(advance_probe(m_ctx.pa_state, m_ctx.opts.probe_count));
     }
 

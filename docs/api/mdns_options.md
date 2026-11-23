@@ -1,6 +1,6 @@
 # mdns_options
 
-Protocol timing tunables for mDNS query backoff, TTL refresh, TC handling, response delays, and receive-side response filtering.
+Protocol timing tunables for mDNS query backoff, TTL refresh, TC handling, response delays, and receive-side response filtering (IP TTL and the unicast-response window).
 
 ## Header
 
@@ -28,6 +28,7 @@ struct mdns_options {
     std::chrono::microseconds tc_continuation_delay{0};
     uint32_t                  receive_ttl_minimum{255};
     ttl_unknown_policy        unknown_ttl_policy{ttl_unknown_policy::accept};
+    std::chrono::milliseconds qu_response_window{std::chrono::seconds(2)};
 };
 ```
 
@@ -49,6 +50,7 @@ struct mdns_options {
 | `tc_continuation_delay` | `std::chrono::microseconds` | `0` | RFC 6762 §6 | Delay inserted between successive TC continuation packets. Zero means packets are sent back-to-back. A non-zero value rate-limits TC continuation bursts on congested links. |
 | `receive_ttl_minimum` | `uint32_t` | `255` | none (hardening; RFC 6762 §11 has only a send-side SHOULD) | Minimum IP TTL (hop limit) for received mDNS responses. Responses arriving with an IP TTL below this value are silently discarded; any forwarded response has its IP TTL decremented below 255. Queries are never dropped for their TTL, so legacy one-shot resolvers that send with TTL 1 are answered (RFC 6762 §6.7). |
 | `unknown_ttl_policy` | `ttl_unknown_policy` | `ttl_unknown_policy::accept` | none (hardening) | Disposition for responses where the IP TTL could not be extracted. `accept` passes such responses through (default, for transports without TTL extraction support, e.g. custom policies and the inproc bus). `reject` discards them. Queries are exempt. |
+| `qu_response_window` | `std::chrono::milliseconds` | `2s` | RFC 6762 §6 | How long after sending a question with the unicast-response (QU) bit a peer accepts unicast responses that answer it. A response sent to a unicast address passes only if a record of its answer section answers such a question (name, type unless ANY, class unless ANY); every other unicast response is silently ignored. A response whose destination is unknown skips the rule. See [qu_response_window](options/qu_response_window_in_mdns_options.md). |
 
 **Note:** All defaults are RFC-compliant. Changing them is an advanced operation: incorrect settings may violate interoperability guarantees or cause excessive network traffic.
 
@@ -93,6 +95,7 @@ The observer, querier, service discovery, service monitor and service server con
 - `refresh_jitter_pct` is negative;
 - `ka_suppression_fraction` or `tc_suppression_fraction` lies outside the open interval (0, 1);
 - any entry of `ttl_refresh_thresholds` lies outside the open interval (0, 1), or an entry is not greater than the one before it (equal neighbors included). An empty list is valid.
+- `qu_response_window` is not positive.
 
 The service server constructors also reject a non-positive `legacy_unicast_ttl`; their full list is in [service_server](service_server.md#throwing).
 

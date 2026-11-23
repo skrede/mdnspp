@@ -10,8 +10,9 @@
 
 `mdns_options` is a plain struct of protocol timing tunables passed to `basic_*`
 constructors in mdnspp. It controls how often queries are sent, when TTL
-refresh queries fire, how long to wait for truncated-response packets, and the
-receive-side IP TTL threshold for responses.
+refresh queries fire, how long to wait for truncated-response packets, the
+receive-side IP TTL threshold for responses, and how long unicast replies to a
+QU question are accepted.
 
 All fields default to RFC 6762-compliant values. Use designated initializers to
 override specific fields:
@@ -244,6 +245,30 @@ the inproc bus) or when the platform call fails.
 
 See [recv_metadata](api/recv_metadata.md) and [Receive-Side TTL](rfc/receive-ttl.md)
 for platform extraction capabilities.
+
+---
+
+### Unicast responses (RFC 6762 section 6)
+
+#### qu_response_window
+
+| | |
+|---|---|
+| **Type** | `std::chrono::milliseconds` |
+| **Default** | `2s` |
+| **RFC section** | RFC 6762 §6 |
+
+A response sent to a unicast address is accepted only if a record of its answer
+section answers a question this peer sent with the unicast-response (QU) bit
+within the window. Queriers and service discovery started with
+`response_mode::unicast`, and service server probes, record their QU
+questions; every other unicast response is silently ignored. A response whose
+destination the platform does not report skips the rule and keeps only the
+on-link source test.
+
+Risk of changing: a longer window gives an on-link host more time to unicast
+unsolicited answers; a shorter one drops late replies, including a defender's
+reply to a probe. See [qu_response_window](api/options/qu_response_window_in_mdns_options.md).
 
 ---
 

@@ -28,6 +28,7 @@ struct mdns_options
     std::chrono::microseconds tc_continuation_delay{0};
     uint32_t receive_ttl_minimum{255};
     ttl_unknown_policy unknown_ttl_policy{ttl_unknown_policy::accept};
+    std::chrono::milliseconds qu_response_window{std::chrono::seconds(2)};
 };
 
 }

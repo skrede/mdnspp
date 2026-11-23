@@ -41,7 +41,8 @@ protected:
                      mdns_options mdns_opts)
         : base(ex, std::move(sock_opts), std::move(mdns_opts))
         , m_silence_timeout(opts.silence_timeout)
-        , m_sender(ex, this->m_socket, this->multicast_endpoint(), this->m_mdns_opts, this->m_stopped, m_on_error)
+        , m_sender(ex, this->m_socket, this->multicast_endpoint(), this->m_mdns_opts, this->m_stopped,
+                   this->qu_history(), m_on_error)
         , m_on_error(std::move(opts.on_error))
         , m_on_record(std::move(opts.on_record))
     {
@@ -52,7 +53,8 @@ protected:
                      mdns_options mdns_opts, std::error_code &ec)
         : base(ex, std::move(sock_opts), std::move(mdns_opts), ec)
         , m_silence_timeout(opts.silence_timeout)
-        , m_sender(ex, this->m_socket, this->multicast_endpoint(), this->m_mdns_opts, this->m_stopped, m_on_error)
+        , m_sender(ex, this->m_socket, this->multicast_endpoint(), this->m_mdns_opts, this->m_stopped,
+                   this->qu_history(), m_on_error)
         , m_on_error(std::move(opts.on_error))
         , m_on_record(std::move(opts.on_record))
     {
@@ -89,11 +91,11 @@ protected:
         auto query_bytes = build_dns_query(m_service_type, dns_type::ptr,
                                            std::span<const mdns_record_variant>(m_operation.results()), mode);
 
+        m_sender.send(std::move(query_bytes), mode, "query send");
         start_receiving([this](const recv_metadata &meta, std::span<std::byte> data) -> bool
         {
             return on_query_packet(meta.sender, data);
         });
-        m_sender.send(std::move(query_bytes), mode, "query send");
     }
 
     void do_enumerate(response_mode mode)
@@ -104,11 +106,11 @@ protected:
 
         auto query_bytes = build_dns_query(meta_name, dns_type::ptr, mode);
 
+        m_sender.send(std::move(query_bytes), mode, "enumerate send");
         start_receiving([this](const recv_metadata &meta, std::span<std::byte> data) -> bool
         {
             return on_enumerate_packet(meta.sender, data);
         });
-        m_sender.send(std::move(query_bytes), mode, "enumerate send");
     }
 
     std::chrono::milliseconds m_silence_timeout;

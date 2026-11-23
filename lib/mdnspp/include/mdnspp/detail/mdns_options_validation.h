@@ -41,7 +41,7 @@ inline bool invalid_refresh_thresholds(const mdns_options &opts) noexcept
 inline std::error_code validate_mdns_options(const mdns_options &opts) noexcept
 {
     if(invalid_timing_ranges(opts) || invalid_backoff(opts) || invalid_suppression_fractions(opts)
-       || invalid_refresh_thresholds(opts))
+       || invalid_refresh_thresholds(opts) || opts.qu_response_window.count() <= 0)
         return std::make_error_code(std::errc::invalid_argument);
     return {};
 }

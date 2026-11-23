@@ -2,6 +2,8 @@
 #define HPP_GUARD_MDNSPP_DETAIL_DISCOVERY_QUERY_SENDER_H
 
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/qu_history.h"
+#include "mdnspp/detail/policy_clock.h"
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
@@ -32,7 +34,8 @@ public:
     using timer_type = typename P::timer_type;
 
     discovery_query_sender(executor_type ex, socket_type &socket, const endpoint &destination,
-                           const mdns_options &opts, const std::atomic<bool> &stopped, error_handler &on_error)
+                           const mdns_options &opts, const std::atomic<bool> &stopped,
+                           qu_history<policy_clock_t<P>> &history, error_handler &on_error)
         : m_timer(ex)
         , m_rng(std::random_device{}())
         , m_socket(socket)
@@ -40,6 +43,7 @@ public:
         , m_opts(opts)
         , m_destination(destination)
         , m_stopped(stopped)
+        , m_history(history)
     {
     }
 
@@ -67,12 +71,15 @@ private:
     const mdns_options &m_opts;
     const endpoint &m_destination;
     const std::atomic<bool> &m_stopped;
+    qu_history<policy_clock_t<P>> &m_history;
 
     void send_now(std::span<const std::byte> bytes, std::string_view context)
     {
         std::error_code ec;
         m_socket.send(m_destination, bytes, ec);
-        if(ec && m_on_error)
+        if(!ec)
+            m_history.record_sent(bytes);
+        else if(m_on_error)
             m_on_error(ec, context);
     }
 

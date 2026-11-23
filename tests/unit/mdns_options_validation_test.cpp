@@ -4,6 +4,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <chrono>
 #include <vector>
 #include <utility>
 #include <system_error>
@@ -47,6 +48,15 @@ TEST_CASE("validate_mdns_options rejects decreasing ttl refresh thresholds", "[m
 TEST_CASE("validate_mdns_options rejects equal ttl refresh thresholds", "[mdns_options][validate]")
 {
     CHECK(validate_thresholds({0.8, 0.8}) == std::errc::invalid_argument);
+}
+
+TEST_CASE("validate_mdns_options rejects a zero and a negative qu_response_window", "[mdns_options][validate]")
+{
+    CHECK(validate_mdns_options(mdns_options{.qu_response_window = std::chrono::milliseconds{0}})
+          == std::errc::invalid_argument);
+    CHECK(validate_mdns_options(mdns_options{.qu_response_window = std::chrono::milliseconds{-1}})
+          == std::errc::invalid_argument);
+    CHECK(mdns_options{}.qu_response_window == std::chrono::seconds{2});
 }
 
 TEST_CASE("mdns_options has no max_known_answers and no record_ttl", "[mdns_options]")

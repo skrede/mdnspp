@@ -2,8 +2,8 @@
 #define HPP_GUARD_MDNSPP_DETAIL_QUERIER_ENGINE_H
 
 #include "mdnspp/detail/dns_enums.h"
-#include "mdnspp/detail/dns_query.h"
 #include "mdnspp/detail/recv_loop.h"
+#include "mdnspp/detail/querier_send.h"
 #include "mdnspp/detail/querier_packets.h"
 #include "mdnspp/detail/basic_mdns_peer_base.h"
 
@@ -19,7 +19,6 @@
 
 #include <span>
 #include <chrono>
-#include <random>
 #include <string>
 #include <vector>
 #include <cstddef>
@@ -39,13 +38,10 @@ protected:
     querier_engine(typename base::executor_type ex, query_options opts, policy_socket_options_t<P> sock_opts,
                    mdns_options mdns_opts)
         : base(ex, std::move(sock_opts), std::move(mdns_opts))
-        , m_duplicate_seen(false)
-        , m_query_sent(false)
         , m_query_type(dns_type::none)
         , m_query_mode(response_mode::multicast)
         , m_silence_timeout(opts.silence_timeout)
-        , m_rng(std::random_device()())
-        , m_delay_timer(ex)
+        , m_sender(ex, this->m_socket, this->multicast_endpoint(), this->m_mdns_opts, this->qu_history(), m_on_error)
         , m_on_error(std::move(opts.on_error))
         , m_on_record(std::move(opts.on_record))
     {
@@ -55,13 +51,10 @@ protected:
     querier_engine(typename base::executor_type ex, query_options opts, policy_socket_options_t<P> sock_opts,
                    mdns_options mdns_opts, std::error_code &ec)
         : base(ex, std::move(sock_opts), std::move(mdns_opts), ec)
-        , m_duplicate_seen(false)
-        , m_query_sent(false)
         , m_query_type(dns_type::none)
         , m_query_mode(response_mode::multicast)
         , m_silence_timeout(opts.silence_timeout)
-        , m_rng(std::random_device()())
-        , m_delay_timer(ex)
+        , m_sender(ex, this->m_socket, this->multicast_endpoint(), this->m_mdns_opts, this->qu_history(), m_on_error)
         , m_on_error(std::move(opts.on_error))
         , m_on_record(std::move(opts.on_record))
     {
@@ -99,13 +92,10 @@ protected:
             start_multicast_query();
     }
 
-    bool m_duplicate_seen;
-    bool m_query_sent;
     dns_type m_query_type;
     response_mode m_query_mode;
     std::chrono::milliseconds m_silence_timeout;
-    std::mt19937 m_rng;
-    typename base::timer_type m_delay_timer;
+    querier_sender<P> m_sender;
     dns_name m_query_name;
     error_handler m_on_error;
     record_callback m_on_record;
@@ -126,18 +116,7 @@ private:
         m_query_name = dns_name(std::move(qname));
         m_query_type = qtype;
         m_query_mode = mode;
-        m_duplicate_seen = false;
-        m_query_sent = false;
-    }
-
-    void send_query()
-    {
-        auto query_bytes = build_dns_query(m_query_name, m_query_type, m_query_mode);
-        std::error_code ec;
-        this->m_socket.send(this->multicast_endpoint(), std::span<const std::byte>(query_bytes), ec);
-        if(ec && m_on_error)
-            m_on_error(ec, "query send");
-        m_query_sent = true;
+        m_sender.reset();
     }
 
     bool on_packet(const recv_metadata &meta, std::span<std::byte> data)
@@ -146,12 +125,9 @@ private:
             return false;
 
         auto cdata = std::span<const std::byte>(data.data(), data.size());
-        if(!m_query_sent && m_query_mode == response_mode::multicast
+        if(!m_sender.sent() && m_query_mode == response_mode::multicast
            && is_duplicate_question(cdata, m_query_name, m_query_type))
-        {
-            m_duplicate_seen = true;
-            m_delay_timer.cancel();
-        }
+            m_sender.suppress();
 
         return take_relevant_response(cdata, meta.sender, m_query_name, m_on_record, m_results);
     }
@@ -159,35 +135,21 @@ private:
     void fire_completion()
     {
         this->m_loop->stop();
-        m_delay_timer.cancel();
+        m_sender.timer().cancel();
         if(auto h = std::exchange(m_on_completion, nullptr); h)
             h(std::error_code{}, m_results);
     }
 
     void start_unicast_query()
     {
-        send_query();
+        m_sender.send_now(m_query_name, m_query_type, response_mode::unicast);
         this->m_loop->start();
     }
 
     void start_multicast_query()
     {
         this->m_loop->start();
-
-        std::uniform_int_distribution<int32_t> dist(
-            static_cast<int32_t>(this->m_mdns_opts.response_delay_min.count()),
-            static_cast<int32_t>(this->m_mdns_opts.response_delay_max.count()));
-        auto delay = std::chrono::milliseconds(dist(m_rng));
-
-        m_delay_timer.expires_after(delay);
-        m_delay_timer.async_wait(
-            [this](std::error_code ec)
-            {
-                if(ec)
-                    return;
-                if(!m_duplicate_seen)
-                    send_query();
-            });
+        m_sender.send_delayed(m_query_name, m_query_type);
     }
 };
 

@@ -13,6 +13,8 @@ endif ()
 make_test(interface_addresses_test)
 make_test(interface_resolve_test)
 make_test(interface_resolve_address_test)
+make_test(egress_interface_test)
+make_test(advertised_addresses_test)
 make_test(validate_multicast_test)
 
 if (TARGET mdnspp::asio)

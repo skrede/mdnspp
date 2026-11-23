@@ -175,6 +175,7 @@ The handler receives the error code and a context string identifying the failure
 | `"goodbye send"` | sending the goodbye on `stop()` |
 | `"receive"` | the receive loop |
 | `"interface enumeration"` | enumerating interfaces to resolve `auto_address` fields; the addresses stay unresolved |
+| `"egress interface lookup"` | opening the throwaway socket, or reading its local address, that finds the interface an unbound server sends on; the addresses stay unresolved (a missing route is not an error) |
 | `"invalid IPv4 address: <address>"`, `"invalid IPv6 address: <address>"` | an address in `service_info` that cannot be encoded (`mdns_error::invalid_ipv4_address` / `invalid_ipv6_address`); checked before every announcement |
 
 ### Accessors

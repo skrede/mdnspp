@@ -5,11 +5,12 @@
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/ip_address.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/network_interface.h"
 
 #include "mdnspp/detail/native_socket.h"
-#include "mdnspp/detail/interface_resolve.h"
+#include "mdnspp/detail/interface_addresses.h"
 
 #include "mdnspp/default/default_timer.h"
 #include "mdnspp/default/default_socket.h"
@@ -73,11 +74,17 @@ inline uint32_t loopback_index()
 
 inline uint32_t multicast_interface_index(bool ipv6)
 {
-    const std::vector<mdnspp::network_interface> interfaces = mdnspp::enumerate_interfaces();
-    const mdnspp::network_interface *nic = mdnspp::detail::lowest_index_interface(interfaces, ipv6);
-    if(nic == nullptr)
+    const auto family = ipv6 ? mdnspp::address_family::ipv6 : mdnspp::address_family::ipv4;
+    uint32_t index = 0;
+    for(const mdnspp::network_interface &nic : mdnspp::enumerate_interfaces())
+    {
+        const bool candidate = nic.is_up && !nic.is_loopback && mdnspp::detail::has_family(nic, family);
+        if(candidate && (index == 0 || nic.index < index))
+            index = nic.index;
+    }
+    if(index == 0)
         mdnspp::test_support::skip_or_fail("no up, non-loopback interface with an address of the family");
-    return nic == nullptr ? 0 : nic->index;
+    return index;
 }
 
 template <typename Send>

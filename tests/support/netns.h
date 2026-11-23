@@ -52,20 +52,33 @@ inline void require_netns_harness()
 }
 
 // A network namespace belongs to a thread, and a socket keeps the namespace it was created in.
-inline int32_t open_udp_socket_in_netns(const std::string &netns, int32_t family)
+template <typename Work>
+void run_in_netns(const std::string &netns, Work work)
 {
-    int32_t fd = -1;
-    int32_t error = 0;
+    bool entered = false;
     std::thread worker{[&]
     {
         const int32_t ns = ::open(("/run/netns/" + netns).c_str(), O_RDONLY | O_CLOEXEC);
-        if(ns >= 0 && ::setns(ns, CLONE_NEWNET) == 0)
-            fd = ::socket(family, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
-        error = fd < 0 ? errno : 0;
+        entered = ns >= 0 && ::setns(ns, CLONE_NEWNET) == 0;
+        if(entered)
+            work();
         if(ns >= 0)
             ::close(ns);
     }};
     worker.join();
+    INFO("entering namespace " << netns);
+    REQUIRE(entered);
+}
+
+inline int32_t open_udp_socket_in_netns(const std::string &netns, int32_t family)
+{
+    int32_t fd = -1;
+    int32_t error = 0;
+    run_in_netns(netns, [&]
+    {
+        fd = ::socket(family, SOCK_DGRAM | SOCK_CLOEXEC, IPPROTO_UDP);
+        error = fd < 0 ? errno : 0;
+    });
     INFO("socket in namespace " << netns << ": " << std::strerror(error));
     REQUIRE(fd >= 0);
     return fd;

@@ -3,10 +3,10 @@
 
 #include "mdnspp/detail/ip_address_ops.h"
 #include "mdnspp/detail/native_sockaddr.h"
+#include "mdnspp/detail/egress_interface.h"
 #include "mdnspp/detail/interface_addresses.h"
 
 #include "mdnspp/ip_address.h"
-#include "mdnspp/service_info.h"
 #include "mdnspp/socket_options.h"
 #include "mdnspp/network_interface.h"
 
@@ -46,11 +46,6 @@ interface_binding extract_interface_binding(const Opts &opts)
     return binding;
 }
 
-inline bool address_is_ipv6(std::string_view address) noexcept
-{
-    return address.find(':') != std::string_view::npos;
-}
-
 // RFC 4007 section 11: the zone of a scoped address names the interface it belongs to.
 inline uint32_t address_zone(std::string_view text)
 {
@@ -82,12 +77,6 @@ find_interface(const std::vector<network_interface> &interfaces, const interface
         return address ? find(carries) : nullptr;
     }
     return nullptr;
-}
-
-inline std::string first_address_text(const network_interface &nic, bool ipv6)
-{
-    const ip_network *net = first_address(nic, ipv6 ? address_family::ipv6 : address_family::ipv4);
-    return net != nullptr ? format_ip_address(net->address) : std::string{};
 }
 
 struct resolved_interface
@@ -130,65 +119,11 @@ resolve_socket_interface(const socket_options &opts, address_family family, std:
     ec.clear();
     const interface_binding binding = extract_interface_binding(opts);
     if(!binding.bound())
-        return {};
+        return {family == address_family::ipv6 ? egress_ipv6_index(opts.multicast_group) : 0};
     const std::vector<network_interface> interfaces = enumerate_interfaces(ec);
     if(ec)
         return {};
     return select_interface(interfaces, binding, family, ec);
-}
-
-inline const network_interface *
-lowest_index_interface(const std::vector<network_interface> &interfaces, bool ipv6) noexcept
-{
-    const network_interface *best = nullptr;
-    for(const auto &nic : interfaces)
-    {
-        if(nic.is_loopback || !nic.is_up)
-            continue;
-        if(!has_family(nic, ipv6 ? address_family::ipv6 : address_family::ipv4))
-            continue;
-        if(best == nullptr || nic.index < best->index)
-            best = &nic;
-    }
-    return best;
-}
-
-inline std::string advertised_address(const std::vector<network_interface> &interfaces,
-                                      const network_interface *bound, const interface_binding &binding, bool ipv6)
-{
-    std::string address;
-    if(bound != nullptr)
-        address = first_address_text(*bound, ipv6);
-    else if(!binding.address.empty())
-    {
-        if(address_is_ipv6(binding.address) == ipv6)
-            address = binding.address;
-    }
-    else if(!binding.bound())
-    {
-        if(const network_interface *nic = lowest_index_interface(interfaces, ipv6))
-            address = first_address_text(*nic, ipv6);
-    }
-    return address;
-}
-
-// RFC 6762 §6.2: advertised addresses must be valid on the announcing link.
-inline void resolve_advertised_addresses(const std::vector<network_interface> &interfaces,
-                                         const interface_binding &binding, service_info &info)
-{
-    if(!info.auto_address)
-        return;
-
-    const network_interface *bound = find_interface(interfaces, binding);
-    for(bool ipv6 : {false, true})
-    {
-        std::optional<std::string> &field = ipv6 ? info.address_ipv6 : info.address_ipv4;
-        if(field.has_value())
-            continue;
-        std::string address = advertised_address(interfaces, bound, binding, ipv6);
-        if(!address.empty())
-            field = std::move(address);
-    }
 }
 
 }

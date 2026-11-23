@@ -7,7 +7,9 @@
 #include "mdnspp/detail/policy_clock.h"
 #include "mdnspp/detail/address_encode.h"
 #include "mdnspp/detail/sibling_records.h"
+#include "mdnspp/detail/transport_traits.h"
 #include "mdnspp/detail/interface_resolve.h"
+#include "mdnspp/detail/advertised_addresses.h"
 #include "mdnspp/detail/server_probe_announce.h"
 
 #include "mdnspp/policy.h"
@@ -103,13 +105,16 @@ public:
         if(!info.auto_address)
             return;
         std::error_code ec;
-        auto interfaces = enumerate_interfaces(ec);
+        const std::vector<network_interface> interfaces = enumerate_interfaces(ec);
         if(ec)
         {
             report_error(ec, "interface enumeration");
             return;
         }
-        resolve_advertised_addresses(interfaces, binding, info);
+        const announcing_link link =
+            select_announcing_link(interfaces, binding, bound_interface_index(m_socket), m_multicast, ec);
+        report_error(ec, "egress interface lookup");
+        resolve_advertised_addresses(binding, link, info);
     }
 
     void validate_addresses()

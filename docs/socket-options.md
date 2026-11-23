@@ -90,11 +90,34 @@ operating system, which rejects one that is not assigned to a local
 interface; socket construction then fails with the operating system's error
 (`EADDRNOTAVAIL` on Linux).
 
+### Unbound sockets
+
+With no binding field set, an IPv4 socket joins the group on `INADDR_ANY` and
+the operating system routes every send. A link-local IPv6 group such as
+`ff02::fb` has no such route to follow, so at socket open an unbound IPv6
+socket asks which interface the IPv4 mDNS group (`224.0.0.251` on the
+socket's port) leaves on: it connects a throwaway UDP socket to that group,
+which sends nothing, and reads the local address the route lookup chose.
+When the interface carrying that address has an IPv6 address, the IPv6 socket
+is pinned to it: `IPV6_MULTICAST_IF` and the group join use its index, and
+`interface_index()` reports it, so the receive interface attribution below
+applies to that interface. Otherwise, or when there is no route, the socket
+stays unpinned and reports `0`; a failed lookup is not an error. The native
+and the Asio backend pin alike. Bind an interface explicitly to use another
+one. An unbound server advertises the addresses of the same interface (see
+[service_info](api/service_info.md#address-auto-detection-auto_address)).
+
+On Linux the connected source address is the one the kernel sends the group
+from; the network namespace tests verify it. macOS and Windows run the same
+calls; their CI runs check only that the address belongs to a local
+interface.
+
 ### Receive interface attribution
 
 A bound socket reports the index of its interface through `interface_index()`
 (`default_socket`, `asio_socket`, and `encrypted_socket` over either); an
-unbound socket reports `0`. Every peer reads it once at construction and
+unbound IPv4 socket reports `0`, an unbound IPv6 socket the index it is
+pinned to, or `0`. Every peer reads it once at construction and
 silently drops a packet whose destination is a multicast address and whose
 receiving interface (`recv_metadata::recv_ifindex`) is known and differs from
 the bound one, queries and responses alike. A peer bound to an interface

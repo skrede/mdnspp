@@ -67,6 +67,10 @@ Unit tests cover:
   sockaddr_text_test, socket_options_test, socket_options_validation_test)
 - Interface enumeration and binding resolution (enumerate_interfaces_test,
   interface_addresses_test, interface_resolve_test, interface_resolve_address_test)
+- The egress interface lookup on the host: the source address the operating
+  system chooses for the mDNS group belongs to an enumerated interface
+  (egress_interface_test); and the advertised-address rule for bound, pinned
+  and unbound servers (advertised_addresses_test)
 - Receive-loop lifecycle, delivery, error propagation and stop behavior
   (tests/unit/recv_loop/: recv_loop_*_test)
 - Receive ancillary data: TTL, hop limit, arrival interface and destination
@@ -372,7 +376,11 @@ veth link has IPv6 enabled, which the kernel does only after the link's carrier
 comes up. The cases cover IPv6 interface selection among interfaces sharing a
 link-local address and peers bound to `d0` or `d1` that must ignore multicast
 arriving on the other link while still receiving their own link's and this
-host's multicast. Locally, with unprivileged user namespaces enabled:
+host's multicast, and the egress rule: `d0` has the lower interface index,
+the default routes leave on `d1`, so an unbound server must advertise `d1`'s
+addresses and an unbound IPv6 socket must be pinned to `d1`, and in `p0`,
+which has no route, the egress lookup finds nothing without an error. Locally,
+with unprivileged user namespaces enabled:
 
     cmake --build build -j4 --target netns_tests
     tests/netns/run.sh build

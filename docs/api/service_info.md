@@ -141,9 +141,18 @@ follows:
 2. When bound by `interface_address` to an address absent from
    `enumerate_interfaces()`, the bound address itself is used for its
    family.
-3. Unbound, the address of the non-loopback, running interface with the
-   lowest OS interface index that has an address of the respective family is
-   used (a deterministic rule across calls).
+3. Unbound, the addresses come from the interface the server sends on. A
+   socket pinned to an interface (an unbound IPv6 socket, see
+   [Unbound sockets](../socket-options.md#unbound-sockets)) supplies both
+   families from that interface. Otherwise the server asks the operating
+   system which interface it sends the configured group on (an IPv6 group
+   through the IPv4 mDNS group `224.0.0.251` on the same port): it connects a
+   throwaway UDP socket to the group, which sends nothing, and reads the
+   local address the route lookup chose. The interface carrying that address
+   supplies the IPv4 address and, for an IPv4 socket, the IPv6 address. An
+   unpinned IPv6 socket sends on whatever interface the operating system
+   picks for each packet, so its server advertises no IPv6 address. When the
+   lookup finds no route, no address of those families is advertised.
 
 A family with no candidate stays unset and its records are simply not
 announced (e.g. AAAA on an IPv6-less host) — this is not an error.

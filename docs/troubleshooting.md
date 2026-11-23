@@ -108,7 +108,11 @@ server announces on the wrong network.
   (precedence: index > name > address; see
   [socket-options.md](socket-options.md)). Unset, the OS routing table
   chooses the egress interface for multicast — frequently the VPN or a
-  virtual bridge.
+  virtual bridge. An unbound server advertises the addresses of that egress
+  interface (an unbound IPv6 socket is pinned to it as well), so a server
+  that announces a VPN or bridge address is following the default route;
+  binding the intended interface explicitly fixes both where it sends and
+  what it advertises.
 - **Multiple real interfaces.** To operate on all physical interfaces at
   once, use `nic_group` / `dynamic_nic_group` with an `interface_filter`
   excluding virtual adapters, rather than one peer on an unspecified

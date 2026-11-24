@@ -23,9 +23,9 @@ inline destination_kind classify_destination(const recv_metadata &meta) noexcept
     return meta.destination->is_multicast() ? destination_kind::multicast : destination_kind::unicast;
 }
 
-// The kernel delivers a group joined on any interface to every socket on the port, so a peer bound to one interface
-// sees multicast from the others. Linux IP_MULTICAST_ALL is no remedy: with SO_REUSEPORT, current kernels then hand the
-// datagram to an arbitrary socket on the port, and it has no IPv6 effect.
+// The kernel delivers multicast to every socket on the port that joined on any interface, so a peer bound to one
+// interface also sees the others. IP_MULTICAST_ALL is no substitute: with SO_REUSEPORT the IPv4 early-demux path
+// may hand the datagram to another socket of the port (seen on Linux 6.18); the IPv6 option filters by group only.
 inline bool interface_mismatch(const recv_metadata &meta, uint32_t bound_ifindex) noexcept
 {
     return bound_ifindex != 0 && meta.recv_ifindex != 0 && meta.recv_ifindex != bound_ifindex

@@ -313,8 +313,9 @@ index), so each instance processes only multicast received on its own NIC, even 
 the operating system delivers every joined group to all sockets on the port. A custom
 factory that leaves the socket unbound gives up this filtering. See
 [Receive interface attribution](socket-options.md#receive-interface-attribution) for the
-rule and its platform status (verified on Linux; implemented, not CI-verified on macOS or
-Windows).
+rule and its platform status (verified end to end on Linux; on macOS and Windows the same
+rule runs, implemented but not CI-verified with several interfaces, and the receive probes
+there confirm its input).
 
 ### Unicast replies
 

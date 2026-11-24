@@ -126,17 +126,27 @@ packets this host sends there. Unicast packets, and packets of unknown
 destination or receiving interface, are left to the local-link test (see
 [recv_metadata](api/recv_metadata.md)).
 
-The check is needed because the operating system delivers a group joined on
-any interface to every socket bound to the port. The library does not set the
-Linux `IP_MULTICAST_ALL` option instead: it has no effect on IPv6, and with
-`SO_REUSEPORT`, which the sockets set so that peers on one host share the
-port, current Linux kernels then hand an IPv4 multicast datagram to an
-arbitrary socket of the port, so a peer can lose packets from its own
-interface.
+The check is needed because the operating system delivers multicast to every
+socket bound to the port that joined the group on any interface. The library
+does not use the Linux `IP_MULTICAST_ALL` option instead. On IPv4, setting it
+to 0 makes the kernel match a datagram only to sockets that joined the group
+on the arrival interface, but the sockets set `SO_REUSEPORT` so that peers on
+one host share the port, and with it Linux 6.18 hands the datagram to a socket
+picked from the port's reuse group, whichever interface that socket joined on.
+The pick happens in the kernel's early demultiplexing step for UDP (the
+datagram is correct again with `net.ipv4.udp_early_demux=0`) and was
+reproduced with a plain C program, so it does not depend on how the library
+joins the group. The kernel source shows the same selection in Linux 6.6 and
+later; other kernel versions were not tested. On IPv6, `IPV6_MULTICAST_ALL`
+(Linux 4.20 and later) limits delivery to groups the socket joined, but the
+kernel compares the group only, not the interface, so it cannot isolate
+interfaces. macOS filters multicast by the interface a socket joined on.
 
-Linux, IPv4 and IPv6: verified by the network namespace tests, which run two
-links into one host. macOS and Windows run the same code: implemented, not
-CI-verified on macOS or Windows.
+Linux, IPv4 and IPv6: verified end to end by the network namespace tests,
+which run two links into one host. macOS and Windows run the same rule:
+implemented, but not CI-verified with several interfaces. The receive probes
+there confirm its input: looped multicast reports the interface it was sent
+on.
 
 Policies may extend `socket_options`: a policy declaring a
 `socket_options_type` derived from `socket_options` substitutes its own

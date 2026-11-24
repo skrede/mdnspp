@@ -149,7 +149,10 @@ Unit tests cover:
   (default_conformance_v6_only_test); the asio twins are
   asio_receive_metadata_test and asio_receive_v6_only_test
   (tests/unit/asio_receive/). Without such an interface the multicast cases
-  skip, and fail under `MDNSPP_REQUIRE_NETWORK`
+  skip, and fail under `MDNSPP_REQUIRE_NETWORK`. The two multicast cases carry
+  the ctest label `multicast_probe`: the macOS workflow runs them in a
+  separate step as root (Apple TN3179, local network privacy denies multicast
+  to unprivileged processes) and everything else unprivileged
 - Test-double sockets: the error_code constructors and send of the mock and
   in-process sockets, the throwing forms that wrap them, and the mock socket's
   failure injection reaching both (mock_socket_error_code_test,

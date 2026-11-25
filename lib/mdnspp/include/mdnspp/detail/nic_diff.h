@@ -1,6 +1,9 @@
 #ifndef HPP_GUARD_MDNSPP_DETAIL_NIC_DIFF_H
 #define HPP_GUARD_MDNSPP_DETAIL_NIC_DIFF_H
 
+#include "mdnspp/detail/interface_addresses.h"
+
+#include "mdnspp/ip_address.h"
 #include "mdnspp/network_interface.h"
 
 #include <vector>
@@ -21,10 +24,22 @@ struct nic_change
     network_interface iface;
 };
 
-// A user enumerator need not sort the addresses, so their order is not a change.
+inline bool first_address_changed(const network_interface &before, const network_interface &after,
+                                  address_family family) noexcept
+{
+    const ip_network *old_net = first_address(before, family);
+    const ip_network *new_net = first_address(after, family);
+    if(old_net == nullptr || new_net == nullptr)
+        return old_net != new_net;
+    return *old_net != *new_net;
+}
+
+// Peers bind and advertise only the first address of each family, so other address churn, such as IPv6 temporary
+// addresses rotating, must not restart them.
 inline bool nic_changed(const network_interface &before, const network_interface &after)
 {
-    return after.is_up != before.is_up || !std::ranges::is_permutation(before.addresses, after.addresses);
+    return after.is_up != before.is_up || first_address_changed(before, after, address_family::ipv4) ||
+           first_address_changed(before, after, address_family::ipv6);
 }
 
 inline std::vector<network_interface>::const_iterator find_nic(const std::vector<network_interface> &nics,
@@ -34,7 +49,7 @@ inline std::vector<network_interface>::const_iterator find_nic(const std::vector
                         [index](const network_interface &i) { return i.index == index; });
 }
 
-// A changed interface (same index, different up state or address) is reported as a removal followed by an addition.
+// A changed interface (same index, different up state or first address) is reported as a removal followed by an addition.
 inline std::vector<nic_change> diff_nics(const std::vector<network_interface> &previous,
                                          const std::vector<network_interface> &next)
 {

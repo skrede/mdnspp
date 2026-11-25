@@ -32,20 +32,47 @@ network_interface dual_stack_nic()
 
 }
 
-TEST_CASE("nic_changed reports a changed, added or removed address", "[nic_monitor]")
+TEST_CASE("nic_changed reports a changed first address or a gained or lost family", "[nic_monitor]")
 {
     const network_interface before = dual_stack_nic();
     network_interface changed = before;
     changed.addresses[0] = network("192.0.2.2", 24);
-    network_interface added = before;
-    added.addresses.push_back(network("fe80::1", 64));
-    network_interface removed = before;
-    removed.addresses.pop_back();
+    network_interface lost_family = before;
+    lost_family.addresses.pop_back();
+    network_interface gained_family = lost_family;
+    gained_family.addresses.erase(gained_family.addresses.begin());
 
     CHECK(nic_changed(before, changed));
-    CHECK(nic_changed(before, added));
-    CHECK(nic_changed(before, removed));
+    CHECK(nic_changed(before, lost_family));
+    CHECK(nic_changed(lost_family, before));
+    CHECK(nic_changed(lost_family, gained_family));
     CHECK_FALSE(nic_changed(before, dual_stack_nic()));
+}
+
+TEST_CASE("nic_changed ignores an address added or removed after the first of its family", "[nic_monitor]")
+{
+    const network_interface before = dual_stack_nic();
+    network_interface added = before;
+    added.addresses.push_back(network("2001:db8::2", 64));
+    added.addresses.push_back(network("192.0.2.9", 24));
+    network_interface rotated = added;
+    rotated.addresses.erase(rotated.addresses.begin() + 2);
+
+    CHECK_FALSE(nic_changed(before, added));
+    CHECK_FALSE(nic_changed(added, before));
+    CHECK_FALSE(nic_changed(added, rotated));
+    CHECK(diff_nics(std::vector{before}, std::vector{added}).empty());
+}
+
+TEST_CASE("nic_changed follows the first address that link-local selection picks", "[nic_monitor]")
+{
+    network_interface link_local_only = dual_stack_nic();
+    link_local_only.addresses[0] = network("169.254.1.1", 16);
+    network_interface routable_added = link_local_only;
+    routable_added.addresses.push_back(network("192.0.2.1", 24));
+
+    CHECK(nic_changed(link_local_only, routable_added));
+    CHECK(nic_changed(routable_added, link_local_only));
 }
 
 TEST_CASE("nic_changed reports a changed prefix length", "[nic_monitor]")

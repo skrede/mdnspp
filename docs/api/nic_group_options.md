@@ -92,10 +92,12 @@ struct nic_monitor_options {
 | `enumerator` | `move_only_function<std::vector<network_interface>(std::error_code &)>` | `{}` (use `enumerate_interfaces()`) | Optional replacement for `enumerate_interfaces()`. When set, the native backends are bypassed and the monitor polls this callable every `poll_interval`. Intended for tests and for supplying a curated interface universe. |
 
 An enumerator fills each interface's `addresses` with every address and its on-link prefix
-length. The order is free: the monitor reports an interface as changed (a removal followed
-by an addition) when its `is_up` flag or the set of its `addresses` differs, and a
-reordering of the same addresses is not a change. An added or removed address, or a changed
-prefix length, is a change.
+length. The monitor reports an interface as changed (a removal followed by an addition) when
+its `is_up` flag changes, when it gains or loses an address family, or when the first address
+of either family changes (address or prefix length). The first IPv4 address is the first one
+outside 169.254/16, or the first link-local one when there is no other; the first IPv6 address
+is the first in `addresses`. Peers bind and advertise only that address, so an address added
+or removed after it is not a change.
 
 ```cpp
 mdnspp::nic_monitor_options mon_opts{

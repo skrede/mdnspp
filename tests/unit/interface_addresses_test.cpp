@@ -61,6 +61,18 @@ TEST_CASE("first_address returns the first address of the family in vector order
     CHECK(first_address(network_interface{}, address_family::ipv4) == nullptr);
 }
 
+TEST_CASE("first_address prefers an IPv4 address outside 169.254/16 and falls back to link-local", "[interface_addresses]")
+{
+    network_interface nic;
+    nic.addresses = {{address("169.254.1.1"), 16}, {address("fe80::1"), 64}, {address("192.168.1.1"), 24}};
+    CHECK(*first_address(nic, address_family::ipv4) == ip_network{address("192.168.1.1"), 24});
+    CHECK(*first_address(nic, address_family::ipv6) == ip_network{address("fe80::1"), 64});
+
+    nic.addresses.erase(nic.addresses.begin() + 2);
+    CHECK(*first_address(nic, address_family::ipv4) == ip_network{address("169.254.1.1"), 16});
+    CHECK(*first_address(nic, address_family::ipv6) == ip_network{address("fe80::1"), 64});
+}
+
 TEST_CASE("has_family reports whether the interface has an address of the family", "[interface_addresses]")
 {
     network_interface v4_only;

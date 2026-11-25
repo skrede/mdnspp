@@ -111,6 +111,19 @@ TEST_CASE("a query from a port other than the multicast port still reaches the s
     }));
 }
 
+TEST_CASE("a query from source port 0 gets no reply and raises no error", "[gate][port][server]")
+{
+    std::size_t errors = 0;
+    service_options opts;
+    opts.on_error = [&errors](std::error_code, std::string_view) { ++errors; };
+    server_rig rig{std::move(opts)};
+    const std::size_t sent_before = rig.peer.socket().sent_packets().size();
+    feed(rig, service_query(), sent_from_port(rig.peer.socket(), 0));
+
+    CHECK(rig.peer.socket().sent_packets().size() == sent_before);
+    CHECK(errors == 0);
+}
+
 TEST_CASE("only the in-process transport declares the in-process trait", "[gate][port][trait]")
 {
     STATIC_REQUIRE(is_in_process_v<inproc_socket<test_clock>>);

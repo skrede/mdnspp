@@ -64,12 +64,17 @@ private:
     on_link_table<policy_clock_t<P>> m_on_link;
     static constexpr bool in_process = is_in_process_v<typename P::socket_type>;
 
+    // A query from source port 0 cannot be answered, so it never reaches the legacy unicast path.
     // Queries skip the TTL rule: legacy queriers often send with IP TTL 1 and are owed a reply (RFC 6762 section 6.7).
     // RFC 6762 section 5.5: "responders SHOULD check that the source address in the query packet matches the local
     // subnet for that link". An unknown destination is never held against a query.
     bool query_accepted(const recv_metadata &meta)
     {
-        return in_process || classify_destination(meta) != destination_kind::unicast || source_on_link(meta);
+        if(in_process)
+            return true;
+        if(meta.sender.port == 0)
+            return false;
+        return classify_destination(meta) != destination_kind::unicast || source_on_link(meta);
     }
 
     // RFC 6762 section 11: "All responses received with a destination address in the IP header that is the mDNS IPv4

@@ -62,8 +62,7 @@ public:
         if(!after)
         {
             m_services.erase(it);
-            if(before)
-                m_lost_cb(*before, reason);
+            m_lost_cb(*before, reason);
         }
         else if(auto type = changed_record_type(*before, *after))
             m_updated_cb(*after, update_event::removed, *type);

@@ -9,8 +9,10 @@
 #include "mdnspp/network_interface.h"
 
 #include <array>
+#include <string>
 #include <cstddef>
 #include <optional>
+#include <string_view>
 
 namespace mdnspp::detail {
 
@@ -26,7 +28,8 @@ Options default_family_options(const network_interface &nic, address_family fami
 {
     Options opts{};
     opts.interface_index = nic.index;
-    opts.multicast_group = family == address_family::ipv4 ? endpoint{"224.0.0.251", 5353} : endpoint{"ff02::fb", 5353};
+    const std::string_view group = family == address_family::ipv4 ? default_ipv4_group : default_ipv6_group;
+    opts.multicast_group = endpoint{std::string{group}, default_port};
     return opts;
 }
 

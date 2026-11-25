@@ -9,8 +9,10 @@
 
 #include "mdnspp/endpoint.h"
 #include "mdnspp/ip_address.h"
+#include "mdnspp/socket_options.h"
 #include "mdnspp/network_interface.h"
 
+#include <string>
 #include <vector>
 #include <cstdint>
 #include <optional>
@@ -51,7 +53,7 @@ inline std::optional<ip_address> egress_source_address(const endpoint &group, st
     const winsock_guard winsock{ec};
     if(ec)
         return std::nullopt;
-    const endpoint probe = is_ipv6(group.address) ? endpoint{"224.0.0.251", group.port} : group;
+    const endpoint probe = is_ipv6(group.address) ? endpoint{std::string{default_ipv4_group}, group.port} : group;
     const native_socket_t fd = ::socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if(fd == invalid_socket)
     {

@@ -51,6 +51,10 @@ struct socket_options
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets are looped back to the sending host. Enabled by default so that services and clients on the same machine can communicate. |
 | `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | TTL (IPv4) or hop limit (IPv6) of sent packets, multicast and unicast alike. `std::nullopt`: the native and Asio sockets send with 255, as RFC 6762 Section 11 recommends for responses (SHOULD), not with the OS default. |
 
+The default group and port are available as `mdnspp::default_ipv4_group` (`"224.0.0.251"`),
+`mdnspp::default_ipv6_group` (`"ff02::fb"`) and `mdnspp::default_port` (`5353`) in
+`<mdnspp/socket_options.h>`.
+
 ### Interface selection precedence and address family
 
 When more than one of the binding fields is set, the precedence at socket

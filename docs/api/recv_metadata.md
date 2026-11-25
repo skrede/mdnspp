@@ -55,6 +55,10 @@ not directly accessible from `monitor_options`,
   response is accepted, and a multicast response from a source outside every on-link prefix is
   dropped. A query of unknown destination is always kept, so legacy queriers get their reply.
 
+An address whose on-link prefix length is `0` never makes a source on-link; only a source equal to
+that address passes. A query whose source port is `0` cannot be answered and is dropped, so the
+server's legacy unicast path never sees it; in-process transports are exempt.
+
 **Interface attribution.** A peer whose socket is bound to an interface (its
 `interface_index()` is nonzero) drops a packet whose `destination` is a multicast address
 and whose `recv_ifindex` is known and differs from the bound index. An unknown

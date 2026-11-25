@@ -54,6 +54,16 @@ TEST_CASE("on_link_table tests a source against the prefixes of the receiving in
     CHECK_FALSE(on_link(t, "2001:db8:0:7f::1", 4));
 }
 
+TEST_CASE("on_link_table never lets a zero-length prefix match a source", "[gate][on-link]")
+{
+    test_clock::reset();
+    interface_snapshot snapshot{{nic_with(2, {network_of("192.0.2.1", 0), network_of("2001:db8:1::1", 0)})}};
+    table t{enumerate_from(snapshot)};
+    CHECK_FALSE(on_link(t, "198.51.100.7", 2));
+    CHECK_FALSE(on_link(t, "2001:db8:2::1", 2));
+    CHECK(on_link(t, "192.0.2.1", 2));
+}
+
 TEST_CASE("on_link_table counts an address of any local interface as on-link", "[gate][on-link]")
 {
     test_clock::reset();

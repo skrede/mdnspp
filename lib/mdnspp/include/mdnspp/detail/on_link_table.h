@@ -22,7 +22,7 @@ inline bool in_any_prefix(const network_interface &nic, const ip_address &source
 {
     return std::ranges::any_of(nic.addresses, [&source](const ip_network &net)
     {
-        return in_prefix(source, net.address, net.prefix_length);
+        return net.prefix_length != 0 && in_prefix(source, net.address, net.prefix_length);
     });
 }
 

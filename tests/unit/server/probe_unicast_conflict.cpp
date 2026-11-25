@@ -9,7 +9,7 @@
 TEST_CASE("a probing server detects a conflict that a defender answers by unicast",
           "[service_server][conflict][qu-window]")
 {
-    const uint32_t loopback = loopback_index();
+    const uint32_t loopback = index_of_127_0_0_1();
     conflict_log log;
     server_fixture f{make_test_info(), on_conflict_into(log, "Renamed._http._tcp.local.")};
     f.start();

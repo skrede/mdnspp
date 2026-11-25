@@ -61,7 +61,7 @@ TEST_CASE("a peer bound to an interface takes multicast from that interface or o
 
 TEST_CASE("the interface rule leaves unicast and unknown destinations to the on-link rule", "[gate][attribution]")
 {
-    loopback_index();
+    index_of_127_0_0_1();
     CHECK(queried(3, "127.0.0.1") == 1);
     CHECK(found(3, nullptr) == 1);
     CHECK(answered(3, "127.0.0.1"));

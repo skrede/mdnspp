@@ -7,7 +7,7 @@ namespace {
 
 recv_metadata on_link_unicast(const querier_rig &rig)
 {
-    return arriving(rig.peer.socket(), endpoint{"127.0.0.2", mdns_port}, address_of("127.0.0.1"), loopback_index());
+    return arriving(rig.peer.socket(), endpoint{"127.0.0.2", mdns_port}, address_of("127.0.0.1"), index_of_127_0_0_1());
 }
 
 }

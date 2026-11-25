@@ -64,8 +64,8 @@ resolved_service service(std::string_view name, std::initializer_list<std::strin
     return svc;
 }
 
-const std::string aaaa = std::to_string(uint16_t(dns_type::aaaa));
-const std::string a = std::to_string(uint16_t(dns_type::a));
+const std::string aaaa_code = std::to_string(uint16_t(dns_type::aaaa));
+const std::string a_code = std::to_string(uint16_t(dns_type::a));
 
 }
 
@@ -78,7 +78,7 @@ TEST_CASE("nic_family_union fires found for the first family and updated only wh
     e.fan_in.updated(v4, service("svc.local.", {"192.0.2.10"}, {"2001:db8::10"}), update_event::added, dns_type::aaaa);
 
     CHECK(e.log == std::vector<std::string>{"found svc.local. 192.0.2.10",
-                                            "added " + aaaa + " svc.local. 192.0.2.10 2001:db8::10"});
+                                            "added " + aaaa_code + " svc.local. 192.0.2.10 2001:db8::10"});
 }
 
 TEST_CASE("nic_family_union reports a second family's new address as an update", "[nic_group]")
@@ -88,7 +88,7 @@ TEST_CASE("nic_family_union reports a second family's new address as an update",
     e.fan_in.found(v6, service("svc.local.", {}, {"2001:db8::10"}));
 
     CHECK(e.log == std::vector<std::string>{"found svc.local. 192.0.2.10",
-                                            "added " + aaaa + " svc.local. 192.0.2.10 2001:db8::10"});
+                                            "added " + aaaa_code + " svc.local. 192.0.2.10 2001:db8::10"});
 }
 
 TEST_CASE("nic_family_union fires lost once the last family lost the service", "[nic_group]")
@@ -117,7 +117,7 @@ TEST_CASE("nic_family_union reports the addresses a lost family took with it", "
     e.fan_in.found(v6, service("svc.local.", {}, {"2001:db8::10"}));
     e.fan_in.lost(v4, service("svc.local.", {"192.0.2.10"}), loss_reason::goodbye);
 
-    CHECK(e.log.back() == "removed " + a + " svc.local. 2001:db8::10");
+    CHECK(e.log.back() == "removed " + a_code + " svc.local. 2001:db8::10");
 }
 
 TEST_CASE("nic_family_union keys instances case-insensitively and keeps instances apart", "[nic_group]")

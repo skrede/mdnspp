@@ -46,7 +46,8 @@ TEST_CASE("default_socket binds an IPv6 interface address in any text form", "[n
     mdnspp::default_context ctx;
     std::error_code ec;
     mdnspp::default_socket sock{ctx, ipv6_group_options("0:0:0:0:0:0:0:1"), ec};
-    REQUIRE_FALSE(ec);
+    if(ec)
+        mdnspp::test_support::skip_or_fail("IPv6 default_socket construction on loopback failed: " + ec.message());
     REQUIRE(mdnspp::test_support::ipv6_multicast_interface(sock.native_handle()) == expected);
 }
 

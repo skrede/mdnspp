@@ -24,7 +24,7 @@ inline mdnspp::ip_address address_of(std::string_view text)
     return *mdnspp::detail::parse_ip_address(text);
 }
 
-inline uint32_t loopback_index()
+inline uint32_t index_of_127_0_0_1()
 {
     std::error_code ec;
     const mdnspp::ip_address loopback = address_of("127.0.0.1");

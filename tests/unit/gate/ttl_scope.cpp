@@ -60,6 +60,16 @@ TEST_CASE("packet_gate drops a response whose TTL is below receive_ttl_minimum",
 {
     gate g{5353, {}, 0, no_interfaces};
     CHECK_FALSE(g.admit(with_ttl(uint8_t{10}), response));
+    CHECK_FALSE(g.admit(with_ttl(uint8_t{254}), response));
+}
+
+TEST_CASE("packet_gate compares the response TTL with a configured receive_ttl_minimum inclusively",
+          "[gate][ttl-filter]")
+{
+    gate g{5353, {.receive_ttl_minimum = 200}, 0, no_interfaces};
+    CHECK_FALSE(g.admit(with_ttl(uint8_t{199}), response));
+    CHECK(g.admit(with_ttl(uint8_t{200}), response));
+    CHECK(g.admit(with_ttl(uint8_t{201}), response));
 }
 
 TEST_CASE("packet_gate admits a response whose TTL is at or above receive_ttl_minimum", "[gate][ttl-filter]")

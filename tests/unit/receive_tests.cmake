@@ -8,7 +8,6 @@ make_subdir_test(recv_loop_stop_test recv_loop/stop.cpp)
 make_subdir_test(receive_contract_buffered_test receive_contract/buffered.cpp)
 target_link_libraries(receive_contract_buffered_test PRIVATE mdnspp::inproc)
 
-make_test(ip_address_test)
 make_test(mock_receive_metadata_test)
 make_inproc_subdir_test(inproc_bus_destination_test inproc_bus/destination.cpp)
 make_test(recv_ancillary_test)

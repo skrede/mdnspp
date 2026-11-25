@@ -19,3 +19,4 @@ make_inproc_subdir_test(nic_group_family_events_test nic_group/family_events.cpp
 make_subdir_test(nic_group_family_union_test    nic_group/family_union.cpp)
 set_tests_properties(nic_group_family_union_test PROPERTIES TIMEOUT 30)
 make_subdir_test(nic_group_default_ipv6_test    nic_group/default_ipv6.cpp)
+make_subdir_test(nic_group_default_options_test nic_group/default_options.cpp)

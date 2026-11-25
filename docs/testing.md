@@ -76,7 +76,8 @@ Unit tests cover:
   (tests/unit/recv_loop/: recv_loop_*_test)
 - Receive ancillary data: TTL, hop limit, arrival interface and destination
   address, including truncated control data (recv_ancillary_test,
-  recv_ancillary_bounds_test, recv_ancillary_destination_test)
+  recv_ancillary_bounds_test, recv_ancillary_destination_test; the WSAMSG
+  parser on Windows, recv_ancillary_windows_test)
 - Receive metadata of the test-double sockets: the mock socket's default and
   explicit metadata (mock_receive_metadata_test) and the destination of
   in-process multicast and unicast deliveries (inproc_bus_destination_test)
@@ -103,7 +104,8 @@ Unit tests cover:
   nic_group_monitor_test, nic_group_options_test, nic_group_dynamic_test,
   nic_group_siblings_test; nic_monitor_test), one instance set per address
   family per NIC and the two-argument socket options factory
-  (nic_group_families_test), the IPv4 and IPv6 servers of dual-stack NICs going
+  (nic_group_families_test), the multicast group and interface the default
+  factory gives each family (nic_group_default_options_test), the IPv4 and IPv6 servers of dual-stack NICs going
   live side by side with both addresses (nic_group_family_siblings_test),
   construction failures, factory family mismatches and the group's mdns_options
   reaching its servers (nic_group_errors_test), a default-policy group on an
@@ -399,6 +401,10 @@ host's multicast, and the egress rule: `d0` has the lower interface index,
 the default routes leave on `d1`, so an unbound server must advertise `d1`'s
 addresses and an unbound IPv6 socket must be pinned to `d1`, and in `p0`,
 which has no route, the egress lookup finds nothing without an error.
+`netns_nic_group_families_test` runs a default-policy `nic_group` over `d0`
+and `d1` against peers that advertise a service's IPv4 address from an IPv4
+server and its IPv6 address from an IPv6 server, so the group must find the
+service on each link and unite both addresses.
 `netns_probe_defense_test` runs two servers that share one sibling registry (as
 the per-NIC servers of a `nic_group` do) on `d0` and `d1`, with a defender on
 `p0` that answers the `d0` server's probe the way the probe asks, unicast to

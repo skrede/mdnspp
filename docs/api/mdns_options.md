@@ -52,7 +52,7 @@ struct mdns_options {
 | `unknown_ttl_policy` | `ttl_unknown_policy` | `ttl_unknown_policy::accept` | none (hardening) | Disposition for responses where the IP TTL could not be extracted. `accept` passes such responses through (default, for transports without TTL extraction support, e.g. custom policies and the inproc bus). `reject` discards them. Queries are exempt. |
 | `qu_response_window` | `std::chrono::milliseconds` | `2s` | RFC 6762 §6 | How long after sending a question with the unicast-response (QU) bit a peer accepts unicast responses that answer it. A response sent to a unicast address passes only if a record of its answer section answers such a question (name, type unless ANY, class unless ANY); every other unicast response is silently ignored. A response whose destination is unknown skips the rule. See [qu_response_window](options/qu_response_window_in_mdns_options.md). |
 
-**Note:** All defaults are RFC-compliant. Changing them is an advanced operation: incorrect settings may violate interoperability guarantees or cause excessive network traffic.
+**Note:** The defaults follow RFC 6762 where it specifies a value; `receive_ttl_minimum` and `unknown_ttl_policy` are hardening beyond the RFC. Changing a field that follows the RFC is an advanced operation: incorrect settings may violate interoperability guarantees or cause excessive network traffic.
 
 ## Usage
 

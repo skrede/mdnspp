@@ -46,8 +46,9 @@ not directly accessible from `monitor_options`,
 
 - A packet whose `destination` is a multicast address is on-link, whatever its source.
 - A response whose `destination` is a unicast address passes only if the `sender` address lies
-  in an on-link prefix of the receiving interface (`recv_ifindex`, or every interface when it is
-  `0`) or equals an address of any local interface. A query sent to a unicast address passes on
+  in an on-link prefix of the receiving interface (`recv_ifindex`; when it is `0`, the interface the
+  peer is bound to, and every interface for an unbound peer) or equals an address of any local
+  interface. A query sent to a unicast address passes on
   the same condition.
 - When `destination` is `nullopt`, a response gets the same source test, because the gate cannot
   tell whether it was sent to the group or to this host. On such a platform an on-link unicast

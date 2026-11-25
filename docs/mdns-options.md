@@ -1,10 +1,12 @@
 # mDNS Options
 
-> **Warning: All defaults in `mdns_options` are RFC 6762-compliant. This struct
-> exists for non-standard mDNS use cases such as traffic isolation, custom
-> namespaces, embedded environments, and testing. Changing any field means
-> deviating from RFC 6762 and may break interoperability with standard mDNS
-> implementations (Apple Bonjour, Avahi, Windows mDNS, etc.).**
+> **Warning: The defaults in `mdns_options` follow RFC 6762 where it specifies a
+> value; `receive_ttl_minimum` and `unknown_ttl_policy` are hardening beyond the
+> RFC. This struct exists for non-standard mDNS use cases such as traffic
+> isolation, custom namespaces, embedded environments, and testing. Changing a
+> field that follows the RFC means deviating from RFC 6762 and may break
+> interoperability with standard mDNS implementations (Apple Bonjour, Avahi,
+> Windows mDNS, etc.).**
 
 ## Primer
 
@@ -14,8 +16,8 @@ refresh queries fire, how long to wait for truncated-response packets, the
 receive-side IP TTL threshold for responses, and how long unicast replies to a
 QU question are accepted.
 
-All fields default to RFC 6762-compliant values. Use designated initializers to
-override specific fields:
+Fields default to the values RFC 6762 specifies, except the two hardening fields named
+above. Use designated initializers to override specific fields:
 
 ```cpp
 #include <mdnspp/mdns_options.h>
@@ -238,7 +240,7 @@ Disposition for responses where the IP TTL could not be extracted. Both
 unavailable only on transports without an IP layer (e.g. custom policies,
 the inproc bus) or when the platform call fails.
 
-| Value | Behaviour |
+| Value | Behavior |
 |-------|-----------|
 | `ttl_unknown_policy::accept` | Responses without extractable TTL are accepted. Default. |
 | `ttl_unknown_policy::reject` | Responses without extractable TTL are discarded. Not suitable on transports without TTL extraction support. Queries are still answered. |

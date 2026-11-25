@@ -269,7 +269,7 @@ set in `service_info` are advertised as given.
 ### Per-interface socket options via socket_options_factory
 
 By default, `nic_group` binds each socket to the interface by `interface_index` and sets
-`multicast_group` to `224.0.0.251:5353` for the IPv4 instances and `ff02::fb:5353` for the
+`multicast_group` to `224.0.0.251:5353` for the IPv4 instances and `[ff02::fb]:5353` for the
 IPv6 instances. To customize socket options per interface and family, provide a factory:
 
 ```cpp

@@ -87,9 +87,10 @@ per-packet metadata extracted by the socket implementation:
 ```cpp
 struct recv_metadata
 {
-    endpoint              sender;
-    std::optional<uint8_t> ttl;
-    uint32_t              recv_ifindex{0};
+    endpoint                  sender;
+    std::optional<uint8_t>    ttl;
+    uint32_t                  recv_ifindex{0};
+    std::optional<ip_address> destination;
 };
 ```
 
@@ -98,10 +99,11 @@ struct recv_metadata
 | `sender` | `endpoint` | Source address and port of the packet sender. |
 | `ttl` | `std::optional<uint8_t>` | IP TTL (IPv4) or hop limit (IPv6) of the received packet. Extracted natively by both `default_socket` and `asio_socket` on Linux, macOS (`recvmsg` ancillary data), and Windows (`WSARecvMsg`). `std::nullopt` only when extraction is unavailable on the transport (e.g. custom policies, the inproc bus). |
 | `recv_ifindex` | `uint32_t` | OS interface index on which the packet arrived (`IP_PKTINFO`). Zero when not available. |
+| `destination` | `std::optional<ip_address>` | Destination address from the IP header of the received packet: the multicast group, or the local unicast address. `std::nullopt` when the platform reports none. See [ip_address](api/ip_address.md). |
 
-The `ttl` field enables RFC 6762 §11 receive-side enforcement: packets with
-a TTL below `mdns_options::receive_ttl_minimum` (default 255) are silently
-discarded. Packets where TTL extraction failed are handled according to
+The `ttl` field enables the receive TTL check (hardening; no RFC rule requires it):
+responses with a TTL below `mdns_options::receive_ttl_minimum` (default 255) are silently
+discarded, and queries are never dropped for their TTL. Responses where TTL extraction failed are handled according to
 `mdns_options::unknown_ttl_policy` (`accept` by default for backward
 compatibility with platforms that do not support TTL extraction).
 

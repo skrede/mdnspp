@@ -171,8 +171,8 @@ defect.
 **Symptom:** with `mdns_options::unknown_ttl_policy =
 ttl_unknown_policy::reject`, a peer receives nothing.
 
-RFC 6762 §11 receive-side enforcement compares the received packet's IP TTL
-against `mdns_options::receive_ttl_minimum`. The TTL is carried in
+The receive TTL check (hardening, responses only) compares the IP TTL of a
+received response against `mdns_options::receive_ttl_minimum`. The TTL is carried in
 `recv_metadata::ttl` (`std::optional<uint8_t>`), extracted natively by
 `default_socket` and `asio_socket` on Linux, macOS, and Windows. It is
 `std::nullopt` when the transport cannot supply it: custom policy sockets
@@ -181,11 +181,11 @@ that do not populate it, the inproc bus, and Windows systems where the
 
 `ttl_unknown_policy` decides what happens to those packets:
 
-- `accept` (default) — packets without a TTL are processed normally.
-- `reject` — packets without a TTL are silently discarded. On a transport
-  that never supplies the TTL this discards *everything*: the peer appears
-  deaf with no error reported. Use `reject` only where TTL extraction is
-  known to work.
+- `accept` (default) — responses without a TTL are processed normally.
+- `reject` — responses without a TTL are silently discarded. Queries are
+  still answered. On a transport that never supplies the TTL this discards
+  *every response*: the peer appears deaf to responses with no error
+  reported. Use `reject` only where TTL extraction is known to work.
 
 See [api/recv_metadata.md](api/recv_metadata.md) for the platform matrix.
 
@@ -246,4 +246,4 @@ See [api/errors.md](api/errors.md) for the full error reference.
 - [Socket Options](socket-options.md) — interface selection, multicast TTL, loopback
 - [NIC Group](nic-group.md) — multi-interface operation
 - [api/errors.md](api/errors.md) — `mdns_error` and error-code conventions
-- [rfc/receive-ttl.md](rfc/receive-ttl.md) — RFC 6762 §11 receive-side TTL verification
+- [rfc/receive-ttl.md](rfc/receive-ttl.md) — receive-side TTL check on responses

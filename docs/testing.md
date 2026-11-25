@@ -151,10 +151,13 @@ Unit tests cover:
   (default_conformance_v6_only_test); the asio twins are
   asio_receive_metadata_test and asio_receive_v6_only_test
   (tests/unit/asio_receive/). Without such an interface the multicast cases
-  skip, and fail under `MDNSPP_REQUIRE_NETWORK`. The two multicast cases carry
-  the ctest label `multicast_probe`: the macOS workflow runs them in a
-  separate step as root (Apple TN3179, local network privacy denies multicast
-  to unprivileged processes) and everything else unprivileged
+  skip, and fail under `MDNSPP_REQUIRE_NETWORK`. The label is set per ctest
+  target: `default_conformance_receive_metadata_multicast_test` and the whole
+  of `asio_receive_metadata_test`, which also holds the asio loopback unicast
+  and TTL cases, carry the ctest label `multicast_probe`. The macOS workflow
+  runs the labeled targets in a separate step as root (Apple TN3179, local
+  network privacy denies multicast to unprivileged processes) and every other
+  target unprivileged
 - Test-double sockets: the error_code constructors and send of the mock and
   in-process sockets, the throwing forms that wrap them, and the mock socket's
   failure injection reaching both (mock_socket_error_code_test,
@@ -186,7 +189,8 @@ Unit tests cover:
 Some targets depend on the platform or build options:
 default_poll_errors_test, default_reentrant_poll_test,
 default_nested_receive_test, wakeup_fd_test, default_context_construct_test,
-and recv_ancillary_bounds_test are not built on Windows; the
+recv_ancillary_bounds_test and recv_ancillary_destination_test are not built
+on Windows, and recv_ancillary_windows_test is built on Windows only; the
 `asio_*` targets and receive_contract_asio_test require
 `MDNSPP_ENABLE_ASIO_POLICY=ON`; the encrypt targets other than
 encrypt_policy_trait_test, and receive_contract_encrypted_test, require

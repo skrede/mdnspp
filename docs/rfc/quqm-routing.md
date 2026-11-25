@@ -63,9 +63,9 @@ unicast response. This is used in two scenarios:
    the link.
 
 2. **Probing**: During RFC 6762 §8 probing, outgoing probes use QU queries so that
-   only the authoritative responder for the name replies, reducing multicast
-   traffic on the segment. Servers in a `nic_group` probe with QM questions
-   instead, see [nic_group](../nic-group.md#unicast-replies).
+   a defending host can answer immediately by unicast instead of waiting out the
+   multicast rate limit (section 8.1). Servers in a `nic_group` probe with QM
+   questions instead, see [nic_group](../nic-group.md#unicast-replies).
 
 ### QM semantics
 

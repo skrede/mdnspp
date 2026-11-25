@@ -49,7 +49,7 @@ struct socket_options
 | `interface_index` | `std::optional<uint32_t>` | `std::nullopt` | OS interface index of the NIC to bind. Resolved at socket open via `enumerate_interfaces()`. |
 | `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. Change this to isolate mDNS traffic to a custom namespace. |
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets are looped back to the sending host. Enabled by default so that services and clients on the same machine can communicate. |
-| `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | TTL (IPv4) or hop limit (IPv6) of sent packets, multicast and unicast alike. `std::nullopt`: the native and Asio sockets send with 255, as RFC 6762 Section 11 requires, not with the OS default. |
+| `multicast_ttl` | `std::optional<std::uint8_t>` | `std::nullopt` | TTL (IPv4) or hop limit (IPv6) of sent packets, multicast and unicast alike. `std::nullopt`: the native and Asio sockets send with 255, as RFC 6762 Section 11 recommends for responses (SHOULD), not with the OS default. |
 
 ### Interface selection precedence and address family
 
@@ -299,9 +299,9 @@ if (it == ifaces.end())
 mdnspp::socket_options opts{.interface_index = it->index};
 ```
 
-### Setting TTL for RFC 6762 compliance
+### Setting the send TTL
 
-RFC 6762 Section 11 requires a multicast TTL of 255 for mDNS. With
+RFC 6762 Section 11 says responses SHOULD be sent with IP TTL 255. With
 `multicast_ttl` unset, the library sends with 255. You can also set it
 explicitly:
 
@@ -421,9 +421,10 @@ socket accordingly.
 
 ## Receive-side TTL extraction
 
-RFC 6762 §11 requires that mDNS implementations verify the IP TTL of received
-packets and discard those with a TTL below 255. mdnspp implements this via
-the `recv_metadata::ttl` field populated by the socket implementation.
+No RFC rule requires a receive-side TTL check; RFC 6762 §11 has only the
+send-side SHOULD for responses. mdnspp offers the check as hardening, applied
+to responses only: queries are never dropped for their TTL. The sockets
+populate the `recv_metadata::ttl` field it reads.
 
 ### Socket option configuration
 
@@ -450,7 +451,7 @@ extraction is enabled:
 When TTL extraction fails silently (setsockopt error, extension pointer
 unavailable), the socket opens normally and `recv_metadata::ttl` is left as
 `std::nullopt`. The `mdns_options::unknown_ttl_policy` field controls
-whether such packets are accepted or rejected.
+whether such responses are accepted or rejected.
 
 ### Filtering configuration
 
@@ -458,13 +459,13 @@ TTL filtering is configured via `mdns_options`:
 
 ```cpp
 mdns_options opts{
-    .receive_ttl_minimum  = 255,                    // discard packets with TTL < 255
+    .receive_ttl_minimum  = 255,                    // discard responses with TTL < 255
     .unknown_ttl_policy   = ttl_unknown_policy::accept, // accept when TTL unavailable
 };
 ```
 
-See [mdns_options](api/mdns_options.md) for all fields. For the full
-RFC 6762 §11 compliance discussion, see [Receive-Side TTL](rfc/receive-ttl.md).
+See [mdns_options](api/mdns_options.md) for all fields. For the rationale and
+the RFC text on TTL 255, see [Receive-Side TTL](rfc/receive-ttl.md).
 For the `recv_metadata` struct fields, see [recv_metadata](api/recv_metadata.md).
 
 ## Known limitations

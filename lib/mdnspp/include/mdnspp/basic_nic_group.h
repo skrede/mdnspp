@@ -154,27 +154,32 @@ private:
         if(m_grp_opts.interface_filter && !m_grp_opts.interface_filter(nic))
             return;
 
-        detail::nic_family_unions unions;
-        for(address_family family : detail::address_families)
+        m_slots.populate(nic, [&](detail::nic_family_unions &unions)
         {
-            if(detail::has_family(nic, family))
-                add_family(nic, family, unions);
-        }
-        m_slots.adopt(nic.index, std::move(unions));
+            bool built = false;
+            for(address_family family : detail::address_families)
+            {
+                if(detail::has_family(nic, family))
+                    built = add_family(nic, family, unions) || built;
+            }
+            return built;
+        });
     }
 
-    void add_family(const network_interface &nic, address_family family, detail::nic_family_unions &unions)
+    bool add_family(const network_interface &nic, address_family family, detail::nic_family_unions &unions)
     {
         const auto sock_opts = socket_options_for(nic, family);
         if(!detail::family_matches(sock_opts, family))
         {
             if(m_grp_opts.on_error)
                 m_grp_opts.on_error(nic, std::make_error_code(std::errc::invalid_argument), "socket_options_factory");
-            return;
+            return false;
         }
         typename detail::nic_group_slots<P, Peers...>::instance_tuple instances;
-        if(m_builder.build(instances, {nic, family, sock_opts, unions}, m_watch_set))
-            m_slots.add(nic, family, std::move(instances));
+        if(!m_builder.build(instances, {nic, family, sock_opts, unions}, m_watch_set))
+            return false;
+        m_slots.add(nic, family, std::move(instances));
+        return true;
     }
 
     policy_socket_options_t<P> socket_options_for(const network_interface &nic, address_family family)

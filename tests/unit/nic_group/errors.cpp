@@ -1,5 +1,6 @@
 #include "fixture.h"
 #include "sniffer.h"
+#include "raw_sender.h"
 #include "failing_socket.h"
 
 #include "support/failure_injection.h"
@@ -13,6 +14,7 @@
 #include <vector>
 #include <cstdint>
 #include <utility>
+#include <stdexcept>
 #include <string_view>
 #include <system_error>
 
@@ -114,6 +116,31 @@ TEST_CASE("nic_group skips a family whose factory options name the other family"
     // RFC 6762 section 8.1: one server instance sends three probes.
     CHECK(traffic.ipv4.queries == 3);
     CHECK(traffic.ipv6.queries == 0);
+    grp.stop();
+}
+
+TEST_CASE("nic_group stops the families already built when a later family throws", "[nic_group][errors]")
+{
+    group_fixture f;
+    f.nics->clear();
+    f.nics->push_back(make_nic(1, "nic1", {"10.0.0.1", "fd00::1"}));
+    found_list found;
+    auto grp_opts = f.recording_grp_opts(found);
+    grp_opts.socket_options_factory = [](const network_interface &nic, address_family family)
+    {
+        if(family == address_family::ipv6)
+            throw std::runtime_error("factory");
+        return detail::default_family_options<inproc::inproc_socket_options>(nic, family);
+    };
+    monitor_group grp{f.executor, std::move(grp_opts), one_monitor()};
+    grp.watch("_test._tcp.local.");
+    CHECK_THROWS_AS(grp.start(), std::runtime_error);
+
+    group_sender sender{f.executor, ipv4_group};
+    sender.send({.ipv4 = "192.0.2.10"});
+    f.advance(200ms);
+    CHECK(found.empty());
+    CHECK(grp.services().empty());
     grp.stop();
 }
 

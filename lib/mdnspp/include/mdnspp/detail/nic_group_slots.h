@@ -49,10 +49,23 @@ public:
         slot.families[family_slot(family)] = std::move(instances);
     }
 
-    void adopt(uint32_t index, nic_family_unions unions)
+    template <typename Build>
+    void populate(const network_interface &nic, Build &&build)
     {
-        if(auto it = m_slots.find(index); it != m_slots.end())
-            it->second.unions = std::move(unions);
+        auto &slot = m_slots[nic.index];
+        slot.nic = nic;
+        bool built = false;
+        try
+        {
+            built = build(slot.unions);
+        }
+        catch(...)
+        {
+            remove(nic.index);
+            throw;
+        }
+        if(!built)
+            remove(nic.index);
     }
 
     void remove(uint32_t index)

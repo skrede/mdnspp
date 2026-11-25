@@ -70,7 +70,7 @@ inline void add_adapter(interface_map &by_name, PIP_ADAPTER_ADDRESSES adapter)
         return;
     auto &iface = by_name[iface_name];
     iface.name = iface_name;
-    iface.index = static_cast<uint32_t>(adapter->IfIndex);
+    iface.index = static_cast<uint32_t>(adapter->IfIndex != 0 ? adapter->IfIndex : adapter->Ipv6IfIndex);
     iface.is_up = (adapter->OperStatus == IfOperStatusUp);
     iface.is_loopback = (adapter->IfType == IF_TYPE_SOFTWARE_LOOPBACK);
 

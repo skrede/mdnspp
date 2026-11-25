@@ -24,7 +24,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <string_view>
 #include <system_error>
 
 inline constexpr std::chrono::milliseconds receive_deadline{2000};
@@ -49,9 +48,9 @@ inline mdnspp::socket_options loopback_options(const char *group, const char *lo
 {
     mdnspp::socket_options opts;
     opts.multicast_group = mdnspp::endpoint{group, 0};
-    // Darwin rejects an IPv6 link-local group join with interface index 0 when it has no IPv6 route to the group.
-    if(std::string_view{group}.find(':') != std::string_view::npos)
-        opts.interface_address = loopback;
+    // Without it the join takes the default multicast route, and Darwin rejects an IPv6 link-local group join with
+    // interface index 0 when it has no IPv6 route to the group.
+    opts.interface_address = loopback;
     return opts;
 }
 

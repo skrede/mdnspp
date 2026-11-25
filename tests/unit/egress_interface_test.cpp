@@ -22,9 +22,9 @@ TEST_CASE("the egress source address of the mDNS group belongs to an enumerated 
 {
     std::error_code ec;
     const std::optional<ip_address> source = egress_source_address(endpoint{"224.0.0.251", 5353}, ec);
-    REQUIRE_FALSE(ec);
     if(!source.has_value())
-        test_support::skip_or_fail("no route to the mDNS group");
+        test_support::skip_or_fail("no route to the mDNS group: " + ec.message());
+    REQUIRE_FALSE(ec);
 
     const std::vector<network_interface> interfaces = enumerate_interfaces();
     const network_interface *nic = egress_interface(interfaces, *source);
@@ -47,4 +47,11 @@ TEST_CASE("egress_source_address rejects a group that is not an IP address", "[e
     std::error_code ec;
     REQUIRE_FALSE(egress_source_address(endpoint{"not an address", 5353}, ec).has_value());
     REQUIRE(ec == std::errc::invalid_argument);
+}
+
+TEST_CASE("connected_source reports a failed connect instead of returning an empty result silently", "[egress]")
+{
+    std::error_code ec;
+    REQUIRE_FALSE(connected_source(invalid_socket, endpoint{"224.0.0.251", 5353}, ec).has_value());
+    REQUIRE(ec);
 }

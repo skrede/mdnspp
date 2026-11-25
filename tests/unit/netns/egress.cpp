@@ -133,7 +133,7 @@ TEST_CASE("an unbound IPv6 default_socket is pinned to the IPv4 egress interface
     CHECK_FALSE(joined_mdns_group("d0"));
 }
 
-TEST_CASE("the egress lookup follows the route of the IPv4 group and reports no route without an error",
+TEST_CASE("the egress lookup follows the route of the IPv4 group and reports a missing route as an error",
           "[netns][egress]")
 {
     require_netns_harness();
@@ -150,5 +150,5 @@ TEST_CASE("the egress lookup follows the route of the IPv4 group and reports no 
         unrouted = mdnspp::detail::egress_source_address({"224.0.0.251", mdns_port}, ec);
     });
     CHECK_FALSE(unrouted.has_value());
-    CHECK_FALSE(ec);
+    CHECK(ec == std::errc::network_unreachable);
 }

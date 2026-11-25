@@ -112,7 +112,10 @@ server announces on the wrong network.
   interface (an unbound IPv6 socket is pinned to it as well), so a server
   that announces a VPN or bridge address is following the default route;
   binding the intended interface explicitly fixes both where it sends and
-  what it advertises.
+  what it advertises. On a host with no route to the mDNS group the lookup
+  fails, the server reports it through `on_error` (`"egress interface
+  lookup"`) and advertises no address unless it is bound to an interface or
+  given explicit addresses.
 - **Multiple real interfaces.** To operate on all physical interfaces at
   once, use `nic_group` / `dynamic_nic_group` with an `interface_filter`
   excluding virtual adapters, rather than one peer on an unspecified

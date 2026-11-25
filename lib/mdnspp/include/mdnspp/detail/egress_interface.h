@@ -28,7 +28,10 @@ inline std::optional<ip_address> connected_source(native_socket_t fd, const endp
         return std::nullopt;
     }
     if(::connect(fd, reinterpret_cast<const sockaddr *>(&to->ss), to->len) != 0)
+    {
+        ec = last_socket_error();
         return std::nullopt;
+    }
     sockaddr_in local{};
     socklen_t length = static_cast<socklen_t>(sizeof(local));
     if(::getsockname(fd, reinterpret_cast<sockaddr *>(&local), &length) != 0)

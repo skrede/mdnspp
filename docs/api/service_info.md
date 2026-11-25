@@ -152,7 +152,12 @@ follows:
    supplies the IPv4 address and, for an IPv4 socket, the IPv6 address. An
    unpinned IPv6 socket sends on whatever interface the operating system
    picks for each packet, so its server advertises no IPv6 address. When the
-   lookup finds no route, no address of those families is advertised.
+   lookup finds no route, no address of those families is advertised and the
+   server reports the failure through `on_error` with the context
+   `"egress interface lookup"`; it does not fall back to another interface.
+   An unbound server on a host with no route to the group therefore
+   advertises no address unless it is bound to an interface or given explicit
+   addresses.
 
 A family with no candidate stays unset and its records are simply not
 announced (e.g. AAAA on an IPv6-less host) — this is not an error.

@@ -28,6 +28,7 @@
 #include <variant>
 #include <optional>
 #include <algorithm>
+#include <stdexcept>
 #include <system_error>
 
 using mdnspp::test_support::netns_interface_index;
@@ -151,4 +152,11 @@ TEST_CASE("the egress lookup follows the route of the IPv4 group and reports a m
     });
     CHECK_FALSE(unrouted.has_value());
     CHECK(ec == std::errc::network_unreachable);
+}
+
+TEST_CASE("an exception thrown inside run_in_netns reaches the caller", "[netns]")
+{
+    require_netns_harness();
+    CHECK_THROWS_AS(mdnspp::test_support::run_in_netns("p0", [] { throw std::runtime_error("work failed"); }),
+                    std::runtime_error);
 }

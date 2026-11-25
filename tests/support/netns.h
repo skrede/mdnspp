@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <optional>
+#include <exception>
 #include <string_view>
 
 namespace mdnspp::test_support {
@@ -51,21 +52,35 @@ inline void require_netns_harness()
         netns_or_fail("not running inside the tests/netns/run.sh topology");
 }
 
+template <typename Work>
+bool enter_and_run(const std::string &netns, Work &work, std::exception_ptr &failure)
+{
+    const int32_t ns = ::open(("/run/netns/" + netns).c_str(), O_RDONLY | O_CLOEXEC);
+    const bool entered = ns >= 0 && ::setns(ns, CLONE_NEWNET) == 0;
+    try
+    {
+        if(entered)
+            work();
+    }
+    catch(...)
+    {
+        failure = std::current_exception();
+    }
+    if(ns >= 0)
+        ::close(ns);
+    return entered;
+}
+
 // A network namespace belongs to a thread, and a socket keeps the namespace it was created in.
 template <typename Work>
 void run_in_netns(const std::string &netns, Work work)
 {
     bool entered = false;
-    std::thread worker{[&]
-    {
-        const int32_t ns = ::open(("/run/netns/" + netns).c_str(), O_RDONLY | O_CLOEXEC);
-        entered = ns >= 0 && ::setns(ns, CLONE_NEWNET) == 0;
-        if(entered)
-            work();
-        if(ns >= 0)
-            ::close(ns);
-    }};
+    std::exception_ptr failure;
+    std::thread worker{[&] { entered = enter_and_run(netns, work, failure); }};
     worker.join();
+    if(failure)
+        std::rethrow_exception(failure);
     INFO("entering namespace " << netns);
     REQUIRE(entered);
 }

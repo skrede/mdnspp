@@ -72,7 +72,7 @@ struct querier_fixture
 
     void inject(std::vector<std::byte> packet)
     {
-        q.socket().inject_receive(mdnspp::endpoint{}, std::move(packet));
+        q.socket().inject_receive(mdnspp::endpoint{"192.0.2.1", 5353}, std::move(packet));
     }
 
     void fire_silence()

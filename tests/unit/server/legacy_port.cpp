@@ -56,7 +56,7 @@ TEST_CASE("a server on a custom group port answers a query from that port by mul
     CHECK(sent_to(rig.sent(), endpoint{"224.0.0.251", 5454}));
 }
 
-TEST_CASE("a query from port 0 is answered as a legacy query", "[service_server][legacy_unicast][port]")
+TEST_CASE("a query from port 0 is ignored", "[service_server][legacy_unicast][port]")
 {
     server_fixture f;
     f.go_live();
@@ -64,6 +64,7 @@ TEST_CASE("a query from port 0 is answered as a legacy query", "[service_server]
     const endpoint sender{"192.0.2.20", 0};
     f.inject(sender, make_ptr_query("_http._tcp.local."));
 
-    CHECK(sent_to(f.sent(), sender));
+    CHECK_FALSE(sent_to(f.sent(), sender));
+    CHECK(f.sent().empty());
     CHECK_FALSE(f.server.delay_timer().has_pending());
 }

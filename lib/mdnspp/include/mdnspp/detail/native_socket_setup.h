@@ -59,7 +59,6 @@ inline opened_socket open_and_configure(const socket_options &opts, std::error_c
         return {invalid_socket, 0};
 
     const bool v6 = is_ipv6(opts.multicast_group.address);
-    // precedence index > name > address; an unknown index or name fails with invalid_argument
     const resolved_interface iface =
         resolve_socket_interface(opts, v6 ? address_family::ipv6 : address_family::ipv4, ec);
     if(ec)

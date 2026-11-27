@@ -38,8 +38,8 @@ inline bool first_address_changed(const network_interface &before, const network
 // addresses rotating, must not restart them.
 inline bool nic_changed(const network_interface &before, const network_interface &after)
 {
-    return after.is_up != before.is_up || first_address_changed(before, after, address_family::ipv4) ||
-           first_address_changed(before, after, address_family::ipv6);
+    return after.is_up != before.is_up || first_address_changed(before, after, address_family::ipv4)
+        || first_address_changed(before, after, address_family::ipv6);
 }
 
 inline std::vector<network_interface>::const_iterator find_nic(const std::vector<network_interface> &nics,
@@ -49,7 +49,8 @@ inline std::vector<network_interface>::const_iterator find_nic(const std::vector
                         [index](const network_interface &i) { return i.index == index; });
 }
 
-// A changed interface (same index, different up state or first address) is reported as a removal followed by an addition.
+// A changed interface (same index, different up state or first address) is reported as a removal followed by an
+// addition.
 inline std::vector<nic_change> diff_nics(const std::vector<network_interface> &previous,
                                          const std::vector<network_interface> &next)
 {

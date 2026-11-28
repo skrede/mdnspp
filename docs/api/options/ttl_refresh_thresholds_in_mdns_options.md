@@ -8,16 +8,16 @@
 
 ## What
 
-`ttl_refresh_thresholds` defines when the library proactively re-queries records that are approaching expiry (RFC 6762 §5.2). Each value is a fraction of the wire TTL elapsed since the record was inserted. When a cached record's age reaches `wire_ttl * threshold`, a refresh query is sent. The schedule is cancelled as soon as a fresh record arrives.
+`ttl_refresh_thresholds` defines when the library proactively re-queries records that are approaching expiry (RFC 6762 §5.2). Each value is a fraction of the wire TTL elapsed since the record was inserted. The service monitor keeps one schedule per tracked service instance, built from the wire TTL of its SRV record. When the record's age reaches `wire_ttl * threshold`, a query for the instance's SRV, TXT, A and AAAA records is sent. Every fresh SRV record replaces the schedule with a new one.
 
-Values must be in the open interval `(0, 1)` and should be strictly increasing. With the default `{0.80, 0.85, 0.90, 0.95}` and a `record_ttl` of 4500 seconds (75 minutes), the refresh queries fire at:
+Values must be in the open interval `(0, 1)` and strictly increasing; a list that breaks either rule (equal neighbors included) fails construction of every peer with `std::errc::invalid_argument`. An empty list is valid. Fire points are consumed in list order; only jitter larger than the spacing of two thresholds can put one before its predecessor, and such a point is sent at the same wakeup as that predecessor. With the default `{0.80, 0.85, 0.90, 0.95}` and a wire TTL of 4500 seconds (75 minutes), the refresh queries fire at:
 
 - 3600 s (60 min) — 80% elapsed
 - 3825 s (63.75 min) — 85% elapsed
 - 4050 s (67.5 min) — 90% elapsed
 - 4275 s (71.25 min) — 95% elapsed
 
-Each fired query is jittered by `refresh_jitter_pct` to desynchronise simultaneous queriers.
+Each fired query is jittered by `refresh_jitter_pct` to desynchronize simultaneous queriers.
 
 ## Why
 

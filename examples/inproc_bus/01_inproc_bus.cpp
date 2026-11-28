@@ -1,4 +1,4 @@
-// Multi-service lifecycle example using InProcPolicy and inproc_bus.
+// Multi-service lifecycle example using inproc_policy and inproc_bus.
 //
 // Demonstrates server, monitor, and querier working together through the
 // in-process bus -- no real network sockets. Useful for understanding
@@ -34,9 +34,9 @@
 
 using namespace std::chrono_literals;
 
-// InProcPolicy uses steady_clock and real time. The executor drives its own
+// inproc_policy uses steady_clock and real time. The executor drives its own
 // event loop via run(), sleeping 1ms between drain iterations.
-using Policy = mdnspp::InProcPolicy;
+using Policy = mdnspp::inproc_policy;
 
 // Alias the concrete types for readability.
 using Bus      = mdnspp::inproc::inproc_bus<>;
@@ -75,7 +75,7 @@ int main()
             {
                 std::cout << "[server] query from " << sender
                           << " type=" << to_string(qtype)
-                          << " (" << to_string(mode) << ")\n";
+                          << " (" << to_string(mode) << ")" << std::endl;
             },
         }
     };
@@ -89,11 +89,11 @@ int main()
             {
                 std::cout << "[monitor] found: " << svc.instance_name.str()
                           << " at " << svc.hostname.str()
-                          << ":" << svc.port << "\n";
+                          << ":" << svc.port << std::endl;
                 if(!svc.ipv4_addresses.empty())
-                    std::cout << "          ipv4: " << svc.ipv4_addresses.front() << "\n";
+                    std::cout << "          ipv4: " << svc.ipv4_addresses.front() << std::endl;
                 for(const auto &txt : svc.txt_entries)
-                    std::cout << "          txt: " << txt.key << "=" << txt.value.value_or("") << "\n";
+                    std::cout << "          txt: " << txt.key << "=" << txt.value.value_or("") << std::endl;
             },
             .on_updated = [](const mdnspp::resolved_service &svc,
                              mdnspp::update_event            ev,
@@ -101,7 +101,7 @@ int main()
             {
                 const char *direction = (ev == mdnspp::update_event::added) ? "added" : "removed";
                 std::cout << "[monitor] updated: " << svc.instance_name.str()
-                          << " (" << direction << " " << to_string(changed_type) << ")\n";
+                          << " (" << direction << " " << to_string(changed_type) << ")" << std::endl;
             },
             .on_lost = [](const mdnspp::resolved_service &svc,
                           mdnspp::loss_reason              reason)
@@ -117,7 +117,7 @@ int main()
                     return "unknown";
                 }();
                 std::cout << "[monitor] lost: " << svc.instance_name.str()
-                          << " (reason: " << why << ")\n";
+                          << " (reason: " << why << ")" << std::endl;
             },
         }
     };
@@ -132,7 +132,7 @@ int main()
             {
                 std::visit([](const auto &r)
                 {
-                    std::cout << "[querier] record: " << r.name.str() << "\n";
+                    std::cout << "[querier] record: " << r.name.str() << std::endl;
                 }, rec);
             },
             .silence_timeout = 3s,
@@ -141,12 +141,12 @@ int main()
 
     // Step 6: start all three components.
     // async_start() is non-blocking; the executor drives the event loop.
-    std::cout << "[main] starting server, monitor, and querier\n";
+    std::cout << "[main] starting server, monitor, and querier" << std::endl;
     server.async_start(
         [](std::error_code ec)
         {
             if(!ec)
-                std::cout << "[server] live (probe+announce complete)\n";
+                std::cout << "[server] live (probe+announce complete)" << std::endl;
         });
 
     monitor.async_start();
@@ -156,7 +156,7 @@ int main()
         {
             std::cout << "[querier] done (" << results.size() << " records";
             if(ec) std::cout << ", ec=" << ec.message();
-            std::cout << ")\n";
+            std::cout << ")" << std::endl;
         });
 
     // Step 7: use an inproc_timer to schedule the update and shutdown sequence.
@@ -169,7 +169,7 @@ int main()
     update_timer.async_wait([&](std::error_code ec)
     {
         if(ec) return;
-        std::cout << "[main] updating service info (version 2.0)\n";
+        std::cout << "[main] updating service info (version 2.0)" << std::endl;
         mdnspp::service_info updated = info;
         updated.txt_records = {{"version", "2.0"}, {"path", "/api/v2"}};
         server.update_service_info(std::move(updated));
@@ -181,7 +181,7 @@ int main()
     stop_timer.async_wait([&](std::error_code ec)
     {
         if(ec) return;
-        std::cout << "[main] stopping server (sends goodbye)\n";
+        std::cout << "[main] stopping server (sends goodbye)" << std::endl;
         server.stop();
     });
 
@@ -191,7 +191,7 @@ int main()
     exit_timer.async_wait([&](std::error_code ec)
     {
         if(ec) return;
-        std::cout << "[main] shutting down\n";
+        std::cout << "[main] shutting down" << std::endl;
         monitor.stop();
         executor.stop();
     });
@@ -199,6 +199,6 @@ int main()
     // Step 8: run the executor. Blocks until executor.stop() is called.
     executor.run();
 
-    std::cout << "[main] done\n";
+    std::cout << "[main] done" << std::endl;
     return 0;
 }

@@ -1,20 +1,23 @@
 # mDNS Options
 
-> **Warning: All defaults in `mdns_options` are RFC 6762-compliant. This struct
-> exists for non-standard mDNS use cases such as traffic isolation, custom
-> namespaces, embedded environments, and testing. Changing any field means
-> deviating from RFC 6762 and may break interoperability with standard mDNS
-> implementations (Apple Bonjour, Avahi, Windows mDNS, etc.).**
+> **Warning: The defaults in `mdns_options` follow RFC 6762 where it specifies a
+> value; `receive_ttl_minimum` and `unknown_ttl_policy` are hardening beyond the
+> RFC. This struct exists for non-standard mDNS use cases such as traffic
+> isolation, custom namespaces, embedded environments, and testing. Changing a
+> field that follows the RFC means deviating from RFC 6762 and may break
+> interoperability with standard mDNS implementations (Apple Bonjour, Avahi,
+> Windows mDNS, etc.).**
 
 ## Primer
 
 `mdns_options` is a plain struct of protocol timing tunables passed to `basic_*`
 constructors in mdnspp. It controls how often queries are sent, when TTL
-refresh queries fire, how long to wait for truncated-response packets, and the
-receive-side IP TTL enforcement threshold.
+refresh queries fire, how long to wait for truncated-response packets, the
+receive-side IP TTL threshold for responses, and how long unicast replies to a
+QU question are accepted.
 
-All fields default to RFC 6762-compliant values. Use designated initializers to
-override specific fields:
+Fields default to the values RFC 6762 specifies, except the two hardening fields named
+above. Use designated initializers to override specific fields:
 
 ```cpp
 #include <mdnspp/mdns_options.h>
@@ -87,7 +90,7 @@ The exponential backoff interval is capped at this value. Once reached, the
 monitor sends one query per `max_interval` indefinitely (until stopped).
 
 Risk of changing: Reducing to seconds or minutes is appropriate for networks
-with rapid service churn -- the monitor will re-query more frequently at
+with rapid service churn &mdash; the monitor will re-query more frequently at
 steady state. This increases query traffic proportionally and should only be
 done when the extra traffic is acceptable.
 
@@ -124,10 +127,13 @@ known services alive before their records expire.
 Each value is a fraction of the wire TTL. When that fraction of the record's
 lifetime has elapsed since insertion, a refresh query is sent. The schedule
 covers the last 20% of the TTL window by default, giving four attempts before
-expiry.
+expiry. Values must lie in (0, 1) and be strictly increasing; construction
+fails with `std::errc::invalid_argument` otherwise.
 
-The schedule is rebuilt fresh on every record insertion or dedup-refresh, so
-a received record resets the refresh clock.
+The service monitor keeps one schedule per tracked service instance and
+rebuilds it on every SRV record with a positive TTL that arrives for the
+instance, so a received SRV record resets the refresh clock. Each fire point
+sends one query for the instance's SRV, TXT, A and AAAA records.
 
 Risk of changing: Fewer thresholds means fewer retries before expiry --
 acceptable on stable networks but risky on unreliable links. Earlier thresholds
@@ -155,7 +161,7 @@ mdnspp::mdns_options opts{
 | **RFC section** | 6762 §5.2 |
 
 A uniform random offset in `[0, wire_ttl * refresh_jitter_pct]` is added to
-each threshold-derived fire point to desynchronise simultaneous queriers on the
+each threshold-derived fire point to desynchronize simultaneous queriers on the
 same network segment.
 
 Risk of changing: Setting to `0.0` disables jitter entirely, which may cause
@@ -167,8 +173,10 @@ same threshold tick. Only disable in controlled test environments.
 ### TC handling (RFC 6762 sections 6 and 7.2)
 
 These parameters control how the service server accumulates truncated-response
-(TC-bit) continuation packets and limits known-answer sections in outgoing
-queries.
+(TC-bit) continuation packets. The known-answer list of an outgoing query is not
+capped: the service monitor's PTR queries, the only queries that carry known
+answers, include every qualifying record, and a list too large for
+`max_query_payload` is split into TC continuation packets.
 
 #### tc_wait_min and tc_wait_max
 
@@ -188,27 +196,20 @@ respond before all continuation packets have arrived on slow or congested links,
 resulting in unnecessary re-announcements. Increasing `tc_wait_max` beyond
 500 ms lengthens responses and may affect UX in interactive discovery scenarios.
 
-#### max_known_answers
-
-| | |
-|---|---|
-| **Type** | `std::size_t` |
-| **Default** | 0 (unlimited) |
-| **RFC section** | 6762 §7.1 |
-
-When non-zero, limits the number of known-answer records included in outgoing
-multi-question queries to this many records (highest remaining TTL first). Zero
-means include all qualifying records.
-
-Risk of changing: Setting a low cap may cause responders to re-announce records
-the querier already holds, increasing traffic. Only useful to limit packet size
-on networks with unusually small MTUs.
-
 ---
 
-### Receive-side TTL filtering (RFC 6762 §11)
+### Receive-side TTL filtering (responses only)
 
-These two fields control enforcement of the receive-side IP TTL requirement.
+These two fields control a receive-side IP TTL check on **responses**. No RFC rule
+requires it: RFC 6762 §11 has only the send-side SHOULD that responses carry IP
+TTL 255. The check is hardening, and queries are never dropped for their TTL.
+
+Queries are exempt so that legacy queriers are answered. A query whose source
+port is not the configured multicast port (`socket_options::multicast_group.port`,
+5353 by default) is a legacy query, and RFC 6762 §6.7 requires a unicast reply to
+its source address and port. A query from port 0 is a legacy query too. Such
+one-shot resolvers often send with the operating system's default multicast TTL,
+commonly 1, and with default options a service server answers them.
 
 #### receive_ttl_minimum
 
@@ -216,15 +217,15 @@ These two fields control enforcement of the receive-side IP TTL requirement.
 |---|---|
 | **Type** | `uint32_t` |
 | **Default** | `255` |
-| **RFC section** | 6762 §11 |
+| **RFC section** | none (RFC 6762 §11 covers only the send-side TTL) |
 
-Minimum IP TTL (or IPv6 hop limit) for accepted incoming mDNS packets.
-Packets with a TTL below this value are silently discarded. The value 255
-enforces link-local-only reception per RFC 6762 §11: any packet forwarded
-by a router has its TTL decremented below 255.
+Minimum IP TTL (or IPv6 hop limit) for accepted incoming mDNS responses.
+Responses with a TTL below this value are silently discarded. A response
+forwarded by a router has its TTL decremented below 255, so the default drops
+forwarded responses.
 
-Risk of changing: Reducing below 255 allows forwarded packets, violating the
-link-local scoping requirement and enabling cross-segment spoofing attacks.
+Risk of changing: reducing below 255 accepts forwarded responses and makes
+cross-segment spoofing easier.
 
 #### unknown_ttl_policy
 
@@ -233,16 +234,43 @@ link-local scoping requirement and enabling cross-segment spoofing attacks.
 | **Type** | `ttl_unknown_policy` |
 | **Default** | `ttl_unknown_policy::accept` |
 
-Disposition for packets where the IP TTL could not be extracted (e.g., on
-platforms where TTL extraction is not supported, such as AsioSocket).
+Disposition for responses where the IP TTL could not be extracted. Both
+`default_socket` and `asio_socket` extract the TTL natively on Linux, macOS
+(`recvmsg` ancillary data) and Windows (`WSARecvMsg`); extraction is
+unavailable only on transports without an IP layer (e.g. custom policies,
+the inproc bus) or when the platform call fails.
 
-| Value | Behaviour |
+| Value | Behavior |
 |-------|-----------|
-| `ttl_unknown_policy::accept` | Packets without extractable TTL are accepted. Default for backward compatibility. |
-| `ttl_unknown_policy::reject` | Packets without extractable TTL are discarded. Strict enforcement; not suitable on platforms without TTL extraction support. |
+| `ttl_unknown_policy::accept` | Responses without extractable TTL are accepted. Default. |
+| `ttl_unknown_policy::reject` | Responses without extractable TTL are discarded. Not suitable on transports without TTL extraction support. Queries are still answered. |
 
 See [recv_metadata](api/recv_metadata.md) and [Receive-Side TTL](rfc/receive-ttl.md)
 for platform extraction capabilities.
+
+---
+
+### Unicast responses (RFC 6762 section 6)
+
+#### qu_response_window
+
+| | |
+|---|---|
+| **Type** | `std::chrono::milliseconds` |
+| **Default** | `2s` |
+| **RFC section** | RFC 6762 §6 |
+
+A response sent to a unicast address is accepted only if a record of its answer
+section answers a question this peer sent with the unicast-response (QU) bit
+within the window. Queriers and service discovery started with
+`response_mode::unicast`, and service server probes, record their QU
+questions; every other unicast response is silently ignored. A response whose
+destination the platform does not report skips the rule and keeps only the
+on-link source test.
+
+Risk of changing: a longer window gives an on-link host more time to unicast
+unsolicited answers; a shorter one drops late replies, including a defender's
+reply to a probe. See [qu_response_window](api/options/qu_response_window_in_mdns_options.md).
 
 ---
 
@@ -264,7 +292,7 @@ mdnspp::mdns_options opts{
 
 ## See Also
 
-- [RFC 6762 section 5.2](rfc/query-backoff.md) -- query backoff specification
-- [RFC 6762 section 10.2](rfc/tc-handling.md) -- TC handling specification
-- [Service Monitor](service-monitor.md) -- uses mdns_options for continuous discovery
-- [Policies](policies.md) -- how mdns_options fits into the constructor signature
+- [RFC 6762 section 5.2](rfc/query-backoff.md) &mdash; query backoff specification
+- [RFC 6762 sections 6 and 7.2](rfc/tc-handling.md) &mdash; TC handling specification
+- [Service Monitor](service-monitor.md) &mdash; uses mdns_options for continuous discovery
+- [Policies](policies.md) &mdash; how mdns_options fits into the constructor signature

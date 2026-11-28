@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DNS_ENUMS_H
-#define HPP_GUARD_MDNSPP_DNS_ENUMS_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_ENUMS_H
+#define HPP_GUARD_MDNSPP_DETAIL_DNS_ENUMS_H
 
 #include <cstdint>
 #include <string_view>
@@ -22,6 +22,7 @@ enum class dns_class : uint16_t
 {
     none = 0u,
     in   = 1u,
+    any  = 255u,
 };
 
 enum class response_mode : uint8_t
@@ -59,6 +60,7 @@ constexpr std::string_view to_string(dns_class c) noexcept
     {
     case dns_class::none: return "none";
     case dns_class::in: return "IN";
+    case dns_class::any: return "ANY";
     }
     return "unknown";
 }

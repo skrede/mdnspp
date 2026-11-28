@@ -4,9 +4,13 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/basic_observer.h"
+#include "mdnspp/callback_types.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/observer_options.h"
 
 #include "mdnspp/testing/mock_policy.h"
+
+#include "support/wire_bytes.h"
 
 #include <catch2/catch_test_macros.hpp>
 
@@ -14,55 +18,17 @@
 #include <string>
 #include <vector>
 #include <cstddef>
+#include <cstdint>
+#include <string_view>
+#include <system_error>
 
 using namespace mdnspp;
 using namespace mdnspp::testing;
 using namespace std::chrono_literals;
-
-inline std::vector<std::byte> bytes(std::initializer_list<unsigned char> vals)
-{
-    std::vector<std::byte> v;
-    v.reserve(vals.size());
-    for(auto b : vals)
-        v.push_back(static_cast<std::byte>(b));
-    return v;
-}
-
-inline void push_u16_be(std::vector<std::byte> &buf, uint16_t v)
-{
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>(v >> 8)));
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>(v & 0xFF)));
-}
-
-inline void push_u32_be(std::vector<std::byte> &buf, uint32_t v)
-{
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 24) & 0xFF)));
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 16) & 0xFF)));
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>((v >> 8) & 0xFF)));
-    buf.push_back(static_cast<std::byte>(static_cast<uint8_t>(v & 0xFF)));
-}
-
-inline std::vector<std::byte> encode_name(std::string_view name)
-{
-    std::vector<std::byte> result;
-    if(!name.empty() && name.back() == '.')
-        name.remove_suffix(1);
-
-    size_t pos = 0;
-    while(pos < name.size())
-    {
-        size_t dot = name.find('.', pos);
-        if(dot == std::string_view::npos)
-            dot = name.size();
-        size_t len = dot - pos;
-        result.push_back(static_cast<std::byte>(static_cast<uint8_t>(len)));
-        for(size_t i = pos; i < dot; ++i)
-            result.push_back(static_cast<std::byte>(static_cast<uint8_t>(name[i])));
-        pos = (dot < name.size()) ? dot + 1 : name.size();
-    }
-    result.push_back(static_cast<std::byte>(0x00));
-    return result;
-}
+using mdnspp::test_support::bytes;
+using mdnspp::test_support::push_u16_be;
+using mdnspp::test_support::push_u32_be;
+using mdnspp::test_support::encode_name;
 
 inline std::vector<std::byte> make_ptr_response(std::string_view owner,
                                                 std::string_view target)
@@ -115,5 +81,56 @@ inline std::vector<std::byte> make_a_response(std::string_view owner,
 
     return pkt;
 }
+
+inline observer_options ignore_records()
+{
+    return observer_options{.on_record = [](const endpoint &, const mdns_record_variant &) {}};
+}
+
+inline observer_options count_records(uint32_t &count)
+{
+    return observer_options{.on_record = [&count](const endpoint &, const mdns_record_variant &) { ++count; }};
+}
+
+struct observation_outcome
+{
+    observation_outcome()
+        : ec{}
+        , fired{false}
+    {
+    }
+
+    std::error_code ec;
+    bool fired;
+};
+
+inline observer_completion_handler record_into(observation_outcome &out)
+{
+    return [&out](std::error_code ec)
+    {
+        out.fired = true;
+        out.ec = ec;
+    };
+}
+
+struct observer_fixture
+{
+    observer_fixture()
+        : ex{}
+        , records{}
+        , senders{}
+        , obs{ex, observer_options{.on_record = [this](const endpoint &ep, const mdns_record_variant &rec)
+          {
+              records.push_back(rec);
+              senders.push_back(ep);
+          }}}
+    {
+    }
+
+    mock_executor ex;
+    std::vector<mdns_record_variant> records;
+    std::vector<endpoint> senders;
+    basic_observer<mock_policy> obs;
+};
 
 #endif

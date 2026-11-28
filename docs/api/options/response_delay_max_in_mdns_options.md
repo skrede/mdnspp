@@ -10,7 +10,7 @@
 
 `response_delay_max` defines the upper bound of the random response delay window described in RFC 6762 §6. The actual delay before each multicast response is sent is uniformly sampled from `[response_delay_min, response_delay_max]`. The 100 ms spread (`120 - 20`) ensures responses from different nodes are distributed across a meaningful window rather than arriving in a tight burst.
 
-See `response_delay_min` for the full description of the delay mechanism.
+It is also the upper bound of the delay before the first multicast query of the querier, service discovery and each service monitor watch. See `response_delay_min` for the full description of both uses.
 
 ## Why
 

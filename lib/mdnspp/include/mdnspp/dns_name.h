@@ -1,37 +1,25 @@
 #ifndef HPP_GUARD_MDNSPP_DNS_NAME_H
 #define HPP_GUARD_MDNSPP_DNS_NAME_H
 
+#include "mdnspp/mdns_error.h"
+
+#include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/dns_name_text.h"
+
 #include <string>
+#include <vector>
 #include <compare>
-#include <cctype>
 #include <cstddef>
+#include <cstdint>
 #include <ostream>
+#include <algorithm>
 #include <string_view>
 
 namespace mdnspp {
 
-// dns_name — normalized DNS fully-qualified domain name.
-//
-// Invariant: the stored value is always lowercase with a trailing dot, or empty
-// (representing the DNS root label, which has no trailing dot by convention).
-// Normalization follows RFC 1035 §3.1 (labels are case-insensitive).
-//
-// Modelled after std::filesystem::path: non-explicit construction normalizes
-// on entry, implicit conversion to std::string_view exposes the canonical form.
-// This makes dns_name transparent at all call sites — no explicit casts needed.
-//
-// Internal storage: std::string. SSO covers typical mDNS names (~30 chars) on
-// all major implementations, so no custom small-buffer optimization is needed.
-//
-// Label-length validation (RFC 1035 §2.3.4: 63-octet label, 253-octet name) is
-// deliberately absent from the constructor. Validation at the wire boundary
-// (read_dns_name / encode_dns_name) is the right layer; imposing it here would
-// force throwing constructors and break the path-like ergonomics.
 class dns_name
 {
 public:
-    // Non-explicit: mirrors std::filesystem::path implicit construction from a
-    // string-like value. Normalizes the input to lowercase FQDN on entry.
     dns_name(std::string_view name) // NOLINT(google-explicit-constructor)
         : m_name(normalize(name))
     {}
@@ -74,46 +62,68 @@ public:
         return *this;
     }
 
-    // Transparent, zero-cost view of the normalized value. Non-explicit so that
-    // dns_name is accepted wherever std::string_view is expected.
+    static expected<dns_name, mdns_error> parse(std::string_view name)
+    {
+        auto labels = detail::parse_presentation_labels(name);
+        if(!labels.has_value())
+            return detail::unexpected(labels.error());
+        dns_name result;
+        result.m_name = detail::make_canonical_presentation(*labels);
+        return result;
+    }
+
     operator std::string_view() const noexcept { return m_name; } // NOLINT(google-explicit-constructor)
 
-    // Access as std::string for APIs that require a std::string key (e.g. maps
-    // that cannot accept string_view for heterogeneous lookup).
     const std::string &str() const noexcept { return m_name; }
 
     bool empty() const noexcept { return m_name.empty(); }
-    auto find(std::string_view sv, std::size_t pos = 0) const noexcept { return m_name.find(sv, pos); }
-    static constexpr auto npos = std::string::npos;
+    std::size_t find(std::string_view sv, std::size_t pos = 0) const noexcept { return m_name.find(sv, pos); }
+    static constexpr std::size_t npos = std::string::npos;
 
-    bool operator==(const dns_name &) const = default;
-    auto operator<=>(const dns_name &) const = default;
+    // RFC 6762 §16: only ASCII 'A'-'Z' fold; UTF-8 bytes at and above 0x80 never do.
+    static constexpr char ascii_fold(char c) noexcept
+    {
+        return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    }
+
+    std::string comparison_key() const
+    {
+        std::string key(m_name);
+        for(char &c : key)
+            c = ascii_fold(c);
+        return key;
+    }
+
+    // Both operands hold the canonical escaped form, so a per-byte folded compare is label-aware: an escaped
+    // dot inside a label never matches a separator.
+    bool operator==(const dns_name &other) const noexcept
+    {
+        return m_name.size() == other.m_name.size()
+            && std::equal(m_name.begin(), m_name.end(), other.m_name.begin(),
+                          [](char a, char b) { return ascii_fold(a) == ascii_fold(b); });
+    }
+
+    // Weak, not strong: names that differ only in ASCII case are equivalent but not substitutable (str() differs).
+    std::weak_ordering operator<=>(const dns_name &other) const noexcept
+    {
+        return std::lexicographical_compare_three_way(
+            m_name.begin(), m_name.end(), other.m_name.begin(), other.m_name.end(),
+            [](char a, char b) { return ascii_fold(a) <=> ascii_fold(b); });
+    }
 
 private:
-    // Returns the lowercase FQDN of sv, or empty string if sv is empty.
-    // Appends '.' when the last character is not already '.'.
     static std::string normalize(std::string_view sv)
     {
-        if (sv.empty())
+        auto labels = detail::parse_presentation_labels(sv);
+        if(!labels.has_value())
             return {};
-
-        std::string result;
-        result.reserve(sv.size() + 1);
-        for (char c : sv)
-            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(c))));
-
-        if (result.back() != '.')
-            result.push_back('.');
-
-        return result;
+        return detail::make_canonical_presentation(*labels);
     }
 
     std::string m_name;
 };
 
-template <typename CharT, typename Traits>
-std::basic_ostream<CharT, Traits> &operator<<(std::basic_ostream<CharT, Traits> &os,
-                                               const dns_name &n)
+inline std::ostream &operator<<(std::ostream &os, const dns_name &n)
 {
     return os << static_cast<std::string_view>(n);
 }
@@ -125,7 +135,15 @@ struct std::hash<mdnspp::dns_name>
 {
     std::size_t operator()(const mdnspp::dns_name &n) const noexcept
     {
-        return std::hash<std::string_view>{}(static_cast<std::string_view>(n));
+        // FNV-1a over ASCII-folded bytes so that names differing only in
+        // ASCII case hash equal, matching dns_name::operator==.
+        uint64_t h = 14695981039346656037ull;
+        for(char c : static_cast<std::string_view>(n))
+        {
+            h ^= static_cast<uint8_t>(mdnspp::dns_name::ascii_fold(c));
+            h *= 1099511628211ull;
+        }
+        return static_cast<std::size_t>(h);
     }
 };
 

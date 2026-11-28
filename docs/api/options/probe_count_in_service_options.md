@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Type** | `unsigned` |
+| **Type** | `uint8_t` |
 | **Default** | `3` |
 | **RFC** | RFC 6762 §8.1 |
 | **One-liner** | Number of probe packets sent before a service is considered conflict-free and announcing begins. |
@@ -27,6 +27,6 @@ Increase `probe_count` when:
 
 ## Danger
 
-- **Reducing speeds up startup but increases the chance of a name conflict going undetected.** Values below 1 skip probing entirely, which is non-compliant with RFC 6762 §8.1 and means the service never checks for conflicts before announcing.
-- **Values below 1 are non-compliant** and may cause interoperability problems with implementations that perform proper conflict detection.
+- **Reducing speeds up startup but increases the chance of a name conflict going undetected.**
+- **`0` is rejected:** the server constructors fail with `std::errc::invalid_argument`, so probing cannot be skipped.
 - On a congested network, reducing probe count means a conflicting probe may not arrive before probing concludes; the library will later invoke `on_conflict` if a conflict is detected post-announcement.

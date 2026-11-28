@@ -3,7 +3,7 @@
 #include <thread>
 #include <iostream>
 
-// Announce two mDNS services sharing a single context using DefaultPolicy.
+// Announce two mDNS services sharing a single context using default_policy.
 // Demonstrates that multiple service_servers can coexist on one event loop.
 // Auto-stops after 30 seconds.
 

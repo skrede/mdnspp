@@ -2,7 +2,7 @@
 
 `record_cache` is a standalone, policy-free type that stores mDNS records with
 TTL tracking. It has no dependency on sockets, timers, or any `basic_*` type
-from mdnspp -- it holds records and lets you query or expire them at any time.
+from mdnspp &mdash; it holds records and lets you query or expire them at any time.
 
 `record_cache` is not included from `<mdnspp/defaults.h>`. Include it directly:
 
@@ -66,7 +66,7 @@ ctx.run();
 auto snap = cache.snapshot();
 ```
 
-This wiring is entirely manual -- `record_cache` does not know about `observer`
+This wiring is entirely manual &mdash; `record_cache` does not know about `observer`
 and `observer` does not know about `record_cache`. Any code that receives
 `mdns_record_variant` values can feed them in.
 
@@ -106,7 +106,7 @@ mdnspp::cache_options opts{
     .on_cache_flush = [](const mdnspp::cache_entry &authoritative,
                           std::vector<mdnspp::cache_entry> affected) {
         // A cache-flush record was received; `affected` entries from other
-        // origins for the same name+type have been scheduled for eviction.
+        // origins for the same name, type and class have been scheduled for eviction.
     },
 };
 
@@ -115,10 +115,12 @@ mdnspp::record_cache<> cache{std::move(opts)};
 
 `on_expired` fires inside `erase_expired()` after the expired entries have
 been removed from the internal storage. Callbacks are made with the lock
-released.
+released. In a service monitor, the monitor's own expiry handling (loss
+detection) runs first and the `on_expired` passed in its `cache_options` is
+called after it with the same entries.
 
 `on_cache_flush` fires when a record with the cache-flush bit set is inserted
-and records from other origins exist for the same name+type. The `affected`
+and records from other origins exist for the same name, type and class. The `affected`
 entries are scheduled for eviction after a 1-second grace period per RFC 6762
 section 10.2, but have not been removed yet at callback time.
 
@@ -145,12 +147,25 @@ fires `on_expired`.
 ### Cache-flush semantics (RFC 6762 section 10.2)
 
 When a record with the cache-flush bit set arrives, all records of the same
-name and type from *other* origins are marked for eviction after a 1-second
+name, type and class from *other* origins are marked for eviction after a 1-second
 grace window. The newly-inserted record from the authoritative sender is
-kept. `on_cache_flush` fires immediately with the affected records.
+kept. `on_cache_flush` fires immediately with the affected records. A record of
+another class under the same name and type is left alone: RFC 6762 section 10.2
+scopes the flush to "records of this name/rrtype/rrclass".
 
 Records from the same origin are considered a TTL refresh (dedup path); the
 flush does not apply to them.
+
+### Record class
+
+Records are keyed by name, type and class. Records of any class are cached;
+none is dropped. `find(name, type)` returns class IN records, and
+`find(name, type, rclass)` returns the records of the given class:
+
+```cpp
+auto in_records = cache.find("myhost.local.", mdnspp::dns_type::a);
+auto other = cache.find("myhost.local.", mdnspp::dns_type::a, static_cast<mdnspp::dns_class>(3));
+```
 
 ### Non-copyable, non-movable
 
@@ -180,6 +195,6 @@ so they may call `find()` or `snapshot()` without deadlock.
 
 ## See Also
 
-- [examples/record_cache/](../examples/record_cache/) -- runnable examples
-- [API reference: record_cache](api/record_cache.md) -- full type documentation
-- [Service Monitor](service-monitor.md) -- higher-level continuous service tracking built on top of record_cache
+- [examples/record_cache/](../examples/record_cache/) &mdash; runnable examples
+- [API reference: record_cache](api/record_cache.md) &mdash; full type documentation
+- [Service Monitor](service-monitor.md) &mdash; higher-level continuous service tracking built on top of record_cache

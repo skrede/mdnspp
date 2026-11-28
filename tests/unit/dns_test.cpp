@@ -1,5 +1,3 @@
-// tests/dns_test.cpp
-
 #include "mdnspp/dns.h"
 
 #include <catch2/catch_test_macros.hpp>

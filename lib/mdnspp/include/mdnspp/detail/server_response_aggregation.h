@@ -1,158 +1,191 @@
-#ifndef HPP_GUARD_MDNSPP_SERVER_RESPONSE_AGGREGATION_H
-#define HPP_GUARD_MDNSPP_SERVER_RESPONSE_AGGREGATION_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_SERVER_RESPONSE_AGGREGATION_H
+#define HPP_GUARD_MDNSPP_DETAIL_SERVER_RESPONSE_AGGREGATION_H
+
+#include "mdnspp/detail/dns_read.h"
+#include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_write.h"
+#include "mdnspp/detail/server_answer_plan.h"
+#include "mdnspp/detail/dns_service_records.h"
+#include "mdnspp/detail/server_meta_response.h"
 
 #include "mdnspp/service_info.h"
 #include "mdnspp/service_options.h"
 
-#include "mdnspp/detail/dns_read.h"
-#include "mdnspp/detail/dns_write.h"
-#include "mdnspp/detail/dns_enums.h"
-#include "mdnspp/detail/dns_response.h"
-
-#include "mdnspp/detail/server_query_match.h"
-#include "mdnspp/detail/server_known_answer.h"
-
+#include <span>
+#include <chrono>
 #include <vector>
-#include <string>
 #include <cstddef>
 #include <cstdint>
-#include <string_view>
+#include <algorithm>
 
 namespace mdnspp::detail {
 
-struct pending_response
+struct response_header_options
 {
-    bool armed{false};
-    dns_type qtype{dns_type::none};
-    bool needs_nsec{false};
-    suppression_mask suppression;
+    uint16_t id{0};                          // legacy unicast echoes the query ID (RFC 6762 §6.7)
+    bool cache_flush{true};                  // legacy unicast must not set cache-flush
+    bool include_nsec{true};
+    uint32_t ttl_cap{UINT32_MAX};            // legacy unicast caps TTLs (RFC 6762 §6.7)
+    std::span<const std::byte> questions{};  // legacy unicast repeats the question section
+    uint16_t qdcount{0};
+};
 
-    void merge(dns_type new_qtype, bool new_nsec, const suppression_mask &new_suppression)
+class answer_sections
+{
+public:
+    explicit answer_sections(const response_header_options &hdr)
+        : m_ancount(0)
+        , m_arcount(0)
+        , m_hdr(hdr)
     {
-        if(!armed)
-        {
-            armed = true;
-            qtype = new_qtype;
-            needs_nsec = new_nsec;
-            suppression = new_suppression;
-            return;
-        }
-
-        if(qtype != new_qtype)
-            qtype = dns_type::any;
-
-        needs_nsec = needs_nsec || new_nsec;
-
-        // AND logic: only suppress if ALL accumulated queries suppress
-        suppression.ptr = suppression.ptr && new_suppression.ptr;
-        suppression.srv = suppression.srv && new_suppression.srv;
-        suppression.a = suppression.a && new_suppression.a;
-        suppression.aaaa = suppression.aaaa && new_suppression.aaaa;
-        suppression.txt = suppression.txt && new_suppression.txt;
     }
 
-    void reset()
+    uint32_t ttl_for(std::chrono::seconds t) const
     {
-        armed = false;
-        qtype = dns_type::none;
-        needs_nsec = false;
-        suppression = {};
+        return wire_ttl(t, m_hdr.ttl_cap);
+    }
+
+    void add_answer(const std::vector<std::byte> &name, dns_type rtype, uint32_t ttl,
+                    const std::vector<std::byte> &rdata)
+    {
+        append_dns_rr(m_answers, name, rtype, ttl, rdata, is_unique(rtype));
+        ++m_ancount;
+    }
+
+    void add_additional(const std::vector<std::byte> &name, dns_type rtype, uint32_t ttl,
+                        const std::vector<std::byte> &rdata)
+    {
+        append_dns_rr(m_additional, name, rtype, ttl, rdata, is_unique(rtype));
+        ++m_arcount;
+    }
+
+    void add_nsec(const std::vector<std::byte> &owner_name, nsec_owner owner, const service_info &info, uint32_t ttl)
+    {
+        std::size_t before = m_additional.size();
+        append_nsec_rr(m_additional, owner_name, owner, info, ttl);
+        if(m_additional.size() > before)
+            ++m_arcount;
+    }
+
+    std::vector<std::byte> assemble() const
+    {
+        if(m_ancount == 0 && m_arcount == 0)
+            return {};
+        std::vector<std::byte> packet;
+        packet.reserve(12 + m_hdr.questions.size() + m_answers.size() + m_additional.size());
+        push_u16_be(packet, m_hdr.id);
+        push_u16_be(packet, 0x8400); // flags: QR=1, AA=1
+        push_u16_be(packet, m_hdr.qdcount);
+        push_u16_be(packet, m_ancount);
+        push_u16_be(packet, 0x0000); // nscount
+        push_u16_be(packet, m_arcount);
+        packet.insert(packet.end(), m_hdr.questions.begin(), m_hdr.questions.end());
+        packet.insert(packet.end(), m_answers.begin(), m_answers.end());
+        packet.insert(packet.end(), m_additional.begin(), m_additional.end());
+        return packet;
+    }
+
+private:
+    uint16_t m_ancount;
+    uint16_t m_arcount;
+    std::vector<std::byte> m_answers;
+    std::vector<std::byte> m_additional;
+    const response_header_options &m_hdr;
+
+    bool is_unique(dns_type t) const
+    {
+        if(!m_hdr.cache_flush)
+            return false;
+        return t == dns_type::srv || t == dns_type::a || t == dns_type::aaaa || t == dns_type::txt;
     }
 };
 
-inline std::vector<std::byte> build_response_with_nsec(const service_info &info, dns_type qtype,
-                                                       bool needs_nsec,
-                                                       const suppression_mask &mask,
-                                                       bool suppress_enabled,
-                                                       const service_options &opts)
+inline void add_planned_answers(answer_sections &out, const answer_plan &plan, const service_wire_records &w,
+                                const service_options &opts)
 {
-    // For specific type queries, check if that type is suppressed
-    if(suppress_enabled && qtype != dns_type::any)
-    {
-        bool suppressed = false;
-        switch(qtype)
-        {
-        case dns_type::ptr:  suppressed = mask.ptr; break;
-        case dns_type::srv:  suppressed = mask.srv; break;
-        case dns_type::a:    suppressed = mask.a; break;
-        case dns_type::aaaa: suppressed = mask.aaaa; break;
-        case dns_type::txt:  suppressed = mask.txt; break;
-        default: break;
-        }
-        if(suppressed)
-            return {};
-    }
-
-    auto response = build_dns_response(info, qtype, opts);
-
-    uint32_t nsec_ttl = static_cast<uint32_t>(opts.record_ttl.count());
-
-    if(needs_nsec && qtype != dns_type::any)
-    {
-        auto owner_name = encode_dns_name(info.hostname);
-        if(owner_name.empty())
-            return response;
-
-        if(response.empty())
-        {
-            push_u16_be(response, 0x0000); // id
-            push_u16_be(response, 0x8400); // flags
-            push_u16_be(response, 0x0000); // qdcount
-            push_u16_be(response, 0x0000); // ancount
-            push_u16_be(response, 0x0000); // nscount
-            push_u16_be(response, 0x0001); // arcount = 1
-
-            append_nsec_rr(response, owner_name, info, nsec_ttl);
-        }
-        else
-        {
-            append_nsec_rr(response, owner_name, info, nsec_ttl);
-            uint16_t arcount = read_u16_be(response.data() + 10);
-            ++arcount;
-            response[10] = static_cast<std::byte>(static_cast<uint8_t>(arcount >> 8));
-            response[11] = static_cast<std::byte>(static_cast<uint8_t>(arcount & 0xFF));
-        }
-    }
-
-    return response;
+    if(plan.ptr)
+        out.add_answer(w.name_service_type, dns_type::ptr, out.ttl_for(opts.ptr_ttl), w.rdata_ptr);
+    if(plan.srv)
+        out.add_answer(w.name_service_name, dns_type::srv, out.ttl_for(opts.srv_ttl), w.rdata_srv);
+    if(plan.txt)
+        out.add_answer(w.name_service_name, dns_type::txt, out.ttl_for(opts.txt_ttl), w.rdata_txt);
+    if(plan.a && !w.rdata_a.empty())
+        out.add_answer(w.name_hostname, dns_type::a, out.ttl_for(opts.a_ttl), w.rdata_a);
+    if(plan.aaaa && !w.rdata_aaaa.empty())
+        out.add_answer(w.name_hostname, dns_type::aaaa, out.ttl_for(opts.aaaa_ttl), w.rdata_aaaa);
 }
 
-inline std::vector<std::byte> build_meta_query_response(const service_info &info,
-                                                        uint32_t ttl = 4500)
+// RFC 6763 section 12: a PTR answer pulls SRV, TXT and the addresses; an SRV answer pulls the addresses.
+inline void add_planned_additionals(answer_sections &out, const answer_plan &plan, const service_wire_records &w,
+                                    const service_options &opts)
 {
-    std::vector<std::byte> packet;
-    push_u16_be(packet, 0x0000);
-    push_u16_be(packet, 0x8400);
-    push_u16_be(packet, 0x0000);
-    push_u16_be(packet, 0x0001);
-    push_u16_be(packet, 0x0000);
-    push_u16_be(packet, 0x0000);
-
-    auto owner = encode_dns_name(meta_query_name);
-    auto rdata = encode_dns_name(info.service_type);
-    append_dns_rr(packet, owner, dns_type::ptr, ttl, rdata, false);
-
-    return packet;
+    if(plan.ptr)
+    {
+        if(!plan.srv)
+            out.add_additional(w.name_service_name, dns_type::srv, out.ttl_for(opts.srv_ttl), w.rdata_srv);
+        if(!plan.txt)
+            out.add_additional(w.name_service_name, dns_type::txt, out.ttl_for(opts.txt_ttl), w.rdata_txt);
+    }
+    if(plan.ptr || plan.srv)
+    {
+        if(!plan.a && !w.rdata_a.empty())
+            out.add_additional(w.name_hostname, dns_type::a, out.ttl_for(opts.a_ttl), w.rdata_a);
+        if(!plan.aaaa && !w.rdata_aaaa.empty())
+            out.add_additional(w.name_hostname, dns_type::aaaa, out.ttl_for(opts.aaaa_ttl), w.rdata_aaaa);
+    }
 }
 
-inline std::vector<std::byte> build_subtype_response(std::string_view subtype_label,
-                                                     const service_info &info,
-                                                     uint32_t ttl = 4500)
+// RFC 6762 section 6.1: the NSEC owner is the queried name whose type does not exist; its bitmap lists the types
+// that do.
+inline void add_planned_nsec(answer_sections &out, const answer_plan &plan, const service_wire_records &w,
+                             const service_info &info, const service_options &opts)
 {
-    std::vector<std::byte> packet;
-    push_u16_be(packet, 0x0000);
-    push_u16_be(packet, 0x8400);
-    push_u16_be(packet, 0x0000);
-    push_u16_be(packet, 0x0001);
-    push_u16_be(packet, 0x0000);
-    push_u16_be(packet, 0x0000);
+    uint32_t nsec_ttl = out.ttl_for(opts.fallback_record_ttl);
+    if(plan.nsec_service_type)
+        out.add_nsec(w.name_service_type, nsec_owner::service_type, info, nsec_ttl);
+    if(plan.nsec_service_name)
+        out.add_nsec(w.name_service_name, nsec_owner::service_name, info, nsec_ttl);
+    if(plan.nsec_hostname)
+        out.add_nsec(w.name_hostname, nsec_owner::hostname, info, nsec_ttl);
+}
 
-    auto subtype_name = std::string(subtype_label) + "._sub." + info.service_type.str();
-    auto owner = encode_dns_name(subtype_name);
-    auto rdata = encode_dns_name(info.service_name);
-    append_dns_rr(packet, owner, dns_type::ptr, ttl, rdata, false);
+inline std::vector<std::byte> build_answer_response(const service_info &info, const answer_plan &plan,
+                                                    const service_options &opts,
+                                                    const response_header_options &hdr = {})
+{
+    if(plan.empty())
+        return {};
+    auto w = encode_service_records(info);
+    if(!w.valid)
+        return {};
+    answer_sections out(hdr);
+    add_planned_answers(out, plan, w, opts);
+    add_planned_additionals(out, plan, w, opts);
+    if(hdr.include_nsec)
+        add_planned_nsec(out, plan, w, info, opts);
+    return out.assemble();
+}
 
-    return packet;
+// The QU quarter-TTL rule (RFC 6762 section 5.4) uses the smallest TTL a plan would send.
+inline std::chrono::seconds min_planned_ttl(const answer_plan &plan, const service_options &opts)
+{
+    auto min_ttl = (std::chrono::seconds::max)();
+    if(plan.ptr)  min_ttl = (std::min)(min_ttl, opts.ptr_ttl);
+    if(plan.srv)  min_ttl = (std::min)(min_ttl, opts.srv_ttl);
+    if(plan.txt)  min_ttl = (std::min)(min_ttl, opts.txt_ttl);
+    if(plan.a)    min_ttl = (std::min)(min_ttl, opts.a_ttl);
+    if(plan.aaaa) min_ttl = (std::min)(min_ttl, opts.aaaa_ttl);
+    if(min_ttl == (std::chrono::seconds::max)())
+        min_ttl = opts.fallback_record_ttl;
+    return min_ttl;
+}
+
+// RFC 6762 section 5.4: a QU question is still answered by multicast when the record was not multicast within the
+// last quarter of its TTL, so passive listeners and new joiners see it.
+template <typename TimePoint>
+inline bool qu_requires_multicast(TimePoint last_multicast, TimePoint now, std::chrono::seconds min_ttl)
+{
+    return (now - last_multicast) > min_ttl / 4;
 }
 
 }

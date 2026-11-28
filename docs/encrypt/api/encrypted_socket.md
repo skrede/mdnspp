@@ -1,6 +1,12 @@
 # encrypted_socket
 
-Transparent encrypt/decrypt wrapper around any `SocketLike` socket. Satisfies the `SocketLike` concept itself, so it can be composed directly into `encrypted_policy`. Outgoing packets are encrypted with XChaCha20-Poly1305 AEAD; incoming packets are decrypted and anti-replay-checked before being delivered to the receive handler.
+Transparent encrypt/decrypt wrapper around any `socket_like` socket. Satisfies the `socket_like` concept itself, so it can be composed directly into `encrypted_policy`. Outgoing packets are encrypted with XChaCha20-Poly1305 AEAD (or authenticated only, with `auth_only`); incoming packets are authenticated, mode-checked, and anti-replay-checked before being delivered to the receive handler.
+
+## Thread Safety
+
+- `send()` is as thread-safe as the inner socket's `send()`. Concurrent `send()` calls on one socket are not supported: the send buffer and the sequence counter are shared send-path state and are not synchronized.
+- `update_key()` may be called from any thread, concurrently with `send()` and with the receive path. The key, epoch, and grace-period state are guarded by an internal `std::mutex`; key material is copied under the lock and the AEAD operation runs outside it, so the critical section is a 32-byte copy.
+- `async_receive()` arming and handler invocation follow the inner socket's executor semantics. The replay windows and the receive buffer are confined to the receive path and are not protected by the mutex; they must not be accessed from other threads.
 
 ## Header and Alias
 
@@ -9,7 +15,7 @@ Transparent encrypt/decrypt wrapper around any `SocketLike` socket. Satisfies th
 | `encrypted_socket<InnerSocket>` | `#include <mdnspp/encrypt/encrypted_socket.h>` |
 
 ```cpp
-template <SocketLike InnerSocket>
+template <socket_like InnerSocket>
 class encrypted_socket;
 ```
 
@@ -17,7 +23,7 @@ class encrypted_socket;
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `InnerSocket` | satisfies `SocketLike` | The underlying socket used for actual network I/O. Typically the `socket_type` of a concrete policy such as `DefaultSocket` or `AsioSocket`. |
+| `InnerSocket` | satisfies `socket_like` | The underlying socket used for actual network I/O. Typically the `socket_type` of a concrete policy such as `default_socket` or `asio_socket`. |
 
 ## Constructors
 
@@ -31,7 +37,7 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex);
 ```
 
-Constructs the inner socket from `ex`. Encryption options are left at their defaults (zero key, `sender_id = 0`, `magic_byte` detection). The sender_id must be set before any packet is sent.
+Constructs the inner socket from `ex`. This constructor exists to satisfy the `policy_like` constructibility requirements. The socket has no usable key: the non-throwing `send` reports `std::errc::operation_not_permitted` and sends nothing, the throwing `send` throws `std::system_error` with that code, `async_receive` never completes (the handler is discarded without being called), and `update_key` reports `std::errc::operation_not_permitted`. Discard such a socket and construct one with options.
 
 ### Non-throwing, executor only
 
@@ -41,7 +47,7 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex, std::error_code &ec);
 ```
 
-Same as above, but sets `ec` instead of throwing if the inner socket fails to construct.
+Same as above, but sets `ec` instead of throwing if the inner socket fails to construct. The resulting socket has no usable key either way.
 
 ### Throwing, with options
 
@@ -51,7 +57,7 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex, const encrypt_socket_options &opts);
 ```
 
-Constructs the inner socket from `ex` and the base `socket_options` portion of `opts`. Copies the PSK, configures replay window, cleartext and auth-only flags, and calls `opts.encrypt.validate()`. This is the primary constructor for production use.
+Constructs the inner socket from `ex` and the base `socket_options` portion of `opts`. Then checks, in order and before copying the PSK, that libsodium initializes and that `opts.encrypt` validates: if `validate()` fails (`sender_id == 0`, all-zero PSK, `replay_window_size == 0`, `max_senders == 0`, or `max_sessions_per_sender == 0`), throws `std::system_error` with `std::errc::invalid_argument` and the key is never copied. If libsodium cannot be initialized, throws `std::system_error` with `std::errc::not_supported`. Validation is active in all build configurations, including release builds. On success, copies the PSK, sets the starting epoch from `initial_epoch`, and draws a random nonzero session ID for this socket, and configures the replay window, cleartext, and auth-only behavior. This is the primary constructor for production use.
 
 ### Non-throwing, with options
 
@@ -61,27 +67,20 @@ template <typename Executor>
 explicit encrypted_socket(Executor &&ex, const encrypt_socket_options &opts, std::error_code &ec);
 ```
 
-Same as the throwing with-options constructor, but sets `ec` instead of throwing on inner socket construction failure.
+Same as the throwing with-options constructor, but sets `ec` instead of throwing: on inner socket construction failure, on failed validation (`std::errc::invalid_argument`), or when libsodium cannot be initialized (`std::errc::not_supported`), `ec` is set and the key is not copied. Such a socket has no usable key and behaves like one built from an executor alone: `send` reports `std::errc::operation_not_permitted`, `async_receive` never completes, and `update_key` reports `std::errc::operation_not_permitted`.
 
 ## Copy and Move
 
-`encrypted_socket` is non-copyable. It is move-constructible (defaulted) but move-assignment is deleted to prevent accidental key leakage across live sockets.
+`encrypted_socket` is non-copyable and non-movable. The copy constructor and copy assignment are deleted; because they are user-declared, no move operations are generated. The internal mutex and the `this` capture in the receive path make moving unsound in any case.
 
 ```cpp
 encrypted_socket(const encrypted_socket &) = delete;
 encrypted_socket &operator=(const encrypted_socket &) = delete;
-
-encrypted_socket(encrypted_socket &&other) noexcept = default;
-encrypted_socket &operator=(encrypted_socket &&) = delete;
 ```
 
-## Destructor
+## Destruction
 
-```cpp
-~encrypted_socket();
-```
-
-Zeroes both the current key and the previous key (held during grace periods) using `secure_zero` before the object is destroyed.
+The destructor is implicit. Destroying the socket destroys its key ring, which zeroes the current key and the previous key (held during grace periods) with `secure_zero`. The per-send key copy is zeroed when the send call returns.
 
 ## Methods
 
@@ -91,7 +90,7 @@ Zeroes both the current key and the previous key (held during grace periods) usi
 void close();
 ```
 
-Closes the underlying inner socket. Ongoing `async_receive` operations complete with an error.
+Closes the underlying inner socket and discards the pending receive handler without invoking it. A later `async_receive` call is ignored.
 
 ### send (throwing)
 
@@ -99,9 +98,7 @@ Closes the underlying inner socket. Ongoing `async_receive` operations complete 
 void send(const endpoint &dest, std::span<const std::byte> plaintext);
 ```
 
-Encrypts `plaintext` with the current epoch key and `sender_id`, then passes the resulting ciphertext to the inner socket's `send`. The sequence counter is incremented atomically.
-
-When `auth_only` mode is enabled, the plaintext is included as additional authenticated data and no ciphertext is produced; the packet carries only the AEAD tag and header.
+Calls the non-throwing overload and throws `std::system_error` (message `mdnspp::encrypt: send`) carrying the resulting error code if it is set. There is a single send implementation.
 
 ### send (non-throwing)
 
@@ -109,34 +106,57 @@ When `auth_only` mode is enabled, the plaintext is included as additional authen
 void send(const endpoint &dest, std::span<const std::byte> plaintext, std::error_code &ec);
 ```
 
-Same as the throwing overload, but sets `ec` instead of throwing if the underlying send fails.
+Seals `plaintext` into the socket's send buffer with the current epoch key, the `sender_id`, this socket's session ID, and the next sequence number (the first packet carries 1), then passes the datagram to the inner socket's `send`. The encrypt layer allocates nothing per call; the send buffer is sized once at construction. Failures are reported through `ec`:
+
+- `std::errc::operation_not_permitted` if the socket has no usable key (see Constructors); nothing is sent and the sequence number is not consumed.
+- `encrypt_error::buffer_too_small` if the sealed packet would not fit in `max_udp_payload` (9000) bytes. The maximum plaintext is therefore `max_udp_payload - 68` (`encrypted_overhead`), i.e. 8932 bytes; a larger plaintext is not sent, the inner socket sees nothing, and the sequence number is not consumed.
+- `std::errc::not_supported` if libsodium cannot be initialized; nothing is sent and the sequence number is not consumed.
+- Whatever error the inner socket's `send` reports. The packet was sealed, so its sequence number is consumed.
+
+The sequence counter advances only when a packet is sealed: a failed seal leaves it unchanged, and the next sealed packet carries the number the failed one would have had.
+
+When `auth_only` mode is enabled, the plaintext is not encrypted: the packet carries the header, the plaintext, and the AEAD tag covering both (the `flag_encrypted` bit is cleared). The overhead is the same 68 bytes.
+
+Each socket draws its session ID once at construction, so a restarted sender is a new session at receivers; the sequence counter is not randomized.
+
+`send()` is as thread-safe as the inner socket's `send()`; concurrent `send()` calls on one socket are not supported (see Thread Safety).
 
 ### async_receive
 
 ```cpp
 void async_receive(
-    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler);
+    move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler);
 ```
 
-Arms the inner socket's receive loop. For each received datagram, the socket:
+Arms the inner socket's receive loop. On a closed socket, or one without a usable key, the call returns without arming and the handler is discarded without being called. Inner-socket errors are forwarded to the handler unchanged. Every datagram that is not delivered (a drop) re-arms the receive without calling the handler; a delivered datagram completes the handler once. For each received datagram, the socket:
 
-1. Checks for the encrypted magic byte sequence (`0x4D 0x43`) according to `cleartext_detection`.
-2. Deserializes the packet header to extract `sender_id`, `sequence`, `epoch`, and `flags`.
-3. Filters by `receive_mode` (encrypted-only or auth-only-only).
-4. Selects the current key (matching epoch) or the previous key (epoch minus one, within grace period).
-5. Decrypts with AEAD. On failure, optionally forwards as cleartext if `accept_cleartext` is set.
-6. Checks the per-sender replay window. Duplicate or replayed sequences are silently dropped.
-7. Calls `handler` with the decrypted plaintext.
+1. Classifies it according to `cleartext_detection` and `accept_cleartext`. A packet without the magic prefix is cleartext (forwarded when `accept_cleartext` is set and detection is not `reject_all`, dropped otherwise). A magic-prefixed packet shorter than `smallest_known_header_size` (44 bytes) is forwarded as cleartext only in `attempt_decrypt` mode with `accept_cleartext`, otherwise dropped. A magic-prefixed packet of 44 bytes or more is never forwarded as cleartext: it proceeds only if it is at least `encrypted_overhead` (68) bytes long and carries version `0x02`, and is dropped otherwise.
+2. Reads the epoch from the header and selects the key under the internal mutex: the current key for the current epoch and for one epoch ahead, the previous key for one epoch behind within the grace period, and the current key for one epoch behind when no previous key is held (initial-epoch skew under the same key, tolerated in both directions). Any other epoch is dropped. The previous key is zeroized as soon as grace expiry is observed.
+3. Authenticates and decrypts (for auth-only packets, verifies and copies the payload) into the socket's receive buffer, outside the lock. A failure is a drop; it never falls through to cleartext.
+4. Checks `receive_mode` against the authenticated `flags` byte. A mismatch is a drop.
+5. Checks the replay window of the packet's (`sender_id`, session ID) pair. A duplicate, or a sequence below the window, is a drop. A window is never reset by a packet; a packet of an untracked session is accepted once and opens a window (see the [Threat Model](../threat-model.md)).
+6. Calls `handler` with the plaintext, a span into a socket buffer that is valid only for the duration of the call.
 
 ### update_key
 
 ```cpp
 void update_key(secure_key new_psk, grace_period gp);
+void update_key(secure_key new_psk, grace_period gp, std::error_code &ec);
 ```
 
-Performs a key rotation. The current key becomes the previous key and is retained for decrypting packets from peers still using the old epoch. The new key is installed as the current key, the epoch counter is incremented by one, and the grace period timer is started.
+Performs a key rotation. On a socket without a usable key (see Constructors) nothing changes: the non-throwing overload sets `ec` to `std::errc::operation_not_permitted` and the throwing overload throws `std::system_error` (message `mdnspp::encrypt: update_key`) with that code. On a keyed socket an all-zero `new_psk` (a default-constructed `secure_key`, which the constructors reject as well) is refused the same way with `std::errc::invalid_argument`, and the current key, the epoch and the grace state stay unchanged. Otherwise the non-throwing overload clears `ec`, and the current key becomes the previous key and is retained for decrypting packets from peers still using the old epoch. The new key is installed as the current key, the epoch counter is incremented by one, and the grace period timer is started. May be called from any thread, concurrently with `send()` and the receive path (see Thread Safety).
 
-`gp` must have at least one of `duration` or `packet_count` set. The previous key is evicted when the grace period expires -- either when the wall-clock duration elapses or when the packet count of old-epoch packets received exceeds the limit, whichever comes first.
+If `gp` sets neither `duration` nor `packet_count`, a duration bound of `default_grace_duration` (`std::chrono::seconds{30}`) is applied so the previous key cannot remain accepted indefinitely. The previous key is zeroized (`sodium_memzero`) as soon as grace expiry is observed at a key lookup, which every `send()` and every received encrypted packet performs -- either when the duration elapses (measured with `std::chrono::steady_clock`) or when the count of old-epoch packets accepted reaches the limit, whichever comes first -- and again at destruction. The count includes only packets accepted with the previous key (authenticated and not rejected as replays).
+
+All peers must call `update_key()` with the same new key within the grace window: a peer that has not rotated drops new-epoch traffic until it does, and peers that have rotated stop accepting its old-epoch traffic once their grace period expires. There is no staged next-key mechanism. See [Key Rotation](../key-rotation.md).
+
+### interface_index
+
+```cpp
+uint32_t interface_index() const noexcept;  // only when InnerSocket has interface_index()
+```
+
+Returns the inner socket's `interface_index()`: the index of the interface the socket is bound to, `0` when unbound. Declared only when `InnerSocket` declares it (the default, asio and mock sockets do; the in-process socket does not). The peers use it to drop multicast received on another interface (see [Receive interface attribution](../../socket-options.md#receive-interface-attribution)).
 
 ### inner
 
@@ -145,15 +165,15 @@ InnerSocket &inner() noexcept;
 const InnerSocket &inner() const noexcept;
 ```
 
-Returns a reference to the wrapped inner socket. Provides access to socket-specific operations not exposed through `SocketLike` (e.g., `native_handle()` on platform socket types).
+Returns a reference to the wrapped inner socket. Provides access to socket-specific operations not exposed through `socket_like` (e.g., `native_handle()` on platform socket types).
 
 ## Key State
 
 | State | Description |
 |-------|-------------|
-| Current key | Used for all outgoing packets. Used for decrypting packets with the current epoch number. |
-| Previous key | Retained after `update_key()`. Accepted for decrypting packets with epoch minus one, until the grace period expires. Zeroed on grace period expiry and on destruction. |
-| Epoch | Monotonically increasing `uint32_t`. Incremented on each `update_key()` call. Embedded in every outgoing packet header. |
+| Current key | Used for all outgoing packets. Used for decrypting packets with the current epoch number, and tried for packets one epoch ahead and, while no previous key is held, one epoch behind (initial-epoch skew under the same key, in both directions; it does not decrypt traffic of a peer that has rotated). |
+| Previous key | Retained after `update_key()`. Accepted for decrypting packets with epoch minus one, until the grace period expires. Zeroized at the first send or receive key lookup after grace period expiry, and on destruction. |
+| Epoch | Monotonically increasing `uint32_t`. Starts at `encrypt_options::initial_epoch`, incremented on each `update_key()` call. Embedded in every outgoing packet header. |
 
 ## Usage Example
 
@@ -168,12 +188,13 @@ Returns a reference to the wrapped inner socket. Provides access to socket-speci
 std::array<std::byte, 32> raw_key{};
 // ... fill raw_key ...
 
-mdnspp::encrypt_socket_options sock_opts;
-sock_opts.encrypt.psk       = mdnspp::secure_key{raw_key};
+mdnspp::encrypt::encrypt_socket_options sock_opts;
+sock_opts.encrypt.psk       = mdnspp::encrypt::secure_key{raw_key};
 sock_opts.encrypt.sender_id = 1;
+mdnspp::encrypt::secure_zero(raw_key.data(), raw_key.size());
 
 mdnspp::context ctx;
-mdnspp::encrypted_observer obs{ctx, mdnspp::observer_options{}, std::move(sock_opts)};
+mdnspp::encrypt::encrypted_observer obs{ctx, mdnspp::observer_options{}, std::move(sock_opts)};
 obs.async_observe();
 ctx.run();
 ```

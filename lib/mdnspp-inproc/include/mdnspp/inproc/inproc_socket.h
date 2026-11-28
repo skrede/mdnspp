@@ -1,52 +1,62 @@
 #ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_SOCKET_H
 #define HPP_GUARD_MDNSPP_INPROC_INPROC_SOCKET_H
 
-#include "mdnspp/endpoint.h"
+#include "mdnspp/inproc/inproc_bus.h"
+#include "mdnspp/inproc/inproc_executor.h"
+#include "mdnspp/inproc/inproc_socket_options.h"
+
+#include "mdnspp/inproc/detail/inproc_receive_queue.h"
+
 #include "mdnspp/policy.h"
+#include "mdnspp/endpoint.h"
 #include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
-#include "mdnspp/inproc/inproc_bus.h"
-#include "mdnspp/inproc/inproc_executor.h"
 
 #include <span>
-#include <queue>
-#include <vector>
 #include <cstddef>
-#include <cstdint>
-#include <optional>
-#include <system_error>
 #include <utility>
+#include <system_error>
 
 namespace mdnspp::inproc {
 
 template <typename Clock = std::chrono::steady_clock>
-class inproc_socket
+class inproc_socket : public inproc_receiver
 {
+    struct checked
+    {
+    };
+
 public:
+    static constexpr bool in_process_transport{true};
+
     explicit inproc_socket(inproc_executor<Clock> &ex)
-        : inproc_socket(ex, socket_options{})
+        : inproc_socket(checked{}, ex, inproc_socket_options{}, std::error_code{})
     {
     }
 
-    explicit inproc_socket(inproc_executor<Clock> &ex, std::error_code &)
-        : inproc_socket(ex, socket_options{})
+    explicit inproc_socket(inproc_executor<Clock> &ex, std::error_code &ec)
+        : inproc_socket(ex, inproc_socket_options{}, ec)
     {
     }
 
-    explicit inproc_socket(inproc_executor<Clock> &ex, const socket_options &opts)
-        : m_bus(&ex.bus())
+    explicit inproc_socket(inproc_executor<Clock> &ex, const inproc_socket_options &opts)
+        : inproc_socket(checked{}, ex, opts, std::error_code{})
+    {
+    }
+
+    explicit inproc_socket(inproc_executor<Clock> &ex, const inproc_socket_options &opts, std::error_code &ec)
+        : m_closed(false)
+        , m_bus(&ex.bus())
+        , m_ep(m_bus->register_socket(*this, opts, ec))
         , m_opts(opts)
-        , m_ep(m_bus->register_socket(this, opts))
+        , m_receive()
     {
+        if(ec)
+            close();
     }
 
-    explicit inproc_socket(inproc_executor<Clock> &ex, const socket_options &opts, std::error_code &)
-        : inproc_socket(ex, opts)
-    {
-    }
-
-    ~inproc_socket()
+    ~inproc_socket() override
     {
         close();
     }
@@ -56,85 +66,69 @@ public:
     inproc_socket(inproc_socket &&) = delete;
     inproc_socket &operator=(inproc_socket &&) = delete;
 
-    void async_receive(detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> handler)
+    void async_receive(move_only_function<void(std::error_code, const recv_metadata &, std::span<std::byte>)> handler)
     {
-        if(!m_recv_queue.empty())
-        {
-            auto [data, from, ttl] = std::move(m_recv_queue.front());
-            m_recv_queue.pop();
-            recv_metadata meta{from, ttl};
-            handler(meta, std::span<std::byte>(data));
-        }
-        else
-        {
-            m_pending_receive = std::move(handler);
-        }
+        if(!m_closed)
+            m_receive.receive(std::move(handler));
     }
 
     void send(const endpoint &dest, std::span<const std::byte> data)
     {
-        if(m_bus)
-            m_bus->enqueue(m_ep, dest, data);
+        std::error_code ec;
+        send(dest, data, ec);
+        if(ec)
+            throw std::system_error(ec, "mdnspp::inproc::inproc_socket::send");
     }
 
     void send(const endpoint &dest, std::span<const std::byte> data, std::error_code &ec)
     {
+        if(!m_bus)
+        {
+            ec = std::make_error_code(std::errc::bad_file_descriptor);
+            return;
+        }
         ec.clear();
-        send(dest, data);
+        m_bus->enqueue(m_ep, dest, data);
     }
 
     void close() noexcept
     {
+        m_closed = true;
+        m_receive.clear();
         if(m_bus)
         {
-            m_bus->deregister_socket(this);
+            m_bus->deregister_socket(*this);
             m_bus = nullptr;
         }
     }
 
-    void deliver(const endpoint &from, std::span<const std::byte> data)
+    void deliver(const endpoint &from, const endpoint &to, std::span<const std::byte> data) override
     {
-        deliver(from, data, std::optional<uint8_t>{uint8_t{255}});
+        deliver(detail::inproc_metadata(from, to), data);
     }
 
-    void deliver(const endpoint &from, std::span<const std::byte> data, uint8_t ttl)
+    void deliver(const recv_metadata &meta, std::span<const std::byte> data)
     {
-        deliver(from, data, std::optional<uint8_t>{ttl});
+        if(!m_closed)
+            m_receive.deliver(meta, data);
     }
 
-    void deliver(const endpoint &from, std::span<const std::byte> data, std::optional<uint8_t> ttl)
-    {
-        if(m_pending_receive)
-        {
-            m_recv_buf.assign(data.begin(), data.end());
-            recv_metadata meta{from, ttl};
-            auto h = std::exchange(m_pending_receive, nullptr);
-            h(meta, std::span<std::byte>(m_recv_buf));
-        }
-        else
-        {
-            m_recv_queue.push({std::vector<std::byte>(data.begin(), data.end()), from, ttl});
-        }
-    }
-
-    [[nodiscard]] const endpoint &assigned_endpoint() const noexcept { return m_ep; }
-    [[nodiscard]] const socket_options &options() const noexcept { return m_opts; }
+    const endpoint &assigned_endpoint() const noexcept { return m_ep; }
+    const inproc_socket_options &options() const noexcept { return m_opts; }
 
 private:
+    bool m_closed;
     inproc_bus<Clock> *m_bus;
-    socket_options m_opts;
     endpoint m_ep;
-    detail::move_only_function<void(const recv_metadata &, std::span<std::byte>)> m_pending_receive;
-    std::vector<std::byte> m_recv_buf;
+    inproc_socket_options m_opts;
+    detail::inproc_receive_queue m_receive;
 
-    struct queued_packet
+    inproc_socket(checked, inproc_executor<Clock> &ex, const inproc_socket_options &opts, std::error_code ec)
+        : inproc_socket(ex, opts, ec)
     {
-        std::vector<std::byte> data;
-        endpoint from;
-        std::optional<uint8_t> ttl;
-    };
-
-    std::queue<queued_packet> m_recv_queue;
+        if(ec)
+            throw std::system_error(ec, "mdnspp::inproc::inproc_socket");
+    }
 };
 
 }

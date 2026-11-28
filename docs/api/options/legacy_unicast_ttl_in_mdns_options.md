@@ -10,7 +10,7 @@
 
 `legacy_unicast_ttl` sets the maximum TTL placed in DNS records sent in response to legacy unicast queries (RFC 6762 §6.7). A legacy unicast query is one that arrives via unicast from a source port other than 5353 — typically from a non-mDNS resolver or a DNS-SD client that does not support multicast.
 
-When such a query is received and `service_options::respond_to_legacy_unicast` is `true`, the responder's TTL values are capped at `legacy_unicast_ttl` regardless of the TTL in `record_ttl` or per-type TTL fields. A 4500-second record becomes a 10-second record in the legacy unicast response.
+When such a query is received and `service_options::respond_to_legacy_unicast` is `true`, the responder's TTL values are capped at `legacy_unicast_ttl` regardless of the per-type TTL fields of `service_options`. A 4500-second record becomes a 10-second record in the legacy unicast response.
 
 ## Why
 

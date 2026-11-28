@@ -7,23 +7,23 @@ Continuously tracks mDNS services with automatic discovery, TTL refresh, and los
 | Form | Header |
 |------|--------|
 | `basic_service_monitor<P, Clock>` | `#include <mdnspp/basic_service_monitor.h>` |
-| `mdnspp::service_monitor` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
+| `mdnspp::service_monitor` (default_policy alias) | `#include <mdnspp/defaults.h>` |
 
 ```cpp
 // Template form
-template <Policy P, typename Clock = std::chrono::steady_clock>
+template <policy_like P, typename Clock = /* P::clock_type, else std::chrono::steady_clock */>
 class basic_service_monitor;
 
-// DefaultPolicy alias (from defaults.h)
-using service_monitor = basic_service_monitor<DefaultPolicy>;
+// default_policy alias (from defaults.h)
+using service_monitor = basic_service_monitor<default_policy>;
 ```
 
 ## Template Parameters
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `P` | satisfies `Policy` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
-| `Clock` | `std::chrono::is_clock_v<Clock>` | Clock used for TTL expiry and refresh scheduling. Default: `std::chrono::steady_clock`. Substitute `mdnspp::testing::test_clock` in unit tests for deterministic TTL control. |
+| `P` | satisfies `policy_like` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
+| `Clock` | `std::chrono::is_clock_v<Clock>` | Clock used for TTL expiry and query and refresh scheduling. Default: the policy's `clock_type` when it declares one, else `std::chrono::steady_clock`. The default and asio policies declare none; `inproc_test_policy` declares `mdnspp::testing::test_clock`, so its monitors, including those of a `nic_group`, follow the test clock. |
 
 ## Type Aliases
 
@@ -40,12 +40,14 @@ using timer_type    = typename P::timer_type;
 ```cpp
 explicit basic_service_monitor(executor_type ex,
                                monitor_options opts = {},
-                               socket_options sock_opts = {},
+                               policy_socket_options_t<P> sock_opts = {},
                                mdns_options mdns_opts = {},
                                cache_options copts = {});
 ```
 
-Constructs the monitor from an executor. The optional [`monitor_options`](monitor_options.md) supplies discovery callbacks and the monitoring mode. The optional `sock_opts` controls network interface selection and multicast group (see [Socket Options](../socket-options.md)). The optional [`mdns_options`](mdns_options.md) controls query backoff timing, TTL refresh thresholds, and TC accumulation windows. The optional `cache_options` controls goodbye grace period and cache expiry callbacks. Throws on socket construction failure.
+Constructs the monitor from an executor. The optional [`monitor_options`](monitor_options.md) supplies discovery callbacks, the error handler, and the monitoring mode. The optional `sock_opts` controls network interface selection and multicast group (see [Socket Options](../socket-options.md)); its type is `policy_socket_options_t<P>` — plain `socket_options` for the default and asio policies. The optional [`mdns_options`](mdns_options.md) controls query backoff timing, TTL refresh thresholds, and TC accumulation windows. The optional [`cache_options`](cache_options.md) controls the goodbye grace period and cache expiry callbacks. Throws `std::system_error` on socket construction failure or invalid options (`std::errc::invalid_argument`).
+
+Options are invalid when `copts.goodbye_grace` is not positive or `mdns_opts` fails [validation](mdns_options.md#validation). Expiry drives loss detection, so the monitor handles each expired batch first (`on_lost`, and `on_updated` with `update_event::removed`); an `on_expired` supplied in `copts` is called after that with the same entries. `on_cache_flush` and `goodbye_grace` are kept.
 
 **Note:** `monitor_options` is move-only. Use `std::move` when passing a named variable.
 
@@ -54,13 +56,15 @@ Constructs the monitor from an executor. The optional [`monitor_options`](monito
 ```cpp
 basic_service_monitor(executor_type ex,
                       monitor_options opts,
-                      socket_options sock_opts,
+                      policy_socket_options_t<P> sock_opts,
                       mdns_options mdns_opts,
                       cache_options copts,
                       std::error_code &ec);
 ```
 
-Same as the throwing constructor, but sets `ec` instead of throwing on failure. All parameters must be provided explicitly (no defaults). Check `ec` before calling `async_start()`.
+Same as the throwing constructor, but sets `ec` instead of throwing on failure (both for socket construction and for invalid options). All parameters must be provided explicitly (no defaults). `ec` is cleared on success. After a socket construction failure the object is safe to destroy but unusable; check `ec` before calling `async_start()`.
+
+`basic_service_monitor` is non-copyable and non-movable (receive-loop and timer handlers capture `this`).
 
 ## Methods
 
@@ -70,16 +74,14 @@ Same as the throwing constructor, but sets `ec` instead of throwing on failure. 
 void async_start(monitor_completion_handler on_done = {});
 ```
 
-Begins receiving mDNS multicast traffic and, depending on the configured [`monitor_mode`](monitor_options.md#monitor_mode), issues automatic discovery queries for watched service types.
+Begins receiving mDNS multicast traffic and, depending on the configured [`monitor_mode`](monitor_options.md#monitor_mode), issues automatic discovery queries for watched service types. Only records carried in response packets (QR=1) feed the cache; known-answer lists and probe proposals in query packets are ignored.
 
-- The `on_done` handler fires once when `stop()` is called. May be `nullptr`.
-- In `discover` mode: issues per-type PTR queries with exponential backoff per RFC 6762 §5.2, and schedules TTL refresh queries at 80/85/90/95% of each record's wire TTL.
+- The `on_done` handler fires once with `std::error_code{}` when `stop()` is called — stopping is the monitor's natural completion. May be empty.
+- In `discover` mode: issues per-type PTR queries, each watch on its own exponential-backoff schedule per RFC 6762 §5.2 (a fire point for one watch never triggers a premature query for another), and schedules TTL refresh queries at 80/85/90/95% of each record's wire TTL (`mdns_options::ttl_refresh_thresholds`).
 - In `ttl_refresh` mode: refreshes cached records proactively but does not issue discovery queries.
 - In `observe` mode: passively accumulates records from overheard multicast traffic only.
 
-Calling `async_start()` more than once is a logic error.
-
-**Thread-safety:** Must be called on the executor thread or before the executor is running.
+`async_start` is one-shot: a second call completes the supplied handler with `std::errc::operation_in_progress`; a call after `stop()` completes it with `std::errc::invalid_argument`. The running monitor is unaffected.
 
 ### stop
 
@@ -87,7 +89,7 @@ Calling `async_start()` more than once is a logic error.
 void stop();
 ```
 
-Idempotent. Cancels all timers and the receive loop. Fires `on_done` with `std::error_code{}`. The destructor calls `stop()` automatically for RAII safety.
+Idempotent. Cancels all timers and the receive loop. Fires `on_done` with `std::error_code{}`. The destructor calls `stop()` automatically for RAII safety; a handler still pending at destruction is completed with `std::errc::operation_canceled` rather than dropped.
 
 **Thread-safety:** May be called from any thread. Internally posts teardown to the executor thread via a weak-pointer guard.
 
@@ -97,7 +99,9 @@ Idempotent. Cancels all timers and the receive loop. Fires `on_done` with `std::
 void watch(std::string_view service_type);
 ```
 
-Registers interest in a service type (e.g., `"_http._tcp.local."`). In `discover` mode the monitor immediately begins issuing PTR queries for this type with exponential backoff. Re-watching a previously unwatched type starts fresh: backoff resets and `on_found` fires again on rediscovery.
+Registers interest in a service type (e.g., `"_http._tcp.local."`). In `discover` mode the monitor issues PTR queries for this type with exponential backoff, beginning after the random first-query delay described below. Re-watching a previously unwatched type starts fresh: backoff resets and `on_found` fires again on rediscovery.
+
+The first PTR query of a watch waits a random delay in [`mdns_options::response_delay_min`, `response_delay_max`] (20--120 ms by default, RFC 6762 §5.2). The delay is measured from `async_start()` for a watch whose posted registration ran before it, otherwise from the moment the registration runs.
 
 **Thread-safety:** May be called from any thread. Posts the registration to the executor thread via a weak-pointer guard. Safe to call before `async_start()`.
 
@@ -147,9 +151,32 @@ Sends an immediate PTR query for a service type, bypassing backoff. Available in
 void query_service_instance(std::string_view instance_name);
 ```
 
-Sends immediate SRV and A/AAAA queries for a specific service instance. Useful when an instance is known by name but its address records have not yet been received.
+Sends one immediate multi-question query carrying SRV, TXT, A, and AAAA questions for a specific service instance (RFC 6762 §5 question aggregation — four questions, one packet). Useful when an instance is known by name but its address records have not yet been received. The same four-question packet is used internally for TTL refresh of resolved instances, so TXT records are refreshed alongside SRV and addresses.
 
 **Thread-safety:** May be called from any thread. Posts to the executor thread.
+
+### Accessors
+
+```cpp
+const socket_type& socket() const noexcept;
+      socket_type& socket()       noexcept;
+```
+
+### Test support
+
+```cpp
+void        tick_expired_for_test();
+timer_type& scheduler_timer_for_test() noexcept;
+std::size_t refresh_schedule_count_for_test() const noexcept;
+std::size_t tc_chain_count_for_test() const noexcept;
+void        fire_tc_chains_for_test();
+```
+
+Hooks for deterministic unit tests (with `mdnspp::testing::test_clock` and `mock_policy`); call them from the executor thread. `tick_expired_for_test()` evicts expired cache entries now, which fires the same loss and update callbacks as the periodic sweep. `scheduler_timer_for_test()` is the timer that drives the query schedule and the expiry sweep. `refresh_schedule_count_for_test()` is the number of instances with a pending TTL-refresh schedule; `tc_chain_count_for_test()` the number of in-flight known-answer continuation chains (RFC 6762 §7.2). `fire_tc_chains_for_test()` fires every in-flight continuation timer once and is only instantiable with a timer that exposes `fire()`.
+
+### Error reporting
+
+Fire-and-forget send failures and fatal receive errors are reported through the `monitor_options::on_error` field (`error_handler`, `void(std::error_code, std::string_view)`). The context string identifies the failure site: `"receive"` (receive loop), `"query send"` (a PTR query or one of its known-answer continuation packets) or `"instance query send"` (the SRV/TXT/A/AAAA instance query, also used for TTL refresh). Without a handler, these errors are silently ignored.
 
 ## Lifecycle
 
@@ -192,7 +219,7 @@ int main()
         .on_found = [](const mdnspp::resolved_service &svc)
         {
             std::cout << "found: " << svc.instance_name.str()
-                      << " at " << svc.hostname.str() << ":" << svc.port << "\n";
+                      << " at " << svc.hostname.str() << ":" << svc.port << std::endl;
         },
         .on_updated = [](const mdnspp::resolved_service &svc,
                          mdnspp::update_event event,
@@ -200,14 +227,14 @@ int main()
         {
             std::cout << "updated: " << svc.instance_name.str()
                       << " event=" << (event == mdnspp::update_event::added ? "added" : "removed")
-                      << " type=" << to_string(type) << "\n";
+                      << " type=" << to_string(type) << std::endl;
         },
         .on_lost = [](const mdnspp::resolved_service &svc, mdnspp::loss_reason reason)
         {
             const char *why = reason == mdnspp::loss_reason::timeout   ? "timeout"
                             : reason == mdnspp::loss_reason::goodbye   ? "goodbye"
                                                                        : "unwatched";
-            std::cout << "lost: " << svc.instance_name.str() << " reason=" << why << "\n";
+            std::cout << "lost: " << svc.instance_name.str() << " reason=" << why << std::endl;
         },
     };
 
@@ -219,7 +246,7 @@ int main()
     {
         if(ec)
         {
-            std::cerr << "monitor error: " << ec.message() << "\n";
+            std::cerr << "monitor error: " << ec.message() << std::endl;
             ctx.stop();
         }
     });

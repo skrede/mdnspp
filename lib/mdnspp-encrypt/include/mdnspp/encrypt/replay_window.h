@@ -4,42 +4,68 @@
 #include "mdnspp/encrypt/encrypt_error.h"
 
 #include <list>
+#include <vector>
+#include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <system_error>
 #include <unordered_map>
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
+// No window is ever reset by a packet, so a captured packet of a tracked session is accepted at most once; a packet
+// of an untracked session is accepted once, the residual of keeping no clock or persistent state.
 class replay_window
 {
+    struct session_window
+    {
+        uint64_t session_id;
+        uint64_t max_seq;
+        std::vector<uint64_t> bitmap;  // bit i = (max_seq - i) seen
+
+        explicit session_window(std::size_t words);
+
+        void restart(uint64_t id, uint64_t sequence);
+        std::optional<encrypt_error> admit(uint64_t sequence, uint64_t window_size);
+    };
+
+    struct sender_state
+    {
+        std::vector<session_window> sessions;  // front = most recently used
+        std::list<uint32_t>::iterator lru_pos;
+    };
+
+    struct checked
+    {
+    };
+
 public:
-    explicit replay_window(uint16_t window_size = 64, uint16_t max_senders = 256);
+    explicit replay_window(uint16_t window_size = 64, uint16_t max_senders = 256,
+                           uint16_t max_sessions_per_sender = 8);
 
-    // Check and record a sequence number for a given sender.
-    // Returns std::nullopt on accept,
-    // or encrypt_error::replay_detected if the sequence was already seen or is too old.
-    std::optional<encrypt_error> check_and_record(uint32_t sender_id, uint64_t sequence);
+    replay_window(uint16_t window_size, uint16_t max_senders, uint16_t max_sessions_per_sender, std::error_code &ec);
 
-    // Reset all state.
+    replay_window(const replay_window &) = delete;
+    replay_window &operator=(const replay_window &) = delete;
+
+    // Only for authenticated packets: a forged sequence number would advance the window.
+    std::optional<encrypt_error> check_and_record(uint32_t sender_id, uint64_t session_id, uint64_t sequence);
+
     void reset();
 
 private:
-    struct window_state
-    {
-        uint64_t max_seq{0};
-        uint64_t bitmap{0};  // bit i = (max_seq - i) seen
-        bool initialized{false};
-    };
-
     uint16_t m_window_size;
     uint16_t m_max_senders;
-    std::unordered_map<uint32_t, window_state> m_windows;
+    uint16_t m_max_sessions;
+    std::size_t m_words;
+    std::unordered_map<uint32_t, sender_state> m_senders;
     std::list<uint32_t> m_lru;  // front = oldest, back = most recent
-    std::unordered_map<uint32_t, std::list<uint32_t>::iterator> m_lru_index;
 
-    window_state &get_or_create(uint32_t sender_id);
-    void touch_lru(uint32_t sender_id);
-    void evict_oldest();
+    replay_window(checked, uint16_t window_size, uint16_t max_senders, uint16_t max_sessions_per_sender,
+                  std::error_code ec);
+
+    sender_state &sender_for(uint32_t sender_id);
+    void open_session(std::vector<session_window> &sessions, uint64_t session_id, uint64_t sequence);
 };
 
 }

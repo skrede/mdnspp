@@ -1,16 +1,21 @@
-#ifndef HPP_GUARD_MDNSPP_SERVER_KNOWN_ANSWER_H
-#define HPP_GUARD_MDNSPP_SERVER_KNOWN_ANSWER_H
-
-#include "mdnspp/service_info.h"
+#ifndef HPP_GUARD_MDNSPP_DETAIL_SERVER_KNOWN_ANSWER_H
+#define HPP_GUARD_MDNSPP_DETAIL_SERVER_KNOWN_ANSWER_H
 
 #include "mdnspp/detail/dns_read.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_write.h"
+#include "mdnspp/detail/server_record_match.h"
+#include "mdnspp/detail/server_known_answer_record.h"
 
-#include "mdnspp/detail/server_query_match.h"
+#include "mdnspp/records.h"
+#include "mdnspp/service_info.h"
+#include "mdnspp/service_options.h"
 
 #include <span>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
+#include <variant>
 
 namespace mdnspp::detail {
 
@@ -23,94 +28,145 @@ struct suppression_mask
     bool txt{false};
 };
 
-inline suppression_mask parse_known_answers(std::span<const std::byte> data, size_t offset,
-                                            const service_info &info,
-                                            uint32_t threshold = 2250)
+// RFC 6762 section 7.1: a known answer suppresses only with at least half the TTL the responder would send, so the
+// thresholds derive from the per-type TTLs actually sent.
+struct ka_thresholds
+{
+    uint32_t ptr{2250};
+    uint32_t srv{60};
+    uint32_t txt{2250};
+    uint32_t a{60};
+    uint32_t aaaa{60};
+};
+
+inline ka_thresholds make_ka_thresholds(const service_options &opts, double fraction)
+{
+    auto th = [fraction](std::chrono::seconds ttl) -> uint32_t {
+        return static_cast<uint32_t>(static_cast<double>(wire_ttl(ttl)) * fraction);
+    };
+    return ka_thresholds{
+        .ptr  = th(opts.ptr_ttl),
+        .srv  = th(opts.srv_ttl),
+        .txt  = th(opts.txt_ttl),
+        .a    = th(opts.a_ttl),
+        .aaaa = th(opts.aaaa_ttl),
+    };
+}
+
+inline void mark_suppressed_type(suppression_mask &mask, dns_type rtype)
+{
+    switch(rtype)
+    {
+    case dns_type::ptr:  mask.ptr  = true; break;
+    case dns_type::srv:  mask.srv  = true; break;
+    case dns_type::a:    mask.a    = true; break;
+    case dns_type::aaaa: mask.aaaa = true; break;
+    case dns_type::txt:  mask.txt  = true; break;
+    default: break;
+    }
+}
+
+inline void mark_suppressed_type(suppression_mask &mask, const mdns_record_variant &rec)
+{
+    mark_suppressed_type(mask, record_type(rec));
+}
+
+// The TC accumulation path (RFC 6762 sections 7.1, 7.2): a record suppresses only when it is ours and its TTL
+// clears the per-type threshold.
+inline suppression_mask suppress_from_records(std::span<const mdns_record_variant> records,
+                                              const service_info &info,
+                                              const ka_thresholds &th)
 {
     suppression_mask mask;
-
-    if(data.size() < 12)
-        return mask;
-
-    const std::byte *buf = data.data();
-    uint16_t ancount = read_u16_be(buf + 6);
-
-    for(uint16_t i = 0; i < ancount; ++i)
+    for(const auto &rec : records)
     {
-        auto name_result = read_dns_name(data, offset);
-        if(!name_result.has_value())
-            break;
-
-        if(!skip_dns_name(data, offset))
-            break;
-
-        if(offset + 10 > data.size())
-            break;
-
-        dns_type rtype = static_cast<dns_type>(read_u16_be(buf + offset));
-        offset += 2;
-        offset += 2; // rclass
-        uint32_t ttl = read_u32_be(buf + offset);
-        offset += 4;
-        uint16_t rdlength = read_u16_be(buf + offset);
-        offset += 2;
-        size_t rdata_offset = offset;
-        offset += rdlength;
-
-        if(offset > data.size())
-            break;
-
-        dns_name ans_name{*name_result};
-
-        bool name_matches = (ans_name == info.service_name
-                          || ans_name == info.service_type
-                          || ans_name == info.hostname);
-        if(name_matches && ttl >= threshold)
+        if(!record_matches_ours(rec, info))
+            continue;
+        uint32_t ttl = std::visit([](const auto &r) { return r.ttl; }, rec);
+        uint32_t threshold = [&]
         {
-            switch(rtype)
+            switch(record_type(rec))
             {
-            case dns_type::ptr:
-                // A PTR record is shared by owner name (the service type) across
-                // every instance of that type. RFC 6762 §7.1 suppression must only
-                // fire when the known answer names *this* server's instance — i.e.
-                // its rdata target equals info.service_name. Without this check a
-                // browse query carrying any *other* node's PTR known-answer (same
-                // owner name, different target) would wrongly suppress our PTR,
-                // so a live-but-silent responder never answers a peer's browse.
-                if(auto target = read_dns_name(data, rdata_offset);
-                   target.has_value() && dns_name{*target} == info.service_name)
-                    mask.ptr = true;
-                break;
-            case dns_type::srv:  mask.srv = true; break;
-            case dns_type::a:    mask.a = true; break;
-            case dns_type::aaaa: mask.aaaa = true; break;
-            case dns_type::txt:  mask.txt = true; break;
-            default: break;
+            case dns_type::ptr:  return th.ptr;
+            case dns_type::srv:  return th.srv;
+            case dns_type::a:    return th.a;
+            case dns_type::aaaa: return th.aaaa;
+            default:             return th.txt;
             }
-        }
+        }();
+        if(ttl >= threshold)
+            mark_suppressed_type(mask, rec);
     }
-
     return mask;
 }
 
-inline bool all_suppressed(const suppression_mask &mask, dns_type accumulated_qtype,
-                           const service_info &info)
+// A PTR is shared by every instance of a service type, so it suppresses ours only when its target is this
+// instance; otherwise a browse carrying another node's PTR would silence a live responder (RFC 6762 section 7.1).
+inline bool ptr_answer_matches(std::span<const std::byte> data, const dns_name &name, const known_answer &ka,
+                               const service_info &info, const ka_thresholds &th)
 {
-    bool any_would_send = false;
+    if(name == info.service_type && ka.ttl >= th.ptr)
+    {
+        auto target = read_dns_name(data, ka.rdata_offset);
+        return target.has_value() && dns_name{*target} == info.service_name;
+    }
+    return false;
+}
 
-    bool would_send_ptr = (accumulated_qtype == dns_type::ptr || accumulated_qtype == dns_type::any);
-    bool would_send_srv = (accumulated_qtype == dns_type::srv || accumulated_qtype == dns_type::any);
-    bool would_send_a = (accumulated_qtype == dns_type::a || accumulated_qtype == dns_type::any) && info.address_ipv4.has_value();
-    bool would_send_aaaa = (accumulated_qtype == dns_type::aaaa || accumulated_qtype == dns_type::any) && info.address_ipv6.has_value();
-    bool would_send_txt = (accumulated_qtype == dns_type::txt || accumulated_qtype == dns_type::any);
+inline bool srv_answer_matches(std::span<const std::byte> data, const dns_name &name, const known_answer &ka,
+                               const service_info &info, const ka_thresholds &th)
+{
+    if(name == info.service_name && ka.ttl >= th.srv && ka.rdlength >= 6)
+    {
+        const std::byte *rdata = data.data() + ka.rdata_offset;
+        uint16_t prio = read_u16_be(rdata);
+        uint16_t weight = read_u16_be(rdata + 2);
+        uint16_t port = read_u16_be(rdata + 4);
+        auto target = read_dns_name(data, ka.rdata_offset + 6);
+        return prio == info.priority && weight == info.weight && port == info.port
+            && target.has_value() && dns_name{*target} == info.hostname;
+    }
+    return false;
+}
 
-    if(would_send_ptr) { any_would_send = true; if(!mask.ptr) return false; }
-    if(would_send_srv) { any_would_send = true; if(!mask.srv) return false; }
-    if(would_send_a) { any_would_send = true; if(!mask.a) return false; }
-    if(would_send_aaaa) { any_would_send = true; if(!mask.aaaa) return false; }
-    if(would_send_txt) { any_would_send = true; if(!mask.txt) return false; }
+inline bool known_answer_matches(std::span<const std::byte> data, const known_answer &ka, const own_rdata &ours,
+                                 const service_info &info, const ka_thresholds &th)
+{
+    dns_name name{ka.name};
+    auto rdata = data.subspan(ka.rdata_offset, ka.rdlength);
+    switch(ka.rtype)
+    {
+    case dns_type::ptr:  return ptr_answer_matches(data, name, ka, info, th);
+    case dns_type::srv:  return srv_answer_matches(data, name, ka, info, th);
+    case dns_type::a:    return name == info.hostname && ka.ttl >= th.a && rdata_equals(rdata, ours.a);
+    case dns_type::aaaa: return name == info.hostname && ka.ttl >= th.aaaa && rdata_equals(rdata, ours.aaaa);
+    case dns_type::txt:  return name == info.service_name && ka.ttl >= th.txt && rdata_equals(rdata, ours.txt);
+    default:             return false;
+    }
+}
 
-    return any_would_send;
+// The known-answer (Answer) section starts at offset; an answer suppresses when its name, type, class and rdata
+// match our record and its TTL clears the per-type threshold (RFC 6762 section 7.1).
+inline suppression_mask parse_known_answers(std::span<const std::byte> data, size_t offset,
+                                            const service_info &info,
+                                            const ka_thresholds &th = {})
+{
+    suppression_mask mask;
+    if(data.size() < 12)
+        return mask;
+    uint16_t ancount = read_u16_be(data.data() + 6);
+    own_rdata ours = encode_own_rdata(info);
+    for(uint16_t i = 0; i < ancount; ++i)
+    {
+        auto ka = read_known_answer(data, offset);
+        if(!ka.has_value())
+            break;
+        if(ka->rclass != to_underlying(dns_class::in))
+            continue;
+        if(known_answer_matches(data, *ka, ours, info, th))
+            mark_suppressed_type(mask, ka->rtype);
+    }
+    return mask;
 }
 
 }

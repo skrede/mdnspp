@@ -1,28 +1,28 @@
 # service_server
 
-Announces an mDNS service on the local network and responds to matching queries with DNS records. Implements the full RFC 6762 service lifecycle: probing for name uniqueness, announcing, responding with random 20--120 ms delay (RFC 6762 section 6) for multicast responses, sending goodbye packets on shutdown, known-answer suppression, and unicast responses when the QU bit is set.
+Announces an mDNS service on the local network and responds to matching queries with DNS records. Implements the full RFC 6762 service lifecycle: probing for name uniqueness, announcing, per-question answering with NSEC negative responses, sending goodbye packets on shutdown, known-answer suppression, and unicast responses when the QU bit is set. Multicast responses containing shared records (PTR) are delayed by a random 20--120 ms interval (RFC 6762 section 6); responses carrying only unique, probe-verified records are sent immediately.
 
 ## Header and Alias
 
 | Form | Header |
 |------|--------|
 | `basic_service_server<P>` | `#include <mdnspp/basic_service_server.h>` |
-| `mdnspp::service_server` (DefaultPolicy alias) | `#include <mdnspp/defaults.h>` |
+| `mdnspp::service_server` (default_policy alias) | `#include <mdnspp/defaults.h>` |
 
 ```cpp
 // Template form
-template <Policy P>
+template <policy_like P>
 class basic_service_server;
 
-// DefaultPolicy alias (from defaults.h)
-using service_server = basic_service_server<DefaultPolicy>;
+// default_policy alias (from defaults.h)
+using service_server = basic_service_server<default_policy>;
 ```
 
 ## Template Parameters
 
 | Parameter | Constraint | Description |
 |-----------|------------|-------------|
-| `P` | satisfies `Policy` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
+| `P` | satisfies `policy_like` | Provides `executor_type`, `socket_type`, and `timer_type`. See [policies](../policies.md). |
 
 ## Type Aliases
 
@@ -30,7 +30,7 @@ using service_server = basic_service_server<DefaultPolicy>;
 using executor_type  = typename P::executor_type;
 using socket_type    = typename P::socket_type;
 using timer_type     = typename P::timer_type;
-using query_callback = detail::move_only_function<void(const endpoint&, dns_type, response_mode)>;
+using query_callback = move_only_function<void(const endpoint&, dns_type, response_mode)>;
 ```
 
 Callback types are defined in `<mdnspp/callback_types.h>` (included transitively):
@@ -49,21 +49,56 @@ using error_handler      = mdnspp::error_handler;             // void(std::error
 ```cpp
 explicit basic_service_server(executor_type ex, service_info info,
                               service_options opts = {},
-                              socket_options sock_opts = {},
+                              policy_socket_options_t<P> sock_opts = {},
                               mdns_options mdns_opts = {});
 ```
 
-Constructs the server from an executor and a [`service_info`](#service_info) describing the service to announce. The optional [`service_options`](service_options.md) controls probing, announcing, goodbye, and query notification behavior. The optional `sock_opts` controls network interface selection, multicast TTL, and loopback (see [Socket Options](../socket-options.md)). The optional [`mdns_options`](mdns_options.md) controls TC accumulation windows and known-answer suppression limits. Throws on socket construction failure.
+Constructs the server from an executor and a [`service_info`](#service_info) describing the service to announce. The optional [`service_options`](service_options.md) controls probing, announcing, goodbye, query notification, and error reporting behavior. The optional `sock_opts` controls network interface selection, multicast TTL, and loopback (see [Socket Options](../socket-options.md)); its type is `policy_socket_options_t<P>` — plain `socket_options` for the default and asio policies, the policy's derived options type otherwise (e.g. `encrypt_socket_options`). The optional [`mdns_options`](mdns_options.md) controls TC accumulation windows and known-answer suppression limits.
+
+Options are validated at construction. The constructor fails with `std::errc::invalid_argument`, thrown as `std::system_error`, when
+
+- `service_name`, `service_type` or `hostname` of `info` is empty; `dns_name` turns invalid presentation text into the empty name, so invalid names and the root name are rejected as well;
+- `probe_count` or `announce_count` is zero, `probe_interval` or `announce_interval` is not positive, or `probe_initial_delay_max` or `probe_defer_delay` is negative;
+- `ptr_ttl`, `srv_ttl`, `txt_ttl`, `a_ttl`, `aaaa_ttl`, `fallback_record_ttl` or `probe_authority_ttl` is not positive;
+- in `mdns_opts`, `legacy_unicast_ttl` is not positive;
+- `mdns_opts` breaks any of the [`mdns_options` rules](mdns_options.md#validation) that the other peers apply, so a server rejects every `mdns_options` the observer, querier, service discovery and service monitor reject.
+
+Socket construction failure also throws.
+
+### Throwing, for the servers of a NIC group
+
+```cpp
+basic_service_server(executor_type ex, service_info info,
+                     service_options opts, policy_socket_options_t<P> sock_opts,
+                     mdns_options mdns_opts,
+                     std::shared_ptr<detail::sibling_records> siblings, std::size_t element);
+```
+
+Same as the throwing constructor. [`basic_nic_group`](nic_group.md) uses it for its per-NIC servers: each passes the group's shared registry and the index of the `server_peer_options` element it was built from, so the servers of one group recognize each other's records instead of reporting them as conflicts (RFC 6762 section 14; see [NIC group](../nic-group.md)). A received record is skipped by the probing and live conflict checks only when another member currently publishes it: address records of any member, SRV and TXT records only of a member with the same `element`. A null `siblings` makes a standalone server, which is what the first constructor builds. The registry is internal; applications use the first constructor.
 
 ### Non-throwing
 
 ```cpp
 basic_service_server(executor_type ex, service_info info,
-                     service_options opts, socket_options sock_opts,
+                     service_options opts, policy_socket_options_t<P> sock_opts,
                      mdns_options mdns_opts, std::error_code &ec);
 ```
 
-Same as the throwing constructor, but sets `ec` instead of throwing on failure. All parameters must be provided explicitly (no defaults).
+Same as the throwing constructor, but sets `ec` instead of throwing — both for socket construction failure and for invalid options (`std::errc::invalid_argument`). All parameters must be provided explicitly (no defaults).
+
+### Non-throwing, for the servers of a NIC group
+
+```cpp
+basic_service_server(executor_type ex, service_info info,
+                     service_options opts, policy_socket_options_t<P> sock_opts,
+                     mdns_options mdns_opts,
+                     std::shared_ptr<detail::sibling_records> siblings, std::size_t element,
+                     std::error_code &ec);
+```
+
+The sibling constructor above, reporting through `ec` like the non-throwing constructor. [`basic_nic_group`](nic_group.md) builds its per-NIC servers with it and reports a failure through `nic_group_options::on_error` as `"service_server construction"`, so a server that cannot be built on one interface does not stop the group. The non-throwing constructor without siblings is this one with a null `siblings`.
+
+`basic_service_server` is non-copyable and non-movable: completion handlers capture `this`.
 
 **TC handling and duplicate answer suppression** are automatic when the server is constructed with `mdns_options`. When a query arrives with the TC (truncation) bit set, the server accumulates continuation packets for a random interval in `[tc_wait_min, tc_wait_max]` before processing the full known-answer set. See [tc-handling](../rfc/tc-handling.md) and [duplicate-suppression](../rfc/duplicate-suppression.md) for details.
 
@@ -77,13 +112,16 @@ void async_start(completion_handler on_ready = {}, completion_handler on_done = 
 
 Begins the probe -> announce -> live sequence and returns immediately.
 
-- **Probing:** sends 3 probe queries at 250 ms intervals (with a random 0--250 ms initial delay per RFC 6762 section 8.1). If a conflicting response is detected, `service_options::on_conflict` is called.
+- **Probing:** sends 3 probe queries at 250 ms intervals (with a random 0--250 ms initial delay per RFC 6762 section 8.1), probing both the service instance name and the hostname. If a conflicting response is detected, `service_options::on_conflict` is called.
 - **Announcing:** sends `announce_count` unsolicited announcements at `announce_interval` intervals.
-- **Live:** the server responds to matching queries.
+- **Live:** the server responds to matching queries and continues conflict monitoring (RFC 6762 section 9).
 
-The `on_ready` handler fires with `std::error_code{}` when the server reaches the live state, or with `mdns_error::probe_conflict` if conflict resolution fails. The `on_done` handler fires with `std::error_code{}` when `stop()` is called.
+Completion semantics:
 
-Must only be called once per lifetime.
+- `on_ready` fires once with the startup outcome: `std::error_code{}` when the server reaches the live state; `mdns_error::probe_conflict` when conflict resolution fails permanently (the `on_conflict` callback returned `std::nullopt` or was not set); `std::errc::invalid_argument` when the service names cannot be encoded; `std::errc::operation_canceled` when `stop()` is called before the server is live.
+- `on_done` ALWAYS fires with `std::error_code{}` after teardown completes — both on `stop()` and on the permanent-probe-failure path. A program waiting for `on_done` therefore never hangs after a conflict dead-end.
+
+`async_start` is one-shot: a second call completes `on_ready` with `std::errc::operation_in_progress`; a call after `stop()` completes `on_ready` with `std::errc::invalid_argument`. Misuse is detected through atomic flags only, so a misusing call is safe from any thread. The misuse completion is posted to the executor, never invoked inline on the caller thread. The running sequence is unaffected.
 
 ### stop
 
@@ -91,15 +129,7 @@ Must only be called once per lifetime.
 void stop();
 ```
 
-Idempotent. Sends a goodbye packet (TTL=0) if `service_options::send_goodbye` is `true` and the server is in the live or announcing state. Fires `on_ready` with `operation_canceled` if still probing or announcing, then fires `on_done`. Cancels the response timer and destroys the receive loop. The destructor calls `stop()` automatically for RAII safety.
-
-### on_error
-
-```cpp
-void on_error(error_handler handler);
-```
-
-Sets a handler invoked when a fire-and-forget send operation fails (e.g. during probing, announcing, or response sending). The handler receives the error code and a context string identifying the send site (e.g. `"probe send"`, `"goodbye send"`). Without a handler, send errors are silently ignored.
+Idempotent and callable from any thread. Posts the teardown to the executor, so all state mutations -- including building the goodbye packet (when `service_options::send_goodbye` is `true`) from the current service information and sending it -- happen on the executor thread. The goodbye is sent only when the server was announcing or live (RFC 6762 section 10.1); consequently a goodbye goes out only if the executor runs after `stop()`. If the server is still probing or announcing, `on_ready` fires with `std::errc::operation_canceled`; `on_done` then fires with `std::error_code{}` after teardown. The destructor calls `stop()` automatically for RAII safety and completes still-pending handlers with `std::errc::operation_canceled` rather than dropping them.
 
 ### update_service_info
 
@@ -107,11 +137,11 @@ Sets a handler invoked when a fire-and-forget send operation fails (e.g. during 
 void update_service_info(service_info new_info);
 ```
 
-Replaces the service's metadata at runtime and multicasts an unsolicited announcement burst with all records (PTR, SRV, TXT, A/AAAA) per RFC 6762 section 8.4. The number of announcements and their interval are controlled by `service_options::announce_count` and `service_options::announce_interval`.
+Replaces the service's metadata at runtime. When `service_name` and `hostname` are unchanged, an unsolicited announcement burst with all records (PTR, SRV, TXT, A/AAAA) is multicast per RFC 6762 section 8.4; the number of announcements and their interval are controlled by `service_options::announce_count` and `service_options::announce_interval`. A changed `service_name` or `hostname` is a new record set and re-enters probing first (RFC 6762 section 8.1). When the replacement info carries `auto_address` (a `service_info::make()` result), its unset address fields are re-resolved under the `async_start` rule before the announcement (see [service_info](service_info.md)).
 
 **Thread-safety:** May be called from any thread. Internally uses `P::post()` to schedule the update on the server's event loop, ensuring no data races with the receive loop.
 
-**Liveness guard:** The posted work captures a `std::weak_ptr` to the server's internal liveness sentinel. If the server is destroyed or stopped before the posted work executes, the update is silently discarded -- no dangling pointer access.
+**Liveness guard:** The posted work captures a `std::weak_ptr` to the server's internal liveness sentinel. If the server is destroyed or stopped before the posted work executes, the update is silently discarded &mdash; no dangling pointer access.
 
 **Precondition:** Must only be called on a running server (after `async_start()`, before `stop()`).
 
@@ -132,38 +162,79 @@ srv.update_service_info(mdnspp::service_info{
 // Announcement is multicast automatically after the update executes on the event loop.
 ```
 
+### Error reporting
+
+Fire-and-forget send failures (probe, announce, response, goodbye sends) and address encoding errors are reported through the `service_options::on_error` field:
+
+```cpp
+mdnspp::service_options opts{
+    .on_error = [](std::error_code ec, std::string_view context)
+    {
+        std::cerr << context << ": " << ec.message() << std::endl;
+    },
+};
+```
+
+The handler receives the error code and a context string identifying the failure site. Without a handler, send errors are silently ignored.
+
+| Context | Failure |
+|---------|---------|
+| `"probe send"` | sending a probe query |
+| `"announcement send"` | sending an announcement, meta-query announcement or subtype announcement |
+| `"response send"` | sending a multicast or QU unicast answer |
+| `"meta-query response send"`, `"subtype response send"` | answering a service type enumeration or subtype query |
+| `"legacy unicast response"` | answering a legacy unicast query (RFC 6762 section 6.7) |
+| `"goodbye send"` | sending the goodbye on `stop()` |
+| `"receive"` | the receive loop |
+| `"interface enumeration"` | enumerating interfaces to resolve `auto_address` fields; the addresses stay unresolved |
+| `"egress interface lookup"` | opening, connecting or reading the local address of the throwaway socket that finds the interface an unbound server sends on, for example `network_unreachable` on a host with no route to the group; the addresses stay unresolved |
+| `"invalid IPv4 address: <address>"`, `"invalid IPv6 address: <address>"` | an address in `service_info` that cannot be encoded (`mdns_error::invalid_ipv4_address` / `invalid_ipv6_address`); checked before every announcement |
+
 ### Accessors
 
 ```cpp
 const socket_type& socket()     const noexcept;
       socket_type& socket()           noexcept;
-const timer_type&  timer()      const noexcept;  // response delay timer
-      timer_type&  timer()            noexcept;
-const timer_type&  recv_timer() const noexcept;  // receive loop timer
-      timer_type&  recv_timer()       noexcept;
+const timer_type&  timer()       const noexcept;  // probe and announce schedule
+      timer_type&  timer()             noexcept;
+const timer_type&  delay_timer() const noexcept;  // delayed multicast responses
+      timer_type&  delay_timer()       noexcept;
+const timer_type&  tc_timer()    const noexcept;  // TC accumulation timer
+      timer_type&  tc_timer()          noexcept;
+const timer_type&  recv_timer()  const noexcept;  // receive loop timer
+      timer_type&  recv_timer()        noexcept;
 ```
 
-The server uses two timers: `timer()` for the RFC 6762 random response delay (20--120 ms for multicast), and `recv_timer()` for the internal receive loop.
+The server uses four timers: `timer()` for the probe and announce schedule (initial probe delay, probe and announce intervals, update announcements, the deferred re-probe), `delay_timer()` for the RFC 6762 section 6 random delay of multicast responses (20--120 ms), `tc_timer()` for truncated-query known-answer accumulation, and `recv_timer()` for the internal receive loop.
 
 ## Lifecycle
 
 The server progresses through five states:
 
-| State | Description |
-|-------|-------------|
-| **idle** | Constructed but `async_start()` not yet called. |
-| **probing** | Sending probe queries to check name uniqueness (3 probes at 250 ms intervals). Incoming responses are checked for conflicts. |
-| **announcing** | Sending unsolicited announcement burst (`announce_count` packets at `announce_interval`). |
-| **live** | Responding to matching queries with RFC 6762-delayed responses. `on_ready` has fired. |
-| **stopped** | `stop()` called or conflict resolution failed. `on_done` has fired. |
+| State | Description | Handler activity |
+|-------|-------------|------------------|
+| **idle** | Constructed but `async_start()` not yet called. | — |
+| **probing** | Sending probe queries (3 probes at 250 ms intervals) for the instance name and hostname. Incoming responses and simultaneous probes are checked for conflicts (§8.1, §8.2.1). | `stop()` here fires `on_ready` with `operation_canceled`. |
+| **announcing** | Sending the unsolicited announcement burst (`announce_count` packets at `announce_interval`). | `stop()` here fires `on_ready` with `operation_canceled`; a goodbye is sent. |
+| **live** | Responding to matching queries; post-probe conflict monitoring active (§9). | `on_ready` has fired with `std::error_code{}`. |
+| **stopped** | `stop()` called or conflict resolution failed permanently. | `on_done` has fired with `std::error_code{}` after teardown. |
 
 ```
 idle -> probing -> announcing -> live -> stopped
-                \                        ^
-                 -> (conflict) ----------/
+           |   \                  |        ^
+           |    -> (rename) ------+--------|   <- on_conflict returned a new name: re-probe
+           |                      |        |
+            -> (give up) ---------+--------    <- on_conflict returned std::nullopt:
+                                                  on_ready(probe_conflict), teardown, on_done({})
 ```
 
-Conflict during probing invokes `service_options::on_conflict`. If the callback returns `true`, probing restarts with the new name. If it returns `false` (or no callback is set), the server transitions directly to stopped and fires `on_ready` with `mdns_error::probe_conflict`.
+A conflict (during probing or while live) invokes `service_options::on_conflict`. If the callback returns a replacement name, probing restarts with it (rate-limited per §8.1). If it returns `std::nullopt` (or no callback is set), the server tears down: `on_ready` fires with `mdns_error::probe_conflict`, the full teardown runs (goodbye if applicable), and `on_done` fires with `std::error_code{}`.
+
+### Threading and callback contract
+
+- All callbacks (`on_ready`, `on_done`, `on_conflict`, `on_query`, `on_tc_continuation`, `on_error`) fire on the executor.
+- A callback may call `stop()`; it must NOT destroy the server from within itself.
+- `stop()` and destruction complete a pending `on_ready` with `std::errc::operation_canceled` (when not yet live) and always complete `on_done` — pending handlers are never silently dropped.
 
 ## Supporting Types
 
@@ -181,12 +252,19 @@ struct service_info {
     std::optional<std::string> address_ipv6;   // e.g. "fe80::1"
     std::vector<service_txt>   txt_records;    // RFC 6763 key/value entries
     std::vector<std::string>   subtypes;       // e.g. {"_printer"} for subtype enumeration
+    bool                       auto_address{false}; // set by make(); see service_info docs
 };
 ```
 
-Defined in `<mdnspp/service_info.h>`. Describes the service to announce. The `subtypes` field lists DNS-SD subtype labels (RFC 6763 section 7.1) for subtype-filtered discovery and optional subtype announcement (see `service_options::announce_subtypes`).
+Defined in `<mdnspp/service_info.h>`; full reference in [service_info](service_info.md). Describes the service to announce. The `subtypes` field lists DNS-SD subtype labels (RFC 6763 section 7.1) for subtype-filtered discovery and optional subtype announcement (see `service_options::announce_subtypes`).
 
-Use C++20 designated initializers for readability:
+The validated factory `service_info::make()` derives `service_name`, `service_type`, and `hostname` from an instance label and a service type, and sets `auto_address`: the server then resolves the unset `address_ipv4` / `address_ipv6` fields from the announcing interface at `async_start` and after every `update_service_info()` (RFC 6762 section 6.2; see [service_info](service_info.md)):
+
+```cpp
+auto info = mdnspp::service_info::make("MyApp", "_http._tcp", 8080);
+```
+
+Alternatively, use C++20 designated initializers for the fully explicit form:
 
 ```cpp
 mdnspp::service_info info{
@@ -203,7 +281,7 @@ mdnspp::service_info info{
 ### query_callback
 
 ```cpp
-using query_callback = std::move_only_function<void(const endpoint&, dns_type, response_mode)>;
+using query_callback = move_only_function<void(const endpoint&, dns_type, response_mode)>;
 ```
 
 Called when a matching mDNS query is received. Set via [`service_options::on_query`](service_options.md).
@@ -253,18 +331,27 @@ int main()
     opts.on_query = [](const mdnspp::endpoint &sender, mdnspp::dns_type qtype, mdnspp::response_mode mode)
     {
         std::cout << sender << " queried qtype=" << to_string(qtype)
-                  << " (" << to_string(mode) << ")\n";
+                  << " (" << to_string(mode) << ")" << std::endl;
     };
 
     mdnspp::service_server srv{ctx, std::move(info), std::move(opts)};
 
-    std::thread shutdown{[&ctx] {
+    std::thread shutdown{[&srv] {
         std::this_thread::sleep_for(std::chrono::seconds(30));
-        ctx.stop();
+        srv.stop(); // safe from any thread; goodbye is sent on the executor
     }};
 
-    std::cout << "Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)\n";
-    srv.async_start();
+    std::cout << "Serving MyApp._http._tcp.local. on port 8080 (30s then auto-stop)" << std::endl;
+    srv.async_start(
+        [](std::error_code ec)
+        {
+            if (ec)
+                std::cerr << "start failed: " << ec.message() << std::endl;
+        },
+        [&ctx](std::error_code)
+        {
+            ctx.stop(); // teardown complete, goodbye sent
+        });
     ctx.run();
 
     shutdown.join();
@@ -275,7 +362,7 @@ int main()
 
 Multiple `service_server` instances can share the same executor. Each server
 creates its own socket, and the context multiplexes all of them. This works
-with both DefaultPolicy and AsioPolicy.
+with both default_policy and asio_policy.
 
 ```cpp
 mdnspp::context ctx;

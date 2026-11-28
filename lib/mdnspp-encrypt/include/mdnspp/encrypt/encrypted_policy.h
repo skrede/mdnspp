@@ -1,15 +1,16 @@
 #ifndef HPP_GUARD_MDNSPP_ENCRYPT_ENCRYPTED_POLICY_H
 #define HPP_GUARD_MDNSPP_ENCRYPT_ENCRYPTED_POLICY_H
 
-#include "mdnspp/policy.h"
 #include "mdnspp/encrypt/encrypted_socket.h"
 #include "mdnspp/encrypt/encrypt_socket_options.h"
 
+#include "mdnspp/policy.h"
+
 #include "mdnspp/detail/compat.h"
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
-template <Policy Inner>
+template <policy_like Inner>
 struct encrypted_policy
 {
     using executor_type       = typename Inner::executor_type;

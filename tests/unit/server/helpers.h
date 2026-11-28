@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_HELPERS_H
-#define HPP_GUARD_MDNSPP_HELPERS_H
+#ifndef HPP_GUARD_MDNSPP_SERVER_HELPERS_H
+#define HPP_GUARD_MDNSPP_SERVER_HELPERS_H
 
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
@@ -13,9 +13,12 @@
 
 #include "mdnspp/testing/mock_policy.h"
 
-#include <vector>
+#include "support/wire_bytes.h"
+
 #include <string>
+#include <vector>
 #include <cstddef>
+#include <cstdint>
 #include <variant>
 #include <optional>
 
@@ -23,17 +26,7 @@ using namespace mdnspp;
 using namespace mdnspp::detail;
 using namespace mdnspp::testing;
 using mdnspp::dns_type;
-
-namespace {
-
-inline uint16_t read_u16_be(const auto &buf, std::size_t offset)
-{
-    return static_cast<uint16_t>(
-        (static_cast<uint16_t>(static_cast<uint8_t>(buf[offset])) << 8) |
-        static_cast<uint16_t>(static_cast<uint8_t>(buf[offset + 1])));
-}
-
-}
+using mdnspp::test_support::read_u16_be;
 
 inline service_info make_test_service()
 {
@@ -79,23 +72,17 @@ inline std::vector<std::byte> make_ptr_query(std::string_view service_type)
     return build_dns_query(service_type, dns_type::ptr);
 }
 
-// Advances a server from probing through announcing to live state.
-// Probing: 1 fire (initial delay) + 2 fires (probes 2 and 3) + 1 fire (conflict window) = 4
-// Announcing: first announcement is immediate (no fire), then (announce_count - 1) fires
-// With default announce_count=2: 4 + 1 = 5 timer fires total.
-inline void advance_to_live(basic_service_server<MockPolicy> &server, unsigned announce_count = 2)
+// Probing takes four timer fires: the initial delay, probes two and three, then the conflict window. The first
+// announcement needs no fire; each further one does.
+inline void advance_to_live(basic_service_server<mock_policy> &server, uint32_t announce_count = 2)
 {
-    // 4 timer fires to complete probing
-    for(unsigned i = 0; i < 4; ++i)
+    for(uint32_t i = 0; i < 4; ++i)
         server.timer().fire();
 
-    // (announce_count - 1) timer fires for remaining announcements
-    for(unsigned i = 1; i < announce_count; ++i)
+    for(uint32_t i = 1; i < announce_count; ++i)
         server.timer().fire();
 }
 
-// Builds a mock DNS response packet that contains a record matching the given service_info.
-// This is used to simulate conflict detection during probing.
 inline std::vector<std::byte> make_conflict_response(const service_info &info)
 {
     return build_dns_response(info, dns_type::srv, service_options{});

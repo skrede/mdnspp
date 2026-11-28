@@ -1,0 +1,33 @@
+make_test(concept_conformance_test)
+
+make_subdir_test(recv_loop_lifecycle_test recv_loop/lifecycle.cpp)
+make_subdir_test(recv_loop_delivery_test recv_loop/delivery.cpp)
+make_subdir_test(recv_loop_errors_test recv_loop/errors.cpp)
+make_subdir_test(recv_loop_stop_test recv_loop/stop.cpp)
+
+make_subdir_test(receive_contract_buffered_test receive_contract/buffered.cpp)
+target_link_libraries(receive_contract_buffered_test PRIVATE mdnspp::inproc)
+
+make_test(mock_receive_metadata_test)
+make_inproc_subdir_test(inproc_bus_destination_test inproc_bus/destination.cpp)
+make_test(recv_ancillary_test)
+if (NOT WIN32)
+    make_test(recv_ancillary_bounds_test)
+    make_test(recv_ancillary_destination_test)
+else ()
+    make_test(recv_ancillary_windows_test)
+endif ()
+make_test(socket_registry_test)
+make_subdir_test(default_conformance_v6_only_test default_conformance/v6_only.cpp)
+make_subdir_test(default_conformance_receive_metadata_unicast_test default_conformance/receive_metadata_unicast.cpp)
+make_subdir_test(default_conformance_receive_metadata_multicast_test default_conformance/receive_metadata_multicast.cpp)
+set_tests_properties(default_conformance_receive_metadata_multicast_test PROPERTIES LABELS multicast_probe)
+
+make_subdir_test(receive_contract_default_test receive_contract/default.cpp)
+target_link_libraries(receive_contract_default_test PRIVATE mdnspp::inproc)
+
+if (TARGET mdnspp::asio)
+    make_asio_subdir_test(asio_receive_v6_only_test  asio_receive/v6_only.cpp)
+    make_asio_subdir_test(asio_receive_metadata_test asio_receive/metadata.cpp)
+    set_tests_properties(asio_receive_metadata_test PROPERTIES LABELS multicast_probe)
+endif ()

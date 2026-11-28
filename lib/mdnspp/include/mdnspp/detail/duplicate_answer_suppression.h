@@ -1,5 +1,5 @@
-#ifndef HPP_GUARD_MDNSPP_DUPLICATE_ANSWER_SUPPRESSION_H
-#define HPP_GUARD_MDNSPP_DUPLICATE_ANSWER_SUPPRESSION_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_DUPLICATE_ANSWER_SUPPRESSION_H
+#define HPP_GUARD_MDNSPP_DETAIL_DUPLICATE_ANSWER_SUPPRESSION_H
 
 #include "mdnspp/records.h"
 #include "mdnspp/record_cache.h"
@@ -24,8 +24,8 @@ struct duplicate_suppression_state
 
     // RFC 6762 section 7.4: suppress if an identical record was seen with
     // observed_ttl >= our_ttl (NOT the 50% rule from section 7.1).
-    [[nodiscard]] bool is_suppressed(const mdns_record_variant &rec,
-                                     uint32_t our_ttl) const noexcept
+    bool is_suppressed(const mdns_record_variant &rec,
+                       uint32_t our_ttl) const noexcept
     {
         for (const auto &seen : m_seen)
         {
@@ -40,7 +40,7 @@ struct duplicate_suppression_state
 
     void reset() noexcept { m_seen.clear(); }
 
-    [[nodiscard]] bool empty() const noexcept { return m_seen.empty(); }
+    bool empty() const noexcept { return m_seen.empty(); }
 
 private:
     std::vector<seen_answer> m_seen;

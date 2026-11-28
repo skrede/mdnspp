@@ -4,21 +4,21 @@
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/query_options.h"
-#include "mdnspp/socket_options.h"
 #include "mdnspp/callback_types.h"
+#include "mdnspp/socket_options.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
 #include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/querier_engine.h"
 #include "mdnspp/detail/basic_mdns_peer_base.h"
 
+#include <chrono>
 #include <memory>
 #include <random>
 #include <string>
 #include <vector>
-#include <chrono>
 #include <cstdint>
-#include <cassert>
 #include <utility>
 #include <algorithm>
 #include <string_view>
@@ -26,10 +26,10 @@
 
 namespace mdnspp {
 
-template<Policy P>
-class basic_querier : detail::basic_mdns_peer_base<P>
+template <policy_like P>
+class basic_querier : detail::querier_engine<P>
 {
-    using base = detail::basic_mdns_peer_base<P>;
+    using base = detail::querier_engine<P>;
 
 public:
     using typename base::executor_type;
@@ -38,297 +38,78 @@ public:
     using base::socket;
     using base::timer;
 
-    /// Optional callback invoked per record as results arrive during a query.
     using record_callback = mdnspp::record_callback;
-
-    /// Completion callback fired once when the silence timeout expires (or stop() is called).
-    /// Receives error_code (always success for normal completion) and the accumulated results.
     using completion_handler = mdnspp::querier_completion_handler;
-
-    /// Error handler invoked on fire-and-forget send failures.
     using error_handler = mdnspp::error_handler;
 
-    // Non-copyable (owns recv_loop by unique_ptr)
+    // Non-copyable and non-movable (recv_loop and timer handlers capture this)
     basic_querier(const basic_querier &) = delete;
     basic_querier &operator=(const basic_querier &) = delete;
+    basic_querier(basic_querier &&) = delete;
     basic_querier &operator=(basic_querier &&) = delete;
-
-    // Movable only before async_query() is called (m_loop must be null).
-    basic_querier(basic_querier &&other) noexcept
-        : base(std::move(other))
-        , m_duplicate_seen(other.m_duplicate_seen)
-        , m_query_sent(other.m_query_sent)
-        , m_query_type(other.m_query_type)
-        , m_query_mode(other.m_query_mode)
-        , m_silence_timeout(other.m_silence_timeout)
-        , m_delay_timer(std::move(other.m_delay_timer))
-        , m_on_error(std::move(other.m_on_error))
-        , m_on_record(std::move(other.m_on_record))
-        , m_on_completion(std::move(other.m_on_completion))
-        , m_results(std::move(other.m_results))
-    {
-    }
 
     ~basic_querier()
     {
         this->m_alive.reset();
         stop();
+        // The posted stop() teardown is dropped by the expired alive guard; complete a still-pending handler with
+        // operation_canceled instead of silently dropping it.
+        if(auto h = std::exchange(this->m_on_completion, nullptr); h)
+            h(std::make_error_code(std::errc::operation_canceled), std::move(this->m_results));
     }
 
-    // Throwing constructor -- constructs socket and timer from executor.
-    // query_options bundles the silence timeout and per-record callback.
-    explicit basic_querier(executor_type ex, query_options opts = {},
-                           policy_socket_options_t<P> sock_opts = {},
+    explicit basic_querier(executor_type ex, query_options opts = {}, policy_socket_options_t<P> sock_opts = {},
                            mdns_options mdns_opts = {})
-        : base(ex, std::move(sock_opts), std::move(mdns_opts))
-        , m_silence_timeout(opts.silence_timeout)
-        , m_delay_timer(ex)
-        , m_on_record(std::move(opts.on_record))
+        : base(ex, std::move(opts), std::move(sock_opts), std::move(mdns_opts))
     {
     }
 
-    // Non-throwing constructor -- ec is last (ASIO convention).
-    basic_querier(executor_type ex, query_options opts, policy_socket_options_t<P> sock_opts,
-                  mdns_options mdns_opts, std::error_code &ec)
-        : base(ex, std::move(sock_opts), std::move(mdns_opts), ec)
-        , m_silence_timeout(opts.silence_timeout)
-        , m_delay_timer(ex)
-        , m_on_record(std::move(opts.on_record))
+    basic_querier(executor_type ex, query_options opts, policy_socket_options_t<P> sock_opts, mdns_options mdns_opts,
+                  std::error_code &ec)
+        : base(ex, std::move(opts), std::move(sock_opts), std::move(mdns_opts), ec)
     {
     }
 
-    // Accessors for the delay timer (querier-specific, not from base).
-    const timer_type &delay_timer() const noexcept { return m_delay_timer; }
-    timer_type &delay_timer() noexcept { return m_delay_timer; }
+    const timer_type &delay_timer() const noexcept { return this->m_sender.timer(); }
+    timer_type &delay_timer() noexcept { return this->m_sender.timer(); }
 
-    // Plain callback overload -- used by NativePolicy, MockPolicy, and ASIO adapter users.
-    // When mode is response_mode::unicast the QU bit (RFC 6762 section 5.4) is set,
-    // requesting a direct unicast response from the responder instead of a multicast reply.
-    void async_query(std::string_view name, dns_type qtype, completion_handler on_done, response_mode mode = response_mode::multicast)
+    void async_query(std::string_view name, dns_type qtype, completion_handler on_done,
+                     response_mode mode = response_mode::multicast)
     {
-        assert(this->m_loop == nullptr); // one query per lifetime
+        auto misuse = this->query_misuse(name);
+        if(misuse)
+        {
+            if(on_done)
+                this->post_guarded([h = std::move(on_done), misuse]() mutable
+                {
+                    h(misuse, std::vector<mdns_record_variant>{});
+                });
+            return;
+        }
         if(on_done)
-            m_on_completion = std::move(on_done);
-        do_query(std::string(name), qtype, mode);
+            this->m_on_completion = std::move(on_done);
+        this->do_query(std::string(name), qtype, mode);
     }
 
-    // Access accumulated results (populated during io.run()).
-    // Remains valid after completion -- the completion handler receives a copy.
     const std::vector<mdns_record_variant> &results() const noexcept
     {
-        return m_results;
+        return this->m_results;
     }
 
-    /// Sets the error handler invoked on fire-and-forget send failures.
-    void on_error(error_handler handler) { m_on_error = std::move(handler); }
-
-    // Early termination -- posts teardown to executor thread, ensuring all
-    // state mutations happen on the executor (no cross-thread data race).
     void stop()
     {
         base::stop([this]()
         {
-            m_delay_timer.cancel();
+            this->m_sender.timer().cancel();
 
             if(this->m_loop)
             {
                 this->m_loop->stop();
-                if(auto h = std::exchange(m_on_completion, nullptr); h)
-                    h(std::error_code{}, m_results);
+                if(auto h = std::exchange(this->m_on_completion, nullptr); h)
+                    h(std::make_error_code(std::errc::operation_canceled), this->m_results);
             }
         });
     }
-
-private:
-    // Common query body -- assumes m_on_completion is already set.
-    // Must only be called once per lifetime (m_loop must be null on entry).
-    //
-    // For QM queries (multicast mode): delays sending by 20-120ms random interval
-    // per RFC 6762 section 5.2. During the delay window, incoming QM queries with
-    // a matching question suppress the outgoing query (section 7.3).
-    // For QU queries (unicast mode): sends immediately with no delay.
-    void do_query(std::string qname, dns_type qtype, response_mode mode = response_mode::multicast)
-    {
-        assert(this->m_loop == nullptr);
-        init_query_state(std::move(qname), qtype, mode);
-        create_recv_loop();
-
-        if(mode == response_mode::unicast)
-            start_unicast_query();
-        else
-            start_multicast_query();
-    }
-
-    void init_query_state(std::string qname, dns_type qtype, response_mode mode)
-    {
-        m_results.clear();
-        m_query_name = dns_name(std::move(qname));
-        m_query_type = qtype;
-        m_query_mode = mode;
-        m_duplicate_seen = false;
-        m_query_sent = false;
-    }
-
-    void send_query()
-    {
-        auto query_bytes = detail::build_dns_query(m_query_name, m_query_type, m_query_mode);
-        std::error_code ec;
-        this->m_socket.send(this->multicast_endpoint(),
-            std::span<const std::byte>(query_bytes), ec);
-        if(ec && m_on_error)
-            m_on_error(ec, "query send");
-        m_query_sent = true;
-    }
-
-    // Duplicate question suppression (RFC 6762 section 7.3):
-    // Only checked before our query has been sent, and only for QM queries.
-    // Returns true if a duplicate was detected and our query should be suppressed.
-    bool check_duplicate_question(std::span<const std::byte> cdata) const
-    {
-        if(m_query_sent || m_query_mode != response_mode::multicast || cdata.size() < 12)
-            return false;
-
-        uint16_t flags = detail::read_u16_be(cdata.data() + 2);
-        if(flags & 0x8000) // QR=1, not a query
-            return false;
-
-        uint16_t qdcount = detail::read_u16_be(cdata.data() + 4);
-        std::size_t offset = 12;
-
-        for(uint16_t i = 0; i < qdcount; ++i)
-        {
-            std::size_t name_start = offset;
-            if(!detail::skip_dns_name(cdata, offset))
-                break;
-            if(offset + 4 > cdata.size())
-                break;
-
-            uint16_t q_type = detail::read_u16_be(cdata.data() + offset);
-            offset += 2;
-            uint16_t q_class = detail::read_u16_be(cdata.data() + offset);
-            offset += 2;
-
-            bool is_qm = (q_class & 0x8000) == 0;
-            bool type_match = q_type == std::to_underlying(m_query_type);
-
-            if(type_match && is_qm)
-            {
-                auto incoming_name = detail::read_dns_name(cdata, name_start);
-                if(incoming_name.has_value() && m_query_name == dns_name{*incoming_name})
-                    return true;
-            }
-        }
-        return false;
-    }
-
-    // Parses response records and collects those relevant to our query.
-    // Returns true if any relevant record was found (resets silence timer).
-    bool process_response_packet(const endpoint &sender, std::span<const std::byte> cdata)
-    {
-        std::vector<mdns_record_variant> batch;
-        detail::walk_dns_frame(cdata, sender,
-            [&batch](mdns_record_variant rec)
-            {
-                batch.push_back(std::move(rec));
-            });
-
-        bool relevant = std::any_of(batch.begin(), batch.end(), [this](const mdns_record_variant &rec)
-        {
-            return std::visit([this](const auto &r) { return r.name == m_query_name; }, rec);
-        });
-
-        if(relevant)
-        {
-            if(m_on_record)
-            {
-                for(const auto &rec : batch)
-                    m_on_record(sender, rec);
-            }
-            m_results.insert(m_results.end(),
-                std::make_move_iterator(batch.begin()),
-                std::make_move_iterator(batch.end()));
-        }
-        return relevant;
-    }
-
-    void fire_completion()
-    {
-        this->m_loop->stop();
-        if(auto h = std::exchange(m_on_completion, nullptr); h)
-            h(std::error_code{}, m_results);
-    }
-
-    void create_recv_loop()
-    {
-        this->m_loop = std::make_unique<recv_loop<P>>(
-            this->m_socket,
-            this->m_timer,
-            m_silence_timeout,
-            [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
-            {
-                if(this->m_stopped.load(std::memory_order_acquire))
-                    return false;
-
-                auto cdata = std::span<const std::byte>(data.data(), data.size());
-
-                if(check_duplicate_question(cdata))
-                {
-                    m_duplicate_seen = true;
-                    m_delay_timer.cancel();
-                }
-
-                return process_response_packet(meta.sender, cdata);
-            },
-            [this]() { fire_completion(); },
-            this->m_mdns_opts.receive_ttl_minimum,
-            this->m_mdns_opts.unknown_ttl_policy);
-    }
-
-    // QU: send immediately, then start recv_loop.
-    void start_unicast_query()
-    {
-        send_query();
-        this->m_loop->start();
-    }
-
-    // QM: start recv_loop first (to detect duplicates), then delay send.
-    void start_multicast_query()
-    {
-        this->m_loop->start();
-
-        std::mt19937 rng(std::random_device{}());
-        std::uniform_int_distribution<int32_t> dist(
-            static_cast<int32_t>(this->m_mdns_opts.response_delay_min.count()),
-            static_cast<int32_t>(this->m_mdns_opts.response_delay_max.count()));
-        auto delay = std::chrono::milliseconds(dist(rng));
-
-        m_delay_timer.expires_after(delay);
-        m_delay_timer.async_wait(
-            [this](std::error_code ec)
-            {
-                if(ec)
-                    return;
-                if(!m_duplicate_seen)
-                    send_query();
-            });
-    }
-
-    // -------------------------------------------------------------------------
-    // Data members -- ordered: fundamental types first, then abstract types;
-    // within each group: ascending by type length, then name length, then alpha.
-    // -------------------------------------------------------------------------
-
-    bool m_duplicate_seen{false};
-    bool m_query_sent{false};
-    dns_type m_query_type{dns_type::none};
-    response_mode m_query_mode{response_mode::multicast};
-    std::chrono::milliseconds m_silence_timeout;
-    timer_type m_delay_timer;
-    dns_name m_query_name;
-    error_handler m_on_error;
-    record_callback m_on_record;
-    completion_handler m_on_completion;
-    std::vector<mdns_record_variant> m_results;
 };
 
 }

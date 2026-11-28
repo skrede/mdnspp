@@ -1,26 +1,20 @@
-#ifndef HPP_GUARD_MDNSPP_ASIO_POLICY_H
-#define HPP_GUARD_MDNSPP_ASIO_POLICY_H
+#ifndef HPP_GUARD_MDNSPP_ASIO_ASIO_POLICY_H
+#define HPP_GUARD_MDNSPP_ASIO_ASIO_POLICY_H
+
+#include "mdnspp/asio/asio_timer.h"
+#include "mdnspp/asio/asio_socket.h"
 
 #include "mdnspp/policy.h"
 
 #include "mdnspp/detail/compat.h"
 
-#include "mdnspp/asio/asio_socket.h"
-#include "mdnspp/asio/asio_timer.h"
-
 namespace mdnspp {
 
-// AsioPolicy: production policy backed by asio::io_context.
-//
-// executor_type is asio::io_context & — a reference type used only as a
-// constructor argument forwarded to AsioSocket and AsioTimer. Neither type
-// stores the reference; they store the executor internally (matching ASIO
-// convention: asio::ip::tcp::socket takes io_context & but stores executor).
-struct AsioPolicy
+struct asio_policy
 {
     using executor_type = asio::io_context&;
-    using socket_type = AsioSocket;
-    using timer_type = AsioTimer;
+    using socket_type = asio_socket;
+    using timer_type = asio_timer;
 
     static void post(executor_type ex, detail::move_only_function<void()> fn)
     {
@@ -30,6 +24,6 @@ struct AsioPolicy
 
 }
 
-static_assert(mdnspp::Policy<mdnspp::AsioPolicy>, "AsioPolicy must satisfy Policy concept");
+static_assert(mdnspp::policy_like<mdnspp::asio_policy>, "asio_policy must satisfy Policy concept");
 
 #endif

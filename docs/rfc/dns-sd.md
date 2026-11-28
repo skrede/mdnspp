@@ -26,7 +26,7 @@ int main()
         [&ctx](std::error_code ec, std::vector<mdnspp::service_type_info> types)
         {
             for (const auto &t : types)
-                std::cout << t.type_name << "." << t.protocol << "." << t.domain << "\n";
+                std::cout << t.type_name << "." << t.protocol << "." << t.domain << std::endl;
             ctx.stop();
         });
 
@@ -49,7 +49,7 @@ int main()
     sd.async_discover_subtype("_http._tcp.local.", "_printer",
         [&ctx](std::error_code ec, const std::vector<mdnspp::mdns_record_variant> &results)
         {
-            std::cout << results.size() << " subtype record(s)\n";
+            std::cout << results.size() << " subtype record(s)" << std::endl;
             ctx.stop();
         });
 
@@ -67,7 +67,7 @@ See also: [examples/service_discovery/](../../examples/service_discovery/)
 | Implemented | Subtype queries (section 7.1) | `async_discover_subtype()` constructs `_sub._service._tcp.local.` queries |
 | Implemented | Server-side meta-query response | `respond_to_meta_queries` in `service_options` (default: `true`) |
 | Implemented | Subtype PTR records in announcements | Opt-in via `announce_subtypes` in `service_options` |
-| Not implemented | Configurable per-record TTL | All records use fixed 4500 s TTL |
+| Implemented | Configurable per-record TTL | `service_options` per-type TTLs (`ptr_ttl`, `srv_ttl`, `txt_ttl`, `a_ttl`, `aaaa_ttl`); defaults follow RFC 6762 §10 (4500 s; 120 s for host-name-containing records) |
 
 ## In-Depth
 

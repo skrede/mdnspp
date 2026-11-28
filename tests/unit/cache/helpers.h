@@ -9,6 +9,7 @@
 
 #include <chrono>
 #include <vector>
+#include <utility>
 
 using namespace mdnspp;
 using namespace std::chrono_literals;
@@ -43,6 +44,20 @@ inline record_ptr make_ptr_record(std::string name, std::string ptr_name, uint32
         .rclass = dns_class::in,
         .sender_address = "192.168.1.100",
         .ptr_name = std::move(ptr_name),
+    };
+}
+
+inline cache_options record_expired_into(std::vector<cache_entry> &out)
+{
+    return cache_options{
+        .on_expired = [&out](std::vector<cache_entry> entries) { out = std::move(entries); },
+    };
+}
+
+inline cache_options flag_cache_flush(bool &called)
+{
+    return cache_options{
+        .on_cache_flush = [&called](const cache_entry &, std::vector<cache_entry>) { called = true; },
     };
 }
 

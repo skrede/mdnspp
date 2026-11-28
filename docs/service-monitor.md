@@ -44,8 +44,8 @@ int main()
 }
 ```
 
-`monitor_options` callbacks are move-only (`std::move_only_function` internally),
-so use `std::move(opts)` when passing to the constructor -- do not copy.
+`monitor_options` callbacks are move-only (`mdnspp::move_only_function` internally),
+so use `std::move(opts)` when passing to the constructor &mdash; do not copy.
 
 ### Lifecycle callbacks
 
@@ -118,7 +118,7 @@ Re-watching a previously unwatched type starts fresh: the backoff resets and
 `on_found` fires again on rediscovery.
 
 Both `watch()` and `unwatch()` are thread-safe. They post their work to the
-executor thread via `P::post()` with a weak-ptr guard -- safe to call from any
+executor thread via `P::post()` with a weak-ptr guard &mdash; safe to call from any
 thread, including before `async_start()`.
 
 ### services() snapshot
@@ -139,24 +139,25 @@ for (const auto &svc : live)
 Each `resolved_service` in the snapshot has `wire_ttl` (the original TTL from
 the wire) and `ttl_remaining` (time until the SRV record expires) populated.
 
-The snapshot is safe to read from any thread without holding any lock -- it
+The snapshot is safe to read from any thread without holding any lock &mdash; it
 uses a mutex-guarded `shared_ptr` swap internally.
 
 ### Query scheduling
 
-In `discover` mode the monitor sends an initial PTR query for each watched
-type immediately, then re-queries on an exponentially increasing schedule per
-RFC 6762 section 5.2:
+In `discover` mode the first PTR query for each watched type waits a random
+delay drawn from [`mdns_options::response_delay_min`, `response_delay_max`]
+(20 to 120 ms by default). The monitor then re-queries on an exponentially
+increasing schedule per RFC 6762 section 5.2:
 
 - First re-query at `mdns_options::initial_interval` (default 1 s)
 - Each subsequent interval doubles (multiplier 2.0) until capped at
   `mdns_options::max_interval` (default 1 hour)
 
 In `discover` and `ttl_refresh` modes, each newly-resolved service's SRV
-record TTL is tracked. Refresh queries (SRV + A + AAAA) are sent at 80%,
-85%, 90%, and 95% of the wire TTL to prevent expiry. Thresholds and jitter
-are controlled by `mdns_options::ttl_refresh_thresholds` and
-`mdns_options::refresh_jitter_pct`.
+record TTL is tracked. Refresh queries are sent at 80%, 85%, 90%, and 95% of
+the wire TTL to prevent expiry; each one asks for SRV, TXT, A and AAAA in a
+single message. Thresholds and jitter are controlled by
+`mdns_options::ttl_refresh_thresholds` and `mdns_options::refresh_jitter_pct`.
 
 See [mDNS Options](mdns-options.md) for tuning details.
 
@@ -167,9 +168,9 @@ Two methods bypass backoff entirely and send queries immediately:
 `query_service_type(service_type)` sends a PTR query for the given type.
 Available in all modes; in `discover` mode it supplements automatic queries.
 
-`query_service_instance(instance_name)` sends SRV + A + AAAA queries for a
-specific instance. Useful when you know the instance name but want fresher
-records before the next scheduled refresh.
+`query_service_instance(instance_name)` sends one query for a specific
+instance asking for SRV, TXT, A and AAAA in one message. Useful when you know
+the instance name but want fresher records before the next scheduled refresh.
 
 Both are thread-safe (post to executor thread).
 
@@ -210,7 +211,7 @@ Traffic for unrelated service types and unknown hosts is silently discarded.
 
 ## See Also
 
-- [examples/service_monitor/](../examples/service_monitor/) -- runnable examples
-- [API reference: service_monitor](api/service_monitor.md) -- full type documentation
-- [mDNS Options](mdns-options.md) -- tuning query backoff and TTL refresh
-- [Custom Policies](custom-policies.md) -- swap the executor or I/O backend
+- [examples/service_monitor/](../examples/service_monitor/) &mdash; runnable examples
+- [API reference: service_monitor](api/service_monitor.md) &mdash; full type documentation
+- [mDNS Options](mdns-options.md) &mdash; tuning query backoff and TTL refresh
+- [Custom Policies](custom-policies.md) &mdash; swap the executor or I/O backend

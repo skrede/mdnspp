@@ -1,5 +1,3 @@
-// tests/service_info_test.cpp
-
 #include "mdnspp/service_info.h"
 
 #include "mdnspp/detail/dns_wire.h"
@@ -17,7 +15,7 @@ using namespace mdnspp;
 using namespace mdnspp::testing;
 using namespace mdnspp::detail;
 
-TEST_CASE("service_info struct has all required fields", "[service_info]")
+static service_info filled_service_info()
 {
     service_info info;
     info.service_name = "MyService._http._tcp.local.";
@@ -29,6 +27,12 @@ TEST_CASE("service_info struct has all required fields", "[service_info]")
     info.address_ipv4 = "192.168.1.10";
     info.address_ipv6 = std::nullopt;
     info.txt_records = {service_txt{"path", "/api"}};
+    return info;
+}
+
+TEST_CASE("service_info struct has all required fields", "[service_info]")
+{
+    service_info info = filled_service_info();
 
     REQUIRE(info.service_name == "MyService._http._tcp.local.");
     REQUIRE(info.service_type == "_http._tcp.local.");
@@ -45,10 +49,10 @@ TEST_CASE("service_info struct has all required fields", "[service_info]")
     REQUIRE(*info.txt_records[0].value == "/api");
 }
 
-TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to handler", "[mock_socket][enqueue_with_endpoint]")
+TEST_CASE("mock_socket::enqueue(packet, endpoint) stores sender and delivers to handler", "[mock_socket][enqueue_with_endpoint]")
 {
     mock_executor ex;
-    MockSocket sock{ex};
+    mock_socket sock{ex};
 
     std::vector<std::byte> pkt = {std::byte{0xAB}, std::byte{0xCD}};
     endpoint sender{"192.168.1.5", 5353};
@@ -58,7 +62,7 @@ TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to h
     endpoint received_from;
     std::vector<std::byte> received_data;
 
-    sock.async_receive([&](const mdnspp::recv_metadata &meta, std::span<std::byte> data)
+    sock.async_receive([&](std::error_code, const mdnspp::recv_metadata &meta, std::span<std::byte> data)
     {
         received_from = meta.sender;
         received_data.assign(data.begin(), data.end());
@@ -71,22 +75,23 @@ TEST_CASE("MockSocket::enqueue(packet, endpoint) stores sender and delivers to h
     REQUIRE(received_data[1] == std::byte{0xCD});
 }
 
-TEST_CASE("MockSocket::enqueue(packet) delivers endpoint{}", "[mock_socket][enqueue_default_endpoint]")
+TEST_CASE("mock_socket::enqueue(packet) delivers an empty sender address on the group port",
+          "[mock_socket][enqueue_default_endpoint]")
 {
     mock_executor ex;
-    MockSocket sock{ex};
+    mock_socket sock{ex};
 
     std::vector<std::byte> pkt = {std::byte{0x01}};
     sock.enqueue(pkt);
 
-    endpoint received_from{"nonzero", 9999}; // will be overwritten
-    sock.async_receive([&](const mdnspp::recv_metadata &meta, std::span<std::byte>)
+    endpoint received_from{"nonzero", 9999};
+    sock.async_receive([&](std::error_code, const mdnspp::recv_metadata &meta, std::span<std::byte>)
     {
         received_from = meta.sender;
     });
 
     REQUIRE(received_from.address == "");
-    REQUIRE(received_from.port == 0);
+    REQUIRE(received_from.port == 5353);
 }
 
 TEST_CASE("push_u16_be appends 2 bytes big-endian", "[dns_wire][push_u16_be]")

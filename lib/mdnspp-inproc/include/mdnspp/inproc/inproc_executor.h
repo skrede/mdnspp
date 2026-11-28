@@ -1,20 +1,30 @@
 #ifndef HPP_GUARD_MDNSPP_INPROC_INPROC_EXECUTOR_H
 #define HPP_GUARD_MDNSPP_INPROC_INPROC_EXECUTOR_H
 
-#include "mdnspp/detail/compat.h"
-
 #include "mdnspp/inproc/inproc_bus.h"
 
+#include "mdnspp/inproc/detail/inproc_ingress.h"
+
+#include "mdnspp/detail/compat.h"
+
 #include <deque>
-#include <vector>
+#include <atomic>
 #include <chrono>
-#include <algorithm>
 #include <thread>
+#include <vector>
+#include <algorithm>
+#include <functional>
 
 namespace mdnspp::inproc {
 
 template <typename Clock>
-class inproc_timer;
+class inproc_timer_base
+{
+public:
+    virtual ~inproc_timer_base() = default;
+
+    virtual bool try_fire(typename Clock::time_point now) = 0;
+};
 
 template <typename Clock = std::chrono::steady_clock>
 class inproc_executor
@@ -22,6 +32,10 @@ class inproc_executor
 public:
     explicit inproc_executor(inproc_bus<Clock> &bus)
         : m_bus(bus)
+        , m_stopped{false}
+        , m_ingress()
+        , m_posted()
+        , m_timers()
     {
     }
 
@@ -34,12 +48,12 @@ public:
 
     void post(detail::move_only_function<void()> fn)
     {
-        m_posted.push_back(std::move(fn));
+        m_ingress.push(std::move(fn));
     }
 
     bool step()
     {
-        // Priority 1: posted callbacks
+        m_ingress.drain_into(m_posted);
         if(!m_posted.empty())
         {
             auto fn = std::move(m_posted.front());
@@ -48,15 +62,13 @@ public:
             return true;
         }
 
-        // Priority 2: expired timers
         const auto now = Clock::now();
-        for(auto *t : m_timers)
+        for(inproc_timer_base<Clock> &t : m_timers)
         {
-            if(t->try_fire(now))
+            if(t.try_fire(now))
                 return true;
         }
 
-        // Priority 3: packet delivery
         if(m_bus.deliver_one())
             return true;
 
@@ -72,7 +84,7 @@ public:
 
     void run()
     {
-        while(!m_stopped)
+        while(!m_stopped.load(std::memory_order_acquire))
         {
             drain();
             std::this_thread::sleep_for(std::chrono::milliseconds{1});
@@ -81,27 +93,28 @@ public:
 
     void stop()
     {
-        m_stopped = true;
+        m_stopped.store(true, std::memory_order_release);
     }
 
-    void register_timer(inproc_timer<Clock> *t)
+    void register_timer(inproc_timer_base<Clock> &t)
     {
-        if(std::find(m_timers.begin(), m_timers.end(), t) == m_timers.end())
+        if(std::ranges::none_of(m_timers, [&t](const inproc_timer_base<Clock> &e) { return &e == &t; }))
             m_timers.push_back(t);
     }
 
-    void deregister_timer(inproc_timer<Clock> *t) noexcept
+    void deregister_timer(inproc_timer_base<Clock> &t) noexcept
     {
-        std::erase(m_timers, t);
+        std::erase_if(m_timers, [&t](const inproc_timer_base<Clock> &e) { return &e == &t; });
     }
 
     inproc_bus<Clock> &bus() noexcept { return m_bus; }
 
 private:
     inproc_bus<Clock> &m_bus;
+    std::atomic<bool> m_stopped;
+    detail::inproc_ingress m_ingress;
     std::deque<detail::move_only_function<void()>> m_posted;
-    std::vector<inproc_timer<Clock> *> m_timers;
-    bool m_stopped{false};
+    std::vector<std::reference_wrapper<inproc_timer_base<Clock>>> m_timers;
 };
 
 }

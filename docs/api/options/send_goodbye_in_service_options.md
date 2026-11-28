@@ -8,7 +8,7 @@
 
 ## What
 
-When the service server is stopped gracefully, it can send a goodbye announcement by re-advertising all its records with TTL set to 0. RFC 6762 §11.3 defines this as an optional but strongly recommended courtesy: it allows queriers to immediately evict the record from their caches rather than waiting for the original TTL to expire.
+When the service server is stopped gracefully, it can send a goodbye announcement by re-advertising all its records with TTL set to 0. RFC 6762 §10.1 defines this as an optional but strongly recommended courtesy: it allows queriers to immediately evict the record from their caches rather than waiting for the original TTL to expire.
 
 With `send_goodbye = true` (the default), the library sends a TTL=0 multicast packet on graceful shutdown. With `false`, the service simply stops and remote caches retain the record until the original TTL expires.
 

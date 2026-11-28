@@ -5,7 +5,7 @@
 | **Type** | `std::chrono::milliseconds` |
 | **Default** | `250` (250 ms) |
 | **RFC** | RFC 6762 §8.1 |
-| **One-liner** | Upper bound on the random initial delay before the first probe is sent; desynchronises simultaneous startups. |
+| **One-liner** | Upper bound on the random initial delay before the first probe is sent; desynchronizes simultaneous startups. |
 
 ## What
 

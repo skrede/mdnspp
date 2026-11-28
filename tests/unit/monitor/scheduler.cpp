@@ -1,286 +1,114 @@
-#include "helpers.h"
+#include "fixture.h"
 
 #include <catch2/catch_test_macros.hpp>
+
+#include <chrono>
+#include <string>
+#include <vector>
+#include <utility>
+
+namespace {
+
+mdnspp::mdns_options one_second_interval()
+{
+    mdnspp::mdns_options opts = no_refresh_options();
+    opts.initial_interval = std::chrono::milliseconds{1000};
+    return opts;
+}
+
+}
 
 TEST_CASE("scheduler: arm_scheduler arms the scheduler timer after async_start",
           "[monitor][scheduler]")
 {
-    mock_executor ex;
-    test_clock::reset();
+    monitor_fixture f{mode_options(mdnspp::monitor_mode::discover), one_second_interval()};
+    f.watch_and_start({"_http._tcp.local"});
 
-    mdnspp::mdns_options mdns_opts;
-    mdns_opts.initial_interval = std::chrono::milliseconds{1000};
-    mdns_opts.ttl_refresh_thresholds = {};
-
-    mdnspp::monitor_options opts;
-    opts.mode = mdnspp::monitor_mode::discover;
-
-    test_monitor mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts)};
-    mon.watch("_http._tcp.local");
-    ex.drain_posted();
-
-    mon.async_start();
-    ex.drain_posted();
-
-    // After async_start + drain, the scheduler timer must have been armed
-    auto &sched_timer = mon.scheduler_timer_for_test();
-    CHECK(sched_timer.has_pending());
+    CHECK(f.timer().has_pending());
 }
 
-TEST_CASE("scheduler: discover mode sends PTR query on first tick",
-          "[monitor][scheduler][MON-03]")
+TEST_CASE("scheduler: discover mode first query after randomized 20-120ms delay",
+          "[monitor][scheduler]")
 {
-    mock_executor ex;
-    test_clock::reset();
+    monitor_fixture f{mode_options(mdnspp::monitor_mode::discover), one_second_interval()};
+    f.watch_and_start({"_http._tcp.local"});
+    CHECK(f.socket().sent_packets().empty());
 
-    mdnspp::mdns_options mdns_opts;
-    mdns_opts.initial_interval = std::chrono::milliseconds{1000};
-    mdns_opts.ttl_refresh_thresholds = {};
+    // First-query deadline is randomized in [20ms, 120ms] (RFC 6762 section 5.2)
+    auto d0 = f.timer().last_duration();
+    CHECK(d0 >= std::chrono::milliseconds{20});
+    CHECK(d0 <= std::chrono::milliseconds{120});
 
-    mdnspp::monitor_options opts;
-    opts.mode = mdnspp::monitor_mode::discover;
-
-    test_monitor mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts)};
-    mon.watch("_http._tcp.local");
-    ex.drain_posted();
-
-    mon.async_start();
-    ex.drain_posted();
-
-    auto &sock = mon.socket();
-    auto &sched_timer = mon.scheduler_timer_for_test();
-
-    // No queries sent before timer fires
-    CHECK(sock.sent_packets().empty());
-
-    // Fire the scheduler timer
-    sched_timer.fire();
-    ex.drain_posted();
-
-    // PTR query must have been sent for the watched type
-    REQUIRE_FALSE(sock.sent_packets().empty());
+    f.fire_after(d0);
+    REQUIRE_FALSE(f.socket().sent_packets().empty());
 }
 
 TEST_CASE("scheduler: discover mode backoff doubles after each tick",
-          "[monitor][scheduler][MON-03]")
+          "[monitor][scheduler]")
 {
-    mock_executor ex;
-    test_clock::reset();
-
-    mdnspp::mdns_options mdns_opts;
-    mdns_opts.initial_interval = std::chrono::milliseconds{1000};
-    mdns_opts.max_interval     = std::chrono::milliseconds{60000};
+    mdnspp::mdns_options mdns_opts = one_second_interval();
+    mdns_opts.max_interval = std::chrono::milliseconds{60000};
     mdns_opts.backoff_multiplier = 2.0;
-    mdns_opts.ttl_refresh_thresholds = {};
+    monitor_fixture f{mode_options(mdnspp::monitor_mode::discover), std::move(mdns_opts)};
+    f.watch_and_start({"_http._tcp.local"});
 
-    mdnspp::monitor_options opts;
-    opts.mode = mdnspp::monitor_mode::discover;
+    f.fire_after(f.timer().last_duration());
+    CHECK(f.socket().sent_packets().size() == 1);
+    CHECK(f.timer().last_duration() == std::chrono::milliseconds{1000});
 
-    test_monitor mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts)};
-    mon.watch("_http._tcp.local");
-    ex.drain_posted();
+    f.fire_after(f.timer().last_duration());
+    CHECK(f.socket().sent_packets().size() == 2);
+    CHECK(f.timer().last_duration() == std::chrono::milliseconds{2000});
 
-    mon.async_start();
-    ex.drain_posted();
+    f.fire_after(f.timer().last_duration());
+    CHECK(f.socket().sent_packets().size() == 3);
+    CHECK(f.timer().last_duration() == std::chrono::milliseconds{4000});
+}
 
-    auto &sched_timer = mon.scheduler_timer_for_test();
-    auto &sock = mon.socket();
+TEST_CASE("scheduler: a tick before the watch deadline does not query",
+          "[monitor][scheduler][per-watch]")
+{
+    monitor_fixture f{mode_options(mdnspp::monitor_mode::discover), one_second_interval()};
+    f.watch_and_start({"_http._tcp.local"});
 
-    // Tick 1: fires, sends query, re-arms at 2000ms (next backoff after initial 1000ms)
-    sched_timer.fire();
-    ex.drain_posted();
-    CHECK(sock.sent_packets().size() == 1);
+    // The clock has not reached the watch deadline, so no premature PTR query may be sent (RFC 6762 section 5.2).
+    f.fire();
+    CHECK(f.socket().sent_packets().empty());
 
-    auto d1 = sched_timer.last_duration();
-    CHECK(d1 == std::chrono::milliseconds{2000});
-
-    // Tick 2: fires, sends query, re-arms at 4000ms
-    sched_timer.fire();
-    ex.drain_posted();
-    CHECK(sock.sent_packets().size() == 2);
-
-    auto d2 = sched_timer.last_duration();
-    CHECK(d2 == std::chrono::milliseconds{4000});
+    f.fire_after(std::chrono::milliseconds{120});
+    CHECK_FALSE(f.socket().sent_packets().empty());
 }
 
 TEST_CASE("scheduler: observe mode does NOT send PTR queries automatically",
           "[monitor][scheduler]")
 {
-    mock_executor ex;
-    test_clock::reset();
+    monitor_fixture f{mode_options(mdnspp::monitor_mode::observe), no_refresh_options()};
+    f.watch_and_start({"_http._tcp.local"});
 
-    mdnspp::mdns_options mdns_opts;
-    mdns_opts.ttl_refresh_thresholds = {};
+    f.fire();
+    CHECK(f.socket().sent_packets().empty());
 
-    mdnspp::monitor_options opts;
-    opts.mode = mdnspp::monitor_mode::observe;
-
-    test_monitor mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts)};
-    mon.watch("_http._tcp.local");
-    ex.drain_posted();
-
-    mon.async_start();
-    ex.drain_posted();
-
-    auto &sock = mon.socket();
-    auto &sched_timer = mon.scheduler_timer_for_test();
-
-    // Fire multiple ticks -- still no queries should be sent
-    sched_timer.fire();
-    ex.drain_posted();
-    CHECK(sock.sent_packets().empty());
-
-    sched_timer.fire();
-    ex.drain_posted();
-    CHECK(sock.sent_packets().empty());
+    f.fire();
+    CHECK(f.socket().sent_packets().empty());
 }
 
 TEST_CASE("scheduler: erase_expired called on every tick (drives loss detection)",
           "[monitor][scheduler]")
 {
-    mock_executor ex;
-    test_clock::reset();
-
     std::vector<std::string> lost_names;
-    mdnspp::monitor_options opts;
-    opts.mode     = mdnspp::monitor_mode::observe;
+    mdnspp::monitor_options opts = mode_options(mdnspp::monitor_mode::observe);
     opts.on_found = [](const mdnspp::resolved_service &) {};
-    opts.on_lost  = [&](const mdnspp::resolved_service &svc, mdnspp::loss_reason)
+    opts.on_lost = [&](const mdnspp::resolved_service &svc, mdnspp::loss_reason)
     {
         lost_names.push_back(svc.instance_name.str());
     };
+    monitor_fixture f{std::move(opts), no_refresh_options()};
+    f.watch_and_start({"_http._tcp.local"});
 
-    mdnspp::mdns_options mdns_opts;
-    mdns_opts.ttl_refresh_thresholds = {};
-
-    test_monitor mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts)};
-    mon.watch("_http._tcp.local");
-    ex.drain_posted();
-
-    mon.async_start();
-    ex.drain_posted();
-
-    auto &sock        = mon.socket();
-    auto &sched_timer = mon.scheduler_timer_for_test();
-    auto sender       = default_sender();
-
-    // Bring a service live with TTL=1s
-    auto pkt = make_ptr_packet("_http._tcp.local",
-                               "SchedExp._http._tcp.local",
-                               "schedexp.local",
-                               "7.8.9.0",
-                               /*ttl=*/1);
-    sock.inject_receive(sender, pkt);
-    ex.drain_posted();
-
+    f.inject(make_ptr_packet("_http._tcp.local", "SchedExp._http._tcp.local", "schedexp.local", "7.8.9.0", /*ttl=*/1));
     REQUIRE(lost_names.empty());
 
-    // Advance time and fire scheduler -- should call erase_expired internally
-    test_clock::advance(std::chrono::seconds(2));
-    sched_timer.fire();
-    ex.drain_posted();
-
+    f.fire_after(std::chrono::seconds(2));
     REQUIRE(lost_names.size() == 1);
-    CHECK(lost_names[0] == "schedexp._http._tcp.local.");
-}
-
-TEST_CASE("ttl_refresh: refresh query sent at 80% threshold in ttl_refresh mode",
-          "[monitor][ttl_refresh][MON-05]")
-{
-    mock_executor ex;
-    test_clock::reset();
-
-    mdnspp::mdns_options mdns_opts;
-    // Single threshold at 80% for simplicity
-    mdns_opts.ttl_refresh_thresholds = {0.80};
-    mdns_opts.refresh_jitter_pct     = 0.0; // no jitter for deterministic test
-    mdns_opts.initial_interval       = std::chrono::milliseconds{100000}; // large: no backoff queries
-
-    mdnspp::monitor_options opts;
-    opts.mode     = mdnspp::monitor_mode::ttl_refresh;
-    opts.on_found = [](const mdnspp::resolved_service &) {};
-
-    test_monitor mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts)};
-    mon.watch("_http._tcp.local");
-    ex.drain_posted();
-
-    mon.async_start();
-    ex.drain_posted();
-
-    auto &sock        = mon.socket();
-    auto &sched_timer = mon.scheduler_timer_for_test();
-    auto sender       = default_sender();
-
-    // Bring a service live with wire_ttl=100s
-    // 80% of 100s = 80s after insertion
-    constexpr uint32_t wire_ttl = 100;
-    auto pkt = make_ptr_packet("_http._tcp.local",
-                               "RefreshSvc._http._tcp.local",
-                               "refreshsvc.local",
-                               "1.1.1.1",
-                               wire_ttl);
-    sock.inject_receive(sender, pkt);
-    ex.drain_posted();
-
-    // Clear any queries sent during setup
-    sock.clear_sent();
-
-    // Advance clock to just past 80% of wire_ttl (80s) and fire scheduler
-    test_clock::advance(std::chrono::milliseconds(80001));
-    sched_timer.fire();
-    ex.drain_posted();
-
-    // At least one refresh query should have been sent
-    CHECK_FALSE(sock.sent_packets().empty());
-}
-
-TEST_CASE("query_service_type: sends PTR query immediately in any mode",
-          "[monitor][MON-03][MON-05]")
-{
-    mock_executor ex;
-    test_clock::reset();
-
-    mdnspp::monitor_options opts;
-    opts.mode = mdnspp::monitor_mode::observe; // observe: no auto queries
-
-    mdnspp::mdns_options mdns_opts;
-    mdns_opts.ttl_refresh_thresholds = {};
-
-    test_monitor mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts)};
-    mon.async_start();
-    ex.drain_posted();
-
-    auto &sock = mon.socket();
-    CHECK(sock.sent_packets().empty());
-
-    mon.query_service_type("_http._tcp.local");
-    ex.drain_posted();
-
-    REQUIRE_FALSE(sock.sent_packets().empty());
-}
-
-TEST_CASE("query_service_instance: sends SRV+A+AAAA queries in any mode",
-          "[monitor][MON-03][MON-05]")
-{
-    mock_executor ex;
-    test_clock::reset();
-
-    mdnspp::monitor_options opts;
-    opts.mode = mdnspp::monitor_mode::observe;
-
-    mdnspp::mdns_options mdns_opts;
-    mdns_opts.ttl_refresh_thresholds = {};
-
-    test_monitor mon{ex, std::move(opts), mdnspp::socket_options{}, std::move(mdns_opts)};
-    mon.async_start();
-    ex.drain_posted();
-
-    auto &sock = mon.socket();
-    CHECK(sock.sent_packets().empty());
-
-    mon.query_service_instance("MyInstance._http._tcp.local");
-    ex.drain_posted();
-
-    // Must send SRV + A + AAAA queries (3 packets)
-    CHECK(sock.sent_packets().size() >= 3);
+    CHECK(lost_names[0] == "SchedExp._http._tcp.local.");
 }

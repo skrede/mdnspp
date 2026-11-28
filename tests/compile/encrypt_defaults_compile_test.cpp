@@ -2,24 +2,24 @@
 
 #include <type_traits>
 
-static_assert(std::is_class_v<mdnspp::encrypted_observer>,
-              "BLDP-04: encrypted_observer must be a class type");
-static_assert(std::is_class_v<mdnspp::encrypted_querier>,
-              "BLDP-04: encrypted_querier must be a class type");
-static_assert(std::is_class_v<mdnspp::encrypted_service_discovery>,
-              "BLDP-04: encrypted_service_discovery must be a class type");
-static_assert(std::is_class_v<mdnspp::encrypted_service_server>,
-              "BLDP-04: encrypted_service_server must be a class type");
-static_assert(std::is_class_v<mdnspp::encrypted_service_monitor>,
-              "BLDP-04: encrypted_service_monitor must be a class type");
-static_assert(std::is_class_v<mdnspp::encrypted_nic_monitor>,
-              "BLDP-04: encrypted_nic_monitor must be a class type");
-static_assert(std::is_class_v<mdnspp::encrypted_nic_group_options>,
-              "BLDP-04: encrypted_nic_group_options must be a class type");
-static_assert(std::is_class_v<mdnspp::encrypted_dynamic_nic_group>,
-              "BLDP-04: encrypted_dynamic_nic_group must be a class type");
-static_assert(std::is_class_v<mdnspp::encrypted_nic_group<mdnspp::basic_observer>>,
-              "BLDP-04: encrypted_nic_group must be instantiable with Peers");
+static_assert(std::is_class_v<mdnspp::encrypt::encrypted_observer>,
+              "encrypted_observer must be a class type");
+static_assert(std::is_class_v<mdnspp::encrypt::encrypted_querier>,
+              "encrypted_querier must be a class type");
+static_assert(std::is_class_v<mdnspp::encrypt::encrypted_service_discovery>,
+              "encrypted_service_discovery must be a class type");
+static_assert(std::is_class_v<mdnspp::encrypt::encrypted_service_server>,
+              "encrypted_service_server must be a class type");
+static_assert(std::is_class_v<mdnspp::encrypt::encrypted_service_monitor>,
+              "encrypted_service_monitor must be a class type");
+static_assert(std::is_class_v<mdnspp::encrypt::encrypted_nic_monitor>,
+              "encrypted_nic_monitor must be a class type");
+static_assert(std::is_class_v<mdnspp::encrypt::encrypted_nic_group_options>,
+              "encrypted_nic_group_options must be a class type");
+static_assert(std::is_class_v<mdnspp::encrypt::encrypted_dynamic_nic_group>,
+              "encrypted_dynamic_nic_group must be a class type");
+static_assert(std::is_class_v<mdnspp::encrypt::encrypted_nic_group<mdnspp::basic_observer>>,
+              "encrypted_nic_group must be instantiable with Peers");
 
 int main()
 {

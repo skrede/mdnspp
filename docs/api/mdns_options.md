@@ -1,6 +1,6 @@
 # mdns_options
 
-Protocol timing tunables for mDNS query backoff, TTL refresh, TC handling, response delays, and receive-side filtering.
+Protocol timing tunables for mDNS query backoff, TTL refresh, TC handling, response delays, and receive-side response filtering (IP TTL and the unicast-response window).
 
 ## Header
 
@@ -19,8 +19,6 @@ struct mdns_options {
     double                    refresh_jitter_pct{0.02};
     std::chrono::milliseconds tc_wait_min{400};
     std::chrono::milliseconds tc_wait_max{500};
-    std::size_t               max_known_answers{0};
-    std::chrono::seconds      record_ttl{4500};
     std::chrono::milliseconds response_delay_min{20};
     std::chrono::milliseconds response_delay_max{120};
     std::chrono::seconds      legacy_unicast_ttl{10};
@@ -30,31 +28,31 @@ struct mdns_options {
     std::chrono::microseconds tc_continuation_delay{0};
     uint32_t                  receive_ttl_minimum{255};
     ttl_unknown_policy        unknown_ttl_policy{ttl_unknown_policy::accept};
+    std::chrono::milliseconds qu_response_window{std::chrono::seconds(2)};
 };
 ```
 
 | Field | Type | Default | RFC Section | Description |
 |-------|------|---------|-------------|-------------|
-| `initial_interval` | `std::chrono::milliseconds` | `1s` | RFC 6762 §5.2 | Starting interval for the exponential query backoff. The first query fires immediately; the next is scheduled after this delay, doubling each time until `max_interval` is reached. |
+| `initial_interval` | `std::chrono::milliseconds` | `1s` | RFC 6762 §5.2 | Starting interval for the service monitor's exponential query backoff. The first PTR query of a watched type waits a random delay drawn from `[response_delay_min, response_delay_max]` (20 to 120 ms by default); the next follows after `initial_interval`, and each later interval is multiplied by `backoff_multiplier` until `max_interval` is reached. |
 | `max_interval` | `std::chrono::milliseconds` | `1h` | RFC 6762 §5.2 | Upper bound on the backoff interval. Once the computed interval exceeds this value it is clamped here and the backoff stops growing. |
 | `backoff_multiplier` | `double` | `2.0` | RFC 6762 §5.2 | Multiplicative factor applied to the current interval on each backoff step. Values below 1.0 cause the interval to shrink, producing unbounded query storms. |
-| `ttl_refresh_thresholds` | `std::vector<double>` | `{0.80, 0.85, 0.90, 0.95}` | RFC 6762 §5.2 | Fractional TTL thresholds at which refresh queries are issued. Each value represents the fraction of the wire TTL elapsed since record insertion. Values must be in (0, 1) and should be strictly increasing. |
+| `ttl_refresh_thresholds` | `std::vector<double>` | `{0.80, 0.85, 0.90, 0.95}` | RFC 6762 §5.2 | Fractional TTL thresholds at which refresh queries are issued. Each value represents the fraction of the wire TTL elapsed since record insertion. Values must be in (0, 1) and strictly increasing. |
 | `refresh_jitter_pct` | `double` | `0.02` | RFC 6762 §5.2 | Maximum jitter applied to each refresh query fire point as a fraction of the wire TTL. A uniform random offset in `[0, wire_ttl * refresh_jitter_pct]` is added to desynchronize simultaneous queriers. Set to `0.0` to disable jitter. |
 | `tc_wait_min` | `std::chrono::milliseconds` | `400ms` | RFC 6762 §6 | Minimum wait duration for accumulating truncated-response continuation packets. When a query arrives with the TC bit set, the responder waits a random duration in `[tc_wait_min, tc_wait_max]` before processing the aggregated known-answer set. |
 | `tc_wait_max` | `std::chrono::milliseconds` | `500ms` | RFC 6762 §6 | Maximum wait duration for accumulating TC continuation packets. See `tc_wait_min`. |
-| `max_known_answers` | `std::size_t` | `0` (unlimited) | RFC 6762 §7.1 | Maximum number of known-answer records included in outgoing queries. Zero means unlimited. When non-zero, limits the known-answer list to this many records (highest remaining TTL selected first). |
-| `record_ttl` | `std::chrono::seconds` | `4500s` | RFC 6762 §11.3 | Default TTL for outgoing DNS resource records. Applied to all outgoing records unless overridden by a per-type TTL in `service_options`. Typically 75 minutes for most record types. |
-| `response_delay_min` | `std::chrono::milliseconds` | `20ms` | RFC 6762 §6 | Minimum random delay before sending a multicast response. A random delay uniformly drawn from `[response_delay_min, response_delay_max]` is applied to avoid simultaneous replies from multiple responders. |
-| `response_delay_max` | `std::chrono::milliseconds` | `120ms` | RFC 6762 §6 | Maximum random delay before sending a multicast response. See `response_delay_min`. |
-| `legacy_unicast_ttl` | `std::chrono::seconds` | `10s` | RFC 6762 §6.7 | TTL cap applied to all records sent in legacy unicast responses. When a query arrives via unicast from a port other than 5353, all answer record TTLs are capped at this value to prevent aggressive caching by non-mDNS resolvers. |
+| `response_delay_min` | `std::chrono::milliseconds` | `20ms` | RFC 6762 §5.2, §6 | Minimum random delay before sending a multicast response. A random delay uniformly drawn from `[response_delay_min, response_delay_max]` is applied to avoid simultaneous replies from multiple responders. The same range delays the multicast (QM) query of the querier and service discovery and the service monitor's first PTR query per watched type. |
+| `response_delay_max` | `std::chrono::milliseconds` | `120ms` | RFC 6762 §5.2, §6 | Maximum random delay before sending a multicast response or the first multicast query. See `response_delay_min`. |
+| `legacy_unicast_ttl` | `std::chrono::seconds` | `10s` | RFC 6762 §6.7 | TTL cap applied to all records sent in legacy unicast responses. When a query arrives from a port other than the configured multicast port (5353 by default), all answer record TTLs are capped at this value to prevent aggressive caching by non-mDNS resolvers. A value above 2^31 - 1 s is taken as 2^31 - 1 s (RFC 2181 section 8). The reply repeats the whole question section; a query whose questions cannot all be repeated gets no reply. |
 | `ka_suppression_fraction` | `double` | `0.5` | RFC 6762 §7.1 | Fraction of the wire TTL used as the known-answer suppression threshold for standard multicast queries. A known answer is valid (and suppresses re-announcement) when its remaining TTL is at least `wire_ttl * ka_suppression_fraction`. |
 | `tc_suppression_fraction` | `double` | `0.5` | RFC 6762 §7.1 | Fraction of the wire TTL used as the suppression threshold on the TC accumulation path. Applied independently from `ka_suppression_fraction` so TC-path suppression can be tuned separately. |
 | `max_query_payload` | `std::size_t` | `1472` bytes | — | Maximum UDP payload size for an outgoing query packet before it must be split into TC continuation packets. Matches Ethernet MTU minus IPv4 and UDP headers. Reduce for lower-MTU links. |
 | `tc_continuation_delay` | `std::chrono::microseconds` | `0` | RFC 6762 §6 | Delay inserted between successive TC continuation packets. Zero means packets are sent back-to-back. A non-zero value rate-limits TC continuation bursts on congested links. |
-| `receive_ttl_minimum` | `uint32_t` | `255` | RFC 6762 §11 | Minimum IP TTL (hop limit) for received mDNS packets. Packets arriving with an IP TTL below this value are silently discarded. The value 255 enforces link-local-only reception: any forwarded packet has its IP TTL decremented below 255. |
-| `unknown_ttl_policy` | `ttl_unknown_policy` | `ttl_unknown_policy::accept` | RFC 6762 §11 | Disposition for packets where the IP TTL could not be extracted. `accept` passes such packets through (default, for backward compatibility on platforms without TTL extraction support). `reject` discards them. |
+| `receive_ttl_minimum` | `uint32_t` | `255` | none (hardening; RFC 6762 §11 has only a send-side SHOULD) | Minimum IP TTL (hop limit) for received mDNS responses. Responses arriving with an IP TTL below this value are silently discarded; any forwarded response has its IP TTL decremented below 255. Queries are never dropped for their TTL, so legacy one-shot resolvers that send with TTL 1 are answered (RFC 6762 §6.7). |
+| `unknown_ttl_policy` | `ttl_unknown_policy` | `ttl_unknown_policy::accept` | none (hardening) | Disposition for responses where the IP TTL could not be extracted. `accept` passes such responses through (default, for transports without TTL extraction support, e.g. custom policies and the inproc bus). `reject` discards them. Queries are exempt. |
+| `qu_response_window` | `std::chrono::milliseconds` | `2s` | RFC 6762 §6 | How long after sending a question with the unicast-response (QU) bit a peer accepts unicast responses that answer it. A response sent to a unicast address passes only if a record of its answer section answers such a question (name, type unless ANY, class unless ANY); every other unicast response is silently ignored. A response whose destination is unknown skips the rule. See [qu_response_window](options/qu_response_window_in_mdns_options.md). |
 
-**Note:** All defaults are RFC-compliant. Changing them is an advanced operation: incorrect settings may violate interoperability guarantees or cause excessive network traffic.
+**Note:** The defaults follow RFC 6762 where it specifies a value; `receive_ttl_minimum` and `unknown_ttl_policy` are hardening beyond the RFC. Changing a field that follows the RFC is an advanced operation: incorrect settings may violate interoperability guarantees or cause excessive network traffic.
 
 ## Usage
 
@@ -86,6 +84,25 @@ mdnspp::querier q{ctx, query_opts, sock_opts, mdns_opts};
 mdnspp::observer obs{ctx, observer_opts, sock_opts, mdns_opts};
 ```
 
+## Validation
+
+The observer, querier, service discovery, service monitor and service server constructors validate `mdns_options`: the throwing forms throw `std::system_error` and the non-throwing forms set `ec` to `std::errc::invalid_argument` when
+
+- `response_delay_min` is negative or greater than `response_delay_max`;
+- `tc_wait_min` is negative or greater than `tc_wait_max`;
+- `initial_interval` is not positive, or `max_interval` is less than `initial_interval`;
+- `backoff_multiplier` is less than `1.0`;
+- `refresh_jitter_pct` is negative;
+- `ka_suppression_fraction` or `tc_suppression_fraction` lies outside the open interval (0, 1);
+- any entry of `ttl_refresh_thresholds` lies outside the open interval (0, 1), or an entry is not greater than the one before it (equal neighbors included). An empty list is valid.
+- `qu_response_window` is not positive.
+
+The service server constructors also reject a non-positive `legacy_unicast_ttl`; their full list is in [service_server](service_server.md#throwing).
+
+## Removed fields
+
+`max_known_answers` and `record_ttl` have been removed. Neither had any effect on the wire: outgoing queries carried every qualifying known answer whatever `max_known_answers` held, and outgoing record TTLs come from the per-type fields of [`service_options`](service_options.md), never from `record_ttl`. Neither took part in the validation of the observer, querier, service discovery or service monitor. Code that sets either field no longer compiles; drop the assignment.
+
 ## Common Tuning Scenarios
 
 **Dense, fast-changing network (e.g. robotics middleware):** Reduce `max_interval` to seconds or minutes, but be aware this increases steady-state query traffic proportionally.
@@ -95,14 +112,9 @@ mdnspp::observer obs{ctx, observer_opts, sock_opts, mdns_opts};
 mdnspp::mdns_options opts{.ttl_refresh_thresholds = {}};
 ```
 
-**Disable query backoff jitter (deterministic testing):** Set `refresh_jitter_pct` to zero:
+**Disable TTL refresh jitter (deterministic testing):** Set `refresh_jitter_pct` to zero:
 ```cpp
 mdnspp::mdns_options opts{.refresh_jitter_pct = 0.0};
-```
-
-**Cap known-answer list size:**
-```cpp
-mdnspp::mdns_options opts{.max_known_answers = 10};
 ```
 
 **Configure legacy unicast TTL cap (reduce cache pollution from non-mDNS resolvers):**
@@ -118,14 +130,9 @@ mdnspp::mdns_options opts{
 };
 ```
 
-**Change default record TTL (shorter cache lifetime for dynamic services):**
-```cpp
-mdnspp::mdns_options opts{.record_ttl = std::chrono::seconds{120}};
-```
-
 ## See Also
 
-- [mdns-options](../mdns-options.md) -- conceptual guide: how backoff, TTL refresh, and TC handling interact
-- [query-backoff](../rfc/query-backoff.md) -- RFC 6762 §5.2 continuous querying implementation details
-- [tc-handling](../rfc/tc-handling.md) -- RFC 6762 §6 truncated-response accumulation
-- [service_monitor](service_monitor.md) -- primary consumer of `mdns_options` tunables
+- [mdns-options](../mdns-options.md) &mdash; conceptual guide: how backoff, TTL refresh, and TC handling interact
+- [query-backoff](../rfc/query-backoff.md) &mdash; RFC 6762 §5.2 continuous querying implementation details
+- [tc-handling](../rfc/tc-handling.md) &mdash; RFC 6762 §6 truncated-response accumulation
+- [service_monitor](service_monitor.md) &mdash; primary consumer of `mdns_options` tunables

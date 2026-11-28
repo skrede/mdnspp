@@ -1,22 +1,39 @@
-#ifndef HPP_GUARD_MDNSPP_BASIC_MDNS_PEER_BASE_H
-#define HPP_GUARD_MDNSPP_BASIC_MDNS_PEER_BASE_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_BASIC_MDNS_PEER_BASE_H
+#define HPP_GUARD_MDNSPP_DETAIL_BASIC_MDNS_PEER_BASE_H
+
+#include "mdnspp/detail/recv_loop.h"
+#include "mdnspp/detail/packet_gate.h"
+#include "mdnspp/detail/mdns_options_validation.h"
 
 #include "mdnspp/policy.h"
 #include "mdnspp/endpoint.h"
 #include "mdnspp/mdns_options.h"
 #include "mdnspp/socket_options.h"
+#include "mdnspp/network_interface.h"
 
-#include "mdnspp/detail/recv_loop.h"
-
+#include <span>
 #include <atomic>
+#include <chrono>
 #include <memory>
-#include <cassert>
+#include <vector>
+#include <cstddef>
 #include <utility>
 #include <system_error>
 
 namespace mdnspp::detail {
 
-template <Policy P>
+inline void throw_on_error(std::error_code ec)
+{
+    if(ec)
+        throw std::system_error(ec);
+}
+
+inline std::vector<network_interface> system_interfaces(std::error_code &ec)
+{
+    return enumerate_interfaces(ec);
+}
+
+template <policy_like P>
 class basic_mdns_peer_base
 {
 public:
@@ -24,8 +41,11 @@ public:
     using socket_type = typename P::socket_type;
     using timer_type = typename P::timer_type;
 
+    // Non-copyable and non-movable: recv_loop handlers and posted teardown
+    // lambdas capture `this`.
     basic_mdns_peer_base(const basic_mdns_peer_base &) = delete;
     basic_mdns_peer_base &operator=(const basic_mdns_peer_base &) = delete;
+    basic_mdns_peer_base(basic_mdns_peer_base &&) = delete;
     basic_mdns_peer_base &operator=(basic_mdns_peer_base &&) = delete;
 
 protected:
@@ -34,6 +54,7 @@ protected:
         : m_multicast_ep(opts.multicast_group)
         , m_executor(ex)
         , m_socket(ex, opts)
+        , m_gate(opts.multicast_group.port, mdns_opts, bound_interface_index(m_socket), system_interfaces)
         , m_timer(ex)
         , m_stopped(false)
         , m_mdns_opts(std::move(mdns_opts))
@@ -45,24 +66,11 @@ protected:
         : m_multicast_ep(opts.multicast_group)
         , m_executor(ex)
         , m_socket(ex, opts, ec)
+        , m_gate(opts.multicast_group.port, mdns_opts, bound_interface_index(m_socket), system_interfaces)
         , m_timer(ex)
         , m_stopped(false)
         , m_mdns_opts(std::move(mdns_opts))
     {
-    }
-
-    basic_mdns_peer_base(basic_mdns_peer_base &&other) noexcept
-        : m_alive(std::move(other.m_alive))
-        , m_multicast_ep(std::move(other.m_multicast_ep))
-        , m_executor(other.m_executor)
-        , m_socket(std::move(other.m_socket))
-        , m_timer(std::move(other.m_timer))
-        , m_loop(std::move(other.m_loop))
-        , m_stopped(other.m_stopped.load(std::memory_order_acquire))
-        , m_mdns_opts(std::move(other.m_mdns_opts))
-    {
-        assert(other.m_loop == nullptr);
-        other.m_stopped.store(true, std::memory_order_release);
     }
 
     ~basic_mdns_peer_base()
@@ -84,17 +92,54 @@ protected:
         });
     }
 
+    template <typename F>
+    void post_guarded(F &&fn)
+    {
+        auto guard = std::weak_ptr<bool>(m_alive);
+        P::post(m_executor, [guard, f = std::forward<F>(fn)]() mutable
+        {
+            if(!guard.lock()) return;
+            f();
+        });
+    }
+
+    std::error_code start_misuse(bool running) const noexcept
+    {
+        if(running)
+            return std::make_error_code(std::errc::operation_in_progress);
+        if(m_stopped.load(std::memory_order_acquire))
+            return std::make_error_code(std::errc::invalid_argument);
+        return {};
+    }
+
+    // Leaves the loop unstarted: the server starts it only after its first probe is scheduled.
+    void make_receive_loop(std::chrono::milliseconds silence_timeout,
+                           typename recv_loop<P>::packet_handler on_packet,
+                           move_only_function<void()> on_silence,
+                           typename recv_loop<P>::error_handler on_error)
+    {
+        auto gated = [this, handler = std::move(on_packet)](const recv_metadata &meta,
+                                                            std::span<std::byte> data) mutable
+        {
+            return m_gate.admit(meta, data) && handler(meta, data);
+        };
+        m_loop = std::make_unique<recv_loop<P>>(m_socket, m_timer, silence_timeout, std::move(gated),
+                                                std::move(on_silence), std::move(on_error));
+    }
+
     const endpoint &multicast_endpoint() const noexcept { return m_multicast_ep; }
     const socket_type &socket() const noexcept { return m_socket; }
     socket_type &socket() noexcept { return m_socket; }
     const timer_type &timer() const noexcept { return m_timer; }
     timer_type &timer() noexcept { return m_timer; }
     const mdns_options &mdns_opts() const noexcept { return m_mdns_opts; }
+    detail::qu_history<policy_clock_t<P>> &qu_history() noexcept { return m_gate.history(); }
 
     std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
     endpoint m_multicast_ep;
     executor_type m_executor;
     socket_type m_socket;
+    packet_gate<P> m_gate;
     timer_type m_timer;
     std::unique_ptr<recv_loop<P>> m_loop;
     std::atomic<bool> m_stopped;

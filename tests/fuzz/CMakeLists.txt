@@ -1,3 +1,4 @@
+# The harness invariants are asserts, so -UNDEBUG keeps them in a Release build.
 function(make_fuzz_target TARGET_FILE)
     add_executable(${TARGET_FILE} "${TARGET_FILE}.cpp")
     target_link_libraries(${TARGET_FILE} PRIVATE mdnspp::mdnspp)
@@ -5,6 +6,7 @@ function(make_fuzz_target TARGET_FILE)
         -fsanitize=fuzzer,address,undefined
         -fno-sanitize-recover=all
         -fno-omit-frame-pointer
+        -UNDEBUG
         -g
         -O1
     )
@@ -24,8 +26,18 @@ make_fuzz_target(fuzz_walk_dns_frame_raw)
 make_fuzz_target(fuzz_walk_dns_frame_smart)
 make_fuzz_target(fuzz_roundtrip_name)
 make_fuzz_target(fuzz_roundtrip_dns_name)
+make_fuzz_target(fuzz_match_queries)
+make_fuzz_target(fuzz_tc_accumulate)
+make_fuzz_target(fuzz_extract_authority)
+make_fuzz_target(fuzz_parse_known_answers)
 
-add_executable(generate_corpus generate_corpus.cpp)
+add_executable(generate_corpus
+    corpus/main.cpp
+    corpus/name_seeds.cpp
+    corpus/frame_seeds.cpp
+    corpus/query_seeds.cpp
+    corpus/record_seeds.cpp
+)
 target_link_libraries(generate_corpus PRIVATE mdnspp)
 target_compile_options(generate_corpus PRIVATE ${MDNSPP_WARNING_FLAGS})
 

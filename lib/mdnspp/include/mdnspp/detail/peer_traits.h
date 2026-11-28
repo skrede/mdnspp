@@ -2,15 +2,19 @@
 #define HPP_GUARD_MDNSPP_DETAIL_PEER_TRAITS_H
 
 #include "mdnspp/policy.h"
-#include "mdnspp/nic_group_options.h"
-#include "mdnspp/observer_options.h"
 #include "mdnspp/monitor_options.h"
+#include "mdnspp/observer_options.h"
+#include "mdnspp/nic_group_options.h"
+
+#include <system_error>
 
 namespace mdnspp {
 
-template <Policy P> class basic_observer;
-template <Policy P, typename Clock> class basic_service_monitor;
-template <Policy P> class basic_service_server;
+template <policy_like P> class basic_observer;
+template <policy_like P, typename Clock> class basic_service_monitor;
+template <policy_like P> class basic_service_server;
+
+namespace detail {
 
 template <typename P>
 struct peer_traits<basic_service_monitor, P>
@@ -38,6 +42,30 @@ struct peer_traits<basic_observer, P>
     static constexpr bool provides_announce{false};
     static constexpr bool provides_observe{true};
 };
+
+// The group wires its own interface-stamped forwarding lambdas into every per-NIC instance, so a user callback in
+// per-NIC monitor or observer options would be silently displaced; such options are rejected instead.
+inline std::error_code validate_nic_group_peer_options(const monitor_options &opts) noexcept
+{
+    if(opts.on_found || opts.on_updated || opts.on_lost || opts.on_error)
+        return std::make_error_code(std::errc::invalid_argument);
+    return {};
+}
+
+inline std::error_code validate_nic_group_peer_options(const observer_options &opts) noexcept
+{
+    if(opts.on_record || opts.on_error)
+        return std::make_error_code(std::errc::invalid_argument);
+    return {};
+}
+
+// Server callbacks are forwarded (shared across per-NIC instances), never rejected.
+inline std::error_code validate_nic_group_peer_options(const server_peer_options &) noexcept
+{
+    return {};
+}
+
+}
 
 }
 

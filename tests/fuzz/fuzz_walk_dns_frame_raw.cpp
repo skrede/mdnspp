@@ -1,9 +1,10 @@
 #include "mdnspp/endpoint.h"
+
 #include "mdnspp/detail/dns_frame.h"
 
+#include <span>
 #include <cstddef>
 #include <cstdint>
-#include <span>
 
 extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size)
 {

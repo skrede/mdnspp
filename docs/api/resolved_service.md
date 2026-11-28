@@ -26,7 +26,7 @@ struct resolved_service {
 
 | Field | Type | Source Record | Description |
 |-------|------|---------------|-------------|
-| `instance_name` | `dns_name` | PTR | Fully-qualified service instance name (e.g. `"myapp._http._tcp.local."`). `dns_name` is a strong type that enforces lowercase FQDN with trailing dot; use `.str()` to obtain a `std::string`. |
+| `instance_name` | `dns_name` | PTR | Fully-qualified service instance name (e.g. `"myapp._http._tcp.local."`). [`dns_name`](dns_name.md) holds the escaped FQDN with a trailing dot in its original case and compares ASCII case-insensitively; use `.str()` to obtain a `std::string`. |
 | `hostname` | `dns_name` | SRV | Target hostname (e.g. `"myhost.local."`). |
 | `port` | `uint16_t` | SRV | TCP/UDP port the service listens on |
 | `txt_entries` | `std::vector<service_txt>` | TXT | Key/value metadata pairs |
@@ -34,7 +34,7 @@ struct resolved_service {
 | `ipv6_addresses` | `std::vector<std::string>` | AAAA | IPv6 address strings (e.g. `"fe80::1"`) |
 | `wire_ttl` | `uint32_t` | SRV | Original TTL from the network, in seconds. Zero for one-shot `aggregate()` results; populated by `service_monitor`. |
 | `ttl_remaining` | `std::chrono::nanoseconds` | SRV | Time remaining until the SRV anchor record expires. Zero for one-shot `aggregate()` results; populated by `service_monitor`'s `services()` snapshot. |
-| `source_interface` | `network_interface` | — | Network interface on which the service was received. Default-constructed (`name` empty, `index` 0) for one-shot `aggregate()` results and non-nic_group usage; populated by `basic_nic_group` based on `recv_metadata::recv_ifindex`. |
+| `source_interface` | `network_interface` | — | Network interface on which the service was received, with its `addresses` (every address and its prefix length). Default-constructed (`name` empty, `addresses` empty, `index` 0, `is_up` false) for one-shot `aggregate()` results and non-nic_group usage; populated by `basic_nic_group` based on `recv_metadata::recv_ifindex`. |
 
 ### service_txt
 
@@ -56,7 +56,7 @@ std::vector<resolved_service> aggregate(const std::vector<mdns_record_variant>& 
 
 Free function that correlates a flat sequence of mDNS records into `resolved_service` values using RFC 6763 name-chain correlation:
 
-1. **PTR** records seed new service entries (each `ptr_name` becomes an `instance_name`)
+1. **PTR** records seed new service entries (each `ptr_name` becomes an `instance_name`); only PTR records seed, so an SRV or TXT record is applied only when a PTR record earlier in the sequence named its instance, and A/AAAA records of a host that no applied SRV record names add nothing
 2. **SRV** records provide `hostname` and `port` (matched by `name == instance_name`)
 3. **TXT** records provide `txt_entries` (matched by `name == instance_name`)
 4. **A/AAAA** records provide addresses (matched by `name == SRV hostname`)

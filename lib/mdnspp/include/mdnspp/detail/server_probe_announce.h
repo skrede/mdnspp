@@ -1,10 +1,12 @@
-#ifndef HPP_GUARD_MDNSPP_SERVER_PROBE_ANNOUNCE_H
-#define HPP_GUARD_MDNSPP_SERVER_PROBE_ANNOUNCE_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_SERVER_PROBE_ANNOUNCE_H
+#define HPP_GUARD_MDNSPP_DETAIL_SERVER_PROBE_ANNOUNCE_H
 
-#include <span>
+#include "mdnspp/detail/server_tiebreak.h"
+
+#include <deque>
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
-#include <algorithm>
 
 namespace mdnspp::detail {
 
@@ -22,8 +24,7 @@ struct probe_announce_state
     server_state state{server_state::idle};
     uint8_t probe_count{0};
     uint8_t announce_count{0};
-    uint8_t conflict_attempt{0};
-    uint16_t probe_id{0}; // random ID written into our probe queries to filter loopback
+    uint32_t conflict_attempt{0};
 };
 
 inline bool should_send_probe(const probe_announce_state &s, uint8_t max_count = 3)
@@ -65,24 +66,57 @@ inline void begin_announcing(probe_announce_state &s)
     s.announce_count = 0;
 }
 
-// Lexicographically compare two raw SRV rdata byte spans.
-// Returns < 0 if ours < theirs, 0 if equal, > 0 if ours > theirs.
-// Used for simultaneous-probe tiebreaking per RFC 6762 section 8.2.
-inline int compare_authority_records(std::span<const std::byte> our_rdata,
-                                     std::span<const std::byte> their_rdata)
+// RFC 6762 §8.1: on 15 or more conflicts within ten seconds every further probe waits at least five seconds.
+// The throttle stays engaged until the window holds no conflict.
+template <typename Clock = std::chrono::steady_clock>
+class probe_rate_limiter
 {
-    auto min_size = (std::min)(our_rdata.size(), their_rdata.size());
-    for(std::size_t i = 0; i < min_size; ++i)
+public:
+    using time_point = typename Clock::time_point;
+
+    static constexpr std::size_t conflict_threshold{15};
+    static constexpr std::chrono::seconds conflict_window{10};
+    static constexpr std::chrono::seconds probe_delay{5};
+
+    probe_rate_limiter()
+        : m_conflicts()
+        , m_engaged(false)
     {
-        auto a = std::to_integer<uint8_t>(our_rdata[i]);
-        auto b = std::to_integer<uint8_t>(their_rdata[i]);
-        if(a != b)
-            return static_cast<int>(a) - static_cast<int>(b);
     }
-    if(our_rdata.size() < their_rdata.size()) return -1;
-    if(our_rdata.size() > their_rdata.size()) return  1;
-    return 0;
-}
+
+    void record_conflict()
+    {
+        auto now = Clock::now();
+        m_conflicts.push_back(now);
+        prune(now);
+    }
+
+    bool throttled()
+    {
+        prune(Clock::now());
+        if(m_conflicts.size() >= conflict_threshold)
+            m_engaged = true;
+        else if(m_conflicts.empty())
+            m_engaged = false;
+        return m_engaged;
+    }
+
+    void reset()
+    {
+        m_conflicts.clear();
+        m_engaged = false;
+    }
+
+private:
+    void prune(time_point now)
+    {
+        while(!m_conflicts.empty() && now - m_conflicts.front() > conflict_window)
+            m_conflicts.pop_front();
+    }
+
+    std::deque<time_point> m_conflicts;
+    bool m_engaged;
+};
 
 }
 

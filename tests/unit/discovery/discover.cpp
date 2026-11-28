@@ -1,16 +1,46 @@
-#include "helpers.h"
+#include "fixture.h"
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <vector>
+#include <cstddef>
+#include <cstdint>
+
+namespace {
+
+// RFC 6762 section 5.2: QM queries are delayed by 20-120 ms.
+void check_first_query_pending(discovery_fixture &f)
+{
+    REQUIRE(f.sd.socket().sent_packets().empty());
+    REQUIRE(f.sd.delay_timer().has_pending());
+    REQUIRE(f.sd.delay_timer().last_duration() >= 20ms);
+    REQUIRE(f.sd.delay_timer().last_duration() <= 120ms);
+}
+
+void check_query_header(const std::vector<std::byte> &data)
+{
+    REQUIRE(data.size() >= 12);
+    REQUIRE(static_cast<uint8_t>(data[0]) == 0x00); // transaction ID
+    REQUIRE(static_cast<uint8_t>(data[1]) == 0x00);
+    REQUIRE(static_cast<uint8_t>(data[2]) == 0x00); // flags: standard query
+    REQUIRE(static_cast<uint8_t>(data[3]) == 0x00);
+    REQUIRE(static_cast<uint8_t>(data[4]) == 0x00); // QDCOUNT
+    REQUIRE(static_cast<uint8_t>(data[5]) == 0x01);
+    REQUIRE(static_cast<uint8_t>(data[6]) == 0x00); // ANCOUNT
+    REQUIRE(static_cast<uint8_t>(data[7]) == 0x00);
+}
+
+}
+
 SCENARIO("service_discovery constructs and discovers", "[service_discovery][create]")
 {
-    GIVEN("a service_discovery instance with MockPolicy")
+    GIVEN("a service_discovery instance with mock_policy")
     {
         mock_executor ex;
 
         WHEN("constructed with 500ms silence timeout")
         {
-            basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+            basic_service_discovery<mock_policy> sd{ex, query_options{.silence_timeout = 500ms}};
 
             THEN("it is usable (socket is empty, results empty)")
             {
@@ -25,24 +55,16 @@ SCENARIO("async_discover returns PTR record from mock socket", "[service_discove
 {
     GIVEN("a service_discovery instance and a queued PTR response")
     {
-        mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
-        sd.socket().enqueue(make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."));
+        discovery_fixture f;
+        f.enqueue(make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."));
 
         WHEN("async_discover() is called for _http._tcp.local.")
         {
-            sd.async_discover("_http._tcp.local.",
-                              [](std::error_code, std::vector<mdns_record_variant>)
-                              {
-                              });
+            f.discover();
 
             THEN("results() contains one record_ptr")
             {
-                REQUIRE(sd.results().size() == 1);
-                REQUIRE(std::holds_alternative<record_ptr>(sd.results()[0]));
-
-                const auto &ptr = std::get<record_ptr>(sd.results()[0]);
-                REQUIRE(ptr.ptr_name.find("myservice") != dns_name::npos);
+                check_single_ptr(f.sd.results(), "MyService");
             }
         }
     }
@@ -52,41 +74,23 @@ SCENARIO("async_discover fires completion callback with results", "[service_disc
 {
     GIVEN("a service_discovery instance and a queued PTR response")
     {
-        mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
-        sd.socket().enqueue(make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."));
+        discovery_fixture f;
+        f.enqueue(make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local."));
 
         WHEN("async_discover() is called with a completion callback and the silence timer fires")
         {
-            std::error_code received_ec;
-            std::vector<mdns_record_variant> received_results;
-            bool callback_fired = false;
-
-            sd.async_discover("_http._tcp.local.",
-                              [&](std::error_code ec, std::vector<mdns_record_variant> results)
-                              {
-                                  callback_fired = true;
-                                  received_ec = ec;
-                                  received_results = std::move(results);
-                              });
-
-            // MockSocket drains the queue synchronously during async_discover(),
-            // but the silence timer must be fired manually to trigger the completion callback.
-            sd.timer().fire();
+            f.discover(record_into(f.found));
+            f.fire_silence();
 
             THEN("the callback fires with error_code{} and the accumulated results")
             {
-                REQUIRE(callback_fired);
-                REQUIRE_FALSE(received_ec);
-                REQUIRE(received_results.size() == 1);
-                REQUIRE(std::holds_alternative<record_ptr>(received_results[0]));
-                const auto &ptr = std::get<record_ptr>(received_results[0]);
-                REQUIRE(ptr.ptr_name.find("myservice") != dns_name::npos);
+                check_completed(f.found);
+                check_single_ptr(f.found.results, "MyService");
             }
 
             AND_THEN("results() accessor is still populated (completion handler received a copy)")
             {
-                REQUIRE(sd.results().size() == 1);
+                REQUIRE(f.sd.results().size() == 1);
             }
         }
     }
@@ -96,20 +100,16 @@ SCENARIO("async_discover accumulates multiple records from a single frame", "[se
 {
     GIVEN("a service_discovery instance and a multi-record response enqueued")
     {
-        mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
-        sd.socket().enqueue(make_multi_record_response());
+        discovery_fixture f;
+        f.enqueue(make_multi_record_response());
 
         WHEN("async_discover() is called")
         {
-            sd.async_discover("_http._tcp.local.",
-                              [](std::error_code, std::vector<mdns_record_variant>)
-                              {
-                              });
+            f.discover();
 
             THEN("results() contains both records")
             {
-                REQUIRE(sd.results().size() >= 2);
+                REQUIRE(f.sd.results().size() >= 2);
             }
         }
     }
@@ -119,39 +119,45 @@ SCENARIO("async_discover sends DNS PTR query to multicast address", "[service_di
 {
     GIVEN("a service_discovery instance with no enqueued responses")
     {
-        mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
+        discovery_fixture f;
 
-        WHEN("async_discover() is called for _http._tcp.local.")
+        WHEN("async_discover() is called for _http._tcp.local. and the section 5.2 delay elapses")
         {
-            sd.async_discover("_http._tcp.local.",
-                              [](std::error_code, std::vector<mdns_record_variant>)
-                              {
-                              });
+            f.discover();
+            check_first_query_pending(f);
+            f.fire_delay();
 
             THEN("a DNS query was sent to 224.0.0.251:5353")
             {
-                REQUIRE_FALSE(sd.socket().sent_packets().empty());
-                const auto &sent = sd.socket().sent_packets()[0];
-                REQUIRE(sent.dest == endpoint{"224.0.0.251", 5353});
+                check_sent_to_multicast(f);
             }
 
             AND_THEN("the query packet has correct DNS header (id=0, flags=0, qdcount=1)")
             {
-                const auto &data = sd.socket().sent_packets()[0].data;
-                REQUIRE(data.size() >= 12);
-                // Transaction ID: 0x0000
-                REQUIRE(static_cast<uint8_t>(data[0]) == 0x00);
-                REQUIRE(static_cast<uint8_t>(data[1]) == 0x00);
-                // Flags: 0x0000 (standard query)
-                REQUIRE(static_cast<uint8_t>(data[2]) == 0x00);
-                REQUIRE(static_cast<uint8_t>(data[3]) == 0x00);
-                // QDCOUNT: 1
-                REQUIRE(static_cast<uint8_t>(data[4]) == 0x00);
-                REQUIRE(static_cast<uint8_t>(data[5]) == 0x01);
-                // ANCOUNT: 0
-                REQUIRE(static_cast<uint8_t>(data[6]) == 0x00);
-                REQUIRE(static_cast<uint8_t>(data[7]) == 0x00);
+                check_query_header(f.sd.socket().sent_packets()[0].data);
+            }
+        }
+    }
+}
+
+SCENARIO("async_discover ignores answer records carried in query packets", "[service_discovery][qr-flag]")
+{
+    GIVEN("a service_discovery and a QUERY packet (QR=0) carrying a PTR known answer")
+    {
+        auto pkt = make_ptr_response("_http._tcp.local.", "MyService._http._tcp.local.");
+        pkt[2] = std::byte{0x00};
+        pkt[3] = std::byte{0x00};
+
+        discovery_fixture f;
+        f.enqueue(pkt);
+
+        WHEN("async_discover() is called for the matching type")
+        {
+            f.discover();
+
+            THEN("results() stays empty -- query packets are not answers")
+            {
+                REQUIRE(f.sd.results().empty());
             }
         }
     }
@@ -161,57 +167,16 @@ SCENARIO("async_discover skips malformed records and returns valid ones", "[serv
 {
     GIVEN("a DNS frame with a valid PTR and a truncated A record")
     {
-        // Build a packet manually: 2 answer RRs
-        // First: valid PTR
-        // Second: A record with rdlength=5 (invalid — parse::a checks length==4)
-        std::vector<std::byte> pkt;
-        push_u16_be(pkt, 0x0000); // id
-        push_u16_be(pkt, 0x8400); // flags (response)
-        push_u16_be(pkt, 0x0000); // qdcount
-        push_u16_be(pkt, 0x0002); // ancount = 2
-        push_u16_be(pkt, 0x0000); // nscount
-        push_u16_be(pkt, 0x0000); // arcount
-
-        // RR 1: valid PTR record
-        auto owner_enc = encode_name("_http._tcp.local.");
-        auto target_enc = encode_name("Good._http._tcp.local.");
-        pkt.insert(pkt.end(), owner_enc.begin(), owner_enc.end());
-        push_u16_be(pkt, 12);
-        push_u16_be(pkt, 0x0001);
-        push_u32_be(pkt, 4500);
-        push_u16_be(pkt, static_cast<uint16_t>(target_enc.size()));
-        pkt.insert(pkt.end(), target_enc.begin(), target_enc.end());
-
-        // RR 2: A record with rdlength=5 (invalid for type A)
-        auto host_enc = encode_name("bad.local.");
-        pkt.insert(pkt.end(), host_enc.begin(), host_enc.end());
-        push_u16_be(pkt, 1); // type A
-        push_u16_be(pkt, 0x0001);
-        push_u32_be(pkt, 120);
-        push_u16_be(pkt, 5); // rdlength=5 (invalid for type A — parse::a checks length==4)
-        pkt.push_back(static_cast<std::byte>(192));
-        pkt.push_back(static_cast<std::byte>(168));
-        pkt.push_back(static_cast<std::byte>(0));
-        pkt.push_back(static_cast<std::byte>(1));
-        pkt.push_back(static_cast<std::byte>(0)); // 5th byte — makes rdlength consistent
-
-        mock_executor ex;
-        basic_service_discovery<MockPolicy> sd{ex, query_options{.silence_timeout = 500ms}};
-        sd.socket().enqueue(pkt);
+        discovery_fixture f;
+        f.enqueue(make_malformed_a_response());
 
         WHEN("async_discover() is called")
         {
-            sd.async_discover("_http._tcp.local.",
-                              [](std::error_code, std::vector<mdns_record_variant>)
-                              {
-                              });
+            f.discover();
 
             THEN("results() contains only the valid PTR record")
             {
-                REQUIRE(sd.results().size() == 1);
-                REQUIRE(std::holds_alternative<record_ptr>(sd.results()[0]));
-                const auto &ptr = std::get<record_ptr>(sd.results()[0]);
-                REQUIRE(ptr.ptr_name.find("good") != dns_name::npos);
+                check_single_ptr(f.sd.results(), "Good");
             }
         }
     }

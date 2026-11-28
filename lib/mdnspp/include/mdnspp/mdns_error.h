@@ -18,35 +18,44 @@ enum class mdns_error : uint32_t
     not_implemented = 7,
     probe_conflict       = 8,
     invalid_ipv4_address = 9,
-    invalid_ipv6_address = 10
+    invalid_ipv6_address = 10,
+    invalid_name         = 11,
+    invalid_argument     = 12
 };
+
+namespace detail {
+
+class mdns_category final : public std::error_category
+{
+public:
+    const char *name() const noexcept override { return "mdns"; }
+
+    std::string message(int ev) const override
+    {
+        switch(static_cast<mdns_error>(ev))
+        {
+        case mdns_error::socket_error: return "socket error";
+        case mdns_error::no_interfaces: return "no network interfaces available";
+        case mdns_error::parse_error: return "DNS parse error";
+        case mdns_error::send_failed: return "send failed";
+        case mdns_error::receive_failed: return "receive failed";
+        case mdns_error::timeout: return "operation timed out";
+        case mdns_error::not_implemented: return "not implemented";
+        case mdns_error::probe_conflict: return "name conflict detected during probing";
+        case mdns_error::invalid_ipv4_address: return "invalid IPv4 address";
+        case mdns_error::invalid_ipv6_address: return "invalid IPv6 address";
+        case mdns_error::invalid_name: return "invalid DNS name";
+        case mdns_error::invalid_argument: return "invalid argument";
+        }
+        return "unknown mdns error";
+    }
+};
+
+}
 
 inline const std::error_category &mdns_error_category() noexcept
 {
-    struct category : std::error_category
-    {
-        const char *name() const noexcept override { return "mdns"; }
-
-        std::string message(int ev) const override
-        {
-            switch(static_cast<mdns_error>(ev))
-            {
-            case mdns_error::socket_error: return "socket error";
-            case mdns_error::no_interfaces: return "no network interfaces available";
-            case mdns_error::parse_error: return "DNS parse error";
-            case mdns_error::send_failed: return "send failed";
-            case mdns_error::receive_failed: return "receive failed";
-            case mdns_error::timeout: return "operation timed out";
-            case mdns_error::not_implemented: return "not implemented";
-            case mdns_error::probe_conflict: return "name conflict detected during probing";
-            case mdns_error::invalid_ipv4_address: return "invalid IPv4 address";
-            case mdns_error::invalid_ipv6_address: return "invalid IPv6 address";
-            }
-            return "unknown mdns error";
-        }
-    };
-
-    static const category instance;
+    static const detail::mdns_category instance;
     return instance;
 }
 

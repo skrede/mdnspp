@@ -7,19 +7,21 @@
 
 #include "mdnspp/detail/dns_wire.h"
 
-#include "mdnspp/testing/mock_policy.h"
 #include "mdnspp/testing/test_clock.h"
+#include "mdnspp/testing/mock_policy.h"
 
+#include <array>
 #include <string>
 #include <vector>
 #include <cstddef>
 #include <cstdint>
+#include <string_view>
 
-using mdnspp::testing::MockPolicy;
+using mdnspp::testing::mock_policy;
 using mdnspp::testing::test_clock;
 using mdnspp::testing::mock_executor;
 
-using test_monitor = mdnspp::basic_service_monitor<MockPolicy, test_clock>;
+using test_monitor = mdnspp::basic_service_monitor<mock_policy, test_clock>;
 
 inline mdnspp::service_options make_uniform_opts(uint32_t ttl)
 {
@@ -30,7 +32,7 @@ inline mdnspp::service_options make_uniform_opts(uint32_t ttl)
     opts.txt_ttl    = s;
     opts.a_ttl      = s;
     opts.aaaa_ttl   = s;
-    opts.record_ttl = s;
+    opts.fallback_record_ttl = s;
     return opts;
 }
 
@@ -91,6 +93,17 @@ inline std::vector<std::byte> make_txt_packet(const std::string &service_type,
     info.port          = 8080;
     info.txt_records   = txt;
     return mdnspp::detail::build_dns_response(info, mdnspp::dns_type::txt, make_uniform_opts(ttl));
+}
+
+inline std::vector<std::byte> make_single_record_packet(std::string_view owner, mdnspp::dns_type type,
+                                                        const std::vector<std::byte> &rdata, uint32_t ttl = 4500)
+{
+    std::vector<std::byte> packet;
+    // RFC 1035 section 4.1.1 header: ID, flags (QR and AA), QDCOUNT, ANCOUNT, NSCOUNT, ARCOUNT.
+    for(uint16_t field : std::array<uint16_t, 6>{0, 0x8400, 0, 1, 0, 0})
+        mdnspp::detail::push_u16_be(packet, field);
+    mdnspp::detail::append_dns_rr(packet, *mdnspp::detail::encode_dns_name(owner), type, ttl, rdata);
+    return packet;
 }
 
 inline mdnspp::endpoint default_sender()

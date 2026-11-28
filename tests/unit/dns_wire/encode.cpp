@@ -1,189 +1,41 @@
-// Unit tests for encode_ipv4, encode_ipv6, encode_txt_records,
-// encode_dns_name, and skip_dns_name edge cases.
-
 #include "helpers.h"
 
+using mdnspp::service_txt;
 using mdnspp::detail::encode_dns_name;
-using mdnspp::detail::skip_dns_name;
 
-SCENARIO("encode_ipv6 encodes valid IPv6 addresses", "[response_detail][encode_ipv6]")
+namespace {
+
+void check_mixed_entries(const std::vector<std::byte> &result)
 {
-    GIVEN("the loopback address ::1")
+    THEN("the result is non-empty")
     {
-        auto result = mdnspp::detail::encode_ipv6("::1");
-        THEN("it returns 16 bytes")
-        {
-            REQUIRE(result.has_value());
-            REQUIRE(result->size() == 16);
-        }
+        REQUIRE_FALSE(result.empty());
     }
 
-    GIVEN("a link-local address fe80::1")
+    THEN("the first entry is encoded as 'key=val' with length prefix 7")
     {
-        auto result = mdnspp::detail::encode_ipv6("fe80::1");
-        THEN("it returns 16 bytes")
-        {
-            REQUIRE(result.has_value());
-            REQUIRE(result->size() == 16);
-        }
+        REQUIRE(static_cast<uint8_t>(result[0]) == 7); // "key=val" = 7 chars
+    }
+
+    THEN("the second entry is 'flag' with length prefix 4")
+    {
+        // offset after the first entry: 1 + 7 = 8
+        REQUIRE(static_cast<uint8_t>(result[8]) == 4); // "flag" = 4 chars
+    }
+
+    THEN("the oversized third entry is skipped entirely")
+    {
+        // only the first two entries are encoded: (1+7) + (1+4) = 13 bytes
+        REQUIRE(result.size() == 13);
     }
 }
 
-SCENARIO("encode_ipv4 returns empty for bad octet", "[response_detail][encode_ipv4]")
+void check_entry_length_boundary()
 {
-    GIVEN("an IPv4 address with an octet > 255")
-    {
-        auto result = mdnspp::detail::encode_ipv4("999.0.0.1");
-        THEN("it returns an error with invalid_ipv4_address")
-        {
-            REQUIRE_FALSE(result.has_value());
-            REQUIRE(result.error() == mdnspp::mdns_error::invalid_ipv4_address);
-        }
-    }
-}
-
-SCENARIO("encode_ipv4 returns empty for wrong number of octets", "[response_detail][encode_ipv4]")
-{
-    GIVEN("an IPv4 address with only 3 octets")
-    {
-        auto result = mdnspp::detail::encode_ipv4("1.2.3");
-        THEN("it returns an error with invalid_ipv4_address")
-        {
-            REQUIRE_FALSE(result.has_value());
-            REQUIRE(result.error() == mdnspp::mdns_error::invalid_ipv4_address);
-        }
-    }
-}
-
-SCENARIO("encode_ipv4 encodes a valid address", "[response_detail][encode_ipv4]")
-{
-    GIVEN("a valid IPv4 address 192.168.1.1")
-    {
-        auto result = mdnspp::detail::encode_ipv4("192.168.1.1");
-        THEN("it returns 4 bytes")
-        {
-            REQUIRE(result.has_value());
-            REQUIRE(result->size() == 4);
-        }
-    }
-}
-
-SCENARIO("encode_ipv4 returns error for non-IP string", "[response_detail][encode_ipv4]")
-{
-    GIVEN("a non-IP string 'not-an-ip'")
-    {
-        auto result = mdnspp::detail::encode_ipv4("not-an-ip");
-        THEN("it returns an error with invalid_ipv4_address")
-        {
-            REQUIRE_FALSE(result.has_value());
-            REQUIRE(result.error() == mdnspp::mdns_error::invalid_ipv4_address);
-        }
-    }
-}
-
-SCENARIO("encode_ipv4 returns error for empty string", "[response_detail][encode_ipv4]")
-{
-    GIVEN("an empty string")
-    {
-        auto result = mdnspp::detail::encode_ipv4("");
-        THEN("it returns an error")
-        {
-            REQUIRE_FALSE(result.has_value());
-        }
-    }
-}
-
-SCENARIO("encode_ipv6 returns error for non-IPv6 string", "[response_detail][encode_ipv6]")
-{
-    GIVEN("a non-IPv6 string 'not-an-ipv6'")
-    {
-        auto result = mdnspp::detail::encode_ipv6("not-an-ipv6");
-        THEN("it returns an error with invalid_ipv6_address")
-        {
-            REQUIRE_FALSE(result.has_value());
-            REQUIRE(result.error() == mdnspp::mdns_error::invalid_ipv6_address);
-        }
-    }
-}
-
-SCENARIO("encode_ipv6 returns error for empty string", "[response_detail][encode_ipv6]")
-{
-    GIVEN("an empty string")
-    {
-        auto result = mdnspp::detail::encode_ipv6("");
-        THEN("it returns an error with invalid_ipv6_address")
-        {
-            REQUIRE_FALSE(result.has_value());
-            REQUIRE(result.error() == mdnspp::mdns_error::invalid_ipv6_address);
-        }
-    }
-}
-
-SCENARIO("mdns_error invalid address codes have correct message strings",
-         "[response_detail][mdns_error]")
-{
-    GIVEN("the invalid_ipv4_address error code")
-    {
-        auto ec = mdnspp::make_error_code(mdnspp::mdns_error::invalid_ipv4_address);
-        THEN("message is 'invalid IPv4 address'")
-        {
-            REQUIRE(ec.message() == "invalid IPv4 address");
-        }
-    }
-
-    GIVEN("the invalid_ipv6_address error code")
-    {
-        auto ec = mdnspp::make_error_code(mdnspp::mdns_error::invalid_ipv6_address);
-        THEN("message is 'invalid IPv6 address'")
-        {
-            REQUIRE(ec.message() == "invalid IPv6 address");
-        }
-    }
-}
-
-SCENARIO("encode_txt_records handles entry with value, entry without value, and oversized entry", "[response_detail][encode_txt_records]")
-{
-    GIVEN("a set of TXT entries including one >255 chars")
-    {
-        std::string long_value(300, 'x');
-        std::vector<mdnspp::service_txt> entries = {
-            mdnspp::service_txt{"key", "val"},
-            mdnspp::service_txt{"flag", std::nullopt},
-            mdnspp::service_txt{"big", long_value},
-        };
-
-        auto result = mdnspp::detail::encode_txt_records(entries);
-
-        THEN("the result is non-empty")
-        {
-            REQUIRE_FALSE(result.empty());
-        }
-
-        THEN("the first entry is encoded as 'key=val' with length prefix 7")
-        {
-            REQUIRE(static_cast<uint8_t>(result[0]) == 7); // "key=val" = 7 chars
-        }
-
-        THEN("the second entry is 'flag' with length prefix 4")
-        {
-            // Offset after first entry: 1 + 7 = 8
-            REQUIRE(static_cast<uint8_t>(result[8]) == 4); // "flag" = 4 chars
-        }
-
-        THEN("the oversized third entry is skipped entirely")
-        {
-            // Only first two entries encoded: (1+7) + (1+4) = 13 bytes total
-            REQUIRE(result.size() == 13);
-        }
-    }
-
     GIVEN("a TXT entry with exactly 255 bytes")
     {
-        std::string value(251, 'x'); // "k=xxx..." = 2 + 251 = 253... need key=value total = 255
-        std::vector<mdnspp::service_txt> entries = {
-            mdnspp::service_txt{std::string(1, 'k'), std::string(253, 'v')}, // "k=vvv..." = 255
-        };
-
+        std::string value(251, 'x');
+        std::vector<service_txt> entries = {service_txt{std::string(1, 'k'), std::string(253, 'v')}}; // 255
         auto result = mdnspp::detail::encode_txt_records(entries);
         THEN("it is accepted at 255 bytes")
         {
@@ -194,21 +46,62 @@ SCENARIO("encode_txt_records handles entry with value, entry without value, and 
 
     GIVEN("a TXT entry with 256 bytes")
     {
-        std::vector<mdnspp::service_txt> entries = {
-            mdnspp::service_txt{std::string(1, 'k'), std::string(254, 'v')}, // "k=vvv..." = 256
-        };
-
+        std::vector<service_txt> entries = {service_txt{std::string(1, 'k'), std::string(254, 'v')}}; // 256
         auto result = mdnspp::detail::encode_txt_records(entries);
-        THEN("it is skipped")
+        THEN("it is skipped, leaving the RFC 6763 §6.1 single zero byte")
         {
-            REQUIRE(result.empty());
+            REQUIRE(result.size() == 1);
+            REQUIRE(result[0] == std::byte{0x00});
         }
     }
 }
 
-// ---------------------------------------------------------------------------
-// encode_dns_name edge cases
-// ---------------------------------------------------------------------------
+void check_single_label_bounds()
+{
+    GIVEN("a name with a 64-byte label")
+    {
+        std::string long_label(64, 'a');
+        auto result = encode_dns_name(long_label);
+        THEN("it returns invalid_name") { REQUIRE_FALSE(result.has_value()); }
+    }
+
+    GIVEN("a name with a 63-byte label")
+    {
+        std::string label(63, 'a');
+        auto result = encode_dns_name(label);
+        THEN("it encodes successfully") { REQUIRE(result.has_value()); }
+    }
+}
+
+}
+
+SCENARIO("encode_txt_records handles entry with value, entry without value, and oversized entry",
+         "[response_detail][encode_txt_records]")
+{
+    GIVEN("a set of TXT entries including one >255 chars")
+    {
+        std::string long_value(300, 'x');
+        std::vector<service_txt> entries = {
+            service_txt{"key", "val"},
+            service_txt{"flag", std::nullopt},
+            service_txt{"big", long_value},
+        };
+        auto result = mdnspp::detail::encode_txt_records(entries);
+        check_mixed_entries(result);
+    }
+
+    check_entry_length_boundary();
+
+    GIVEN("no TXT entries at all")
+    {
+        auto result = mdnspp::detail::encode_txt_records({});
+        THEN("the rdata is a single zero byte (RFC 6763 §6.1)")
+        {
+            REQUIRE(result.size() == 1);
+            REQUIRE(result[0] == std::byte{0x00});
+        }
+    }
+}
 
 SCENARIO("encode_dns_name with empty string returns single null byte", "[dns_read][encode_dns_name]")
 {
@@ -218,8 +111,9 @@ SCENARIO("encode_dns_name with empty string returns single null byte", "[dns_rea
 
         THEN("it returns a single \\x00 root label byte")
         {
-            REQUIRE(result.size() == 1);
-            REQUIRE(result[0] == std::byte{0});
+            REQUIRE(result.has_value());
+            REQUIRE(result->size() == 1);
+            REQUIRE((*result)[0] == std::byte{0});
         }
     }
 }
@@ -233,74 +127,22 @@ SCENARIO("encode_dns_name with trailing dot produces same encoding as without", 
 
         THEN("both produce identical wire encodings")
         {
-            REQUIRE(with_dot == without_dot);
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// skip_dns_name edge cases
-// ---------------------------------------------------------------------------
-
-SCENARIO("skip_dns_name with pointer where second byte is at end of buffer", "[dns_read][skip_dns_name]")
-{
-    GIVEN("a 1-byte buffer containing only the pointer tag 0xC0")
-    {
-        auto buf = bytes({0xC0});
-        size_t offset = 0;
-
-        WHEN("skip_dns_name is called")
-        {
-            bool ok = skip_dns_name(std::span<const std::byte>(buf), offset);
-
-            THEN("it returns false because pointer needs 2 bytes")
-            {
-                REQUIRE_FALSE(ok);
-            }
-        }
-    }
-}
-
-SCENARIO("skip_dns_name where label extends past end of buffer", "[dns_read][skip_dns_name]")
-{
-    GIVEN("a buffer where a label claims 10 bytes but only 3 follow")
-    {
-        auto buf = bytes({0x0A, 'a', 'b', 'c'});
-        size_t offset = 0;
-
-        WHEN("skip_dns_name is called")
-        {
-            bool ok = skip_dns_name(std::span<const std::byte>(buf), offset);
-
-            THEN("it returns false because label overflows buffer")
-            {
-                REQUIRE_FALSE(ok);
-            }
+            REQUIRE(with_dot.has_value());
+            REQUIRE(without_dot.has_value());
+            REQUIRE(*with_dot == *without_dot);
         }
     }
 }
 
 SCENARIO("encode_dns_name rejects labels exceeding 63 bytes", "[dns_read][encode_dns_name]")
 {
-    GIVEN("a name with a 64-byte label")
-    {
-        std::string long_label(64, 'a');
-        auto result = encode_dns_name(long_label);
-        THEN("it returns empty") { REQUIRE(result.empty()); }
-    }
-
-    GIVEN("a name with a 63-byte label")
-    {
-        std::string label(63, 'a');
-        auto result = encode_dns_name(label);
-        THEN("it encodes successfully") { REQUIRE_FALSE(result.empty()); }
-    }
+    check_single_label_bounds();
 
     GIVEN("a multi-label name where one label exceeds 63 bytes")
     {
         std::string name = "short." + std::string(64, 'b') + ".end";
         auto result = encode_dns_name(name);
-        THEN("it returns empty") { REQUIRE(result.empty()); }
+        THEN("it returns invalid_name") { REQUIRE_FALSE(result.has_value()); }
     }
 
     GIVEN("the fuzz crash input with a 192-byte label causing uint8_t truncation to 0xC0")
@@ -311,39 +153,10 @@ SCENARIO("encode_dns_name rejects labels exceeding 63 bytes", "[dns_read][encode
         input += "c.";
         input += std::string(192, 'C');
         auto result = encode_dns_name(input);
-        THEN("it returns empty because the third label exceeds 63 bytes")
+        THEN("it returns invalid_name because the third label exceeds 63 bytes")
         {
-            REQUIRE(result.empty());
+            REQUIRE_FALSE(result.has_value());
         }
-    }
-}
-
-SCENARIO("read_dns_name rejects labels exceeding 63 bytes", "[dns_read][read_dns_name]")
-{
-    using mdnspp::detail::read_dns_name;
-
-    GIVEN("wire data with a 64-byte label")
-    {
-        std::vector<std::byte> wire;
-        wire.push_back(std::byte{64});
-        for(int32_t i = 0; i < 64; ++i)
-            wire.push_back(std::byte{'a'});
-        wire.push_back(std::byte{0});
-
-        auto result = read_dns_name(std::span<const std::byte>(wire), 0);
-        THEN("it returns parse_error") { REQUIRE_FALSE(result.has_value()); }
-    }
-
-    GIVEN("wire data with a 63-byte label")
-    {
-        std::vector<std::byte> wire;
-        wire.push_back(std::byte{63});
-        for(int32_t i = 0; i < 63; ++i)
-            wire.push_back(std::byte{'a'});
-        wire.push_back(std::byte{0});
-
-        auto result = read_dns_name(std::span<const std::byte>(wire), 0);
-        THEN("it decodes successfully") { REQUIRE(result.has_value()); }
     }
 }
 
@@ -354,17 +167,17 @@ SCENARIO("encode_dns_name rejects names exceeding 255 wire bytes", "[dns_read][e
         std::string name = std::string(63, 'a') + "." + std::string(63, 'b') + "."
                          + std::string(63, 'c') + "." + std::string(63, 'd');
         auto result = encode_dns_name(name);
-        THEN("it returns empty") { REQUIRE(result.empty()); }
+        THEN("it returns invalid_name") { REQUIRE_FALSE(result.has_value()); }
     }
 
     GIVEN("a name at exactly 255 wire bytes (3 labels of 63 + one of 61)")
     {
-        // Wire: (1+63)+(1+63)+(1+63)+(1+61)+1 = 64+64+64+62+1 = 255
+        // wire: (1+63)+(1+63)+(1+63)+(1+61)+1 = 255
         std::string name = std::string(63, 'a') + "." + std::string(63, 'b') + "."
                          + std::string(63, 'c') + "." + std::string(61, 'd');
         auto result = encode_dns_name(name);
-        THEN("it encodes successfully") { REQUIRE_FALSE(result.empty()); }
-        THEN("wire size is exactly 255") { REQUIRE(result.size() == 255); }
+        THEN("it encodes successfully") { REQUIRE(result.has_value()); }
+        THEN("wire size is exactly 255") { REQUIRE(result->size() == 255); }
     }
 }
 

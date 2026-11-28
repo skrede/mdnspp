@@ -2,10 +2,16 @@
 #include <mdnspp/service_info.h>
 #include <mdnspp/basic_service_server.h>
 
+#include <chrono>
 #include <iostream>
 
-// Serve an mDNS service using AsioPolicy.
-// Responds to queries until Ctrl-C.
+// Serve an mDNS service using asio_policy.
+// mdnspp::async_start() completes at the ready event -- once the service is
+// probed and announced (live) -- or with the startup failure
+// (mdns_error::probe_conflict and others). The server keeps serving after
+// the token completes; here a 10 s timer then calls stop(), the teardown
+// sends the goodbye packets, and io.run() returns when the event loop runs
+// out of work.
 
 int main()
 {
@@ -22,7 +28,7 @@ int main()
         .subtypes = {},
     };
 
-    mdnspp::basic_service_server<mdnspp::AsioPolicy> srv{
+    mdnspp::basic_service_server<mdnspp::asio_policy> srv{
         io,
         std::move(info),
         mdnspp::service_options{
@@ -33,14 +39,21 @@ int main()
         }
     };
 
-    asio::steady_timer timer(io, std::chrono::seconds(10));
-    timer.async_wait([&srv, &io](std::error_code)
+    asio::steady_timer stop_timer(io);
+
+    std::cout << "Starting MyApp._http._tcp.local. on port 8080" << std::endl;
+    mdnspp::async_start(srv, [&stop_timer, &srv](std::error_code ec)
     {
-        srv.stop();
-        io.stop();
+        if(ec)
+        {
+            std::cerr << "startup failed: " << ec.message() << std::endl;
+            return; // on permanent failure the server has already torn down
+        }
+        std::cout << "Service live -- serving for 10 seconds" << std::endl;
+        stop_timer.expires_after(std::chrono::seconds(10));
+        stop_timer.async_wait([&srv](std::error_code) { srv.stop(); });
     });
 
-    std::cout << "Serving MyApp._http._tcp.local. on port 8080 (Ctrl-C to stop)" << std::endl;
-    srv.async_start();
     io.run();
+    std::cout << "Server stopped" << std::endl;
 }

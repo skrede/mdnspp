@@ -28,4 +28,4 @@ Reasons to increase it:
 
 Reducing below 400 ms may cause premature response before all continuation packets have arrived on slow or high-jitter links. If the responder processes the known-answer set before all continuations are received, it may re-announce records the querier already has — increasing network traffic. More importantly, the incomplete known-answer set may cause the responder to send announcements that the querier explicitly suppressed, violating RFC 6762 §7.1.
 
-`tc_wait_min` must always be less than or equal to `tc_wait_max`; violating this constraint produces undefined sampling behaviour.
+`tc_wait_min` must always be less than or equal to `tc_wait_max`; violating this constraint produces undefined sampling behavior.

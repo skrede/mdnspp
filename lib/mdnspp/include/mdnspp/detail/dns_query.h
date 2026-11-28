@@ -1,171 +1,137 @@
-#ifndef HPP_GUARD_MDNSPP_DNS_QUERY_H
-#define HPP_GUARD_MDNSPP_DNS_QUERY_H
+#ifndef HPP_GUARD_MDNSPP_DETAIL_DNS_QUERY_H
+#define HPP_GUARD_MDNSPP_DETAIL_DNS_QUERY_H
+
+#include "mdnspp/detail/compat.h"
+#include "mdnspp/detail/dns_read.h"
+#include "mdnspp/detail/dns_enums.h"
+#include "mdnspp/detail/dns_write.h"
+#include "mdnspp/detail/dns_record_encode.h"
 
 #include "mdnspp/records.h"
 #include "mdnspp/service_info.h"
 
-#include "mdnspp/detail/dns_read.h"
-#include "mdnspp/detail/dns_write.h"
-#include "mdnspp/detail/dns_enums.h"
-
 #include <span>
 #include <string>
 #include <vector>
-#include <cstdio>
-#include <utility>
 #include <cstddef>
 #include <cstdint>
+#include <utility>
 #include <string_view>
 
 namespace mdnspp::detail {
 
-// Builds a complete mDNS query packet:
-//   12-byte header (id=0, flags=0, questions=1, answers=0, authority=0, additional=0)
-//   + DNS-encoded name
-//   + qtype (big-endian, 2 bytes)
-//   + qclass (2 bytes): 0x0001 (IN) or 0x8001 (IN + QU bit, RFC 6762 §5.4)
+// RFC 6762 section 18.1: id 0; flags 0 (standard query); no answers or additional records.
+inline void append_query_header(std::vector<std::byte> &packet, uint16_t qdcount, uint16_t nscount)
+{
+    push_u16_be(packet, 0x0000);
+    push_u16_be(packet, 0x0000);
+    push_u16_be(packet, qdcount);
+    push_u16_be(packet, 0x0000);
+    push_u16_be(packet, nscount);
+    push_u16_be(packet, 0x0000);
+}
+
+inline void append_question(std::vector<std::byte> &packet, const std::vector<std::byte> &name, dns_type qtype,
+                            uint16_t qclass)
+{
+    packet.insert(packet.end(), name.begin(), name.end());
+    push_u16_be(packet, detail::to_underlying(qtype));
+    push_u16_be(packet, qclass);
+}
+
+inline void set_ancount(std::vector<std::byte> &packet, uint16_t ancount)
+{
+    packet[6] = static_cast<std::byte>(static_cast<uint8_t>(ancount >> 8));
+    packet[7] = static_cast<std::byte>(static_cast<uint8_t>(ancount & 0xFF));
+}
+
+// An empty packet means the name failed to encode. The QU bit is bit 15 of QCLASS (RFC 6762 section 5.4).
 inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qtype,
                                               response_mode mode = response_mode::multicast)
 {
     std::vector<std::byte> packet;
     packet.reserve(12 + 256 + 4);
-
-    // 12-byte DNS header
-    // Transaction ID: 0x0000
-    packet.push_back(static_cast<std::byte>(0x00));
-    packet.push_back(static_cast<std::byte>(0x00));
-    // Flags: 0x0000 (standard query)
-    packet.push_back(static_cast<std::byte>(0x00));
-    packet.push_back(static_cast<std::byte>(0x00));
-    // Questions: 1
-    packet.push_back(static_cast<std::byte>(0x00));
-    packet.push_back(static_cast<std::byte>(0x01));
-    // Answers: 0
-    packet.push_back(static_cast<std::byte>(0x00));
-    packet.push_back(static_cast<std::byte>(0x00));
-    // Authority: 0
-    packet.push_back(static_cast<std::byte>(0x00));
-    packet.push_back(static_cast<std::byte>(0x00));
-    // Additional: 0
-    packet.push_back(static_cast<std::byte>(0x00));
-    packet.push_back(static_cast<std::byte>(0x00));
-
-    // Encoded question name (empty = encoding failure)
+    append_query_header(packet, 1, 0);
     auto encoded = encode_dns_name(name);
-    if(encoded.empty())
+    if(!encoded.has_value())
         return {};
-    packet.insert(packet.end(), encoded.begin(), encoded.end());
-
-    // QTYPE (big-endian)
-    push_u16_be(packet, std::to_underlying(qtype));
-
-    // QCLASS: IN (0x0001) with optional QU bit (bit 15) per RFC 6762 §5.4
-    push_u16_be(packet, mode == response_mode::unicast ? uint16_t{0x8001} : uint16_t{0x0001});
-
+    append_question(packet, *encoded, qtype, mode == response_mode::unicast ? uint16_t{0x8001} : uint16_t{0x0001});
     return packet;
 }
 
-// Builds an mDNS probe query per RFC 6762 section 8.1:
-//   - Header: id=0, flags=0x0000 (query), qdcount=1, ancount=0, nscount=1, arcount=0
-//   - Question: service_name, QTYPE=ANY (0x00FF), QCLASS=IN|QU (0x8001)
-//   - Authority: proposed SRV record for simultaneous probe tiebreaking (RFC 6762 section 8.2)
-inline std::vector<std::byte> build_probe_query(const service_info &info,
-                                                uint32_t probe_authority_ttl = 120)
+// The proposed unique record set of a probe, used for tiebreaking (RFC 6762 section 8.2.1).
+struct proposed_record
+{
+    std::vector<std::byte> owner;
+    dns_type rtype{dns_type::none};
+    std::vector<std::byte> rdata;
+};
+
+inline void append_proposed_addresses(std::vector<proposed_record> &records, const service_info &info,
+                                      const std::vector<std::byte> &host)
+{
+    if(info.address_ipv4.has_value())
+    {
+        if(auto enc = encode_ipv4(*info.address_ipv4); enc.has_value())
+            records.push_back({host, dns_type::a, std::move(*enc)});
+    }
+    if(info.address_ipv6.has_value())
+    {
+        if(auto enc = encode_ipv6(*info.address_ipv6); enc.has_value())
+            records.push_back({host, dns_type::aaaa, std::move(*enc)});
+    }
+}
+
+// Empty when a name fails to encode; an address that fails to encode only omits its record (the caller validates
+// and reports addresses separately).
+inline std::vector<proposed_record> build_proposed_records(const service_info &info)
 {
     auto name_service = encode_dns_name(info.service_name);
     auto name_host = encode_dns_name(info.hostname);
-
-    if(name_service.empty() || name_host.empty())
+    if(!name_service.has_value() || !name_host.has_value())
         return {};
+    std::vector<proposed_record> records;
+    records.reserve(4);
+    records.push_back(
+        {*name_service, dns_type::srv, encode_srv_rdata(info.priority, info.weight, info.port, *name_host)});
+    records.push_back({*name_service, dns_type::txt, encode_txt_records(info.txt_records)});
+    append_proposed_addresses(records, info, *name_host);
+    return records;
+}
 
-    // Build SRV rdata: priority(2) + weight(2) + port(2) + encoded hostname
-    std::vector<std::byte> rdata_srv;
-    push_u16_be(rdata_srv, info.priority);
-    push_u16_be(rdata_srv, info.weight);
-    push_u16_be(rdata_srv, info.port);
-    rdata_srv.insert(rdata_srv.end(), name_host.begin(), name_host.end());
-
+// RFC 6762 section 8.1: every proposed unique name is asked with QTYPE ANY, with the QU bit when the mode is
+// unicast; the Authority section carries the full proposed record set for simultaneous-probe tiebreaking
+// (section 8.2.1).
+inline std::vector<std::byte> build_probe_query(const service_info &info,
+                                                uint32_t probe_authority_ttl = 120,
+                                                response_mode mode = response_mode::unicast)
+{
+    auto name_service = encode_dns_name(info.service_name);
+    auto name_host = encode_dns_name(info.hostname);
+    if(!name_service.has_value() || !name_host.has_value())
+        return {};
+    auto proposed = build_proposed_records(info);
+    if(proposed.empty())
+        return {};
     std::vector<std::byte> packet;
-    packet.reserve(12 + name_service.size() + 4 + name_service.size() + 10 + rdata_srv.size());
-
-    // DNS header
-    push_u16_be(packet, 0x0000); // id = 0
-    push_u16_be(packet, 0x0000); // flags = 0x0000 (standard query)
-    push_u16_be(packet, 0x0001); // qdcount = 1
-    push_u16_be(packet, 0x0000); // ancount = 0
-    push_u16_be(packet, 0x0001); // nscount = 1
-    push_u16_be(packet, 0x0000); // arcount = 0
-
-    // Question section: service_name, QTYPE=ANY, QCLASS=IN|QU
-    packet.insert(packet.end(), name_service.begin(), name_service.end());
-    push_u16_be(packet, std::to_underlying(dns_type::any)); // QTYPE = ANY (0x00FF)
-    push_u16_be(packet, uint16_t{0x8001}); // QCLASS = IN | QU bit
-
-    // Authority section: proposed SRV record
-    append_dns_rr(packet, name_service, dns_type::srv, probe_authority_ttl, rdata_srv);
-
+    packet.reserve(12 + name_service->size() + name_host->size() + 8 + proposed.size() * 32);
+    append_query_header(packet, 2, static_cast<uint16_t>(proposed.size()));
+    const uint16_t qclass = mode == response_mode::unicast ? uint16_t{0x8001} : uint16_t{0x0001};
+    append_question(packet, *name_service, dns_type::any, qclass);
+    append_question(packet, *name_host, dns_type::any, qclass);
+    for(const auto &rec : proposed)
+        append_dns_rr(packet, rec.owner, rec.rtype, probe_authority_ttl, rec.rdata);
     return packet;
 }
 
-// Serializes an mdns_record_variant as a DNS resource record into buf.
-// Used for known-answer suppression (RFC 6762 section 7.1): records are
-// appended to the Answer section of a query packet. No cache-flush bit.
-inline void append_known_answer(std::vector<std::byte> &buf, const mdns_record_variant &rec)
-{
-    std::visit([&buf](const auto &r)
-    {
-        auto name = encode_dns_name(r.name);
-
-        using T = std::decay_t<decltype(r)>;
-
-        if constexpr(std::is_same_v<T, record_ptr>)
-        {
-            auto rdata = encode_dns_name(r.ptr_name);
-            append_dns_rr(buf, name, dns_type::ptr, r.ttl, rdata);
-        }
-        else if constexpr(std::is_same_v<T, record_srv>)
-        {
-            std::vector<std::byte> rdata;
-            push_u16_be(rdata, r.priority);
-            push_u16_be(rdata, r.weight);
-            push_u16_be(rdata, r.port);
-            auto target = encode_dns_name(r.srv_name);
-            rdata.insert(rdata.end(), target.begin(), target.end());
-            append_dns_rr(buf, name, dns_type::srv, r.ttl, rdata);
-        }
-        else if constexpr(std::is_same_v<T, record_a>)
-        {
-            auto enc = encode_ipv4(r.address_string);
-            if(enc.has_value())
-                append_dns_rr(buf, name, dns_type::a, r.ttl, *enc);
-            else
-                std::fprintf(stderr, "encode_ipv4 failed: %s\n", r.address_string.c_str());
-        }
-        else if constexpr(std::is_same_v<T, record_aaaa>)
-        {
-            auto enc = encode_ipv6(r.address_string);
-            if(enc.has_value())
-                append_dns_rr(buf, name, dns_type::aaaa, r.ttl, *enc);
-            else
-                std::fprintf(stderr, "encode_ipv6 failed: %s\n", r.address_string.c_str());
-        }
-        else if constexpr(std::is_same_v<T, record_txt>)
-        {
-            auto rdata = encode_txt_records(r.entries);
-            append_dns_rr(buf, name, dns_type::txt, r.ttl, rdata);
-        }
-    }, rec);
-}
-
-// Builds a DNS query with known-answer records appended in the Answer section
-// (RFC 6762 section 7.1). The header ancount is updated to reflect the number
-// of known answers actually serialized.
+// Known answers go in the Answer section (RFC 6762 section 7.1); ancount counts the records actually encoded.
 inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qtype,
                                               std::span<const mdns_record_variant> known_answers,
                                               response_mode mode = response_mode::multicast)
 {
     auto packet = build_dns_query(name, qtype, mode);
-
+    if(packet.empty())
+        return packet;
     uint16_t ancount = 0;
     for(const auto &ka : known_answers)
     {
@@ -174,105 +140,8 @@ inline std::vector<std::byte> build_dns_query(std::string_view name, dns_type qt
         if(packet.size() > before)
             ++ancount;
     }
-
-    // Update header ancount (bytes 6-7)
-    packet[6] = static_cast<std::byte>(static_cast<uint8_t>(ancount >> 8));
-    packet[7] = static_cast<std::byte>(static_cast<uint8_t>(ancount & 0xFF));
-
+    set_ancount(packet, ancount);
     return packet;
-}
-
-// Builds one or more mDNS query packets with known-answer records split across
-// packets using the TC (Truncated) bit per RFC 6762 §7.1.
-//
-// When the accumulated size of known answers would exceed max_payload bytes:
-//   - The current packet has its TC bit set (byte 2 |= 0x02)
-//   - A new continuation packet is started with the same question section
-//
-// The last (or only) packet in the returned vector does NOT have TC bit set.
-// Each packet header's ancount reflects the number of answers in that packet.
-// The question section is repeated verbatim in every continuation packet.
-inline std::vector<std::vector<std::byte>>
-build_dns_query_tc(std::string_view name, dns_type qtype,
-                   std::span<const mdns_record_variant> known_answers,
-                   std::size_t max_payload = 1472,
-                   response_mode mode = response_mode::multicast)
-{
-    std::vector<std::vector<std::byte>> result;
-
-    // Build the base question packet (no answers)
-    auto base_pkt = build_dns_query(name, qtype, mode);
-
-    // If there are no known answers, return a single packet directly
-    if(known_answers.empty())
-    {
-        result.push_back(std::move(base_pkt));
-        return result;
-    }
-
-    // Measure the size each answer contributes individually
-    std::vector<std::pair<std::size_t, std::size_t>> answer_sizes; // (start, end) into a scratch buffer
-    {
-        std::vector<std::byte> scratch;
-        for(const auto &ka : known_answers)
-        {
-            std::size_t before = scratch.size();
-            append_known_answer(scratch, ka);
-            answer_sizes.emplace_back(before, scratch.size());
-        }
-    }
-
-    // Rebuild the base packet cleanly for the first packet of this run
-    auto current_pkt = build_dns_query(name, qtype, mode);
-    uint16_t current_ancount = 0;
-
-    // Scratch buffer: we serialize all answers once and then slice them out
-    std::vector<std::byte> all_answers_buf;
-    for(const auto &ka : known_answers)
-        append_known_answer(all_answers_buf, ka);
-
-    std::size_t buf_offset = 0;
-
-    for(std::size_t i = 0; i < known_answers.size(); ++i)
-    {
-        auto [ans_start, ans_end] = answer_sizes[i];
-        std::size_t ans_size = ans_end - ans_start;
-
-        // If adding this answer would exceed max_payload, flush current packet first.
-        // Always add at least one answer per packet to avoid infinite loops.
-        if(current_ancount > 0 && current_pkt.size() + ans_size > max_payload)
-        {
-            // Set TC bit on current packet (byte 2, bit 1)
-            current_pkt[2] = static_cast<std::byte>(
-                std::to_integer<uint8_t>(current_pkt[2]) | 0x02u);
-
-            // Update ancount header (bytes 6-7)
-            current_pkt[6] = static_cast<std::byte>(static_cast<uint8_t>(current_ancount >> 8));
-            current_pkt[7] = static_cast<std::byte>(static_cast<uint8_t>(current_ancount & 0xFF));
-
-            result.push_back(std::move(current_pkt));
-
-            // Start a new continuation packet with the same question section
-            current_pkt = build_dns_query(name, qtype, mode);
-            current_ancount = 0;
-        }
-
-        // Append this answer to the current packet
-        current_pkt.insert(current_pkt.end(),
-                           all_answers_buf.data() + ans_start,
-                           all_answers_buf.data() + ans_end);
-        ++current_ancount;
-        buf_offset = ans_end;
-    }
-
-    (void)buf_offset;
-
-    // Finalize the last packet (no TC bit)
-    current_pkt[6] = static_cast<std::byte>(static_cast<uint8_t>(current_ancount >> 8));
-    current_pkt[7] = static_cast<std::byte>(static_cast<uint8_t>(current_ancount & 0xFF));
-    result.push_back(std::move(current_pkt));
-
-    return result;
 }
 
 }

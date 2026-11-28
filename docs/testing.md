@@ -8,39 +8,193 @@ run it.
 
 **Location:** `tests/unit/`
 **Framework:** [Catch2](https://github.com/catchorg/Catch2)
-**Policy:** `MockPolicy` (no real sockets or timers)
+**Policy:** `mock_policy` (no real sockets or timers)
 
-Unit tests exercise individual components in isolation. `MockPolicy` replaces
+Unit tests exercise individual components in isolation. `mock_policy` replaces
 real network I/O with controllable in-process fakes:
 
-- `MockSocket` — exposes `sent_packets()` for inspection and accepts manually
-  enqueued inbound packets.
-- `MockTimer` — supports manual `fire()` and `cancel()` for deterministic
+- `mock_socket` — exposes `sent_packets()` for inspection and accepts manually
+  enqueued inbound packets (`enqueue`, `inject_receive`). A packet given without
+  metadata carries `default_metadata()`: sender port equal to the configured
+  group port (empty sender address), destination equal to the group address,
+  TTL 255 and interface index 0, so it looks like ordinary multicast traffic. A
+  packet given with a sender endpoint keeps the other defaults, and a packet
+  given with a full `recv_metadata` carries it unchanged. `interface_index()`
+  reports the configured `socket_options::interface_index` (0 when unset), so a
+  peer over a mock configured with an index applies the interface rule to
+  multicast whose `recv_ifindex` differs.
+- `mock_timer` — supports manual `fire()` and `cancel()` for deterministic
   timer control.
 - `mock_executor` — holds a posted-work deque that drains with
   `drain_posted()`.
 
 Unit tests cover:
 
-- DNS wire format encoding and decoding (dns_wire_test, dns_test, parse_test)
-- DNS name serialisation and round-trips (dns_name_test)
-- Record construction and equality (records_test)
-- State machine correctness: probe/announce/live/stopped lifecycle
-  (server_probe_announce_test, server_query_match_test)
-- Cache operations: TTL expiry, refresh, goodbye processing (record_cache_test,
-  ttl_refresh_test)
-- Known-answer suppression logic (server_known_answer_test)
+- DNS wire format encoding and decoding (tests/unit/dns_wire/:
+  dns_wire_*_test; dns_test; tests/unit/parse/: parse_*_test)
+- DNS name normalization, validation and comparison (tests/unit/dns_name/:
+  dns_name_*_test)
+- DNS-SD service type parsing (service_type_test)
+- Record and service description construction (records_test,
+  service_info_test, service_info_make_test, mdns_util_test)
+- State machine correctness: probe/announce/live/stopped lifecycle, query
+  matching and response construction (tests/unit/server_detail/:
+  server_probe_announce_test, server_probe_rate_limit_test,
+  server_tiebreak_test, server_query_match_test,
+  server_question_section_test; tests/unit/server/: server_*_test, among them
+  server_probe_mode_test for the probe questions of grouped and standalone servers)
+- Cache operations: TTL expiry, refresh, goodbye processing (tests/unit/cache/:
+  cache_*_test; ttl_refresh_test)
+- Known-answer suppression and record ownership (tests/unit/server_detail/:
+  server_known_answer_test, server_record_match_test)
 - TC accumulation across multi-packet responses (tc_accumulator_test)
-- Query deduplication and response aggregation (server_response_aggregation_test,
-  duplicate_answer_suppression_test)
-- Service monitor and discovery aggregation (service_monitor_test,
-  service_discovery_test, service_aggregation_test)
-- Observer raw packet delivery (observer_test)
-- Querier query construction and result delivery (querier_test, query_backoff_test)
-- Endpoint and socket option handling (endpoint_test, socket_options_test)
-- Policy concept conformance for all three built-in policies
-  (concept_conformance_test, default_conformance_test, inproc_conformance_test,
-  asio_conformance_test)
+- Query deduplication and response aggregation (tests/unit/server_detail/:
+  server_response_aggregation_test, server_answer_plan_test,
+  server_answer_response_test; duplicate_answer_suppression_test)
+- Outgoing TTL limits (tests/unit/server_detail/: server_wire_ttl_test)
+- Service monitor and discovery aggregation (tests/unit/monitor/:
+  monitor_*_test; tests/unit/discovery/: discovery_*_test;
+  tests/unit/service_aggregation/: service_aggregation_test,
+  service_aggregation_correlation_test)
+- Observer raw packet delivery (tests/unit/observer/: observer_*_test)
+- Querier query construction and result delivery (tests/unit/querier/:
+  querier_*_test; query_backoff_test)
+- mDNS option validation shared by every peer, strictly increasing refresh
+  thresholds included (mdns_options_validation_test), and the service server
+  constructor rejections (tests/unit/server/: server_validation_test)
+- The raw address type: multicast classification, equality, prefix matching
+  and text round trips (ip_address_test)
+- Endpoint, sender address text and socket option handling (endpoint_test,
+  sockaddr_text_test, socket_options_test, socket_options_validation_test)
+- Interface enumeration and binding resolution (enumerate_interfaces_test,
+  interface_addresses_test, interface_resolve_test, interface_resolve_address_test)
+- The egress interface lookup on the host: the source address the operating
+  system chooses for the mDNS group belongs to an enumerated interface
+  (egress_interface_test); and the advertised-address rule for bound, pinned
+  and unbound servers (advertised_addresses_test)
+- Receive-loop lifecycle, delivery, error propagation and stop behavior
+  (tests/unit/recv_loop/: recv_loop_*_test)
+- Receive ancillary data: TTL, hop limit, arrival interface and destination
+  address, including truncated control data (recv_ancillary_test,
+  recv_ancillary_bounds_test, recv_ancillary_destination_test; the WSAMSG
+  parser on Windows, recv_ancillary_windows_test)
+- Receive metadata of the test-double sockets: the mock socket's default and
+  explicit metadata (mock_receive_metadata_test) and the destination of
+  in-process multicast and unicast deliveries (inproc_bus_destination_test)
+- The inbound packet gate every peer type applies: OPCODE and RCODE rules,
+  packets shorter than a DNS header, the source port rule for responses with
+  its in-process exemption, the receive TTL rule, which applies to
+  responses only, the local-link test of responses and direct unicast
+  queries with its rate-limited interface snapshot, the interface rule
+  that keeps a bound peer to multicast from its own interface, and the window
+  that admits a unicast response only for a recent QU question, with its
+  bounded question history (tests/unit/gate/: gate_*_test)
+- The receive contract every socket honors: one completion per arm, ordering,
+  and close semantics (tests/unit/receive_contract/: receive_contract_*_test)
+- Default event loop: socket registry, timer dispatch, poll errors, re-entrant
+  polling from a receive handler and the handler's data across nested polls,
+  wakeup descriptor, construction failures and cross-thread posting
+  (socket_registry_test, default_timer_test, default_timer_dispatch_test,
+  default_poll_errors_test, default_reentrant_poll_test,
+  default_nested_receive_test, wakeup_fd_test, default_context_construct_test,
+  post_queue_seam_test, post_stress_test)
+- Multi-NIC orchestration: group instance lifecycle, dynamic builder, and
+  interface monitoring (tests/unit/nic_group/: nic_group_server_test (grouped servers probe
+  without the unicast-response bit in each family),
+  nic_group_monitor_test, nic_group_options_test, nic_group_dynamic_test,
+  nic_group_siblings_test; nic_monitor_test), one instance set per address
+  family per NIC and the two-argument socket options factory
+  (nic_group_families_test), the multicast group and interface the default
+  factory gives each family (nic_group_default_options_test), the IPv4 and IPv6 servers of dual-stack NICs going
+  live side by side with both addresses (nic_group_family_siblings_test),
+  construction failures, factory family mismatches and the group's mdns_options
+  reaching its servers (nic_group_errors_test), a default-policy group on an
+  IPv6-only loopback (nic_group_default_ipv6_test), a group started after a
+  server went live finding it by querying on the test clock
+  (nic_group_active_query_test), services united across families and NICs
+  (nic_group_union_test), found, updated and lost fired once per NIC across
+  families (nic_group_family_events_test, nic_group_family_union_test), a
+  failed first enumeration followed by a good one (nic_monitor_baseline_test),
+  what counts as an interface change (nic_monitor_diff_test), and the Linux
+  netlink drain over a scripted receive call, ending at the first ENOBUFS
+  (nic_monitor_netlink_test, Linux only)
+- Multicast capability validation (validate_multicast_test)
+- Encrypt component (tests/unit/encrypt/): AEAD encrypt/decrypt and tamper
+  detection (encrypt_aead_*_test), replay window, per-sender and per-session
+  bounds (encrypt_replay_*_test), epoch-based key rotation and grace periods
+  (encrypt_key_rotation_*_test), socket framing and cleartext detection modes
+  (encrypt_socket_*_test), receive-side rejection, cleartext handling and
+  re-arming (encrypt_receive_*_test, including encrypt_receive_rearm_test),
+  policy/trait conformance (encrypt_policy_test, encrypt_policy_trait_test),
+  the inner socket's interface index forwarded
+  (encrypt_socket_interface_index_test)
+- Encrypt allocation windows: steady-state send and receive allocate nothing
+  over the mock socket and over the default socket on IPv4 and IPv6, and no
+  more than a plain asio receive loop over the asio socket on IPv4 and IPv6;
+  filling the receive metadata allocates nothing (encrypt_no_alloc_test; not
+  built under `-fsanitize=thread`)
+- policy_like concept conformance for all built-in policies
+  (concept_conformance_test, inproc_conformance_test, asio_conformance_test;
+  in-process bus multicast, unicast and loopback-disabled delivery:
+  inproc_conformance_bus_test;
+  tests/unit/default_conformance/: default_conformance_construct_test,
+  default_conformance_send_receive_test, default_conformance_lifecycle_test,
+  default_conformance_ipv6_interface_test)
+- Receive metadata on real sockets, built and run on Linux, macOS and Windows
+  for the default and the asio socket: a self-sent loopback unicast datagram
+  reports TTL 255, the loopback interface index and the loopback destination
+  (default_conformance_receive_metadata_unicast_test); a looped multicast
+  datagram on the lowest-index up, non-loopback interface with an address of
+  the family reports the group as destination, that interface's index and a
+  TTL (default_conformance_receive_metadata_multicast_test); an IPv6 socket
+  receives IPv6 but not IPv4 datagrams sent to its port
+  (default_conformance_v6_only_test); the asio twins are
+  asio_receive_metadata_test and asio_receive_v6_only_test
+  (tests/unit/asio_receive/). Without such an interface the multicast cases
+  skip, and fail under `MDNSPP_REQUIRE_NETWORK`. The label is set per ctest
+  target: `default_conformance_receive_metadata_multicast_test` and the whole
+  of `asio_receive_metadata_test`, which also holds the asio loopback unicast
+  and TTL cases, carry the ctest label `multicast_probe`. The macOS workflow
+  runs the labeled targets in a separate step as root (Apple TN3179, local
+  network privacy denies multicast to unprivileged processes) and every other
+  target unprivileged
+- Test-double sockets: the error_code constructors and send of the mock and
+  in-process sockets, the throwing forms that wrap them, and the mock socket's
+  failure injection reaching both (mock_socket_error_code_test,
+  inproc_socket_error_code_test)
+- In-process executor threading: posts from several threads each run once and
+  in posting order per thread, and `stop()` from another thread ends `run()`
+  (inproc_executor_post_test)
+- In-process bus reentrancy: a receive handler that opens sockets, destroys
+  another socket or closes its own during a multicast delivery
+  (inproc_bus_reentrancy_test)
+- In-process harness: `advance_to_live` brings servers with one, three and five
+  probes live (inproc_harness_test)
+- Timer contract over the default, mock and in-process timers: `expires_after`
+  and `cancel` complete a pending wait once with `operation_canceled` before
+  they return, and its handler may re-arm or destroy the timer
+  (timer_contract_test)
+- asio backend: IPv6 interface binding (asio_ipv6_interface_test), peer
+  destruction with a pending receive (asio_peer_destroy_test), and completion
+  tokens (tests/unit/asio_token/: asio_token_*_test)
+- Cross-thread server stop/update races (tests/unit/asio_tsan/:
+  asio_tsan_server_test, asio_tsan_updates_test; exercised under
+  `-fsanitize=thread` in the CI `sanitize (tsan)` job)
+- C++20/C++23 compatibility shims: `expected` and `move_only_function` surface
+  and storage, and ODR agreement between the two standards (tests/unit/compat/:
+  expected_surface_test and its C++23 build, move_only_function_test,
+  compat_odr_test)
+- Fuzz harness input decoding (fuzz_input_test)
+
+Some targets depend on the platform or build options:
+default_poll_errors_test, default_reentrant_poll_test,
+default_nested_receive_test, wakeup_fd_test, default_context_construct_test,
+recv_ancillary_bounds_test and recv_ancillary_destination_test are not built
+on Windows, and recv_ancillary_windows_test is built on Windows only; the
+`asio_*` targets and receive_contract_asio_test require
+`MDNSPP_ENABLE_ASIO_POLICY=ON`; the encrypt targets other than
+encrypt_policy_trait_test, and receive_contract_encrypted_test, require
+`MDNSPP_ENABLE_ENCRYPT=ON`.
 
 **How to run:**
 
@@ -53,37 +207,78 @@ ctest --test-dir build
 To run a specific test file:
 
 ```bash
-ctest --test-dir build -R dns_name_test
+ctest --test-dir build -R dns_name_validation_test
 ```
 
-## Integration tests
+## Protocol integration tests (inproc)
 
-**Location:** `tests/unit/inproc_bus_*.cpp` (compiled with the unit test suite)
+**Location:** `tests/unit/inproc_bus/`, `tests/unit/inproc_rfc/` and
+`tests/unit/inproc_legacy_unicast/` (compiled with the unit test suite; targets
+`inproc_bus_*_test`, `inproc_rfc_*_test` and `inproc_legacy_unicast_*_test`)
 **Framework:** Catch2
-**Policy:** `InProcTestPolicy` (test_clock via `inproc_harness`)
+**Policy:** `inproc_test_policy` (test_clock via `inproc_harness`)
 
-Integration tests exercise multi-party mDNS scenarios end-to-end using the
+These tests exercise multi-party mDNS scenarios end-to-end using the
 deterministic in-process bus. All network I/O stays in-process. `inproc_harness`
-provides a shared `inproc_bus<test_clock>` and `inproc_executor<test_clock>` so
-tests can advance simulated time with `h.advance(ms)` instead of sleeping.
+(`<mdnspp/inproc/inproc_harness.h>`) provides a shared `inproc_bus<test_clock>`
+and `inproc_executor<test_clock>` so tests can advance simulated time with
+`h.advance(ms)` instead of sleeping:
 
-Ten scenarios are covered:
+- The constructor resets `test_clock`.
+- `advance(d)` advances `test_clock` by `d`, then drains the executor to
+  quiescence (no posted work, no expired timer, no pending packet).
+- `make_server`, `make_monitor`, `make_querier` and `make_observer` construct the
+  `basic_*` peer on `inproc_test_policy` with the shared executor, forwarding the
+  given options.
+- `advance_to_live(server, opts)` advances `opts.probe_initial_delay_max` (so the
+  first probe fires whatever the random initial delay), `opts.probe_count`
+  `opts.probe_interval` steps (probes 2 to `probe_count` and the conflict window
+  after the last probe), and `opts.announce_count - 1` `opts.announce_interval`
+  steps; with the default `service_options` that is 2000 ms. Pass the server's
+  `service_options` when they are not the defaults.
 
-| ID | Scenario | Files |
-|----|----------|-------|
-| TEST-01 | Probe conflict resolution — two servers with the same name | `inproc_bus_discovery_test.cpp`, `inproc_bus_rfc_compliance_test.cpp` |
-| TEST-02 | Discovery lifecycle — server announces, monitor finds, server stops, monitor loses | `inproc_bus_discovery_test.cpp`, `inproc_bus_rfc_compliance_test.cpp` |
-| TEST-03 | Known-answer suppression — querier suppresses records already in query | `inproc_bus_rfc_compliance_test.cpp` |
-| TEST-04 | Duplicate answer suppression across queriers | `inproc_bus_rfc_compliance_test.cpp` |
-| TEST-05 | Observer captures all traffic — probes, announces, queries, responses | `inproc_bus_routing_test.cpp` |
-| TEST-06 | TC bit multi-packet accumulation end-to-end | `inproc_bus_rfc_compliance_test.cpp` |
-| TEST-07 | Cache-flush propagation across monitors | `inproc_bus_rfc_compliance_test.cpp` |
-| TEST-08 | Query backoff convergence — exponential backoff on repeated queries | `inproc_bus_routing_test.cpp` |
-| TEST-09 | Multiple service types — type-specific monitors see only their type | `inproc_bus_routing_test.cpp` |
-| TEST-10 | Goodbye with delayed expiry — `on_lost` does not fire before grace period | `inproc_bus_discovery_test.cpp` |
+Beyond the ten core scenarios below, dedicated suites cover legacy unicast
+responses (`inproc_legacy_unicast/`, using
+`inproc_socket_options::port_override` to simulate a non-5353 source port),
+per-record-type TTLs (`inproc_bus/per_type_ttl.cpp`), receive-side TTL
+enforcement (`inproc_bus/recv_ttl.cpp`, with unknown-TTL handling in
+`inproc_bus/recv_ttl_unknown.cpp`), TC continuation delays
+(`inproc_bus/tc_delay.cpp`), and automatic address resolution from the bound
+interface (`inproc_bus/auto_address.cpp`).
 
-Integration tests run as part of the standard unit test suite and require no
+The ten core scenarios:
+
+| Scenario | Files |
+|----------|-------|
+| Probe conflict resolution — two servers with the same name | `inproc_bus/discovery_conflict.cpp` |
+| Discovery lifecycle — server announces, monitor finds, server stops, monitor loses | `inproc_bus/discovery.cpp` |
+| Known-answer suppression — querier suppresses records already in query | `inproc_rfc/known_answer.cpp` |
+| Duplicate answer suppression across queriers | `inproc_rfc/duplicate_answer.cpp` |
+| Observer captures all traffic — probes, announces, queries, responses | `inproc_bus/routing.cpp` |
+| TC bit multi-packet accumulation end-to-end | `inproc_rfc/tc_accumulation.cpp` |
+| Cache-flush propagation across monitors | `inproc_rfc/cache_flush.cpp` |
+| Query backoff convergence — exponential backoff on repeated queries | `inproc_bus/routing_backoff.cpp` |
+| Multiple service types — type-specific monitors see only their type | `inproc_bus/routing.cpp` |
+| Goodbye with delayed expiry — `on_lost` does not fire before grace period | `inproc_bus/discovery.cpp` |
+
+These tests run as part of the standard unit test suite and require no
 additional build flags.
+
+## Install-consume integration test
+
+**Location:** `tests/integration/`
+**Entry point:** `tests/integration/run.sh`
+
+Validates the installed CMake package: the script builds and installs mdnspp
+into a temporary prefix, then configures a standalone consumer project with
+`find_package(mdnspp CONFIG REQUIRED COMPONENTS inproc testing)` and links
+`mdnspp::mdnspp`, `mdnspp::inproc`, `mdnspp::testing`, and — when the
+corresponding components were installed — `mdnspp::asio` and
+`mdnspp::encrypt`. The consumer deliberately sets no `CMAKE_CXX_STANDARD`:
+it must inherit `cxx_std_20` from the exported targets'
+`INTERFACE_COMPILE_FEATURES`. This catches export-name drift, dangling
+component references, and standard-propagation regressions that the build
+tree masks.
 
 ## Fuzz tests
 
@@ -92,12 +287,12 @@ additional build flags.
 **Build flag:** `MDNSPP_BUILD_FUZZ_TESTS=ON`
 
 Fuzz tests feed randomly mutated byte sequences into the DNS parsing and
-serialisation layer to discover crashes, assertion failures, and
-undefined-behaviour sanitizer trips caused by malformed input. libFuzzer drives
+serialization layer to discover crashes, assertion failures, and
+undefined-behavior sanitizer trips caused by malformed input. libFuzzer drives
 mutation and uses coverage feedback to guide the corpus toward interesting code
 paths.
 
-Thirteen harnesses are provided:
+Fourteen harnesses are provided:
 
 | Harness | Target |
 |---------|--------|
@@ -114,8 +309,14 @@ Thirteen harnesses are provided:
 | `fuzz_parse_txt` | TXT record parser |
 | `fuzz_walk_dns_frame_raw` | Full DNS frame walker (raw callback) |
 | `fuzz_walk_dns_frame_smart` | Full DNS frame walker (typed record callback) |
+| `fuzz_encrypted_packet` | Encrypted packet handling (requires `MDNSPP_ENABLE_ENCRYPT=ON`); two modes selected by the first input byte: raw attacker-controlled bytes into the decrypt path, and a round-trip mode that encrypts an input-derived payload with the real key, mutates it, and drives the full receive path across cleartext-detection modes, `receive_mode` filtering, and epoch handling |
 
-Seeds are generated at build time by `generate_corpus.cpp` into
+`fuzz_encrypted_packet` reads multi-byte fields from the input through
+`tests/fuzz/fuzz_input.h`, which reads bytes in a fixed sequence and decodes
+high byte first, so a corpus entry replays identically with every compiler;
+fuzz_input_test covers that decoder in the unit suite.
+
+Seeds are generated at build time by `generate_corpus` (sources in `tests/fuzz/corpus/`) into
 `${CMAKE_BINARY_DIR}/fuzz_corpus/<category>/`. The `fuzz_corpus` ALL custom
 target regenerates seeds at every build. Category names (e.g., `walk_frame`,
 `roundtrip`, `dns_name`) group seeds by function, not by harness binary name.
@@ -138,7 +339,10 @@ cmake --build build
 **How to run all harnesses (as in CI):**
 
 The CI workflow (`fuzz.yml`) runs every harness for 60 seconds each and
-aggregates exit codes so all harnesses run before the job fails.
+aggregates exit codes so all harnesses run before the job fails. It triggers
+on pushes and pull requests for `master`, `develop`, `hardening`, and `fuzz`,
+and accumulates the corpus across runs via the GitHub Actions cache, so
+coverage compounds rather than restarting from the generated seeds.
 
 ## Compile tests
 
@@ -150,13 +354,108 @@ link. They verify:
 
 - `defaults_compile_test.cpp` — `defaults.h` type aliases compile and the
   template instantiations are valid.
-- `infra_headers_compile_test.cpp` — infrastructure headers are self-contained
-  and compile cleanly in isolation.
+- `encrypt_defaults_compile_test.cpp` — the encrypt convenience aliases
+  compile (built only with `MDNSPP_ENABLE_ENCRYPT=ON`).
+- `header_self_contained.cmake` — every installed header of every enabled
+  library (`mdnspp`, `mdnspp::testing`, `mdnspp::inproc`, and `mdnspp::asio` and
+  `mdnspp::encrypt` when enabled) compiles as the first and only include of a
+  generated translation unit, one object library per library
+  (`mdnspp_self_contained`, `mdnspp__testing_self_contained` and so on), with
+  the project warning flags. The
+  `inproc_template_instantiation` object library explicitly instantiates
+  `inproc_executor`, `inproc_timer`, `inproc_bus` and `inproc_socket` for
+  `std::chrono::steady_clock` and `mdnspp::testing::test_clock`, each from its
+  own header alone. A header that depends on being included after another
+  breaks the build.
 
-Compile tests run as part of the standard build and are included in `ctest`.
+Compile tests run as part of the standard build and are included in `ctest`;
+the self-containment check has no `ctest` entry, the build is the check.
+
+## Network namespace tests (Linux)
+
+**Location:** `tests/unit/netns/` (targets `netns_*_test`, ctest label `netns`),
+harness `tests/netns/run.sh`
+
+Cases that need more than one real interface (several NICs, interfaces that
+share a link-local address, peers on other links) run inside a fixed
+network-namespace topology. `tests/netns/run.sh <build-dir>` enters a new
+network and mount namespace (rootless through a user namespace when not run
+as root), mounts a private tmpfs on `/run` inside that mount namespace only,
+and builds:
+
+- namespace `dut` with veth links `d0` (10.20.0.1/24, fd20:0::1/64) and `d1`
+  (10.20.1.1/24, fd20:1::1/64) to peers `q0` in namespace `p0` (10.20.0.2,
+  fd20:0::2) and `q1` in namespace `p1` (10.20.1.2, fd20:1::2), default routes
+  via `p1`;
+- dummy links `l0` and `l1` in `dut`, each carrying only `fe80::20/64`;
+- sixteen secondary addresses per family on `q0`, 10.20.0.100 to 10.20.0.115
+  and fd20:0::100 to fd20:0::115 (the IPv6 ones deprecated, so the kernel
+  never picks one as a default source). They give a defender sixteen different
+  source addresses to answer from.
+
+It then runs `ctest -L netns` in the given build directory inside `dut` with
+`MDNSPP_REQUIRE_NETNS=1`. The test process lives in `dut`;
+`tests/support/netns.h` opens sockets inside `p0` or `p1` from a short-lived
+thread, so one process drives every side. The harness waits until every
+veth link has IPv6 enabled, which the kernel does only after the link's carrier
+comes up. The cases cover IPv6 interface selection among interfaces sharing a
+link-local address and peers bound to `d0` or `d1` that must ignore multicast
+arriving on the other link while still receiving their own link's and this
+host's multicast, and the egress rule: `d0` has the lower interface index,
+the default routes leave on `d1`, so an unbound server must advertise `d1`'s
+addresses and an unbound IPv6 socket must be pinned to `d1`, and in `p0`,
+which has no route, the egress lookup finds nothing without an error.
+`netns_nic_group_families_test` runs a default-policy `nic_group` over `d0`
+and `d1` against peers that advertise a service's IPv4 address from an IPv4
+server and its IPv6 address from an IPv6 server, so the group must find the
+service on each link and unite both addresses.
+`netns_probe_defense_test` runs two servers that share one sibling registry (as
+the per-NIC servers of a `nic_group` do) on `d0` and `d1`, with a defender on
+`p0` that answers the `d0` server's probe the way the probe asks, unicast to
+its source for a unicast-response question and multicast otherwise, with a
+conflicting service record. For each of the sixteen source addresses, in IPv4
+and in IPv6, the server on `d0` must see the conflict and the one on `d1` must
+not: the per-NIC sockets of a family share port 5353, and the kernel hands a
+unicast datagram to one of them by a hash of its addresses, so a unicast
+defense would reach the wrong server for about half of the sources. Locally,
+with unprivileged user namespaces enabled:
+
+    cmake --build build -j4 --target netns_tests
+    tests/netns/run.sh build
+
+Outside the harness the `netns` tests skip (ctest reports them as skipped
+through `SKIP_RETURN_CODE`); with `MDNSPP_REQUIRE_NETNS` set they fail
+instead. `MDNSPP_REQUIRE_NETWORK` does not affect them. The Linux workflow's
+`netns` job builds the `netns_tests` target and runs the harness under
+`sudo`, because the runner blocks unprivileged user namespaces.
+
+## Sanitizer jobs in CI
+
+The Linux workflow runs the full test suite (including asio and encrypt) in
+two additional configurations on Clang:
+
+- **asan-ubsan** — `-fsanitize=address,undefined -fno-sanitize-recover=all`
+- **tsan** — `-fsanitize=thread`; this is the configuration under which
+  `asio_tsan_server_test` and `asio_tsan_updates_test` exercise cross-thread
+  `stop()` / `update_service_info` races meaningfully. The allocation-counting
+  encrypt_no_alloc_test is not built in this configuration.
+
+## Standard library
+
+The Linux jobs build against libstdc++; the macOS job builds against libc++
+(AppleClang). On Linux, the suite can also run against libc++ with clang and
+`-stdlib=libc++`. A system Catch2 is built against libstdc++ and cannot link
+into a libc++ test binary, so this configuration enables
+`MDNSPP_CMAKE_FETCH_DEPS`, which builds Catch2, asio and libsodium from the
+sources pinned in the CMake files:
+
+    CC=clang CXX=clang++ cmake -S . -B build-libcxx -DCMAKE_BUILD_TYPE=Debug \
+      -DCMAKE_CXX_FLAGS="-stdlib=libc++" -DMDNSPP_BUILD_TESTS=ON \
+      -DMDNSPP_BUILD_EXAMPLES=ON -DMDNSPP_ENABLE_ASIO_POLICY=ON \
+      -DMDNSPP_ENABLE_ENCRYPT=ON -DMDNSPP_CMAKE_FETCH_DEPS=ON
 
 ## See also
 
-- [inproc-bus.md](inproc-bus.md) — InProcPolicy production guide (steady_clock, `run()`)
-- [policies.md](policies.md) — MockPolicy unit testing setup
-- [custom-policies.md](custom-policies.md) — InProcPolicy concept walkthrough
+- [inproc-bus.md](inproc-bus.md) — inproc_policy production guide (steady_clock, `run()`)
+- [policies.md](policies.md) — mock_policy unit testing setup
+- [custom-policies.md](custom-policies.md) — inproc_policy concept walkthrough

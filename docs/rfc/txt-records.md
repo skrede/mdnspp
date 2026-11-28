@@ -43,13 +43,13 @@ int main()
     mdnspp::monitor_options mon_opts{
         .on_found = [](const mdnspp::resolved_service &svc)
         {
-            std::cout << "found: " << svc.instance_name << "\n";
+            std::cout << "found: " << svc.instance_name << std::endl;
             for(const auto &txt : svc.txt_entries)
             {
                 std::cout << "  " << txt.key;
                 if(txt.value)
                     std::cout << "=" << *txt.value;
-                std::cout << "\n";
+                std::cout << std::endl;
             }
         },
     };
@@ -75,6 +75,8 @@ TXT records are stored as `std::vector<service_txt>` in both `service_info::txt_
 | Implemented | TXT record in service_info | `service_info::txt_records` passed to service_server |
 | Implemented | TXT correlation in resolved_service | `resolved_service::txt_entries` populated by aggregate() |
 | Implemented | TXT deduplication by key | Latest TXT value wins when the same key appears more than once |
+| Implemented | Empty TXT as single zero byte (RFC 6763 §6.1) | A service with no TXT entries is announced with rdata consisting of one zero byte, never `RDLENGTH=0`; the TXT record is always present in PTR/ANY responses |
+| Partial | Zero-length string handling (RFC 6763 §6.4) | Strings starting with `=` (no key) are skipped on parse; a zero-length string currently yields an entry with an empty key rather than being ignored |
 
 ## In-Depth
 
@@ -88,7 +90,8 @@ Each string has the form:
 
 - The length byte counts the total bytes in the string (key + optional "=" + value).
 - The maximum length per string is 255 bytes.
-- A zero-length string is valid but ignored.
+- A record with no entries is encoded as a single zero byte (RFC 6763 §6.1); `RDLENGTH=0` is never emitted.
+- On parse, strings beginning with `=` (separator with no key) are skipped; a zero-length string currently yields an entry with an empty key.
 - Keys are case-insensitive per RFC 6763 §6.4.
 
 ### Key-only entries

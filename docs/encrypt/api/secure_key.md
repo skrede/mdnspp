@@ -1,6 +1,6 @@
 # secure_key
 
-RAII container for a 32-byte pre-shared key. The destructor zeros key material using a secure memory-zeroing primitive, preventing the key from persisting in freed memory or being observable via compiler-optimized dead store elimination.
+RAII container for a 32-byte pre-shared key. The destructor zeros the container's own key storage using a secure memory-zeroing primitive (`sodium_memzero`), preventing that copy from persisting in freed memory or being elided by dead-store optimization. The caller's source buffer is not covered by this guarantee (see the byte constructor below).
 
 ## Header and Alias
 
@@ -25,7 +25,7 @@ Size of the key in bytes. All interfaces that accept or return key material use 
 ### Default
 
 ```cpp
-secure_key() = default;
+secure_key() noexcept;
 ```
 
 Constructs a zero-initialized key. Not suitable for cryptographic use until assigned from a move operation or replaced by constructing with explicit key material.
@@ -33,10 +33,18 @@ Constructs a zero-initialized key. Not suitable for cryptographic use until assi
 ### From key bytes (non-throwing)
 
 ```cpp
-explicit secure_key(std::array<std::byte, key_size> key) noexcept;
+explicit secure_key(const std::array<std::byte, key_size> &key) noexcept;
 ```
 
-Constructs from a 32-byte array. The array is moved into internal storage. The `noexcept` guarantee applies because no allocation is performed.
+Constructs from a 32-byte array. The array is read through a reference and copied once into internal storage; there is no transfer that empties the source. The `noexcept` guarantee applies because no allocation is performed.
+
+**The caller's source array stays the caller's responsibility.** `secure_key` zeroizes only its own storage and does not wipe the array it was constructed from. Wipe the source with `secure_zero` (declared in `mdnspp/encrypt/aead.h`) immediately after construction:
+
+```cpp
+std::array<std::byte, 32> raw_key = load_key();
+mdnspp::encrypt::secure_key psk{raw_key};
+mdnspp::encrypt::secure_zero(raw_key.data(), raw_key.size());
+```
 
 ## Copy and Move
 
@@ -70,6 +78,14 @@ std::span<const std::byte, key_size> bytes() const noexcept;
 
 Returns a non-owning, fixed-extent span over the key material. The span is valid for the lifetime of the `secure_key` object. The extent is `key_size` (32), enforced at compile time.
 
+### is_zero
+
+```cpp
+bool is_zero() const noexcept;
+```
+
+Returns `true` when every key byte is zero, as for a default-constructed or moved-from key. The comparison runs in constant time (`sodium_is_zero`). `encrypt_options::validate()` and `encrypted_socket::update_key()` use it to refuse an all-zero key with `std::errc::invalid_argument`.
+
 ## Usage Example
 
 ```cpp
@@ -80,11 +96,11 @@ Returns a non-owning, fixed-extent span over the key material. The span is valid
 #include <cstddef>
 
 // Construct a key from raw bytes (e.g. from a configuration file or key exchange)
-std::array<std::byte, mdnspp::secure_key::key_size> raw_key{};
+std::array<std::byte, mdnspp::encrypt::secure_key::key_size> raw_key{};
 // ... fill raw_key from your key source ...
 
-mdnspp::encrypt_options opts;
-opts.psk = mdnspp::secure_key{raw_key};
+mdnspp::encrypt::encrypt_options opts;
+opts.psk = mdnspp::encrypt::secure_key{raw_key};
 opts.sender_id = 42;
 ```
 

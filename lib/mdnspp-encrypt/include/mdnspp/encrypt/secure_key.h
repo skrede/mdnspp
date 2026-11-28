@@ -5,15 +5,15 @@
 #include <array>
 #include <cstddef>
 
-namespace mdnspp {
+namespace mdnspp::encrypt {
 
 class secure_key
 {
 public:
     static constexpr std::size_t key_size = 32;
 
-    secure_key() = default;
-    explicit secure_key(std::array<std::byte, key_size> key) noexcept;
+    secure_key() noexcept;
+    explicit secure_key(const std::array<std::byte, key_size> &key) noexcept;
 
     secure_key(const secure_key &) = delete;
     secure_key &operator=(const secure_key &) = delete;
@@ -24,8 +24,10 @@ public:
 
     std::span<const std::byte, key_size> bytes() const noexcept;
 
+    bool is_zero() const noexcept;
+
 private:
-    std::array<std::byte, key_size> m_key{};
+    std::array<std::byte, key_size> m_key;
 };
 
 }

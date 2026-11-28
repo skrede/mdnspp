@@ -23,11 +23,12 @@ struct encrypt_socket_options : socket_options
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `interface_address` | `std::string` | `""` (empty) | IPv4 address of the NIC to bind. Empty means `INADDR_ANY`. |
-| `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port. |
+| `interface_address` | `std::string` | `""` (empty) | Address of the NIC to bind, in the family of `multicast_group`. Empty with no `interface_name` or `interface_index` means all interfaces. |
+| `interface_name` | `std::optional<std::string>` | `std::nullopt` | Interface name (e.g. `eth0`) to bind; takes precedence over `interface_address`. |
+| `interface_index` | `std::optional<uint32_t>` | `std::nullopt` | OS interface index to bind; takes precedence over `interface_name`. |
+| `multicast_group` | `endpoint` | `{"224.0.0.251", 5353}` | Multicast group address and port; its address family selects the socket family. |
 | `multicast_loopback` | `loopback_mode` | `loopback_mode::enabled` | Whether multicast packets loop back to the local host. |
 | `multicast_ttl` | `std::optional<uint8_t>` | `std::nullopt` | IP multicast TTL. |
-| `port_override` | `std::optional<uint16_t>` | `std::nullopt` | InProcPolicy source port override for testing. |
 
 See [Socket Options](../../socket-options.md) for full field documentation.
 
@@ -35,7 +36,7 @@ See [Socket Options](../../socket-options.md) for full field documentation.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `encrypt` | `encrypt_options` | default-constructed | Encryption configuration: PSK, sender_id, replay window, cleartext detection, receive mode. |
+| `encrypt` | `encrypt_options` | default-constructed | Encryption configuration: PSK, sender_id, initial epoch, replay window and session limits, cleartext handling, receive mode. A default-constructed value fails `validate()` (zero `sender_id`, all-zero PSK); the constructors that take these options enforce it. |
 
 ## Policy Integration
 
@@ -52,11 +53,11 @@ See [Socket Options](../../socket-options.md) for full field documentation.
 std::array<std::byte, 32> raw_key{};
 // ... fill raw_key from your key source ...
 
-mdnspp::encrypt_socket_options opts;
+mdnspp::encrypt::encrypt_socket_options opts;
 opts.interface_address     = "192.168.1.10"; // inherited from socket_options
-opts.encrypt.psk           = mdnspp::secure_key{raw_key};
+opts.encrypt.psk           = mdnspp::encrypt::secure_key{raw_key};
 opts.encrypt.sender_id     = 42;
-opts.encrypt.recv_mode     = mdnspp::receive_mode::encrypted_only;
+opts.encrypt.recv_mode     = mdnspp::encrypt::receive_mode::encrypted_only;
 ```
 
 ## See Also

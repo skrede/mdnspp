@@ -8,7 +8,7 @@
 
 ## What
 
-`initial_interval` sets the delay between the first and second outgoing query in the exponential backoff sequence defined by RFC 6762 §5.2. The first query is issued immediately; the next fires after `initial_interval`, and subsequent queries double the delay each step (controlled by `backoff_multiplier`) until `max_interval` is reached.
+`initial_interval` sets the delay between the first and second outgoing query in the exponential backoff sequence defined by RFC 6762 §5.2. The backoff runs in the service monitor's `discover` mode, once per watched type. The first PTR query waits a random delay drawn from `[response_delay_min, response_delay_max]` (20 to 120 ms by default); the next fires after `initial_interval`, and subsequent queries double the delay each step (controlled by `backoff_multiplier`) until `max_interval` is reached.
 
 ## Why
 

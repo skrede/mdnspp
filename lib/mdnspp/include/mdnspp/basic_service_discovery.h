@@ -5,31 +5,26 @@
 #include "mdnspp/endpoint.h"
 #include "mdnspp/service_type.h"
 #include "mdnspp/query_options.h"
-#include "mdnspp/socket_options.h"
 #include "mdnspp/callback_types.h"
+#include "mdnspp/socket_options.h"
 #include "mdnspp/resolved_service.h"
 
 #include "mdnspp/detail/compat.h"
 #include "mdnspp/detail/dns_wire.h"
-#include "mdnspp/detail/basic_mdns_peer_base.h"
+#include "mdnspp/detail/discovery_engine.h"
 
-#include <span>
-#include <chrono>
-#include <memory>
 #include <string>
 #include <vector>
-#include <cassert>
 #include <utility>
-#include <algorithm>
 #include <string_view>
 #include <system_error>
 
 namespace mdnspp {
 
-template <Policy P>
-class basic_service_discovery : detail::basic_mdns_peer_base<P>
+template <policy_like P>
+class basic_service_discovery : detail::discovery_engine<P>
 {
-    using base = detail::basic_mdns_peer_base<P>;
+    using base = detail::discovery_engine<P>;
 
 public:
     using typename base::executor_type;
@@ -38,112 +33,76 @@ public:
     using base::socket;
     using base::timer;
 
-    /// Optional callback invoked per record as results arrive during discovery.
     using record_callback = mdnspp::record_callback;
-
-    /// Completion callback fired once when the silence timeout expires (or stop() is called).
-    /// Receives error_code (always success for normal completion) and the accumulated results.
     using completion_handler = mdnspp::discovery_completion_handler;
-
-    /// Completion callback for async_enumerate_types.
-    using enumerate_handler = detail::move_only_function<void(std::error_code, std::vector<service_type_info>)>;
-
-    /// Error handler invoked on fire-and-forget send failures.
+    using browse_handler = mdnspp::browse_completion_handler;
+    using enumerate_handler = move_only_function<void(std::error_code, std::vector<service_type_info>)>;
     using error_handler = mdnspp::error_handler;
 
-    // Non-copyable (owns recv_loop by unique_ptr)
+    // Non-copyable and non-movable (recv_loop and timer handlers capture this)
     basic_service_discovery(const basic_service_discovery &) = delete;
     basic_service_discovery &operator=(const basic_service_discovery &) = delete;
+    basic_service_discovery(basic_service_discovery &&) = delete;
     basic_service_discovery &operator=(basic_service_discovery &&) = delete;
-
-    // Movable only before async_discover()/async_browse() is called (loops must be null).
-    basic_service_discovery(basic_service_discovery &&other) noexcept
-        : base(std::move(other))
-        , m_silence_timeout(other.m_silence_timeout)
-        , m_on_error(std::move(other.m_on_error))
-        , m_on_record(std::move(other.m_on_record))
-        , m_on_completion(std::move(other.m_on_completion))
-        , m_on_enumerate_completion(std::move(other.m_on_enumerate_completion))
-        , m_on_browse_completion(std::move(other.m_on_browse_completion))
-        , m_browse_loop(std::move(other.m_browse_loop))
-        , m_enumerate_loop(std::move(other.m_enumerate_loop))
-        , m_results(std::move(other.m_results))
-        , m_services(std::move(other.m_services))
-        , m_enumerated_types(std::move(other.m_enumerated_types))
-    {
-        assert(other.m_browse_loop == nullptr);
-        assert(other.m_enumerate_loop == nullptr);
-    }
 
     ~basic_service_discovery()
     {
         this->m_alive.reset();
         stop();
+        // The posted stop() teardown is dropped by the expired alive guard;
+        // complete a still-pending handler with operation_canceled instead of
+        // silently dropping it.
+        this->m_operation.complete_pending(std::make_error_code(std::errc::operation_canceled));
     }
 
-    // Throwing constructor -- constructs socket and timer from executor.
-    // query_options bundles the silence timeout and per-record callback.
     explicit basic_service_discovery(executor_type ex,
                                      query_options opts = {},
                                      policy_socket_options_t<P> sock_opts = {},
                                      mdns_options mdns_opts = {})
-        : base(ex, std::move(sock_opts), std::move(mdns_opts))
-        , m_silence_timeout(opts.silence_timeout)
-        , m_on_record(std::move(opts.on_record))
+        : base(ex, std::move(opts), std::move(sock_opts), std::move(mdns_opts))
     {
     }
 
-    // Non-throwing constructor -- ec is last (ASIO convention).
     basic_service_discovery(executor_type ex,
                             query_options opts,
                             policy_socket_options_t<P> sock_opts,
                             mdns_options mdns_opts,
                             std::error_code &ec)
-        : base(ex, std::move(sock_opts), std::move(mdns_opts), ec)
-        , m_silence_timeout(opts.silence_timeout)
-        , m_on_record(std::move(opts.on_record))
+        : base(ex, std::move(opts), std::move(sock_opts), std::move(mdns_opts), ec)
     {
     }
 
-    // Plain callback overloads -- used by NativePolicy, MockPolicy, and ASIO adapter users.
-    // When mode is response_mode::unicast the QU bit (RFC 6762 section 5.4) is set,
-    // requesting a direct unicast response from the responder instead of a multicast reply.
+    const timer_type &delay_timer() const noexcept { return this->m_sender.timer(); }
+    timer_type &delay_timer() noexcept { return this->m_sender.timer(); }
+
     void async_discover(std::string_view service_type, completion_handler on_done,
                         response_mode mode = response_mode::multicast)
     {
-        assert(this->m_loop == nullptr); // one discover per lifetime
-        if(on_done)
-            m_on_completion = std::move(on_done);
-        do_discover(std::string(service_type), mode);
+        if(this->template reject<mdns_record_variant>(this->query_misuse(service_type), on_done))
+            return;
+        this->m_operation.start_discover(std::move(on_done));
+        this->do_query(std::string(service_type), mode);
     }
 
-    /// Aggregating browse -- delivers resolved_service values via RFC 6763 name-chain
-    /// correlation (PTR -> SRV -> TXT -> A/AAAA) at the silence timeout.
-    /// Completion signature: void(std::error_code, std::vector<resolved_service>).
-    /// When mode is response_mode::unicast the QU bit (RFC 6762 section 5.4) is set.
     void async_browse(std::string_view service_type,
-                      detail::move_only_function<void(std::error_code, std::vector<resolved_service>)> on_done,
+                      browse_handler on_done,
                       response_mode mode = response_mode::multicast)
     {
-        assert(m_browse_loop == nullptr); // one browse per lifetime
-        if(on_done)
-            m_on_browse_completion = std::move(on_done);
-        do_browse(std::string(service_type), mode);
+        if(this->template reject<resolved_service>(this->query_misuse(service_type), on_done))
+            return;
+        this->m_operation.start_browse(std::move(on_done));
+        this->do_query(std::string(service_type), mode);
     }
 
-    /// DNS-SD service type enumeration (RFC 6763 section 9).
-    /// Queries _services._dns-sd._udp.local. and returns parsed service_type_info values.
     void async_enumerate_types(enumerate_handler on_done,
                                response_mode mode = response_mode::multicast)
     {
-        assert(m_enumerate_loop == nullptr); // one enumerate per lifetime
-        if(on_done)
-            m_on_enumerate_completion = std::move(on_done);
-        do_enumerate(mode);
+        if(this->template reject<service_type_info>(this->start_misuse(this->m_operation.active()), on_done))
+            return;
+        this->m_operation.start_enumerate(std::move(on_done));
+        this->do_enumerate(mode);
     }
 
-    /// Subtype-filtered discovery (RFC 6763 section 7.1).
-    /// Constructs subtype query name and delegates to async_discover.
     void async_discover_subtype(std::string_view service_type,
                                 std::string_view subtype_label,
                                 completion_handler on_done,
@@ -153,212 +112,26 @@ public:
         async_discover(query_name, std::move(on_done), mode);
     }
 
-    // Access accumulated raw record results (populated during io.run()).
-    // Remains valid after completion -- the completion handler receives a copy.
     const std::vector<mdns_record_variant> &results() const noexcept
     {
-        return m_results;
+        return this->m_operation.results();
     }
 
-    // Access aggregated resolved_service values produced by async_browse.
-    // Populated at silence timeout (or stop()) -- empty until browse completes.
     const std::vector<resolved_service> &services() const noexcept
     {
-        return m_services;
+        return this->m_operation.services();
     }
 
-    /// Sets the error handler invoked on fire-and-forget send failures.
-    void on_error(error_handler handler) { m_on_error = std::move(handler); }
-
-    // Early termination -- posts teardown to executor thread, ensuring all
-    // state mutations happen on the executor (no cross-thread data race).
     void stop()
     {
         base::stop([this]()
         {
+            delay_timer().cancel();
             if(this->m_loop)
-            {
                 this->m_loop->stop();
-                if(auto h = std::exchange(m_on_completion, nullptr); h)
-                    h(std::error_code{}, m_results);
-            }
-            if(m_browse_loop)
-            {
-                m_browse_loop->stop();
-                m_services = mdnspp::aggregate(m_results);
-                if(auto h = std::exchange(m_on_browse_completion, nullptr); h)
-                    h(std::error_code{}, m_services);
-            }
-            if(m_enumerate_loop)
-            {
-                m_enumerate_loop->stop();
-                if(auto h = std::exchange(m_on_enumerate_completion, nullptr); h)
-                    h(std::error_code{}, m_enumerated_types);
-            }
+            this->m_operation.complete_pending(std::make_error_code(std::errc::operation_canceled));
         });
     }
-
-private:
-    void do_discover(std::string svc_type, response_mode mode)
-    {
-        assert(this->m_loop == nullptr);
-        do_query(std::move(svc_type), mode, this->m_loop, [this]()
-        {
-            this->m_loop->stop();
-            if(auto h = std::exchange(m_on_completion, nullptr); h)
-                h(std::error_code{}, m_results);
-        });
-    }
-
-    void do_browse(std::string svc_type, response_mode mode)
-    {
-        assert(m_browse_loop == nullptr);
-        do_query(std::move(svc_type), mode, m_browse_loop, [this]()
-        {
-            m_browse_loop->stop();
-            m_services = mdnspp::aggregate(m_results);
-            if(auto h = std::exchange(m_on_browse_completion, nullptr); h)
-                h(std::error_code{}, m_services);
-        });
-    }
-
-    // Shared implementation for do_discover and do_browse.
-    // Clears results, strips trailing dot, sends PTR query, creates recv_loop
-    // with shared on_packet handler, and starts the loop.
-    void do_query(std::string svc_type, response_mode mode,
-                  std::unique_ptr<recv_loop<P>> &target_loop,
-                  detail::move_only_function<void()> on_silence_fn)
-    {
-        m_results.clear();
-        m_service_type = dns_name(std::move(svc_type));
-
-        auto query_bytes = detail::build_dns_query(m_service_type, dns_type::ptr,
-                                                   std::span<const mdns_record_variant>(m_results), mode);
-        {
-            std::error_code ec;
-            this->m_socket.send(this->multicast_endpoint(),
-                          std::span<const std::byte>(query_bytes), ec);
-            if(ec && m_on_error) m_on_error(ec, "query send");
-        }
-
-        target_loop = std::make_unique<recv_loop<P>>(
-            this->m_socket,
-            this->m_timer,
-            m_silence_timeout,
-            [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
-            {
-                const endpoint &sender = meta.sender;
-
-                std::vector<mdns_record_variant> batch;
-                detail::walk_dns_frame(
-                    std::span<const std::byte>(data.data(), data.size()),
-                    sender,
-                    [&batch](mdns_record_variant rec)
-                    {
-                        batch.push_back(std::move(rec));
-                    });
-
-                bool relevant = std::any_of(batch.begin(), batch.end(),
-                    [this](const mdns_record_variant &rec)
-                    {
-                        return std::visit([this](const auto &r)
-                        {
-                            return r.name == m_service_type;
-                        }, rec);
-                    });
-
-                if(relevant)
-                {
-                    if(m_on_record)
-                    {
-                        for(const auto &rec : batch)
-                            m_on_record(sender, rec);
-                    }
-                    m_results.insert(m_results.end(),
-                                     std::make_move_iterator(batch.begin()),
-                                     std::make_move_iterator(batch.end()));
-                }
-                return relevant;
-            },
-            std::move(on_silence_fn),
-            this->m_mdns_opts.receive_ttl_minimum,
-            this->m_mdns_opts.unknown_ttl_policy);
-
-        target_loop->start();
-    }
-
-    // Sets up the meta-query for DNS-SD service type enumeration (RFC 6763 section 9).
-    // Queries _services._dns-sd._udp.local and accumulates parsed service_type_info values.
-    void do_enumerate(response_mode mode = response_mode::multicast)
-    {
-        assert(m_enumerate_loop == nullptr);
-        m_enumerated_types.clear();
-
-        static constexpr std::string_view meta_name = "_services._dns-sd._udp.local";
-
-        auto query_bytes = detail::build_dns_query(meta_name, dns_type::ptr, mode);
-        {
-            std::error_code ec;
-            this->m_socket.send(this->multicast_endpoint(),
-                          std::span<const std::byte>(query_bytes), ec);
-            if(ec && m_on_error) m_on_error(ec, "enumerate send");
-        }
-
-        m_enumerate_loop = std::make_unique<recv_loop<P>>(
-            this->m_socket,
-            this->m_timer,
-            m_silence_timeout,
-            [this](const recv_metadata &meta, std::span<std::byte> data) -> bool
-            {
-                const endpoint &sender = meta.sender;
-
-                bool found = false;
-                detail::walk_dns_frame(
-                    std::span<const std::byte>(data.data(), data.size()),
-                    sender,
-                    [this, &found](mdns_record_variant rec)
-                    {
-                        if(auto *ptr = std::get_if<record_ptr>(&rec))
-                        {
-                            if(ptr->name == "_services._dns-sd._udp.local.")
-                            {
-                                auto info = parse_service_type(ptr->ptr_name);
-                                bool dup = std::any_of(m_enumerated_types.begin(),
-                                    m_enumerated_types.end(),
-                                    [&](const service_type_info &t)
-                                    { return t.service_type == info.service_type; });
-                                if(!dup)
-                                    m_enumerated_types.push_back(std::move(info));
-                                found = true;
-                            }
-                        }
-                    });
-                return found;
-            },
-            [this]()
-            {
-                m_enumerate_loop->stop();
-                if(auto h = std::exchange(m_on_enumerate_completion, nullptr); h)
-                    h(std::error_code{}, m_enumerated_types);
-            },
-            this->m_mdns_opts.receive_ttl_minimum,
-            this->m_mdns_opts.unknown_ttl_policy);
-
-        m_enumerate_loop->start();
-    }
-
-    std::chrono::milliseconds m_silence_timeout;
-    dns_name m_service_type;
-    error_handler m_on_error;
-    record_callback m_on_record;
-    completion_handler m_on_completion;
-    enumerate_handler m_on_enumerate_completion;
-    detail::move_only_function<void(std::error_code, std::vector<resolved_service>)> m_on_browse_completion;
-    std::unique_ptr<recv_loop<P>> m_browse_loop;
-    std::unique_ptr<recv_loop<P>> m_enumerate_loop;
-    std::vector<mdns_record_variant> m_results;
-    std::vector<resolved_service> m_services;
-    std::vector<service_type_info> m_enumerated_types;
 };
 
 }

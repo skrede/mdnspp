@@ -2,8 +2,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
-#include <cstdint>
 #include <vector>
+#include <cstdint>
 
 using namespace mdnspp;
 using namespace mdnspp::detail;

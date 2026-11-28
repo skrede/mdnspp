@@ -4,25 +4,31 @@
 |-----------|-------|
 | **Type** | `uint32_t` |
 | **Default** | `255` |
-| **One-liner** | Minimum IP TTL (hop limit) for received mDNS packets |
+| **One-liner** | Minimum IP TTL (hop limit) for received mDNS responses; queries are exempt |
 
 ## What
 
-`receive_ttl_minimum` enforces link-local scoping on incoming mDNS packets (RFC 6762 §11). Every received UDP packet carries an IP TTL (IPv4) or hop limit (IPv6) in its IP header. The stack checks this value against `receive_ttl_minimum` and silently discards any packet where the IP TTL is below the threshold.
+`receive_ttl_minimum` is a receive-side hardening check on incoming mDNS **responses**. Every received UDP packet carries an IP TTL (IPv4) or hop limit (IPv6) in its IP header. The stack compares this value with `receive_ttl_minimum` and silently discards any response whose IP TTL is below the threshold.
 
-The value 255 is the IP TTL a packet has when it leaves the sender's network interface. Because each router hop decrements the TTL by 1, any packet that has been forwarded by at least one router will arrive with a TTL of 254 or lower. Setting `receive_ttl_minimum` to 255 therefore enforces that only packets originating on the same link are accepted — the defining characteristic of link-local-only reception.
+Queries are never dropped for their TTL. One-shot resolvers (RFC 6762 §5.1) often send with the operating system's default multicast TTL, commonly 1, and RFC 6762 §6.7 requires a reply to them, so a service server answers a legacy query whatever its TTL.
+
+The value 255 is the IP TTL a packet has when it leaves a sender that follows RFC 6762 §11, which says responses SHOULD be sent with IP TTL 255. Because each router hop decrements the TTL by 1, a response forwarded by at least one router arrives with a TTL of 254 or lower, and the default threshold discards it.
 
 ## Why
 
-The default of 255 is mandatory for RFC-compliant mDNS operation. The RFC requires link-local scoping to prevent cross-segment spoofing and avoid the multicast scope leaking through routers.
+No RFC rule requires a receive TTL check. RFC 6762 §11 has only the send-side SHOULD:
 
-The only reason to consider lowering this value is in a custom non-standard deployment where mDNS-like packets are deliberately forwarded across routers (e.g., a debugging setup, a tunnelled mDNS proxy, or an experimental multi-hop service discovery system). Such deployments are outside the RFC's scope and should be considered non-standard.
+> All Multicast DNS responses (including responses sent via unicast) SHOULD be sent with IP TTL set to 255.  This is recommended to provide backwards-compatibility with older Multicast DNS queriers (implementing a draft version of this document, posted in February 2004) that check the IP TTL on reception to determine whether the packet originated on the local link.  These older queriers discard all packets with TTLs other than 255.
+
+The receive-side MUST of RFC 6762 §11 is that a querier accepts only responses from the local link, decided by destination address and source subnet. The default of 255 is kept as hardening: it drops forwarded responses cheaply, before they are parsed.
+
+Lower the value for a deployment where mDNS responses are deliberately forwarded across routers (a debugging setup, a tunnelled mDNS proxy, an experimental multi-hop discovery system), or to interoperate with responders that do not send with TTL 255.
 
 ## Danger
 
-Reducing below 255 allows packets forwarded by routers. This violates the mDNS link-local scoping requirement defined in RFC 6762 §11 and enables two distinct security risks:
+Reducing below 255 accepts responses forwarded by routers:
 
-1. **Cross-segment spoofing** — a malicious host on a remote subnet can forge mDNS responses that appear legitimate to your querier, injecting false service records into the local cache.
-2. **Cache poisoning via forwarded traffic** — a misconfigured router that forwards multicast will deliver packets from distant segments; those packets will be accepted and processed as if they came from the local link.
+1. **Cross-segment spoofing**: a host on a remote subnet whose multicast is forwarded onto the link can forge responses that appear legitimate to your querier, injecting false service records into the local cache.
+2. **Cache poisoning via forwarded traffic**: a misconfigured router that forwards multicast delivers responses from distant segments, and those responses are processed as if they came from the local link.
 
-Setting `receive_ttl_minimum` to any value below 255 should be treated as a deliberate security trade-off that must be justified by the specific deployment context. It must never be lowered in production deployments connected to untrusted networks.
+Lowering the threshold is a deliberate trade-off that the deployment context must justify; avoid it on networks with untrusted segments.

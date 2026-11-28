@@ -10,6 +10,8 @@
 
 `response_delay_min` sets the lower bound of the random delay inserted before a multicast response is sent (RFC 6762 §6). When a response is scheduled, a delay uniformly drawn from `[response_delay_min, response_delay_max]` is added to avoid simultaneous replies from multiple responders receiving the same query. No response is sent immediately upon query receipt — the RFC mandates a randomised wait.
 
+The same range has a second use (RFC 6762 §5.2): the querier and service discovery wait a delay drawn from it before sending their multicast (QM) query, and the service monitor waits one before the first PTR query of each watched type; the backoff starts after that query.
+
 ## Why
 
 The 20 ms default is the RFC minimum and provides a meaningful spread even on fast links. Reasons to adjust:
@@ -23,4 +25,4 @@ The 20 ms default is the RFC minimum and provides a meaningful spread even on fa
 
 Reducing below 20 ms increases collision probability on busy links. If multiple responders all roll delays below 5 ms, their packets arrive at the querier within the same 802.11 CSMA/CA contention window, resulting in collisions or retransmissions at the MAC layer. The RFC chose 20 ms as the minimum precisely to provide enough spread to avoid this on typical Ethernet and Wi-Fi networks.
 
-The delay is applied to all multicast responses, including proactive announcements and cache-refresh responses — not just query-triggered replies. Removing this floor entirely by setting both bounds to 0 ms synchronises all responses, which can cascade into multicast queue exhaustion on access points with limited multicast buffer space.
+The delay is applied to all multicast responses, including proactive announcements and cache-refresh responses — not just query-triggered replies. Removing this floor entirely by setting both bounds to 0 ms synchronizes all responses, which can cascade into multicast queue exhaustion on access points with limited multicast buffer space.

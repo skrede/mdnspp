@@ -1,57 +1,63 @@
-// tests/concept_conformance_test.cpp
+#include "support/failure_injection.h"
 
 #include "mdnspp/policy.h"
-#include "mdnspp/socket_options.h"
-#include "mdnspp/testing/mock_policy.h"
-#include "mdnspp/basic_observer.h"
-#include "mdnspp/observer_options.h"
 #include "mdnspp/records.h"
 #include "mdnspp/endpoint.h"
+#include "mdnspp/basic_observer.h"
+#include "mdnspp/socket_options.h"
+#include "mdnspp/observer_options.h"
 
-static_assert(mdnspp::Policy<mdnspp::testing::MockPolicy>, "MockPolicy must satisfy Policy — check executor_type, socket_type, timer_type");
-static_assert(mdnspp::SocketLike<mdnspp::testing::MockSocket>, "MockSocket must satisfy SocketLike — check async_receive/send/close signatures");
-static_assert(mdnspp::TimerLike<mdnspp::testing::MockTimer>, "MockTimer must satisfy TimerLike — check expires_after/async_wait/cancel signatures");
-static_assert(std::constructible_from<mdnspp::testing::MockSocket, mdnspp::testing::mock_executor&, const mdnspp::socket_options&>,
-              "MockSocket must be constructible from (executor, socket_options)");
-static_assert(std::constructible_from<mdnspp::testing::MockSocket, mdnspp::testing::mock_executor&, const mdnspp::socket_options&, std::error_code&>,
-              "MockSocket must be constructible from (executor, socket_options, error_code)");
+#include "mdnspp/testing/mock_policy.h"
+
+static_assert(mdnspp::policy_like<mdnspp::testing::mock_policy>, "mock_policy must satisfy Policy — check executor_type, socket_type, timer_type");
+static_assert(mdnspp::socket_like<mdnspp::testing::mock_socket>, "mock_socket must satisfy socket_like — check async_receive/send/close signatures");
+static_assert(mdnspp::timer_like<mdnspp::testing::mock_timer>, "mock_timer must satisfy timer_like — check expires_after/async_wait/cancel signatures");
+static_assert(std::constructible_from<mdnspp::testing::mock_socket, mdnspp::testing::mock_executor&, const mdnspp::socket_options&>,
+              "mock_socket must be constructible from (executor, socket_options)");
+static_assert(std::constructible_from<mdnspp::testing::mock_socket, mdnspp::testing::mock_executor&, const mdnspp::socket_options&, std::error_code&>,
+              "mock_socket must be constructible from (executor, socket_options, error_code)");
 
 #include <catch2/catch_test_macros.hpp>
 
-using namespace mdnspp::testing;
+#include <memory>
+#include <vector>
+#include <cstdint>
 
-TEST_CASE("MockSocket satisfies SocketLike concept", "[concept][conformance]")
+using namespace mdnspp::testing;
+using mdnspp::test_support::failure_injection;
+
+TEST_CASE("mock_socket satisfies socket_like concept", "[concept][conformance]")
 {
     mock_executor ex;
-    MockSocket mock{ex};
+    mock_socket mock{ex};
     REQUIRE(mock.queue_empty());
     REQUIRE(mock.sent_packets().empty());
 }
 
-TEST_CASE("MockTimer satisfies TimerLike concept", "[concept][conformance]")
+TEST_CASE("mock_timer satisfies timer_like concept", "[concept][conformance]")
 {
     mock_executor ex;
-    MockTimer timer{ex};
+    mock_timer timer{ex};
     REQUIRE_FALSE(timer.has_pending());
     REQUIRE(timer.cancel_count() == 0);
 }
 
-TEST_CASE("MockTimer fire delivers success error_code", "[concept][conformance]")
+TEST_CASE("mock_timer fire delivers success error_code", "[concept][conformance]")
 {
     mock_executor ex;
-    MockTimer timer{ex};
+    mock_timer timer{ex};
     std::error_code received{std::make_error_code(std::errc::interrupted)};
     timer.async_wait([&](std::error_code ec) { received = ec; });
     REQUIRE(timer.has_pending());
     timer.fire();
     REQUIRE_FALSE(timer.has_pending());
-    REQUIRE_FALSE(received); // success error_code is falsy
+    REQUIRE_FALSE(received);
 }
 
-TEST_CASE("MockTimer cancel delivers operation_canceled", "[concept][conformance]")
+TEST_CASE("mock_timer cancel delivers operation_canceled", "[concept][conformance]")
 {
     mock_executor ex;
-    MockTimer timer{ex};
+    mock_timer timer{ex};
     std::error_code received{};
     timer.async_wait([&](std::error_code ec) { received = ec; });
     timer.cancel();
@@ -60,34 +66,33 @@ TEST_CASE("MockTimer cancel delivers operation_canceled", "[concept][conformance
     REQUIRE(timer.cancel_count() == 1);
 }
 
-TEST_CASE("MockTimer expires_after clears pending handler", "[concept][conformance]")
+TEST_CASE("mock_timer expires_after delivers operation_canceled", "[concept][conformance]")
 {
     mock_executor ex;
-    MockTimer timer{ex};
-    bool called = false;
-    timer.async_wait([&](std::error_code) { called = true; });
+    mock_timer timer{ex};
+    std::error_code received{};
+    timer.async_wait([&](std::error_code ec) { received = ec; });
     REQUIRE(timer.has_pending());
     timer.expires_after(std::chrono::milliseconds{100});
     REQUIRE_FALSE(timer.has_pending());
-    REQUIRE_FALSE(called); // handler was dropped, not called
+    REQUIRE(received == std::make_error_code(std::errc::operation_canceled));
     REQUIRE(timer.cancel_count() == 1);
 }
 
-TEST_CASE("MockSocket error_code constructor path", "[concept][error_code]")
+TEST_CASE("mock_socket error_code constructor path", "[concept][error_code]")
 {
-    MockSocket::set_fail_on_construct(true);
+    const failure_injection injected{true, false};
     mock_executor ex;
     std::error_code ec;
-    MockSocket sock{ex, ec};
+    mock_socket sock{ex, ec};
     REQUIRE(ec);
-    MockSocket::set_fail_on_construct(false); // reset
 }
 
-TEST_CASE("MockPolicy::post pushes to executor queue", "[concept][conformance][post]")
+TEST_CASE("mock_policy::post pushes to executor queue", "[concept][conformance][post]")
 {
     mock_executor ex;
     bool called = false;
-    MockPolicy::post(ex, [&] { called = true; });
+    mock_policy::post(ex, [&] { called = true; });
     REQUIRE(ex.m_posted.size() == 1);
     REQUIRE_FALSE(called);
 }
@@ -96,7 +101,7 @@ TEST_CASE("mock_executor::drain_posted executes queued work", "[concept][conform
 {
     mock_executor ex;
     bool called = false;
-    MockPolicy::post(ex, [&] { called = true; });
+    mock_policy::post(ex, [&] { called = true; });
     ex.drain_posted();
     REQUIRE(called);
     REQUIRE(ex.m_posted.empty());
@@ -105,41 +110,41 @@ TEST_CASE("mock_executor::drain_posted executes queued work", "[concept][conform
 TEST_CASE("drain_posted executes in FIFO order", "[concept][conformance][post]")
 {
     mock_executor ex;
-    std::vector<int> order;
-    MockPolicy::post(ex, [&] { order.push_back(1); });
-    MockPolicy::post(ex, [&] { order.push_back(2); });
+    std::vector<int32_t> order;
+    mock_policy::post(ex, [&] { order.push_back(1); });
+    mock_policy::post(ex, [&] { order.push_back(2); });
     ex.drain_posted();
-    REQUIRE(order == std::vector<int>{1, 2});
+    REQUIRE(order == std::vector<int32_t>{1, 2});
 }
 
 TEST_CASE("post accepts move-only callable", "[concept][conformance][post]")
 {
     mock_executor ex;
-    auto ptr = std::make_unique<int>(42);
-    int result = 0;
-    MockPolicy::post(ex, [p = std::move(ptr), &result] { result = *p; });
+    auto ptr = std::make_unique<int32_t>(42);
+    int32_t result = 0;
+    mock_policy::post(ex, [p = std::move(ptr), &result] { result = *p; });
     ex.drain_posted();
     REQUIRE(result == 42);
 }
 
-TEST_CASE("MockSocket constructible with socket_options", "[concept][conformance]")
+TEST_CASE("mock_socket constructible with socket_options", "[concept][conformance]")
 {
     mdnspp::testing::mock_executor ex;
     mdnspp::socket_options opts{};
 
-    mdnspp::testing::MockSocket s1{ex, opts};
+    mdnspp::testing::mock_socket s1{ex, opts};
     REQUIRE(s1.options().interface_address.empty());
 
     std::error_code ec;
-    mdnspp::testing::MockSocket s2{ex, opts, ec};
+    mdnspp::testing::mock_socket s2{ex, opts, ec};
     REQUIRE_FALSE(ec);
     REQUIRE(s2.options().interface_address.empty());
 }
 
-TEST_CASE("MockSocket ec send records packet on success", "[concept][error_code][send]")
+TEST_CASE("mock_socket ec send records packet on success", "[concept][error_code][send]")
 {
     mock_executor ex;
-    MockSocket sock{ex};
+    mock_socket sock{ex};
     const std::byte payload[] = {std::byte{0x01}, std::byte{0x02}};
     mdnspp::endpoint dest{"224.0.0.251", 5353};
     std::error_code ec;
@@ -150,20 +155,21 @@ TEST_CASE("MockSocket ec send records packet on success", "[concept][error_code]
     REQUIRE(sock.sent_packets()[0].data.size() == 2);
 }
 
-TEST_CASE("MockSocket ec send failure injection", "[concept][error_code][send]")
+TEST_CASE("mock_socket ec send failure injection", "[concept][error_code][send]")
 {
     mock_executor ex;
-    MockSocket sock{ex};
+    mock_socket sock{ex};
     const std::byte payload[] = {std::byte{0x01}};
     mdnspp::endpoint dest{"224.0.0.251", 5353};
     std::error_code ec;
 
-    MockSocket::set_fail_on_send(true);
-    sock.send(dest, std::span<const std::byte>{payload}, ec);
-    REQUIRE(ec == std::make_error_code(std::errc::network_unreachable));
-    REQUIRE(sock.sent_packets().empty());
+    {
+        const failure_injection injected{false, true};
+        sock.send(dest, std::span<const std::byte>{payload}, ec);
+        REQUIRE(ec == std::make_error_code(std::errc::network_unreachable));
+        REQUIRE(sock.sent_packets().empty());
+    }
 
-    MockSocket::set_fail_on_send(false);
     sock.send(dest, std::span<const std::byte>{payload}, ec);
     REQUIRE_FALSE(ec);
     REQUIRE(sock.sent_packets().size() == 1);
@@ -171,10 +177,10 @@ TEST_CASE("MockSocket ec send failure injection", "[concept][error_code][send]")
 
 TEST_CASE("observer error_code constructor path", "[observer][error_code]")
 {
-    MockSocket::set_fail_on_construct(true);
+    const failure_injection injected{true, false};
     mock_executor ex;
     std::error_code ec;
-    mdnspp::basic_observer<mdnspp::testing::MockPolicy> obs{
+    mdnspp::basic_observer<mdnspp::testing::mock_policy> obs{
         ex,
         mdnspp::observer_options{.on_record = [](const mdnspp::endpoint &, const mdnspp::mdns_record_variant &)
         {
@@ -184,5 +190,4 @@ TEST_CASE("observer error_code constructor path", "[observer][error_code]")
         ec
     };
     REQUIRE(ec);
-    MockSocket::set_fail_on_construct(false);
 }
